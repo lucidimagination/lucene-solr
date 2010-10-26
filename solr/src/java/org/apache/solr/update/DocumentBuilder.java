@@ -17,19 +17,33 @@
 
 package org.apache.solr.update;
 
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.sinks.TeeSinkTokenFilter;
+import org.apache.lucene.analysis.sinks.TeeSinkTokenFilter.SinkTokenStream;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Fieldable;
+import org.apache.solr.analysis.DocumentAlteringFilterFactory;
+import org.apache.solr.analysis.TokenFilterFactory;
+import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
 import org.apache.solr.schema.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @version $Id$
@@ -38,6 +52,8 @@ import org.apache.solr.schema.*;
 
 // Not thread safe - by design.  Create a new builder for each thread.
 public class DocumentBuilder {
+  private static final Logger LOG = LoggerFactory.getLogger(DocumentBuilder.class);
+  
   private final IndexSchema schema;
   private Document doc;
   private HashMap<String,String> map;
@@ -161,7 +177,7 @@ public class DocumentBuilder {
     // default value are defacto 'required' fields.  
     List<String> missingFields = null;
     for (SchemaField field : schema.getRequiredFields()) {
-      if (doc.getField(field.getName() ) == null) {
+      if (doc.getFieldable(field.getName() ) == null) {
         if (field.getDefaultValue() != null) {
           addField(doc, field, field.getDefaultValue(), 1.0f);
         } else {
@@ -194,16 +210,24 @@ public class DocumentBuilder {
   }
 
 
-  private static void addField(Document doc, SchemaField field, String val, float boost) {
+  private static List<Fieldable> addField(Document doc, SchemaField field, String val, float boost) {
+    List<Fieldable> res = new LinkedList<Fieldable>();
     if (field.isPolyField()) {
       Fieldable[] farr = field.getType().createFields(field, val, boost);
       for (Fieldable f : farr) {
-        if (f != null) doc.add(f); // null fields are not added
+        if (f != null) {
+          doc.add(f); // null fields are not added
+          res.add(f);
+        }
       }
     } else {
       Field f = field.createField(val, boost);
-      if (f != null) doc.add(f);  // null fields are not added
+      if (f != null) {
+        doc.add(f);  // null fields are not added
+        res.add(f);
+      }
     }
+    return res;
   }
   
 
@@ -226,110 +250,26 @@ public class DocumentBuilder {
     Document out = new Document();
     out.setBoost( doc.getDocumentBoost() );
     
+    Set<String> alteringFields = applyAlteringTokenFilters(doc, schema, out);
+    LOG.debug("-alteringFields: " + alteringFields.toString());
+    
     // Load fields from SolrDocument to Document
     for( SolrInputField field : doc ) {
-      String name = field.getName();
-      SchemaField sfield = schema.getFieldOrNull(name);
-      boolean used = false;
-      float boost = field.getBoost();
-      
-      // Make sure it has the correct number
-      if( sfield!=null && !sfield.multiValued() && field.getValueCount() > 1 ) {
-        String id = "";
-        SchemaField sf = schema.getUniqueKeyField();
-        if( sf != null ) {
-          id = "["+doc.getFieldValue( sf.getName() )+"] ";
-        }
-        throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,
-            "ERROR: "+id+"multiple values encountered for non multiValued field " + 
-              sfield.getName() + ": " +field.getValue() );
-      }
-      
-
-      // load each field value
-      boolean hasField = false;
-      for( Object v : field ) {
-        if( v == null ) {
-          continue;
-        }
-        String val = null;
-        hasField = true;
-        boolean isBinaryField = false;
-        if (sfield != null && sfield.getType() instanceof BinaryField) {
-          isBinaryField = true;
-          BinaryField binaryField = (BinaryField) sfield.getType();
-          Field f = binaryField.createField(sfield,v,boost);
-          if(f != null){
-            out.add(f);
-          }
-          used = true;
-        } else {
-          // TODO!!! HACK -- date conversion
-          if (sfield != null && v instanceof Date && sfield.getType() instanceof DateField) {
-            DateField df = (DateField) sfield.getType();
-            val = df.toInternal((Date) v) + 'Z';
-          } else if (v != null) {
-            val = v.toString();
-          }
-
-          if (sfield != null) {
-            used = true;
-            addField(out, sfield, val, boost);
-          }
-        }
-
-        // Check if we should copy this field to any other fields.
-        // This could happen whether it is explicit or not.
-        List<CopyField> copyFields = schema.getCopyFieldsList(name);
-        for (CopyField cf : copyFields) {
-          SchemaField destinationField = cf.getDestination();
-          // check if the copy field is a multivalued or not
-          if (!destinationField.multiValued() && out.get(destinationField.getName()) != null) {
-            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                    "ERROR: multiple values encountered for non multiValued copy field " +
-                            destinationField.getName() + ": " + val);
-          }
-
-          used = true;
-          //Don't worry about poly fields here
-          Fieldable [] fields = null;
-          if (isBinaryField) {
-            if (destinationField.getType() instanceof BinaryField) {
-              BinaryField binaryField = (BinaryField) destinationField.getType();
-              //TODO: safe to assume that binary fields only create one?
-              fields = new Field[]{binaryField.createField(destinationField, v, boost)};
-            }
-          } else {
-            fields = destinationField.createFields(cf.getLimitedValue(val), boost);
-          }
-          if (fields != null) { // null fields are not added
-            for (Fieldable f : fields) {
-              out.add(f);
-            }
-          }
-        }
-        
-        // In lucene, the boost for a given field is the product of the 
-        // document boost and *all* boosts on values of that field. 
-        // For multi-valued fields, we only want to set the boost on the
-        // first field.
-        boost = 1.0f; 
-      }
-      
-      // make sure the field was used somehow...
-      if( !used && hasField ) {
-        throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,"ERROR:unknown field '" +
-                name + "'");
-      }
-    }
-    
+      processField(doc, field, schema, out);
+    }    
         
     // Now validate required fields or add default values
     // fields with default values are defacto 'required'
     for (SchemaField field : schema.getRequiredFields()) {
       if (out.getField(field.getName() ) == null) {
         if (field.getDefaultValue() != null) {
-          addField(out, field, field.getDefaultValue(), 1.0f);
+          List<Fieldable> newFields = addField(out, field, field.getDefaultValue(), 1.0f);
+          // newly added fields may be doc-altering fields
+          if (alteringFields.contains(field.getName())) {
+            for (Fieldable f : newFields) {
+              processAlteringField(field.getName(), f, schema, out);
+            }
+          }
         } 
         else {
           String id = schema.printableUniqueKey( out );
@@ -340,8 +280,186 @@ public class DocumentBuilder {
     }
     return out;
   }
-
   
+  private static void processField(SolrInputDocument doc, SolrInputField field, IndexSchema schema, Document out) {
+    String name = field.getName();
+    SchemaField sfield = schema.getFieldOrNull(name);
+    boolean used = false;
+    float boost = field.getBoost();
+    
+    // Make sure it has the correct number
+    if( sfield!=null && !sfield.multiValued() && field.getValueCount() > 1 ) {
+      String id = "";
+      SchemaField sf = schema.getUniqueKeyField();
+      if( sf != null ) {
+        id = "["+doc.getFieldValue( sf.getName() )+"] ";
+      }
+      throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,
+          "ERROR: "+id+"multiple values encountered for non multiValued field " + 
+            sfield.getName() + ": " +field.getValue() );
+    }
+    
+
+    // load each field value
+    boolean hasField = false;
+    for( Object v : field ) {
+      if( v == null ) {
+        continue;
+      }
+      String val = null;
+      hasField = true;
+      boolean isBinaryField = false;
+      if (sfield != null && sfield.getType() instanceof BinaryField) {
+        isBinaryField = true;
+        BinaryField binaryField = (BinaryField) sfield.getType();
+        Field f = binaryField.createField(sfield,v,boost);
+        if(f != null){
+          out.add(f);
+        }
+        used = true;
+      } else {
+        // TODO!!! HACK -- date conversion
+        if (sfield != null && v instanceof Date && sfield.getType() instanceof DateField) {
+          DateField df = (DateField) sfield.getType();
+          val = df.toInternal((Date) v) + 'Z';
+        } else if (v != null) {
+          val = v.toString();
+        }
+
+        if (sfield != null) {
+          used = true;
+          addField(out, sfield, val, boost);
+        }
+      }
+
+      // Check if we should copy this field to any other fields.
+      // This could happen whether it is explicit or not.
+      List<CopyField> copyFields = schema.getCopyFieldsList(name);
+      for (CopyField cf : copyFields) {
+        SchemaField destinationField = cf.getDestination();
+        // check if the copy field is a multivalued or not
+        if (!destinationField.multiValued() && out.get(destinationField.getName()) != null) {
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                  "ERROR: multiple values encountered for non multiValued copy field " +
+                          destinationField.getName() + ": " + val);
+        }
+
+        used = true;
+        //Don't worry about poly fields here
+        Fieldable [] fields = null;
+        if (isBinaryField) {
+          if (destinationField.getType() instanceof BinaryField) {
+            BinaryField binaryField = (BinaryField) destinationField.getType();
+            //TODO: safe to assume that binary fields only create one?
+            fields = new Field[]{binaryField.createField(destinationField, v, boost)};
+          }
+        } else {
+          fields = destinationField.createFields(cf.getLimitedValue(val), boost);
+        }
+        if (fields != null) { // null fields are not added
+          for (Fieldable f : fields) {
+            out.add(f);
+          }
+        }
+      }
+      
+      // In lucene, the boost for a given field is the product of the 
+      // document boost and *all* boosts on values of that field. 
+      // For multi-valued fields, we only want to set the boost on the
+      // first field.
+      boost = 1.0f; 
+    }
+    
+    // make sure the field was used somehow...
+    if( !used && hasField ) {
+      throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,"ERROR:unknown field '" +
+              name + "'");
+    }
+
+  }
+
+  /**
+   * This method runs through token streams of any fields that contain
+   * a {@link DocumentAlteringFilterFactory} in their tokenizer chain.
+   * <p>Token streams are consumed (and cached) in order to allow the filters
+   * to create / modify any other fields in the document. Then the original
+   * token streams are replaced with the cached copies (reset to start).
+   * <p>Finally, the altering fields are added to the output Lucene document,
+   * and removed from the input document, to avoid double processing.
+   * @param doc input document
+   * @param schema current schema
+   * @param out output Lucene document
+   * @return list of fields that use {@link DocumentAlteringFilterFactory}
+   */
+  private static Set<String> applyAlteringTokenFilters(SolrInputDocument doc, IndexSchema schema, Document out) {
+    Set<String> alteringFields = new HashSet<String>();
+    for (SolrInputField field : doc.values()) {
+      SchemaField sfield = schema.getFieldOrNull(field.getName());
+      if (sfield == null) { // unknown field - we'll deal with it later
+        continue;
+      }
+      Analyzer a = sfield.getType().getAnalyzer();
+      if (a instanceof TokenizerChain) {
+        TokenizerChain tc = (TokenizerChain)a;
+        TokenFilterFactory[] factories = tc.getTokenFilterFactories();
+        for (TokenFilterFactory f : factories) {
+          if (f instanceof DocumentAlteringFilterFactory) {
+            alteringFields.add(field.getName());
+            ((DocumentAlteringFilterFactory)f).setSolrInputDocument(doc);
+          }
+         }
+      }
+    }
+    // process fields that alter the document
+    for (String name : alteringFields) {
+      SolrInputField field = doc.getField(name);
+      processField(doc, field, schema, out);
+    }
+    // process tokenStreams of these fields
+    for (String name : alteringFields) {
+      Fieldable[] fieldables = out.getFieldables(name);
+      if (fieldables == null || fieldables.length == 0) {
+        continue;
+      }
+      for (Fieldable f : fieldables) {
+        processAlteringField(name, f, schema, out);
+      }
+    }
+    // remove processed fields from the input document
+    for (String name : alteringFields) {
+      doc.removeField(name);
+    }
+    return alteringFields;
+  }
+
+  private static void processAlteringField(String name, Fieldable f, IndexSchema schema, Document out) {
+    TokenStream ts = f.tokenStreamValue();
+    if (ts == null && f.stringValue() != null && f instanceof Field) {
+      SchemaField sfield = schema.getFieldOrNull(name);
+      if (sfield == null) {
+        LOG.warn("-altering field " + name + " is empty.");
+        return;
+      }
+      Analyzer a = sfield.getType().getAnalyzer();
+      ts = a.tokenStream(name, new StringReader(f.stringValue()));
+    }
+    if (ts == null) {
+      LOG.warn("-altering field " + name + " has empty token stream.");
+      return;
+    }
+    TeeSinkTokenFilter tee = new TeeSinkTokenFilter(ts);
+    SinkTokenStream sink = tee.newSinkTokenStream();
+    try {
+      tee.consumeAllTokens();
+      tee.end();
+    } catch (IOException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    // replace the original tokenStream with the populated sink
+    ((Field)f).setTokenStream(sink);    
+  }
+ 
   /**
    * Add fields from the solr document
    * 
