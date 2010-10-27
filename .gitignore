@@ -1,2 +1,6 @@
 solr/build
 lucene/build
+build
+data
+db-*.jar
+je-*.jar
