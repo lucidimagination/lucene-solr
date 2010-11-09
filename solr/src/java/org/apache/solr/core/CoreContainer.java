@@ -510,6 +510,8 @@ public class CoreContainer
       throw new RuntimeException( "Invalid core name: "+name );
     }
 
+    name = checkDefault(name);
+
     SolrCore old = null;
     synchronized (cores) {
       old = cores.put(name, core);
