@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -37,7 +38,6 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.RAMDirectory;
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.BytesRef;
@@ -67,6 +67,8 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     Directory dir1 = newDirectory();
     IndexWriter writer = new IndexWriter(dir1, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()));
+    // test relies on no merges happening below:
+    ((LogMergePolicy) writer.getMergePolicy()).setMergeFactor(10);
 
     // create the index
     createIndexNoClose(!optimize, "index1", writer);
@@ -128,6 +130,9 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     Directory dir1 = newDirectory();
     IndexWriter writer = new IndexWriter(dir1, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()));
+    // test relies on no merges happening below:
+    ((LogMergePolicy) writer.getMergePolicy()).setMergeFactor(10);
+
     writer.setInfoStream(infoStream);
     // create the index
     createIndexNoClose(!optimize, "index1", writer);
@@ -350,7 +355,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
             try {
               final Directory[] dirs = new Directory[numDirs];
               for (int k = 0; k < numDirs; k++)
-                dirs[k] = new MockDirectoryWrapper(new RAMDirectory(addDir));
+                dirs[k] = new MockDirectoryWrapper(random, new RAMDirectory(addDir));
               //int j = 0;
               //while (true) {
                 // System.out.println(Thread.currentThread().getName() + ": iter
@@ -626,7 +631,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     final Directory[] dirs = new Directory[10];
     for (int i=0;i<10;i++) {
-      dirs[i] = new MockDirectoryWrapper(new RAMDirectory(dir1));
+      dirs[i] = new MockDirectoryWrapper(random, new RAMDirectory(dir1));
     }
 
     IndexReader r = writer.getReader();
@@ -838,6 +843,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
   public void testSegmentWarmer() throws Exception {
     Directory dir = newDirectory();
+    final AtomicBoolean didWarm = new AtomicBoolean();
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer())
                                     .setMaxBufferedDocs(2).setReaderPooling(true));
     ((LogMergePolicy) w.getMergePolicy()).setMergeFactor(10);
@@ -846,6 +852,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
           final IndexSearcher s = new IndexSearcher(r);
           final TopDocs hits = s.search(new TermQuery(new Term("foo", "bar")), 10);
           assertEquals(20, hits.totalHits);
+          didWarm.set(true);
         }
       });
     
@@ -857,5 +864,6 @@ public class TestIndexWriterReader extends LuceneTestCase {
     w.waitForMerges();
     w.close();
     dir.close();
+    assertTrue(didWarm.get());
   }
 }

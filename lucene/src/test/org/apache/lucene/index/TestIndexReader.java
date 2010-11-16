@@ -895,7 +895,7 @@ public class TestIndexReader extends LuceneTestCase
 
       // Iterate w/ ever increasing free disk space:
       while(!done) {
-        MockDirectoryWrapper dir = new MockDirectoryWrapper(new RAMDirectory(startDir));
+        MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory(startDir));
 
         // If IndexReader hits disk full, it can write to
         // the same files again.
@@ -941,7 +941,7 @@ public class TestIndexReader extends LuceneTestCase
           }
 
           dir.setMaxSizeInBytes(thisDiskFree);
-          dir.setRandomIOExceptionRate(rate, diskFree);
+          dir.setRandomIOExceptionRate(rate);
 
           try {
             if (0 == x) {
@@ -1813,4 +1813,29 @@ public class TestIndexReader extends LuceneTestCase
     r.close();
     dir.close();
   }
+  
+  // LUCENE-2753
+  public void testListCommits() throws Exception {
+    Directory dir = newDirectory();
+    SnapshotDeletionPolicy sdp = new SnapshotDeletionPolicy(new KeepOnlyLastCommitDeletionPolicy());
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( 
+        TEST_VERSION_CURRENT, null).setIndexDeletionPolicy(sdp));
+    writer.addDocument(new Document());
+    writer.commit();
+    sdp.snapshot("c1");
+    writer.addDocument(new Document());
+    writer.commit();
+    sdp.snapshot("c2");
+    writer.addDocument(new Document());
+    writer.commit();
+    sdp.snapshot("c3");
+    writer.close();
+    long currentGen = 0;
+    for (IndexCommit ic : IndexReader.listCommits(dir)) {
+      assertTrue("currentGen=" + currentGen + " commitGen=" + ic.getGeneration(), currentGen < ic.getGeneration());
+      currentGen = ic.getGeneration();
+    }
+    dir.close();
+  }
+  
 }

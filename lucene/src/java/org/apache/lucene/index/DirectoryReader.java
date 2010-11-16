@@ -320,12 +320,16 @@ class DirectoryReader extends IndexReader implements Cloneable {
     }
     buffer.append(getClass().getSimpleName());
     buffer.append('(');
+    final String segmentsFile = segmentInfos.getCurrentSegmentFileName();
+    if (segmentsFile != null) {
+      buffer.append(segmentsFile);
+    }
+    if (writer != null) {
+      buffer.append(":nrt");
+    }
     for(int i=0;i<subReaders.length;i++) {
-      if (i > 0) {
-        buffer.append(' ');
-      }
-      buffer.append(subReaders[i]);
       buffer.append(' ');
+      buffer.append(subReaders[i]);
     }
     buffer.append(')');
     return buffer.toString();
@@ -939,15 +943,15 @@ class DirectoryReader extends IndexReader implements Cloneable {
   }
 
   /** @see org.apache.lucene.index.IndexReader#listCommits */
-  public static Collection<IndexCommit> listCommits(Directory dir) throws IOException {
+  public static List<IndexCommit> listCommits(Directory dir) throws IOException {
     return listCommits(dir, CodecProvider.getDefault());
   }
 
   /** @see org.apache.lucene.index.IndexReader#listCommits */
-  public static Collection<IndexCommit> listCommits(Directory dir, CodecProvider codecs) throws IOException {
+  public static List<IndexCommit> listCommits(Directory dir, CodecProvider codecs) throws IOException {
     final String[] files = dir.listAll();
 
-    Collection<IndexCommit> commits = new ArrayList<IndexCommit>();
+    List<IndexCommit> commits = new ArrayList<IndexCommit>();
 
     SegmentInfos latest = new SegmentInfos(codecs);
     latest.read(dir, codecs);
@@ -984,6 +988,9 @@ class DirectoryReader extends IndexReader implements Cloneable {
       }
     }
 
+    // Ensure that the commit points are sorted in ascending order.
+    Collections.sort(commits);
+
     return commits;
   }
 
@@ -1004,6 +1011,11 @@ class DirectoryReader extends IndexReader implements Cloneable {
       version = infos.getVersion();
       generation = infos.getGeneration();
       isOptimized = infos.size() == 1 && !infos.info(0).hasDeletions();
+    }
+
+    @Override
+    public String toString() {
+      return "DirectoryReader.ReaderCommit(" + segmentsFileName + ")";
     }
 
     @Override

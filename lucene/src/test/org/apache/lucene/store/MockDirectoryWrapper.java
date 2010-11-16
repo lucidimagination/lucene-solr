@@ -49,30 +49,38 @@ public class MockDirectoryWrapper extends Directory {
   boolean trackDiskUsage = false;
   private Set<String> unSyncedFiles;
   private Set<String> createdFiles;
+  Set<String> openFilesForWrite = new HashSet<String>();
   volatile boolean crashed;
 
   // use this for tracking files for crash.
   // additionally: provides debugging information in case you leave one open
-  Map<Closeable,Exception> files
-   = Collections.synchronizedMap(new IdentityHashMap<Closeable,Exception>());
-  
+  Map<Closeable,Exception> openFileHandles = Collections.synchronizedMap(new IdentityHashMap<Closeable,Exception>());
+
   // NOTE: we cannot initialize the Map here due to the
   // order in which our constructor actually does this
   // member initialization vs when it calls super.  It seems
   // like super is called, then our members are initialized:
   Map<String,Integer> openFiles;
 
+  // Only tracked if noDeleteOpenFile is true: if an attempt
+  // is made to delete an open file, we enroll it here.
+  Set<String> openFilesDeleted;
+
   private synchronized void init() {
-    if (openFiles == null)
+    if (openFiles == null) {
       openFiles = new HashMap<String,Integer>();
+      openFilesDeleted = new HashSet<String>();
+    }
+
     if (createdFiles == null)
       createdFiles = new HashSet<String>();
     if (unSyncedFiles == null)
       unSyncedFiles = new HashSet<String>();
   }
 
-  public MockDirectoryWrapper(Directory delegate) {
+  public MockDirectoryWrapper(Random random, Directory delegate) {
     this.delegate = delegate;
+    this.randomState = random;
     init();
   }
 
@@ -89,6 +97,7 @@ public class MockDirectoryWrapper extends Directory {
   @Deprecated
   @Override
   public void sync(String name) throws IOException {
+    maybeYield();
     maybeThrowDeterministicException();
     if (crashed)
       throw new IOException("cannot sync after crash");
@@ -98,6 +107,7 @@ public class MockDirectoryWrapper extends Directory {
 
   @Override
   public synchronized void sync(Collection<String> names) throws IOException {
+    maybeYield();
     for (String name : names)
       maybeThrowDeterministicException();
     if (crashed)
@@ -108,6 +118,7 @@ public class MockDirectoryWrapper extends Directory {
   
   @Override
   public String toString() {
+    maybeYield();
     return "MockDirWrapper(" + delegate + ")";
   }
 
@@ -128,11 +139,13 @@ public class MockDirectoryWrapper extends Directory {
   public synchronized void crash() throws IOException {
     crashed = true;
     openFiles = new HashMap<String,Integer>();
+    openFilesForWrite = new HashSet<String>();
+    openFilesDeleted = new HashSet<String>();
     Iterator<String> it = unSyncedFiles.iterator();
     unSyncedFiles = new HashSet<String>();
     // first force-close all files, so we can corrupt on windows etc.
     // clone the file map, as these guys want to remove themselves on close.
-    Map<Closeable,Exception> m = new IdentityHashMap<Closeable,Exception>(files);
+    Map<Closeable,Exception> m = new IdentityHashMap<Closeable,Exception>(openFileHandles);
     for (Closeable f : m.keySet())
       try {
         f.close();
@@ -204,10 +217,8 @@ public class MockDirectoryWrapper extends Directory {
    * IOException on the first write to an OutputStream based
    * on this probability.
    */
-  public void setRandomIOExceptionRate(double rate, long seed) {
+  public void setRandomIOExceptionRate(double rate) {
     randomIOExceptionRate = rate;
-    // seed so we have deterministic behaviour:
-    randomState = new Random(seed);
   }
   public double getRandomIOExceptionRate() {
     return randomIOExceptionRate;
@@ -224,10 +235,33 @@ public class MockDirectoryWrapper extends Directory {
 
   @Override
   public synchronized void deleteFile(String name) throws IOException {
+    maybeYield();
     deleteFile(name, false);
   }
 
+  // sets the cause of the incoming ioe to be the stack
+  // trace when the offending file name was opened
+  private synchronized IOException fillOpenTrace(IOException ioe, String name, boolean input) {
+    for(Map.Entry<Closeable,Exception> ent : openFileHandles.entrySet()) {
+      if (input && ent.getKey() instanceof MockIndexInputWrapper && ((MockIndexInputWrapper) ent.getKey()).name.equals(name)) {
+        ioe.initCause(ent.getValue());
+        break;
+      } else if (!input && ent.getKey() instanceof MockIndexOutputWrapper && ((MockIndexOutputWrapper) ent.getKey()).name.equals(name)) {
+        ioe.initCause(ent.getValue());
+        break;
+      }
+    }
+    return ioe;
+  }
+
+  private void maybeYield() {
+    if (randomState.nextBoolean()) {
+      Thread.yield();
+    }
+  }
+
   private synchronized void deleteFile(String name, boolean forced) throws IOException {
+    maybeYield();
 
     maybeThrowDeterministicException();
 
@@ -236,16 +270,24 @@ public class MockDirectoryWrapper extends Directory {
 
     if (unSyncedFiles.contains(name))
       unSyncedFiles.remove(name);
-    if (!forced) {
-      if (noDeleteOpenFile && openFiles.containsKey(name)) {
-        throw new IOException("MockDirectoryWrapper: file \"" + name + "\" is still open: cannot delete");
+    if (!forced && noDeleteOpenFile) {
+      if (openFiles.containsKey(name)) {
+        openFilesDeleted.add(name);
+        throw fillOpenTrace(new IOException("MockDirectoryWrapper: file \"" + name + "\" is still open: cannot delete"), name, true);
+      } else {
+        openFilesDeleted.remove(name);
       }
     }
     delegate.deleteFile(name);
   }
 
+  public synchronized Set<String> getOpenDeletedFiles() {
+    return new HashSet<String>(openFilesDeleted);
+  }
+
   @Override
   public synchronized IndexOutput createOutput(String name) throws IOException {
+    maybeYield();
     if (crashed)
       throw new IOException("cannot createOutput after crash");
     init();
@@ -261,7 +303,7 @@ public class MockDirectoryWrapper extends Directory {
     unSyncedFiles.add(name);
     createdFiles.add(name);
     
-   if (delegate instanceof RAMDirectory) {
+    if (delegate instanceof RAMDirectory) {
       RAMDirectory ramdir = (RAMDirectory) delegate;
       RAMFile file = new RAMFile(ramdir);
       RAMFile existing = ramdir.fileMap.get(name);
@@ -277,27 +319,35 @@ public class MockDirectoryWrapper extends Directory {
         ramdir.fileMap.put(name, file);
       }
     }
+    //System.out.println(Thread.currentThread().getName() + ": MDW: create " + name);
     IndexOutput io = new MockIndexOutputWrapper(this, delegate.createOutput(name), name);
-    files.put(io, new RuntimeException("unclosed IndexOutput"));
+    openFileHandles.put(io, new RuntimeException("unclosed IndexOutput"));
+    openFilesForWrite.add(name);
     return io;
   }
 
   @Override
   public synchronized IndexInput openInput(String name) throws IOException {
+    maybeYield();
     if (!delegate.fileExists(name))
       throw new FileNotFoundException(name);
-    else {
-      if (openFiles.containsKey(name)) {
-        Integer v =  openFiles.get(name);
-        v = Integer.valueOf(v.intValue()+1);
-        openFiles.put(name, v);
-      } else {
-         openFiles.put(name, Integer.valueOf(1));
-      }
+
+    // cannot open a file for input if it's still open for
+    // output, except for segments.gen and segments_N
+    if (openFilesForWrite.contains(name) && !name.startsWith("segments")) {
+      throw fillOpenTrace(new IOException("MockDirectoryWrapper: file \"" + name + "\" is still open for writing"), name, false);
+    }
+
+    if (openFiles.containsKey(name)) {
+      Integer v =  openFiles.get(name);
+      v = Integer.valueOf(v.intValue()+1);
+      openFiles.put(name, v);
+    } else {
+      openFiles.put(name, Integer.valueOf(1));
     }
 
     IndexInput ii = new MockIndexInputWrapper(this, name, delegate.openInput(name));
-    files.put(ii, new RuntimeException("unclosed IndexInput"));
+    openFileHandles.put(ii, new RuntimeException("unclosed IndexInput"));
     return ii;
   }
 
@@ -329,13 +379,15 @@ public class MockDirectoryWrapper extends Directory {
 
   @Override
   public synchronized void close() throws IOException {
+    maybeYield();
     if (openFiles == null) {
       openFiles = new HashMap<String,Integer>();
+      openFilesDeleted = new HashSet<String>();
     }
     if (noDeleteOpenFile && openFiles.size() > 0) {
       // print the first one as its very verbose otherwise
       Exception cause = null;
-      Iterator<Exception> stacktraces = files.values().iterator();
+      Iterator<Exception> stacktraces = openFileHandles.values().iterator();
       if (stacktraces.hasNext())
         cause = stacktraces.next();
       // RuntimeException instead of IOException because
@@ -417,56 +469,67 @@ public class MockDirectoryWrapper extends Directory {
 
   @Override
   public synchronized String[] listAll() throws IOException {
+    maybeYield();
     return delegate.listAll();
   }
 
   @Override
   public synchronized boolean fileExists(String name) throws IOException {
+    maybeYield();
     return delegate.fileExists(name);
   }
 
   @Override
   public synchronized long fileModified(String name) throws IOException {
+    maybeYield();
     return delegate.fileModified(name);
   }
 
   @Override
   public synchronized void touchFile(String name) throws IOException {
+    maybeYield();
     delegate.touchFile(name);
   }
 
   @Override
   public synchronized long fileLength(String name) throws IOException {
+    maybeYield();
     return delegate.fileLength(name);
   }
 
   @Override
   public synchronized Lock makeLock(String name) {
+    maybeYield();
     return delegate.makeLock(name);
   }
 
   @Override
   public synchronized void clearLock(String name) throws IOException {
+    maybeYield();
     delegate.clearLock(name);
   }
 
   @Override
   public synchronized void setLockFactory(LockFactory lockFactory) {
+    maybeYield();
     delegate.setLockFactory(lockFactory);
   }
 
   @Override
   public synchronized LockFactory getLockFactory() {
+    maybeYield();
     return delegate.getLockFactory();
   }
 
   @Override
   public synchronized String getLockID() {
+    maybeYield();
     return delegate.getLockID();
   }
 
   @Override
   public synchronized void copy(Directory to, String src, String dest) throws IOException {
+    maybeYield();
     delegate.copy(to, src, dest);
   }
 }

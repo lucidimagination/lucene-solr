@@ -49,13 +49,13 @@ import java.util.List;
  */
 public final class FuzzyTermsEnum extends TermsEnum {
   private TermsEnum actualEnum;
-  private MultiTermQuery.BoostAttribute actualBoostAtt;
+  private BoostAttribute actualBoostAtt;
   
-  private final MultiTermQuery.BoostAttribute boostAtt =
-    attributes().addAttribute(MultiTermQuery.BoostAttribute.class);
+  private final BoostAttribute boostAtt =
+    attributes().addAttribute(BoostAttribute.class);
   
-  private final MultiTermQuery.MaxNonCompetitiveBoostAttribute maxBoostAtt;
-  private final Priv.LevenshteinAutomataAttribute dfaAtt;
+  private final MaxNonCompetitiveBoostAttribute maxBoostAtt;
+  private final LevenshteinAutomataAttribute dfaAtt;
   
   private float bottom;
   private BytesRef bottomTerm;
@@ -110,7 +110,7 @@ public final class FuzzyTermsEnum extends TermsEnum {
     for (int cp, i = 0, j = 0; i < utf16.length(); i += Character.charCount(cp))
            termText[j++] = cp = utf16.codePointAt(i);
     this.termLength = termText.length;
-    this.dfaAtt = atts.addAttribute(Priv.LevenshteinAutomataAttribute.class);
+    this.dfaAtt = atts.addAttribute(LevenshteinAutomataAttribute.class);
 
     //The prefix could be longer than the word.
     //It's kind of silly though.  It means we must match the entire word.
@@ -128,7 +128,7 @@ public final class FuzzyTermsEnum extends TermsEnum {
     }
     this.scale_factor = 1.0f / (1.0f - this.minSimilarity);
 
-    this.maxBoostAtt = atts.addAttribute(MultiTermQuery.MaxNonCompetitiveBoostAttribute.class);
+    this.maxBoostAtt = atts.addAttribute(MaxNonCompetitiveBoostAttribute.class);
     bottom = maxBoostAtt.getMaxNonCompetitiveBoost();
     bottomTerm = maxBoostAtt.getCompetitiveTerm();
     bottomChanged(null, true);
@@ -174,8 +174,7 @@ public final class FuzzyTermsEnum extends TermsEnum {
   /** swap in a new actual enum to proxy to */
   private void setEnum(TermsEnum actualEnum) {
     this.actualEnum = actualEnum;
-    this.actualBoostAtt = actualEnum.attributes().addAttribute(
-        MultiTermQuery.BoostAttribute.class);
+    this.actualBoostAtt = actualEnum.attributes().addAttribute(BoostAttribute.class);
   }
   
   /**
@@ -300,8 +299,8 @@ public final class FuzzyTermsEnum extends TermsEnum {
     private final BytesRef termRef;
     
     private final BytesRef lastTerm;
-    private final MultiTermQuery.BoostAttribute boostAtt =
-      attributes().addAttribute(MultiTermQuery.BoostAttribute.class);
+    private final BoostAttribute boostAtt =
+      attributes().addAttribute(BoostAttribute.class);
     
     public AutomatonFuzzyTermsEnum(ByteRunAutomaton matchers[], 
         BytesRef lastTerm) throws IOException {
@@ -363,8 +362,8 @@ public final class FuzzyTermsEnum extends TermsEnum {
     // this is the text, minus the prefix
     private final int[] text;
     
-    private final MultiTermQuery.BoostAttribute boostAtt =
-      attributes().addAttribute(MultiTermQuery.BoostAttribute.class);
+    private final BoostAttribute boostAtt =
+      attributes().addAttribute(BoostAttribute.class);
     
     /**
      * Constructor for enumeration of all terms from specified <code>reader</code> which share a prefix of
@@ -552,49 +551,44 @@ public final class FuzzyTermsEnum extends TermsEnum {
     return scale_factor;
   }
   
-  // Wrapper class to hide the attribute from outside!
-  private static final class Priv {
-  
-    /** @lucene.internal */
-    public static interface LevenshteinAutomataAttribute extends Attribute {
-      public List<ByteRunAutomaton> automata();
-    }
+  /** @lucene.internal */
+  public static interface LevenshteinAutomataAttribute extends Attribute {
+    public List<ByteRunAutomaton> automata();
+  }
     
-    /** @lucene.internal */
-    public static final class LevenshteinAutomataAttributeImpl extends AttributeImpl implements LevenshteinAutomataAttribute {
-      private final List<ByteRunAutomaton> automata = new ArrayList<ByteRunAutomaton>();
+  /** @lucene.internal */
+  public static final class LevenshteinAutomataAttributeImpl extends AttributeImpl implements LevenshteinAutomataAttribute {
+    private final List<ByteRunAutomaton> automata = new ArrayList<ByteRunAutomaton>();
       
-      public List<ByteRunAutomaton> automata() {
-        return automata;
-      }
-
-      @Override
-      public void clear() {
-        automata.clear();
-      }
-
-      @Override
-      public int hashCode() {
-        return automata.hashCode();
-      }
-
-      @Override
-      public boolean equals(Object other) {
-        if (this == other)
-          return true;
-        if (!(other instanceof LevenshteinAutomataAttributeImpl))
-          return false;
-        return automata.equals(((LevenshteinAutomataAttributeImpl) other).automata);
-      }
-
-      @Override
-      public void copyTo(AttributeImpl target) {
-        final List<ByteRunAutomaton> targetAutomata =
-          ((LevenshteinAutomataAttribute) target).automata();
-        targetAutomata.clear();
-        targetAutomata.addAll(automata);
-      }
+    public List<ByteRunAutomaton> automata() {
+      return automata;
     }
-    
+
+    @Override
+    public void clear() {
+      automata.clear();
+    }
+
+    @Override
+    public int hashCode() {
+      return automata.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other)
+        return true;
+      if (!(other instanceof LevenshteinAutomataAttributeImpl))
+        return false;
+      return automata.equals(((LevenshteinAutomataAttributeImpl) other).automata);
+    }
+
+    @Override
+    public void copyTo(AttributeImpl target) {
+      final List<ByteRunAutomaton> targetAutomata =
+        ((LevenshteinAutomataAttribute) target).automata();
+      targetAutomata.clear();
+      targetAutomata.addAll(automata);
+    }
   }
 }

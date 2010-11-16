@@ -230,6 +230,7 @@ public abstract class LuceneTestCase extends Assert {
     }
 
     CodecProvider.setDefaultCodec(codec);
+    cp.setDefaultFieldCodec(codec);
 
     if (codec.equals("PreFlex")) {
       // If we're running w/ PreFlex codec we must swap in the
@@ -262,6 +263,8 @@ public abstract class LuceneTestCase extends Assert {
     cp.unregister(cp.lookup("MockVariableIntBlock"));
     swapCodec(new PulsingCodec(1));
     CodecProvider.setDefaultCodec(savedDefaultCodec);
+    cp.setDefaultFieldCodec(savedDefaultCodec);
+
   }
 
   // randomly picks from core and test codecs
@@ -656,7 +659,7 @@ public abstract class LuceneTestCase extends Assert {
   public static MockDirectoryWrapper newDirectory(Random r) throws IOException {
     StackTraceElement[] stack = new Exception().getStackTrace();
     Directory impl = newDirectoryImpl(r, TEST_DIRECTORY);
-    MockDirectoryWrapper dir = new MockDirectoryWrapper(impl);
+    MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
     stores.put(dir, stack);
     return dir;
   }
@@ -676,7 +679,7 @@ public abstract class LuceneTestCase extends Assert {
     for (String file : d.listAll()) {
      d.copy(impl, file, file);
     }
-    MockDirectoryWrapper dir = new MockDirectoryWrapper(impl);
+    MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
     stores.put(dir, stack);
     return dir;
   }

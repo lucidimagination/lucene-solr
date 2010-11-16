@@ -46,6 +46,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Date;
 
 /**
   An <code>IndexWriter</code> creates and maintains an index.
@@ -285,6 +286,7 @@ public class IndexWriter implements Closeable {
   private IndexFileDeleter deleter;
 
   private Set<SegmentInfo> segmentsToOptimize = new HashSet<SegmentInfo>();           // used by optimize to note those needing optimization
+  private int optimizeMaxNumSegments;
 
   private Lock writeLock;
 
@@ -402,20 +404,20 @@ public class IndexWriter implements Closeable {
     // this method is called:
     poolReaders = true;
 
-    flush(true, true, false);
-
     // Prevent segmentInfos from changing while opening the
     // reader; in theory we could do similar retry logic,
     // just like we do when loading segments_N
+    IndexReader r;
     synchronized(this) {
-      applyDeletes();
-      final IndexReader r = new DirectoryReader(this, segmentInfos, config.getReaderTermsIndexDivisor(), codecs);
+      flush(false, true, true);
+      r = new DirectoryReader(this, segmentInfos, config.getReaderTermsIndexDivisor(), codecs);
       if (infoStream != null) {
         message("return reader version=" + r.getVersion() + " reader=" + r);
       }
-      return r;
     }
+    maybeMerge();
 
+    return r;
   }
 
   /** Holds shared SegmentReader instances. IndexWriter uses
@@ -623,7 +625,7 @@ public class IndexWriter implements Closeable {
         // TODO: we may want to avoid doing this while
         // synchronized
         // Returns a ref, which we xfer to readerMap:
-        sr = SegmentReader.get(false, info.dir, info, readBufferSize, doOpenStores, termsIndexDivisor, codecs);
+        sr = SegmentReader.get(false, info.dir, info, readBufferSize, doOpenStores, termsIndexDivisor);
 
         if (info.dir == directory) {
           // Only pool if reader is not external
@@ -705,7 +707,7 @@ public class IndexWriter implements Closeable {
    */
   public void message(String message) {
     if (infoStream != null)
-      infoStream.println("IW " + messageID + " [" + Thread.currentThread().getName() + "]: " + message);
+      infoStream.println("IW " + messageID + " [" + new Date() + "; " + Thread.currentThread().getName() + "]: " + message);
   }
 
   private synchronized void setMessageID(PrintStream infoStream) {
@@ -1815,6 +1817,10 @@ public class IndexWriter implements Closeable {
    */
   private synchronized boolean flushDocStores() throws IOException {
 
+    if (infoStream != null) {
+      message("flushDocStores segment=" + docWriter.getDocStoreSegment());
+    }
+
     boolean useCompoundDocStore = false;
 
     String docStoreSegment;
@@ -1827,6 +1833,10 @@ public class IndexWriter implements Closeable {
       if (!success && infoStream != null) {
         message("hit exception closing doc store segment");
       }
+    }
+
+    if (infoStream != null) {
+      message("flushDocStores files=" + docWriter.closedFiles());
     }
 
     useCompoundDocStore = mergePolicy.useCompoundDocStore(segmentInfos);
@@ -2370,6 +2380,7 @@ public class IndexWriter implements Closeable {
     synchronized(this) {
       resetMergeExceptions();
       segmentsToOptimize = new HashSet<SegmentInfo>(segmentInfos);
+      optimizeMaxNumSegments = maxNumSegments;
       
       // Now mark all pending & running merges as optimize
       // merge:
@@ -2570,8 +2581,9 @@ public class IndexWriter implements Closeable {
     throws CorruptIndexException, IOException {
     assert !optimize || maxNumSegmentsOptimize > 0;
 
-    if (stopMerges)
+    if (stopMerges) {
       return;
+    }
 
     // Do not start new merges if we've hit OOME
     if (hitOOM) {
@@ -2585,19 +2597,21 @@ public class IndexWriter implements Closeable {
       if (spec != null) {
         final int numMerges = spec.merges.size();
         for(int i=0;i<numMerges;i++) {
-          final MergePolicy.OneMerge merge = ( spec.merges.get(i));
+          final MergePolicy.OneMerge merge = spec.merges.get(i);
           merge.optimize = true;
           merge.maxNumSegmentsOptimize = maxNumSegmentsOptimize;
         }
       }
 
-    } else
+    } else {
       spec = mergePolicy.findMerges(segmentInfos);
+    }
 
     if (spec != null) {
       final int numMerges = spec.merges.size();
-      for(int i=0;i<numMerges;i++)
+      for(int i=0;i<numMerges;i++) {
         registerMerge(spec.merges.get(i));
+      }
     }
   }
 
@@ -2637,6 +2651,10 @@ public class IndexWriter implements Closeable {
   private void rollbackInternal() throws IOException {
 
     boolean success = false;
+
+    if (infoStream != null ) {
+      message("rollback");
+    }
 
     docWriter.pauseAllThreads();
 
@@ -2898,7 +2916,7 @@ public class IndexWriter implements Closeable {
       List<SegmentInfo> infos = new ArrayList<SegmentInfo>();
       for (Directory dir : dirs) {
         if (infoStream != null) {
-          message("process directory " + dir);
+          message("addIndexes: process directory " + dir);
         }
         SegmentInfos sis = new SegmentInfos(codecs); // read infos from dir
         sis.read(dir, codecs);
@@ -2906,12 +2924,13 @@ public class IndexWriter implements Closeable {
         for (SegmentInfo info : sis) {
           assert !infos.contains(info): "dup info dir=" + info.dir + " name=" + info.name;
 
-          if (infoStream != null) {
-            message("process segment=" + info.name);
-          }
           docCount += info.docCount;
           String newSegName = newSegmentName();
           String dsName = info.getDocStoreSegment();
+
+          if (infoStream != null) {
+            message("addIndexes: process segment origName=" + info.name + " newName=" + newSegName + " dsName=" + dsName);
+          }
 
           // Determine if the doc store of this segment needs to be copied. It's
           // only relevant for segments who share doc store with others, because
@@ -2997,7 +3016,7 @@ public class IndexWriter implements Closeable {
       SegmentInfo info = null;
       synchronized(this) {
         info = new SegmentInfo(mergedName, docCount, directory, false, -1,
-            null, false, merger.hasProx(), merger.getCodec());
+            null, false, merger.hasProx(), merger.getSegmentCodecs());
         setDiagnostics(info, "addIndexes(IndexReader...)");
         segmentInfos.add(info);
         checkpoint();
@@ -3211,11 +3230,13 @@ public class IndexWriter implements Closeable {
         notifyAll();
       }
 
-    } else if (infoStream != null)
-        message("commit: pendingCommit == null; skip");
+    } else if (infoStream != null) {
+      message("commit: pendingCommit == null; skip");
+    }
 
-    if (infoStream != null)
+    if (infoStream != null) {
       message("commit: done");
+    }
   }
 
   /**
@@ -3347,6 +3368,9 @@ public class IndexWriter implements Closeable {
 
         try {
           flushedDocCount = docWriter.flush(flushDocStores);
+          if (infoStream != null) {
+            message("flushedFiles=" + docWriter.getFlushedFiles());
+          }
           success = true;
         } finally {
           if (!success) {
@@ -3375,10 +3399,10 @@ public class IndexWriter implements Closeable {
                                      directory, false, docStoreOffset,
                                      docStoreSegment, docStoreIsCompoundFile,
                                      docWriter.hasProx(),    
-                                     docWriter.getCodec());
+                                     docWriter.getSegmentCodecs());
 
         if (infoStream != null) {
-          message("flush codec=" + docWriter.getCodec().name);
+          message("flush codec=" + docWriter.getSegmentCodecs());
         }
         setDiagnostics(newSegment, "flush");
       }
@@ -3542,7 +3566,7 @@ public class IndexWriter implements Closeable {
 
     assert mergeReader.numDeletedDocs() == delCount;
 
-    mergeReader.hasChanges = delCount >= 0;
+    mergeReader.hasChanges = delCount > 0;
   }
 
   /* FIXME if we want to support non-contiguous segment merges */
@@ -3594,8 +3618,10 @@ public class IndexWriter implements Closeable {
     // disk, updating SegmentInfo, etc.:
     readerPool.clear(merge.segments);
 
-    if (merge.optimize)
+    if (merge.optimize) {
+      // cascade the optimize:
       segmentsToOptimize.add(merge.info);
+    }
     return true;
   }
   
@@ -3713,12 +3739,19 @@ public class IndexWriter implements Closeable {
     boolean isExternal = false;
     for(int i=0;i<count;i++) {
       final SegmentInfo info = merge.segments.info(i);
-      if (mergingSegments.contains(info))
+      if (mergingSegments.contains(info)) {
         return false;
-      if (segmentInfos.indexOf(info) == -1)
+      }
+      if (segmentInfos.indexOf(info) == -1) {
         return false;
-      if (info.dir != directory)
+      }
+      if (info.dir != directory) {
         isExternal = true;
+      }
+      if (segmentsToOptimize.contains(info)) {
+        merge.optimize = true;
+        merge.maxNumSegmentsOptimize = optimizeMaxNumSegments;
+      }
     }
 
     ensureContiguousMerge(merge);
@@ -3838,6 +3871,13 @@ public class IndexWriter implements Closeable {
       if (si.getDocStoreOffset() != -1 && currentDocStoreSegment != null && si.getDocStoreSegment().equals(currentDocStoreSegment)) {
         doFlushDocStore = true;
       }
+    }
+
+    // if a mergedSegmentWarmer is installed, we must merge
+    // the doc stores because we will open a full
+    // SegmentReader on the merged segment:
+    if (!mergeDocStores && mergedSegmentWarmer != null && currentDocStoreSegment != null && lastDocStoreSegment != null && lastDocStoreSegment.equals(currentDocStoreSegment)) {
+      mergeDocStores = true;
     }
 
     final int docStoreOffset;
@@ -4068,10 +4108,10 @@ public class IndexWriter implements Closeable {
       mergedDocCount = merge.info.docCount = merger.merge(merge.mergeDocStores);
 
       // Record which codec was used to write the segment
-      merge.info.setCodec(merger.getCodec());
+      merge.info.setSegmentCodecs(merger.getSegmentCodecs());
 
       if (infoStream != null) {
-        message("merge codec=" + merger.getCodec().name);
+        message("merge segmentCodecs=" + merger.getSegmentCodecs());
       }
       
       assert mergedDocCount == totDocCount;
@@ -4100,7 +4140,14 @@ public class IndexWriter implements Closeable {
         deleter.incRef(merge.mergeFiles);
       }
 
-      if (poolReaders && mergedSegmentWarmer != null) {
+      final String currentDocStoreSegment = docWriter.getDocStoreSegment();
+      
+      // if the merged segment warmer was not installed when
+      // this merge was started, causing us to not force
+      // the docStores to close, we can't warm it now
+      final boolean canWarm = merge.info.getDocStoreSegment() == null || currentDocStoreSegment == null || !merge.info.getDocStoreSegment().equals(currentDocStoreSegment);
+
+      if (poolReaders && mergedSegmentWarmer != null && canWarm) {
         // Load terms index & doc stores so the segment
         // warmer can run searches, load documents/term
         // vectors
