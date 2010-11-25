@@ -291,6 +291,22 @@ public class TestGroupingSearch extends SolrTestCaseJ4 {
            "'doclist':{'numFound':4,'start':10,'docs':[]}}}"
     );
 
+    ///////////////////////// group.query as main result
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.query","id:[2 TO 5]", "fl","id", "rows","3", "group.main","true")
+       ,"/response=={'numFound':4,'start':0,'docs':[{'id':'3'},{'id':'4'},{'id':'2'}]}"
+    );
+
+    // group.query and offset
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.query","id:[2 TO 5]", "fl","id", "rows","3", "start","2", "group.main","true")
+       ,"/response=={'numFound':4,'start':2,'docs':[{'id':'2'},{'id':'5'}]}"
+    );
+
+    // group.query and big offset
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.query","id:[2 TO 5]", "fl","id", "rows","3", "start","10", "group.main","true")
+       ,"/response=={'numFound':4,'start':10,'docs':[]}"
+    );
+
+
     // multiple at once
     assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true",
         "group.query","id:[2 TO 5]",
@@ -304,6 +320,36 @@ public class TestGroupingSearch extends SolrTestCaseJ4 {
     );
 
 
+    ///////////////////////// group.field as main result
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "group.main","true")
+        ,"/response=={'numFound':10,'start':0,'docs':[{'id':'8'},{'id':'3'},{'id':'4'},{'id':'1'},{'id':'2'}]}"
+    );
+    // test that rows limits #docs
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "rows","3", "group.main","true")
+        ,"/response=={'numFound':10,'start':0,'docs':[{'id':'8'},{'id':'3'},{'id':'4'}]}"
+    );
+    // small  offset
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "rows","2", "start","1", "group.main","true")
+        ,"/response=={'numFound':10,'start':1,'docs':[{'id':'3'},{'id':'4'}]}"
+    );
+    // large offset
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "rows","2", "start","20", "group.main","true")
+        ,"/response=={'numFound':10,'start':20,'docs':[]}"
+    );
+    // group.limit>1
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "rows","3", "group.limit","2", "group.main","true")
+        ,"/response=={'numFound':10,'start':0,'docs':[{'id':'8'},{'id':'10'},{'id':'3'}]}"
+    );
+    // group.limit>1 with start>0
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "rows","3", "start","1", "group.limit","2", "group.main","true")
+        ,"/response=={'numFound':10,'start':1,'docs':[{'id':'10'},{'id':'3'},{'id':'6'}]}"
+    );
+
+    ///////////////////////// group.format == simple
+    assertJQ(req("fq",filt,  "q","{!func}"+f2, "group","true", "group.field",f, "fl","id", "rows","3", "start","1", "group.limit","2", "group.format","simple")
+    , "/grouped/foo_i=={'matches':10,'doclist':"
+        +"{'numFound':10,'start':1,'docs':[{'id':'10'},{'id':'3'},{'id':'6'}]}}"
+    );
   };
 
 
@@ -326,14 +372,14 @@ public class TestGroupingSearch extends SolrTestCaseJ4 {
     while (--indexIter >= 0) {
 
       int indexSize = random.nextInt(25 * RANDOM_MULTIPLIER);
-
+//indexSize=2;
       List<FldType> types = new ArrayList<FldType>();
       types.add(new FldType("id",ONE_ONE, new SVal('A','Z',4,4)));
       types.add(new FldType("score_f",ONE_ONE, new FVal(1,100)));  // field used to score
-      types.add(new FldType("foo_i",ONE_ONE, new IRange(0,indexSize)));
-      types.add(new FldType("foo_s",ONE_ONE, new SVal('a','z',1,2)));
-      types.add(new FldType("small_s",ONE_ONE, new SVal('a',(char)('c'+indexSize/10),1,1)));
-      types.add(new FldType("small_i",ONE_ONE, new IRange(0,5+indexSize/10)));
+      types.add(new FldType("foo_i",ZERO_ONE, new IRange(0,indexSize)));
+      types.add(new FldType("foo_s",ZERO_ONE, new SVal('a','z',1,2)));
+      types.add(new FldType("small_s",ZERO_ONE, new SVal('a',(char)('c'+indexSize/10),1,1)));
+      types.add(new FldType("small_i",ZERO_ONE, new IRange(0,5+indexSize/10)));
 
       clearIndex();
       Map<Comparable, Doc> model = indexDocs(types, null, indexSize);
@@ -403,9 +449,9 @@ public class TestGroupingSearch extends SolrTestCaseJ4 {
          // Test specific case
         if (false) {
           groupField="small_i";
-          sortComparator=createComparator(Arrays.asList(createComparator("small_s", true, true, false)));
+          sortComparator=createComparator(Arrays.asList(createComparator("small_s", true, true, false, true)));
           sortStr = "small_s asc";
-          groupComparator = createComparator(Arrays.asList(createComparator("small_s", true, true, false)));
+          groupComparator = createComparator(Arrays.asList(createComparator("small_s", true, true, false, false)));
           groupSortStr = "small_s asc";
           rows=1; start=0; group_offset=1; group_limit=1;
         }
