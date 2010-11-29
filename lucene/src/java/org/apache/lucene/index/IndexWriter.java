@@ -1776,7 +1776,7 @@ public class IndexWriter implements Closeable {
         message("now call final commit()");
       
       if (!hitOOM) {
-        commit(0);
+        commitInternal(null);
       }
 
       if (infoStream != null)
@@ -3133,18 +3133,11 @@ public class IndexWriter implements Closeable {
 
     flush(true, true, true);
 
-    startCommit(0, commitUserData);
+    startCommit(commitUserData);
   }
 
   // Used only by commit, below; lock order is commitLock -> IW
   private final Object commitLock = new Object();
-
-  private void commit(long sizeInBytes) throws IOException {
-    synchronized(commitLock) {
-      startCommit(sizeInBytes, null);
-      finishCommit();
-    }
-  }
 
   /**
    * <p>Commits all pending changes (added & deleted
@@ -3192,6 +3185,11 @@ public class IndexWriter implements Closeable {
   public final void commit(Map<String,String> commitUserData) throws CorruptIndexException, IOException {
 
     ensureOpen();
+
+    commitInternal(commitUserData);
+  }
+
+  private final void commitInternal(Map<String,String> commitUserData) throws CorruptIndexException, IOException {
 
     if (infoStream != null) {
       message("commit: start");
@@ -4367,7 +4365,7 @@ public class IndexWriter implements Closeable {
    *  if it wasn't already.  If that succeeds, then we
    *  prepare a new segments_N file but do not fully commit
    *  it. */
-  private void startCommit(long sizeInBytes, Map<String,String> commitUserData) throws IOException {
+  private void startCommit(Map<String,String> commitUserData) throws IOException {
 
     assert testPoint("startStartCommit");
     assert pendingCommit == null;
@@ -4379,7 +4377,7 @@ public class IndexWriter implements Closeable {
     try {
 
       if (infoStream != null)
-        message("startCommit(): start sizeInBytes=" + sizeInBytes);
+        message("startCommit(): start");
 
       final SegmentInfos toSync;
       final long myChangeCount;
@@ -4387,6 +4385,7 @@ public class IndexWriter implements Closeable {
       synchronized(this) {
 
         assert lastCommitChangeCount <= changeCount;
+        myChangeCount = changeCount;
         
         if (changeCount == lastCommitChangeCount) {
           if (infoStream != null)
@@ -4403,7 +4402,24 @@ public class IndexWriter implements Closeable {
 
         readerPool.commit();
         
+        // It's possible another flush (that did not close
+        // the open do stores) snuck in after the flush we
+        // just did, so we remove any tail segments
+        // referencing the open doc store from the
+        // SegmentInfos we are about to sync (the main
+        // SegmentInfos will keep them):
         toSync = (SegmentInfos) segmentInfos.clone();
+        final String dss = docWriter.getDocStoreSegment();
+        if (dss != null) {
+          while(true) {
+            final String dss2 = toSync.info(toSync.size()-1).getDocStoreSegment();
+            if (dss2 == null || !dss2.equals(dss)) {
+              break;
+            }
+            toSync.remove(toSync.size()-1);
+            changeCount++;
+          }
+        }
         assert filesExist(toSync);
         
         if (commitUserData != null)
@@ -4415,7 +4431,6 @@ public class IndexWriter implements Closeable {
         // merge completes which would otherwise have
         // removed the files we are now syncing.
         deleter.incRef(toSync, false);
-        myChangeCount = changeCount;
       }
 
       assert testPoint("midStartCommit");
