@@ -19,15 +19,23 @@ package org.apache.solr.analysis;
 import org.apache.lucene.analysis.ar.ArabicLetterTokenizer;
 
 import java.io.Reader;
+import java.util.Map;
 
 
 /**
  * Factory for {@link ArabicLetterTokenizer}
+ * @deprecated (3.1) Use StandardTokenizerFactory instead.
  **/
+@Deprecated
 public class ArabicLetterTokenizerFactory extends BaseTokenizerFactory{
 
-  public ArabicLetterTokenizer create(Reader input) {
+  public void init(Map<String,String> args) {
+    super.init(args);
     assureMatchVersion();
+    warnDeprecated("Use StandardTokenizerFactory instead.");
+  }
+
+  public ArabicLetterTokenizer create(Reader input) {
     return new ArabicLetterTokenizer(luceneMatchVersion, input);
   }
 }

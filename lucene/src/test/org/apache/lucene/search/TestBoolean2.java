@@ -37,8 +37,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 /** Test BooleanQuery2 against BooleanQuery by overriding the standard query parser.
  * This also tests the scoring order of BooleanQuery.
  */
@@ -74,7 +72,7 @@ public class TestBoolean2 extends LuceneTestCase {
     do {
       final Directory copy = new MockDirectoryWrapper(random, new RAMDirectory(dir2));
       RandomIndexWriter w = new RandomIndexWriter(random, dir2);
-      w.addIndexes(new Directory[] {copy});
+      w.addIndexes(copy);
       docCount = w.maxDoc();
       w.close();
       mulFactor *= 2;

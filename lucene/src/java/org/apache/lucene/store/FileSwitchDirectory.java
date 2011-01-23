@@ -21,7 +21,6 @@ import java.io.IOException;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
@@ -133,12 +132,6 @@ public class FileSwitchDirectory extends Directory {
   @Override
   public IndexOutput createOutput(String name) throws IOException {
     return getDirectory(name).createOutput(name);
-  }
-
-  @Deprecated
-  @Override
-  public void sync(String name) throws IOException {
-    sync(Collections.singleton(name));
   }
 
   @Override

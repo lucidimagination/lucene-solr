@@ -51,7 +51,7 @@ public class TestRAMDirectory extends LuceneTestCase {
     super.setUp();
     indexDir = new File(TEMP_DIR, "RAMDirIndex");
     
-    Directory dir = FSDirectory.open(indexDir);
+    Directory dir = newFSDirectory(indexDir);
     IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer()).setOpenMode(OpenMode.CREATE));
     // add some documents
@@ -68,7 +68,7 @@ public class TestRAMDirectory extends LuceneTestCase {
   
   public void testRAMDirectory () throws IOException {
     
-    Directory dir = FSDirectory.open(indexDir);
+    Directory dir = newFSDirectory(indexDir);
     MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random, new RAMDirectory(dir));
     
     // close the underlaying directory
@@ -100,7 +100,7 @@ public class TestRAMDirectory extends LuceneTestCase {
   
   public void testRAMDirectorySize() throws IOException, InterruptedException {
       
-    Directory dir = FSDirectory.open(indexDir);
+    Directory dir = newFSDirectory(indexDir);
     final MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random, new RAMDirectory(dir));
     dir.close();
     
@@ -179,5 +179,23 @@ public class TestRAMDirectory extends LuceneTestCase {
       files[i].delete();
     }
     dir.delete();
+  }
+
+  // LUCENE-2852
+  public void testSeekToEOFThenBack() throws Exception {
+    RAMDirectory dir = new RAMDirectory();
+
+    IndexOutput o = dir.createOutput("out");
+    byte[] bytes = new byte[3*RAMInputStream.BUFFER_SIZE];
+    o.writeBytes(bytes, 0, bytes.length);
+    o.close();
+
+    IndexInput i = dir.openInput("out");
+    i.seek(2*RAMInputStream.BUFFER_SIZE-1);
+    i.seek(3*RAMInputStream.BUFFER_SIZE);
+    i.seek(RAMInputStream.BUFFER_SIZE);
+    i.readBytes(bytes, 0, 2*RAMInputStream.BUFFER_SIZE);
+    i.close();
+    dir.close();
   }
 }

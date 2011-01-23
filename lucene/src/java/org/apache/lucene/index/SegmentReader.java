@@ -19,7 +19,6 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,7 +30,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
-import org.apache.lucene.search.Similarity;
 import org.apache.lucene.store.BufferedIndexInput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
@@ -51,7 +49,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
 
   private SegmentInfo si;
   private int readBufferSize;
-
+  private final ReaderContext readerContext = new AtomicReaderContext(this);
   CloseableThreadLocal<FieldsReader> fieldsReaderLocal = new FieldsReaderLocal();
   CloseableThreadLocal<TermVectorsReader> termVectorsLocal = new CloseableThreadLocal<TermVectorsReader>();
 
@@ -243,7 +241,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
           throw new CorruptIndexException("doc counts differ for segment " + segment + ": fieldsReader shows " + fieldsReaderOrig.size() + " but segmentInfo shows " + si.docCount);
         }
 
-        if (fieldInfos.hasVectors()) { // open term vector files only as needed
+        if (si.getHasVectors()) { // open term vector files only as needed
           termVectorsReaderOrig = new TermVectorsReader(storeDir, storesSegment, fieldInfos, readBufferSize, si.getDocStoreOffset(), si.docCount);
         }
       }
@@ -333,29 +331,6 @@ public class SegmentReader extends IndexReader implements Cloneable {
           bytesRef = null;
         } else {
           assert bytesRef == null;
-        }
-      }
-    }
-
-    // Load bytes but do not cache them if they were not
-    // already cached
-    public synchronized void bytes(byte[] bytesOut, int offset, int len) throws IOException {
-      assert refCount > 0 && (origNorm == null || origNorm.refCount > 0);
-      if (bytes != null) {
-        // Already cached -- copy from cache:
-        assert len <= maxDoc();
-        System.arraycopy(bytes, 0, bytesOut, offset, len);
-      } else {
-        // Not cached
-        if (origNorm != null) {
-          // Ask origNorm to load
-          origNorm.bytes(bytesOut, offset, len);
-        } else {
-          // We are orig -- read ourselves from disk:
-          synchronized(in) {
-            in.seek(normSeek);
-            in.readBytes(bytesOut, offset, len, false);
-          }
         }
       }
     }
@@ -991,22 +966,6 @@ public class SegmentReader extends IndexReader implements Cloneable {
     norm.copyOnWrite()[doc] = value;                    // set the value
   }
 
-  /** Read norms into a pre-allocated array. */
-  @Override
-  public synchronized void norms(String field, byte[] bytes, int offset)
-    throws IOException {
-
-    ensureOpen();
-    Norm norm = norms.get(field);
-    if (norm == null) {
-      Arrays.fill(bytes, offset, bytes.length, Similarity.getDefault().encodeNormValue(1.0f));
-      return;
-    }
-  
-    norm.bytes(bytes, offset, maxDoc());
-  }
-
-
   private void openNorms(Directory cfsDir, int readBufferSize) throws IOException {
     long nextNormSeek = SegmentMerger.NORMS_HEADER.length; //skip header (header unused for now)
     int maxDoc = maxDoc();
@@ -1183,6 +1142,11 @@ public class SegmentReader extends IndexReader implements Cloneable {
     buffer.append(si.toString(core.dir, pendingDeleteCount));
     return buffer.toString();
   }
+  
+  @Override
+  public ReaderContext getTopReaderContext() {
+    return readerContext;
+  }
 
   /**
    * Return the name of the segment this reader is reading.
@@ -1239,33 +1203,6 @@ public class SegmentReader extends IndexReader implements Cloneable {
   @Override
   public final Object getCoreCacheKey() {
     return core;
-  }
-  
-  /**
-   * Lotsa tests did hacks like:<br/>
-   * SegmentReader reader = (SegmentReader) IndexReader.open(dir);<br/>
-   * They broke. This method serves as a hack to keep hacks working
-   * We do it with R/W access for the tests (BW compatibility)
-   * @deprecated Remove this when tests are fixed!
-   */
-  @Deprecated
-  static SegmentReader getOnlySegmentReader(Directory dir) throws IOException {
-    return getOnlySegmentReader(IndexReader.open(dir, false));
-  }
-
-  static SegmentReader getOnlySegmentReader(IndexReader reader) {
-    if (reader instanceof SegmentReader)
-      return (SegmentReader) reader;
-
-    if (reader instanceof DirectoryReader) {
-      IndexReader[] subReaders = reader.getSequentialSubReaders();
-      if (subReaders.length != 1)
-        throw new IllegalArgumentException(reader + " has " + subReaders.length + " segments instead of exactly one");
-
-      return (SegmentReader) subReaders[0];
-    }
-
-    throw new IllegalArgumentException(reader + " is not a SegmentReader or a single-segment DirectoryReader");
   }
 
   @Override

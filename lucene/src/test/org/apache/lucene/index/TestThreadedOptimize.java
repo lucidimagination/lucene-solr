@@ -21,16 +21,13 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.English;
 
 import org.apache.lucene.util.LuceneTestCase;
 
-import java.io.File;
 import java.util.Random;
 
 public class TestThreadedOptimize extends LuceneTestCase {
@@ -52,10 +49,14 @@ public class TestThreadedOptimize extends LuceneTestCase {
 
   public void runTest(Random random, Directory directory, MergeScheduler merger) throws Exception {
 
-    IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, ANALYZER)
-        .setOpenMode(OpenMode.CREATE).setMaxBufferedDocs(2).setMergeScheduler(
-            merger));
+    IndexWriter writer = new IndexWriter(
+        directory,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, ANALYZER).
+            setOpenMode(OpenMode.CREATE).
+            setMaxBufferedDocs(2).
+            setMergeScheduler(merger).
+            setMergePolicy(newLogMergePolicy())
+    );
 
     for(int iter=0;iter<NUM_ITER;iter++) {
       final int iterFinal = iter;
@@ -137,12 +138,5 @@ public class TestThreadedOptimize extends LuceneTestCase {
     runTest(random, directory, new SerialMergeScheduler());
     runTest(random, directory, new ConcurrentMergeScheduler());
     directory.close();
-
-    File dirName = new File(TEMP_DIR, "luceneTestThreadedOptimize");
-    directory = FSDirectory.open(dirName);
-    runTest(random, directory, new SerialMergeScheduler());
-    runTest(random, directory, new ConcurrentMergeScheduler());
-    directory.close();
-    _TestUtil.rmDir(dirName);
   }
 }

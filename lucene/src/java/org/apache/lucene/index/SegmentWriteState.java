@@ -18,8 +18,6 @@ package org.apache.lucene.index;
  */
 
 import java.io.PrintStream;
-import java.util.Collection;
-import java.util.HashSet;
 
 import org.apache.lucene.store.Directory;
 
@@ -31,10 +29,8 @@ public class SegmentWriteState {
   public final Directory directory;
   public final String segmentName;
   public final FieldInfos fieldInfos;
-  public final String docStoreSegmentName;
   public final int numDocs;
-  public int numDocsInStore;
-  public final Collection<String> flushedFiles;
+  public boolean hasVectors;
 
   final SegmentCodecs segmentCodecs;
   public final String codecId;
@@ -44,7 +40,7 @@ public class SegmentWriteState {
    * faster, while larger values use less memory and make searching slightly
    * slower.  Searching is typically not dominated by dictionary lookup, so
    * tweaking this is rarely useful.*/
-  public final int termIndexInterval;
+  public int termIndexInterval;                   // TODO: this should be private to the codec, not settable here or in IWC
 
   /** Expert: The fraction of TermDocs entries stored in skip tables,
    * used to accelerate {@link DocsEnum#advance(int)}.  Larger values result in
@@ -61,18 +57,14 @@ public class SegmentWriteState {
 
 
   public SegmentWriteState(PrintStream infoStream, Directory directory, String segmentName, FieldInfos fieldInfos,
-                           String docStoreSegmentName, int numDocs,
-                           int numDocsInStore, int termIndexInterval, SegmentCodecs segmentCodecs) {
+                           int numDocs, int termIndexInterval, SegmentCodecs segmentCodecs) {
     this.infoStream = infoStream;
     this.directory = directory;
     this.segmentName = segmentName;
     this.fieldInfos = fieldInfos;
-    this.docStoreSegmentName = docStoreSegmentName;
     this.numDocs = numDocs;
-    this.numDocsInStore = numDocsInStore;
     this.termIndexInterval = termIndexInterval;
     this.segmentCodecs = segmentCodecs;
-    flushedFiles = new HashSet<String>();
     codecId = "";
   }
   
@@ -84,12 +76,9 @@ public class SegmentWriteState {
     directory = state.directory;
     segmentName = state.segmentName;
     fieldInfos = state.fieldInfos;
-    docStoreSegmentName = state.docStoreSegmentName;
     numDocs = state.numDocs;
-    numDocsInStore = state.numDocsInStore;
     termIndexInterval = state.termIndexInterval;
     segmentCodecs = state.segmentCodecs;
-    flushedFiles = state.flushedFiles;
     this.codecId = codecId;
   }
 }

@@ -26,13 +26,12 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermRangeFilter;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.document.Field;
@@ -167,11 +166,16 @@ public abstract class CollationTestBase extends LuceneTestCase {
   // Copied (and slightly modified) from 
   // org.apache.lucene.search.TestSort.testInternationalSort()
   //  
+  // TODO: this test is really fragile. there are already 3 different cases,
+  // depending upon unicode version.
   public void testCollationKeySort(Analyzer usAnalyzer,
                                    Analyzer franceAnalyzer,
                                    Analyzer swedenAnalyzer,
                                    Analyzer denmarkAnalyzer,
-                                   String usResult) throws Exception {
+                                   String usResult,
+                                   String frResult,
+                                   String svResult,
+                                   String dkResult) throws Exception {
     RAMDirectory indexStore = new RAMDirectory();
     IndexWriter writer = new IndexWriter(indexStore, new IndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, false)));
@@ -210,7 +214,7 @@ public abstract class CollationTestBase extends LuceneTestCase {
     }
     writer.optimize();
     writer.close();
-    Searcher searcher = new IndexSearcher(indexStore, true);
+    IndexSearcher searcher = new IndexSearcher(indexStore, true);
 
     Sort sort = new Sort();
     Query queryX = new TermQuery(new Term ("contents", "x"));
@@ -220,18 +224,18 @@ public abstract class CollationTestBase extends LuceneTestCase {
     assertMatches(searcher, queryY, sort, usResult);
 
     sort.setSort(new SortField("France", SortField.STRING));
-    assertMatches(searcher, queryX, sort, "EACGI");
+    assertMatches(searcher, queryX, sort, frResult);
 
     sort.setSort(new SortField("Sweden", SortField.STRING));
-    assertMatches(searcher, queryY, sort, "BJDFH");
+    assertMatches(searcher, queryY, sort, svResult);
 
     sort.setSort(new SortField("Denmark", SortField.STRING));
-    assertMatches(searcher, queryY, sort, "BJDHF");
+    assertMatches(searcher, queryY, sort, dkResult);
   }
     
   // Make sure the documents returned by the search match the expected list
   // Copied from TestSort.java
-  private void assertMatches(Searcher searcher, Query query, Sort sort, 
+  private void assertMatches(IndexSearcher searcher, Query query, Sort sort, 
                              String expectedResult) throws IOException {
     ScoreDoc[] result = searcher.search(query, null, 1000, sort).scoreDocs;
     StringBuilder buff = new StringBuilder(10);

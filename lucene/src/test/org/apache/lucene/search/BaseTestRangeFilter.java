@@ -33,8 +33,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 public class BaseTestRangeFilter extends LuceneTestCase {
   
   public static final boolean F = false;
@@ -115,10 +113,6 @@ public class BaseTestRangeFilter extends LuceneTestCase {
   
   private static IndexReader build(Random random, TestIndex index) throws IOException {
     /* build an index */
-    RandomIndexWriter writer = new RandomIndexWriter(random, index.index, 
-        newIndexWriterConfig(random, TEST_VERSION_CURRENT, new MockAnalyzer())
-    .setOpenMode(OpenMode.CREATE).setMaxBufferedDocs(_TestUtil.nextInt(random, 50, 1000)));
-    _TestUtil.reduceOpenFiles(writer.w);
     
     Document doc = new Document();
     Field idField = newField(random, "id", "", Field.Store.YES, Field.Index.NOT_ANALYZED);
@@ -127,25 +121,52 @@ public class BaseTestRangeFilter extends LuceneTestCase {
     doc.add(idField);
     doc.add(randField);
     doc.add(bodyField);
-    
-    for (int d = minId; d <= maxId; d++) {
-      idField.setValue(pad(d));
-      int r = index.allowNegativeRandomInts ? random.nextInt() : random
+
+    RandomIndexWriter writer = new RandomIndexWriter(random, index.index, 
+                                                     newIndexWriterConfig(random, TEST_VERSION_CURRENT, new MockAnalyzer())
+                                                     .setOpenMode(OpenMode.CREATE).setMaxBufferedDocs(_TestUtil.nextInt(random, 50, 1000)));
+    while(true) {
+
+      int minCount = 0;
+      int maxCount = 0;
+
+      _TestUtil.reduceOpenFiles(writer.w);
+
+      for (int d = minId; d <= maxId; d++) {
+        idField.setValue(pad(d));
+        int r = index.allowNegativeRandomInts ? random.nextInt() : random
           .nextInt(Integer.MAX_VALUE);
-      if (index.maxR < r) {
-        index.maxR = r;
+        if (index.maxR < r) {
+          index.maxR = r;
+          maxCount = 1;
+        } else if (index.maxR == r) {
+          maxCount++;
+        }
+
+        if (r < index.minR) {
+          index.minR = r;
+          minCount = 1;
+        } else if (r == index.minR) {
+          minCount++;
+        }
+        randField.setValue(pad(r));
+        bodyField.setValue("body");
+        writer.addDocument(doc);
       }
-      if (r < index.minR) {
-        index.minR = r;
+
+      if (minCount == 1 && maxCount == 1) {
+        // our subclasses rely on only 1 doc having the min or
+        // max, so, we loop until we satisfy that.  it should be
+        // exceedingly rare (Yonik calculates 1 in ~429,000)
+        // times) that this loop requires more than one try:
+        IndexReader ir = writer.getReader();
+        writer.close();
+        return ir;
       }
-      randField.setValue(pad(r));
-      bodyField.setValue("body");
-      writer.addDocument(doc);
+
+      // try again
+      writer.deleteAll();
     }
-    
-    IndexReader ir = writer.getReader();
-    writer.close();
-    return ir;
   }
   
   @Test

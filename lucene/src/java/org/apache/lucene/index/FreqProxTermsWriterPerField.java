@@ -21,6 +21,7 @@ import java.io.IOException;
 
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Fieldable;
+import org.apache.lucene.util.RamUsageEstimator;
 
 // TODO: break into separate freq and prox writers as
 // codecs; make separate container (tii/tis/skip/*) that can
@@ -88,7 +89,7 @@ final class FreqProxTermsWriterPerField extends TermsHashConsumerPerField implem
     }
   }
 
-  final void writeProx(final int termID, int proxCode) {
+  void writeProx(final int termID, int proxCode) {
     final Payload payload;
     if (payloadAttribute == null) {
       payload = null;
@@ -110,7 +111,7 @@ final class FreqProxTermsWriterPerField extends TermsHashConsumerPerField implem
   }
 
   @Override
-  final void newTerm(final int termID) {
+  void newTerm(final int termID) {
     // First time we're seeing this term since the last
     // flush
     assert docState.testPoint("FreqProxTermsWriterPerField.newTerm start");
@@ -124,10 +125,11 @@ final class FreqProxTermsWriterPerField extends TermsHashConsumerPerField implem
       postings.docFreqs[termID] = 1;
       writeProx(termID, fieldState.position);
     }
+    fieldState.maxTermFrequency = Math.max(1, fieldState.maxTermFrequency);
   }
 
   @Override
-  final void addTerm(final int termID) {
+  void addTerm(final int termID) {
 
     assert docState.testPoint("FreqProxTermsWriterPerField.addTerm start");
     
@@ -157,11 +159,12 @@ final class FreqProxTermsWriterPerField extends TermsHashConsumerPerField implem
           termsHashPerField.writeVInt(0, postings.docFreqs[termID]);
         }
         postings.docFreqs[termID] = 1;
+        fieldState.maxTermFrequency = Math.max(1, fieldState.maxTermFrequency);
         postings.lastDocCodes[termID] = (docState.docID - postings.lastDocIDs[termID]) << 1;
         postings.lastDocIDs[termID] = docState.docID;
         writeProx(termID, fieldState.position);
       } else {
-        postings.docFreqs[termID]++;
+        fieldState.maxTermFrequency = Math.max(fieldState.maxTermFrequency, ++postings.docFreqs[termID]);
         writeProx(termID, fieldState.position-postings.lastPositions[termID]);
       }
     }
@@ -205,7 +208,7 @@ final class FreqProxTermsWriterPerField extends TermsHashConsumerPerField implem
 
     @Override
     int bytesPerPosting() {
-      return ParallelPostingsArray.BYTES_PER_POSTING + 4 * DocumentsWriter.INT_NUM_BYTE;
+      return ParallelPostingsArray.BYTES_PER_POSTING + 4 * RamUsageEstimator.NUM_BYTES_INT;
     }
   }
   

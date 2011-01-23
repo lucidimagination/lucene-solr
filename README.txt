@@ -1,7 +1,11 @@
-This is the Lucene/Solr source code that is used by LudidImagination's LucidWorks Enterprise.
+lucene/ is a search engine library
+solr/ is a search engine server that uses lucene
+modules/ is shared code
 
-Current customizations are:
+To compile the sources run 'ant compile'
+To run all the tests run 'ant test'
+To setup your ide run 'ant idea' or 'ant eclipse'
 
-Apache Solr JIRA issues
-https://issues.apache.org/jira/ : SOLR-1535, SOLR-1536
-
+For more information on how to contribute see:
+http://wiki.apache.org/lucene-java/HowToContribute
+http://wiki.apache.org/solr/HowToContribute

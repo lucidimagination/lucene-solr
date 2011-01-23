@@ -21,6 +21,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.TermsConsumer;
 import org.apache.lucene.index.codecs.PostingsConsumer;
+import org.apache.lucene.index.codecs.TermStats;
 import org.apache.lucene.index.codecs.standard.DefaultSkipListWriter;
 import org.apache.lucene.index.codecs.preflex.PreFlexCodec;
 import org.apache.lucene.index.CorruptIndexException;
@@ -46,18 +47,14 @@ class PreFlexFieldsWriter extends FieldsConsumer {
                                    state.segmentName,
                                    state.fieldInfos,
                                    state.termIndexInterval);
-    state.flushedFiles.add(IndexFileNames.segmentFileName(state.segmentName, "", PreFlexCodec.TERMS_EXTENSION));
-    state.flushedFiles.add(IndexFileNames.segmentFileName(state.segmentName, "", PreFlexCodec.TERMS_INDEX_EXTENSION));
 
     final String freqFile = IndexFileNames.segmentFileName(state.segmentName, "", PreFlexCodec.FREQ_EXTENSION);
     freqOut = state.directory.createOutput(freqFile);
-    state.flushedFiles.add(freqFile);
     totalNumDocs = state.numDocs;
 
     if (state.fieldInfos.hasProx()) {
       final String proxFile = IndexFileNames.segmentFileName(state.segmentName, "", PreFlexCodec.PROX_EXTENSION);
       proxOut = state.directory.createOutput(proxFile);
-      state.flushedFiles.add(proxFile);
     } else {
       proxOut = null;
     }
@@ -188,10 +185,10 @@ class PreFlexFieldsWriter extends FieldsConsumer {
     }
 
     @Override
-    public void finishTerm(BytesRef text, int numDocs) throws IOException {
-      if (numDocs > 0) {
+    public void finishTerm(BytesRef text, TermStats stats) throws IOException {
+      if (stats.docFreq > 0) {
         long skipPointer = skipListWriter.writeSkip(freqOut);
-        termInfo.docFreq = numDocs;
+        termInfo.docFreq = stats.docFreq;
         termInfo.skipOffset = (int) (skipPointer - termInfo.freqPointer);
         //System.out.println("  w finish term=" + text.utf8ToString() + " fnum=" + fieldInfo.number);
         termsOut.add(fieldInfo.number,
@@ -201,7 +198,7 @@ class PreFlexFieldsWriter extends FieldsConsumer {
     }
 
     @Override
-    public void finish() throws IOException {
+    public void finish(long sumTotalTermCount) throws IOException {
     }
 
     @Override

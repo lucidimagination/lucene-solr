@@ -28,6 +28,7 @@ import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.codecs.PostingsWriterBase;
+import org.apache.lucene.index.codecs.TermStats;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CodecUtil;
 
@@ -61,14 +62,12 @@ public final class StandardPostingsWriter extends PostingsWriterBase {
   public StandardPostingsWriter(SegmentWriteState state) throws IOException {
     super();
     String fileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, StandardCodec.FREQ_EXTENSION);
-    state.flushedFiles.add(fileName);
     freqOut = state.directory.createOutput(fileName);
 
     if (state.fieldInfos.hasProx()) {
       // At least one field does not omit TF, so create the
       // prox file
       fileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, StandardCodec.PROX_EXTENSION);
-      state.flushedFiles.add(fileName);
       proxOut = state.directory.createOutput(fileName);
     } else {
       // Every field omits TF so we will write no prox file
@@ -157,7 +156,7 @@ public final class StandardPostingsWriter extends PostingsWriterBase {
 
     final int delta = position - lastPosition;
     
-    assert delta > 0 || position == 0 || position == -1: "position=" + position + " lastPosition=" + lastPosition;            // not quite right (if pos=0 is repeated twice we don't catch it)
+    assert delta > 0 || position == 0: "position=" + position + " lastPosition=" + lastPosition;            // not quite right (if pos=0 is repeated twice we don't catch it)
 
     lastPosition = position;
 
@@ -186,12 +185,12 @@ public final class StandardPostingsWriter extends PostingsWriterBase {
 
   /** Called when we are done adding docs to this term */
   @Override
-  public void finishTerm(int docCount, boolean isIndexTerm) throws IOException {
-    assert docCount > 0;
+  public void finishTerm(TermStats stats, boolean isIndexTerm) throws IOException {
+    assert stats.docFreq > 0;
 
     // TODO: wasteful we are counting this (counting # docs
     // for this term) in two places?
-    assert docCount == df;
+    assert stats.docFreq == df;
 
     if (isIndexTerm) {
       // Write absolute at seek points

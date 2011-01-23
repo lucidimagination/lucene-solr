@@ -17,8 +17,6 @@ package org.apache.lucene.util;
  * limitations under the License.
  */
 
-import static org.junit.Assert.*;
-
 import java.util.Random;
 
 import org.apache.lucene.util.SetOnce.AlreadySetException;
@@ -29,6 +27,11 @@ public class TestSetOnce extends LuceneTestCase {
   private static final class SetOnceThread extends Thread {
     SetOnce<Integer> set;
     boolean success = false;
+    final Random RAND;
+    
+    public SetOnceThread(Random random) {
+      RAND = new Random(random.nextLong());
+    }
     
     @Override
     public void run() {
@@ -45,8 +48,6 @@ public class TestSetOnce extends LuceneTestCase {
       }
     }
   }
-  
-  private static final Random RAND = new Random();
   
   @Test
   public void testEmptyCtor() throws Exception {
@@ -71,15 +72,10 @@ public class TestSetOnce extends LuceneTestCase {
   
   @Test
   public void testSetMultiThreaded() throws Exception {
-    long seed = RAND.nextLong();
-    RAND.setSeed(seed);
-    if (VERBOSE) {
-      System.out.println("testSetMultiThreaded: seed=" + seed);
-    }
     final SetOnce<Integer> set = new SetOnce<Integer>();
     SetOnceThread[] threads = new SetOnceThread[10];
     for (int i = 0; i < threads.length; i++) {
-      threads[i] = new SetOnceThread();
+      threads[i] = new SetOnceThread(random);
       threads[i].setName("t-" + (i+1));
       threads[i].set = set;
     }

@@ -74,15 +74,22 @@ public class TestSegmentTermEnum extends LuceneTestCase {
 
   public void testPrevTermAtEnd() throws IOException
   {
-    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setCodecProvider(_TestUtil.alwaysCodec("Standard")));
+    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setCodecProvider(_TestUtil.alwaysCodec("Standard")));
     addDoc(writer, "aaa bbb");
     writer.close();
-    SegmentReader reader = SegmentReader.getOnlySegmentReader(dir);
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(dir, false));
     TermsEnum terms = reader.fields().terms("content").iterator();
     assertNotNull(terms.next());
     assertEquals("aaa", terms.term().utf8ToString());
     assertNotNull(terms.next());
-    long ordB = terms.ord();
+    long ordB;
+    try {
+      ordB = terms.ord();
+    } catch (UnsupportedOperationException uoe) {
+      // ok -- codec is not required to support ord
+      reader.close();
+      return;
+    }
     assertEquals("bbb", terms.term().utf8ToString());
     assertNull(terms.next());
 

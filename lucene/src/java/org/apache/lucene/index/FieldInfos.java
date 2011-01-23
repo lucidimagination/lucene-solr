@@ -224,6 +224,13 @@ public final class FieldInfos {
     return fi;
   }
 
+  synchronized public FieldInfo add(FieldInfo fi) {
+    return add(fi.name, fi.isIndexed, fi.storeTermVector,
+               fi.storePositionWithTermVector, fi.storeOffsetWithTermVector,
+               fi.omitNorms, fi.storePayloads,
+               fi.omitTermFreqAndPositions);
+  }
+
   private FieldInfo addInternal(String name, boolean isIndexed,
                                 boolean storeTermVector, boolean storePositionWithTermVector, 
                                 boolean storeOffsetWithTermVector, boolean omitNorms, boolean storePayloads, boolean omitTermFreqAndPositions) {
@@ -271,14 +278,21 @@ public final class FieldInfos {
   }
 
   public boolean hasVectors() {
-    boolean hasVectors = false;
     for (int i = 0; i < size(); i++) {
       if (fieldInfo(i).storeTermVector) {
-        hasVectors = true;
-        break;
+        return true;
       }
     }
-    return hasVectors;
+    return false;
+  }
+
+  public boolean hasNorms() {
+    for (int i = 0; i < size(); i++) {
+      if (!fieldInfo(i).omitNorms) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public void write(Directory d, String name) throws IOException {

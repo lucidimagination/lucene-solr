@@ -18,6 +18,7 @@
 
 package org.apache.lucene.util;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -34,6 +35,7 @@ import org.apache.tools.ant.taskdefs.optional.junit.JUnitTest;
 import org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner;
 import org.apache.tools.ant.util.FileUtils;
 import org.apache.tools.ant.util.StringUtils;
+import org.junit.Ignore;
 
 /**
  * Just like BriefJUnitResultFormatter "brief" bundled with ant,
@@ -59,7 +61,7 @@ public class LuceneJUnitResultFormatter implements JUnitResultFormatter {
   private String systemError = null;
   
   /** Buffer output until the end of the test */
-  private StringBuilder sb;
+  private ByteArrayOutputStream sb; // use a BOS for our mostly ascii-output
 
   private static final org.apache.lucene.store.Lock lock;
 
@@ -80,7 +82,6 @@ public class LuceneJUnitResultFormatter implements JUnitResultFormatter {
 
   /** Constructor for LuceneJUnitResultFormatter. */
   public LuceneJUnitResultFormatter() {
-    sb = new StringBuilder();
   }
   
   /**
@@ -116,13 +117,13 @@ public class LuceneJUnitResultFormatter implements JUnitResultFormatter {
     if (out == null) {
       return; // Quick return - no output do nothing.
     }
+    sb = new ByteArrayOutputStream(); // don't reuse, so its gc'ed
     try {
       LogManager.getLogManager().readConfiguration();
     } catch (Exception e) {}
-    sb.setLength(0);
-    sb.append("Testsuite: ");
-    sb.append(suite.getName());
-    sb.append(StringUtils.LINE_SEP);
+    append("Testsuite: ");
+    append(suite.getName());
+    append(StringUtils.LINE_SEP);
   }
   
   /**
@@ -130,29 +131,41 @@ public class LuceneJUnitResultFormatter implements JUnitResultFormatter {
    * @param suite the test suite
    */
   public synchronized void endTestSuite(JUnitTest suite) {
-    sb.append("Tests run: ");
-    sb.append(suite.runCount());
-    sb.append(", Failures: ");
-    sb.append(suite.failureCount());
-    sb.append(", Errors: ");
-    sb.append(suite.errorCount());
-    sb.append(", Time elapsed: ");
-    sb.append(numberFormat.format(suite.getRunTime() / ONE_SECOND));
-    sb.append(" sec");
-    sb.append(StringUtils.LINE_SEP);
-    sb.append(StringUtils.LINE_SEP);
+    append("Tests run: ");
+    append(suite.runCount());
+    append(", Failures: ");
+    append(suite.failureCount());
+    append(", Errors: ");
+    append(suite.errorCount());
+    append(", Time elapsed: ");
+    append(numberFormat.format(suite.getRunTime() / ONE_SECOND));
+    append(" sec");
+    append(StringUtils.LINE_SEP);
+    append(StringUtils.LINE_SEP);
     
     // append the err and output streams to the log
     if (systemOutput != null && systemOutput.length() > 0) {
-      sb.append("------------- Standard Output ---------------")
+      append("------------- Standard Output ---------------")
       .append(StringUtils.LINE_SEP)
       .append(systemOutput)
       .append("------------- ---------------- ---------------")
       .append(StringUtils.LINE_SEP);
     }
     
+    // HACK: junit gives us no way to do this in LuceneTestCase
+    try {
+      Class<?> clazz = Class.forName(suite.getName());
+      Ignore ignore = clazz.getAnnotation(Ignore.class);
+      if (ignore != null) {
+        if (systemError == null) systemError = "";
+        systemError += "NOTE: Ignoring test class '" + clazz.getSimpleName() + "': " 
+                    + ignore.value() + StringUtils.LINE_SEP;
+      }
+    } catch (ClassNotFoundException e) { /* no problem */ }
+    // END HACK
+    
     if (systemError != null && systemError.length() > 0) {
-      sb.append("------------- Standard Error -----------------")
+      append("------------- Standard Error -----------------")
       .append(StringUtils.LINE_SEP)
       .append(systemError)
       .append("------------- ---------------- ---------------")
@@ -163,7 +176,7 @@ public class LuceneJUnitResultFormatter implements JUnitResultFormatter {
       try {
         lock.obtain(5000);
         try {
-          out.write(sb.toString().getBytes());
+          sb.writeTo(out);
           out.flush();
         } finally {
           try {
@@ -252,14 +265,29 @@ public class LuceneJUnitResultFormatter implements JUnitResultFormatter {
       endTest(test);
     }
     
-    sb.append(formatTest(test) + type);
-    sb.append(StringUtils.LINE_SEP);
-    sb.append(error.getMessage());
-    sb.append(StringUtils.LINE_SEP);
+    append(formatTest(test) + type);
+    append(StringUtils.LINE_SEP);
+    append(error.getMessage());
+    append(StringUtils.LINE_SEP);
     String strace = JUnitTestRunner.getFilteredTrace(error);
-    sb.append(strace);
-    sb.append(StringUtils.LINE_SEP);
-    sb.append(StringUtils.LINE_SEP);
+    append(strace);
+    append(StringUtils.LINE_SEP);
+    append(StringUtils.LINE_SEP);
+  }
+
+  public LuceneJUnitResultFormatter append(String s) {
+    if (s == null)
+      s = "(null)";
+    try {
+      sb.write(s.getBytes()); // intentionally use default charset, its a console.
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    return this;
+  }
+  
+  public LuceneJUnitResultFormatter append(long l) {
+    return append(Long.toString(l));
   }
 }
 

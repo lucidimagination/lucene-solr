@@ -18,18 +18,20 @@ package org.apache.lucene.store;
  */
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
-import java.util.Random;
-import java.util.Map;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Random;
 import java.util.Set;
-import java.util.ArrayList;
+
+import org.apache.lucene.util.LuceneTestCase;
 
 /**
  * This is a Directory Wrapper that adds methods
@@ -80,7 +82,10 @@ public class MockDirectoryWrapper extends Directory {
 
   public MockDirectoryWrapper(Random random, Directory delegate) {
     this.delegate = delegate;
-    this.randomState = random;
+    // must make a private random since our methods are
+    // called from different threads; else test failures may
+    // not be reproducible from the original seed
+    this.randomState = new Random(random.nextInt());
     init();
   }
 
@@ -92,17 +97,6 @@ public class MockDirectoryWrapper extends Directory {
    *  file is opened by createOutput, ever. */
   public void setPreventDoubleWrite(boolean value) {
     preventDoubleWrite = value;
-  }
-
-  @Deprecated
-  @Override
-  public void sync(String name) throws IOException {
-    maybeYield();
-    maybeThrowDeterministicException();
-    if (crashed)
-      throw new IOException("cannot sync after crash");
-    unSyncedFiles.remove(name);
-    delegate.sync(name);
   }
 
   @Override
@@ -228,6 +222,10 @@ public class MockDirectoryWrapper extends Directory {
     if (randomIOExceptionRate > 0.0) {
       int number = Math.abs(randomState.nextInt() % 1000);
       if (number < randomIOExceptionRate*1000) {
+        if (LuceneTestCase.VERBOSE) {
+          System.out.println(Thread.currentThread().getName() + ": MockDirectoryWrapper: now throw random exception");
+          new Throwable().printStackTrace(System.out);
+        }
         throw new IOException("a random IOException");
       }
     }
@@ -510,7 +508,7 @@ public class MockDirectoryWrapper extends Directory {
   }
 
   @Override
-  public synchronized void setLockFactory(LockFactory lockFactory) {
+  public synchronized void setLockFactory(LockFactory lockFactory) throws IOException {
     maybeYield();
     delegate.setLockFactory(lockFactory);
   }

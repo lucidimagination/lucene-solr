@@ -24,18 +24,21 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.TimeLimitingCollector.TimeExceededException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ThreadInterruptedException;
+import org.junit.Ignore;
 
 /**
  * Tests the {@link TimeLimitingCollector}.  This test checks (1) search
  * correctness (regardless of timeout), (2) expected timeout behavior,
  * and (3) a sanity test with multiple searching threads.
  */
+@Ignore("broken: see https://issues.apache.org/jira/browse/LUCENE-2822")
 public class TestTimeLimitingCollector extends LuceneTestCase {
   private static final int SLOW_DOWN = 3;
   private static final long TIME_ALLOWED = 17 * SLOW_DOWN; // so searches can find about 17 docs.
@@ -48,7 +51,7 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
   private static final int N_DOCS = 3000;
   private static final int N_THREADS = 50;
 
-  private Searcher searcher;
+  private IndexSearcher searcher;
   private Directory directory;
   private IndexReader reader;
 
@@ -337,8 +340,8 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
     }
     
     @Override
-    public void setNextReader(IndexReader reader, int base) {
-      docBase = base;
+    public void setNextReader(AtomicReaderContext context) {
+      docBase = context.docBase;
     }
     
     @Override

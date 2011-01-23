@@ -21,7 +21,7 @@ import java.io.IOException;
 import java.text.Collator;
 import java.util.Locale;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.FieldCache.DocTermsIndex;
 import org.apache.lucene.search.FieldCache.DocTerms;
 import org.apache.lucene.search.cache.ByteValuesCreator;
@@ -38,6 +38,7 @@ import org.apache.lucene.search.cache.CachedArray.FloatValues;
 import org.apache.lucene.search.cache.CachedArray.IntValues;
 import org.apache.lucene.search.cache.CachedArray.LongValues;
 import org.apache.lucene.search.cache.CachedArray.ShortValues;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.packed.Direct8;
 import org.apache.lucene.util.packed.Direct16;
@@ -81,7 +82,7 @@ import org.apache.lucene.util.packed.PackedInts;
  *       priority queue.  The {@link FieldValueHitQueue}
  *       calls this method when a new hit is competitive.
  *
- *  <li> {@link #setNextReader} Invoked
+ *  <li> {@link #setNextReader(IndexReader.AtomicReaderContext)} Invoked
  *       when the search is switching to the next segment.
  *       You may need to update internal state of the
  *       comparator, for example retrieving new values from
@@ -149,19 +150,18 @@ public abstract class FieldComparator {
   public abstract void copy(int slot, int doc) throws IOException;
 
   /**
-   * Set a new Reader. All subsequent docIDs are relative to
+   * Set a new {@link AtomicReaderContext}. All subsequent docIDs are relative to
    * the current reader (you must add docBase if you need to
    * map it to a top-level docID).
    * 
-   * @param reader current reader
-   * @param docBase docBase of this reader 
+   * @param context current reader context
    * @return the comparator to use for this segment; most
    *   comparators can just return "this" to reuse the same
    *   comparator across segments
    * @throws IOException
    * @throws IOException
    */
-  public abstract FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException;
+  public abstract FieldComparator setNextReader(AtomicReaderContext context) throws IOException;
 
   /** Sets the Scorer to use in case a document's score is
    *  needed.
@@ -187,16 +187,25 @@ public abstract class FieldComparator {
     protected final CachedArrayCreator<T> creator;
     protected T cached;
     protected final boolean checkMissing;
+    protected Bits valid;
     
     public NumericComparator( CachedArrayCreator<T> c, boolean checkMissing ) {
       this.creator = c;
       this.checkMissing = checkMissing;
+    }
+
+    protected FieldComparator setup(T cached) {
+      this.cached = cached;
+      if (checkMissing)
+        valid = cached.valid;
+      return this;
     }
   }
 
   /** Parses field's values as byte (using {@link
    *  FieldCache#getBytes} and sorts by ascending value */
   public static final class ByteComparator extends NumericComparator<ByteValues> {
+    private byte[] docValues;
     private final byte[] values;
     private final byte missingValue;
     private byte bottom;
@@ -215,20 +224,26 @@ public abstract class FieldComparator {
 
     @Override
     public int compareBottom(int doc) {
-      final byte v2 = (checkMissing && !cached.valid.get(doc)) 
-        ? missingValue : cached.values[doc];
+      byte v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
       return bottom - v2;
     }
 
     @Override
     public void copy(int slot, int doc) {
-      values[slot] = ( checkMissing && cached.valid != null && !cached.valid.get(doc) )
-        ? missingValue : cached.values[doc];
+      byte v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      values[slot] = v2;
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      cached = FieldCache.DEFAULT.getBytes(reader, creator.field, creator );
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      setup(FieldCache.DEFAULT.getBytes(context.reader, creator.field, creator));
+      docValues = cached.values;
       return this;
     }
     
@@ -247,6 +262,7 @@ public abstract class FieldComparator {
   /** Parses field's values as double (using {@link
    *  FieldCache#getDoubles} and sorts by ascending value */
   public static final class DoubleComparator extends NumericComparator<DoubleValues> {
+    private double[] docValues;
     private final double[] values;
     private final double missingValue;
     private double bottom;
@@ -274,9 +290,10 @@ public abstract class FieldComparator {
 
     @Override
     public int compareBottom(int doc) {
-      final double v2 = (checkMissing && !cached.valid.get(doc)) 
-        ? missingValue : cached.values[doc];
-      
+      double v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
       if (bottom > v2) {
         return 1;
       } else if (bottom < v2) {
@@ -288,13 +305,17 @@ public abstract class FieldComparator {
 
     @Override
     public void copy(int slot, int doc) {
-      values[slot] = ( checkMissing && cached.valid != null && !cached.valid.get(doc) )
-        ? missingValue : cached.values[doc];
+      double v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      values[slot] = v2;
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      cached = FieldCache.DEFAULT.getDoubles(reader, creator.field, creator );
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      setup(FieldCache.DEFAULT.getDoubles(context.reader, creator.field, creator));
+      docValues = cached.values;
       return this;
     }
     
@@ -312,6 +333,7 @@ public abstract class FieldComparator {
   /** Parses field's values as float (using {@link
    *  FieldCache#getFloats} and sorts by ascending value */
   public static final class FloatComparator extends NumericComparator<FloatValues> {
+    private float[] docValues;
     private final float[] values;
     private final float missingValue;
     private float bottom;
@@ -341,8 +363,10 @@ public abstract class FieldComparator {
     @Override
     public int compareBottom(int doc) {
       // TODO: are there sneaky non-branch ways to compute sign of float?
-      final float v2 = (checkMissing && !cached.valid.get(doc)) 
-        ? missingValue : cached.values[doc];
+      float v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
       
       if (bottom > v2) {
         return 1;
@@ -355,13 +379,17 @@ public abstract class FieldComparator {
 
     @Override
     public void copy(int slot, int doc) {
-      values[slot] = ( checkMissing && cached.valid != null && !cached.valid.get(doc) )
-        ? missingValue : cached.values[doc];
+      float v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      values[slot] = v2;
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      cached = FieldCache.DEFAULT.getFloats(reader, creator.field, creator );
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      setup(FieldCache.DEFAULT.getFloats(context.reader, creator.field, creator));
+      docValues = cached.values;
       return this;
     }
     
@@ -376,9 +404,66 @@ public abstract class FieldComparator {
     }
   }
 
+  /** Parses field's values as short (using {@link
+   *  FieldCache#getShorts} and sorts by ascending value */
+  public static final class ShortComparator extends NumericComparator<ShortValues> {
+    private short[] docValues;
+    private final short[] values;
+    private short bottom;
+    private final short missingValue;
+
+    ShortComparator(int numHits, ShortValuesCreator creator, Short missingValue ) {
+      super( creator, missingValue != null );
+      values = new short[numHits];
+      this.missingValue = checkMissing
+        ? missingValue.shortValue() : 0;
+    }
+
+    @Override
+    public int compare(int slot1, int slot2) {
+      return values[slot1] - values[slot2];
+    }
+
+    @Override
+    public int compareBottom(int doc) {
+      short v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      return bottom - v2;
+    }
+
+    @Override
+    public void copy(int slot, int doc) {
+      short v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      values[slot] = v2;
+    }
+
+    @Override
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      setup( FieldCache.DEFAULT.getShorts(context.reader, creator.field, creator));
+      docValues = cached.values;
+      return this;
+    }
+
+    @Override
+    public void setBottom(final int bottom) {
+      this.bottom = values[bottom];
+    }
+
+    @Override
+    public Comparable<?> value(int slot) {
+      return Short.valueOf(values[slot]);
+    }
+  }
+
   /** Parses field's values as int (using {@link
    *  FieldCache#getInts} and sorts by ascending value */
   public static final class IntComparator extends NumericComparator<IntValues> {
+    private int[] docValues;
     private final int[] values;
     private int bottom;                           // Value of bottom of queue
     final int missingValue;
@@ -413,9 +498,10 @@ public abstract class FieldComparator {
       // -1/+1/0 sign
       // Cannot return bottom - values[slot2] because that
       // may overflow
-      final int v2 = (checkMissing && !cached.valid.get(doc)) 
-        ? missingValue : cached.values[doc];
-      
+      int v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
       if (bottom > v2) {
         return 1;
       } else if (bottom < v2) {
@@ -427,13 +513,17 @@ public abstract class FieldComparator {
 
     @Override
     public void copy(int slot, int doc) {
-      values[slot] = ( checkMissing && cached.valid != null && !cached.valid.get(doc) )
-        ? missingValue : cached.values[doc];
+      int v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      values[slot] = v2;
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      cached = FieldCache.DEFAULT.getInts(reader, creator.field, creator);  
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      setup(FieldCache.DEFAULT.getInts(context.reader, creator.field, creator));
+      docValues = cached.values;
       return this;
     }
     
@@ -451,6 +541,7 @@ public abstract class FieldComparator {
   /** Parses field's values as long (using {@link
    *  FieldCache#getLongs} and sorts by ascending value */
   public static final class LongComparator extends NumericComparator<LongValues> {
+    private long[] docValues;
     private final long[] values;
     private long bottom;
     private final long missingValue;
@@ -481,8 +572,10 @@ public abstract class FieldComparator {
     public int compareBottom(int doc) {
       // TODO: there are sneaky non-branch ways to compute
       // -1/+1/0 sign
-      final long v2 = (checkMissing && !cached.valid.get(doc)) 
-        ? missingValue : cached.values[doc];
+      long v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
       
       if (bottom > v2) {
         return 1;
@@ -495,13 +588,17 @@ public abstract class FieldComparator {
 
     @Override
     public void copy(int slot, int doc) {
-      values[slot] = ( checkMissing && cached.valid != null && !cached.valid.get(doc) )
-        ? missingValue : cached.values[doc];
+      long v2 = docValues[doc];
+      if (valid != null && v2==0 && !valid.get(doc))
+        v2 = missingValue;
+
+      values[slot] = v2;
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      cached = FieldCache.DEFAULT.getLongs(reader, creator.field, creator);
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      setup(FieldCache.DEFAULT.getLongs(context.reader, creator.field, creator));
+      docValues = cached.values;
       return this;
     }
     
@@ -550,7 +647,7 @@ public abstract class FieldComparator {
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) {
+    public FieldComparator setNextReader(AtomicReaderContext context) {
       return this;
     }
     
@@ -572,55 +669,6 @@ public abstract class FieldComparator {
     }
   }
 
-  /** Parses field's values as short (using {@link
-   *  FieldCache#getShorts} and sorts by ascending value */
-  public static final class ShortComparator extends NumericComparator<ShortValues> {
-    private final short[] values;
-    private short bottom;
-    private final short missingValue;
-    
-    ShortComparator(int numHits, ShortValuesCreator creator, Short missingValue ) {
-      super( creator, missingValue != null );
-      values = new short[numHits];
-      this.missingValue = checkMissing
-        ? missingValue.shortValue() : 0;
-    }
-
-    @Override
-    public int compare(int slot1, int slot2) {
-      return values[slot1] - values[slot2];
-    }
-
-    @Override
-    public int compareBottom(int doc) {
-      final short v2 = (checkMissing && !cached.valid.get(doc)) 
-        ? missingValue : cached.values[doc];
-      
-      return bottom - v2;
-    }
-
-    @Override
-    public void copy(int slot, int doc) {
-      values[slot] = ( checkMissing && cached.valid != null && !cached.valid.get(doc) )
-        ? missingValue : cached.values[doc];
-    }
-
-    @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      cached = FieldCache.DEFAULT.getShorts(reader, creator.field, creator );
-      return this;
-    }
-    
-    @Override
-    public void setBottom(final int bottom) {
-      this.bottom = values[bottom];
-    }
-
-    @Override
-    public Comparable<?> value(int slot) {
-      return Short.valueOf(values[slot]);
-    }
-  }
 
 
   /** Sorts by ascending docID */
@@ -651,11 +699,11 @@ public abstract class FieldComparator {
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) {
+    public FieldComparator setNextReader(AtomicReaderContext context) {
       // TODO: can we "map" our docIDs to the current
       // reader? saves having to then subtract on every
       // compare call
-      this.docBase = docBase;
+      this.docBase = context.docBase;
       return this;
     }
     
@@ -732,8 +780,8 @@ public abstract class FieldComparator {
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      currentDocTerms = FieldCache.DEFAULT.getTerms(reader, field);
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      currentDocTerms = FieldCache.DEFAULT.getTerms(context.reader, field);
       return this;
     }
     
@@ -759,20 +807,28 @@ public abstract class FieldComparator {
    *  than {@link TermValComparator}.  For very small
    *  result sets it may be slower. */
   public static final class TermOrdValComparator extends FieldComparator {
+    /** @lucene.internal */
+    final int[] ords;
+    /** @lucene.internal */
+    final BytesRef[] values;
+    /** @lucene.internal */
+    final int[] readerGen;
 
-    private final int[] ords;
-    private final BytesRef[] values;
-    private final int[] readerGen;
-
-    private int currentReaderGen = -1;
+    /** @lucene.internal */
+    int currentReaderGen = -1;
     private DocTermsIndex termsIndex;
     private final String field;
 
-    private int bottomSlot = -1;
-    private int bottomOrd;
-    private boolean bottomSameReader;
-    private BytesRef bottomValue;
-    private final BytesRef tempBR = new BytesRef();
+    /** @lucene.internal */
+    int bottomSlot = -1;
+    /** @lucene.internal */
+    int bottomOrd;
+    /** @lucene.internal */
+    boolean bottomSameReader;
+    /** @lucene.internal */
+    BytesRef bottomValue;
+    /** @lucene.internal */
+    final BytesRef tempBR = new BytesRef();
 
     public TermOrdValComparator(int numHits, String field, int sortPos, boolean reversed) {
       ords = new int[numHits];
@@ -810,15 +866,17 @@ public abstract class FieldComparator {
       throw new UnsupportedOperationException();
     }
 
-    // Base class for specialized (per bit width of the
-    // ords) per-segment comparator.  NOTE: this is messy;
-    // we do this only because hotspot can't reliably inline
-    // the underlying array access when looking up doc->ord
-    private abstract class PerSegmentComparator extends FieldComparator {
+    /** Base class for specialized (per bit width of the
+     * ords) per-segment comparator.  NOTE: this is messy;
+     * we do this only because hotspot can't reliably inline
+     * the underlying array access when looking up doc->ord
+     * @lucene.internal
+     */
+    abstract class PerSegmentComparator extends FieldComparator {
       
       @Override
-      public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-        return TermOrdValComparator.this.setNextReader(reader, docBase);
+      public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+        return TermOrdValComparator.this.setNextReader(context);
       }
 
       @Override
@@ -1083,8 +1141,9 @@ public abstract class FieldComparator {
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      termsIndex = FieldCache.DEFAULT.getTermsIndex(reader, field);
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      final int docBase = context.docBase;
+      termsIndex = FieldCache.DEFAULT.getTermsIndex(context.reader, field);
       final PackedInts.Reader docToOrd = termsIndex.getDocToOrd();
       FieldComparator perSegComp;
       if (docToOrd instanceof Direct8) {
@@ -1198,8 +1257,8 @@ public abstract class FieldComparator {
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      docTerms = FieldCache.DEFAULT.getTerms(reader, field);
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      docTerms = FieldCache.DEFAULT.getTerms(context.reader, field);
       return this;
     }
     

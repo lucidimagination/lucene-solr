@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
 
+import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -32,7 +33,7 @@ import org.apache.lucene.util.ReaderUtil;
 /**
  * Given a directory and a list of fields, updates the fieldNorms in place for every document.
  * 
- * If Similarity class is specified, uses its lengthNorm method to set norms.
+ * If Similarity class is specified, uses its computeNorm method to set norms.
  * If -n command line argument is used, removed field norms, as if 
  * {@link org.apache.lucene.document.Field.Index}.NO_NORMS was used.
  *
@@ -52,19 +53,21 @@ public class FieldNormModifier {
    */
   public static void main(String[] args) throws IOException {
     if (args.length < 3) {
-      System.err.println("Usage: FieldNormModifier <index> <package.SimilarityClassName | -n> <field1> [field2] ...");
+      System.err.println("Usage: FieldNormModifier <index> <package.SimilarityClassName | -d> <field1> [field2] ...");
       System.exit(1);
     }
 
     Similarity s = null;
-    if (!args[1].equals("-n")) {
-      try {
-        s = Class.forName(args[1]).asSubclass(Similarity.class).newInstance();
-      } catch (Exception e) {
-        System.err.println("Couldn't instantiate similarity with empty constructor: " + args[1]);
-        e.printStackTrace(System.err);
-        System.exit(1);
-      }
+
+    if (args[1].equals("-d"))
+      args[1] = DefaultSimilarity.class.getName();
+
+    try {
+      s = Class.forName(args[1]).asSubclass(Similarity.class).newInstance();
+    } catch (Exception e) {
+      System.err.println("Couldn't instantiate similarity with empty constructor: " + args[1]);
+      e.printStackTrace(System.err);
+      System.exit(1);
     }
 
     Directory d = FSDirectory.open(new File(args[0]));
@@ -116,6 +119,7 @@ public class FieldNormModifier {
       final List<IndexReader> subReaders = new ArrayList<IndexReader>();
       ReaderUtil.gatherSubReaders(subReaders, reader);
 
+      final FieldInvertState invertState = new FieldInvertState();
       for(IndexReader subReader : subReaders) {
         final Bits delDocs = subReader.getDeletedDocs();
 
@@ -140,13 +144,11 @@ public class FieldNormModifier {
           }
         }
 
+        invertState.setBoost(1.0f);
         for (int d = 0; d < termCounts.length; d++) {
           if (delDocs == null || !delDocs.get(d)) {
-            if (sim == null) {
-              subReader.setNorm(d, fieldName, Similarity.encodeNorm(1.0f));
-            } else {
-              subReader.setNorm(d, fieldName, sim.encodeNormValue(sim.lengthNorm(fieldName, termCounts[d])));
-            }
+            invertState.setLength(termCounts[d]);
+            subReader.setNorm(d, fieldName, sim.encodeNormValue(sim.computeNorm(fieldName, invertState)));
           }
         }
       }

@@ -25,7 +25,6 @@ import org.apache.lucene.util._TestUtil;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.Field.TermVector;
@@ -59,7 +58,7 @@ public class TestParallelReaderEmptyIndex extends LuceneTestCase {
     pr.add(IndexReader.open(rd2,true));
 		
     // When unpatched, Lucene crashes here with a NoSuchElementException (caused by ParallelTermEnum)
-    iwOut.addIndexes(new IndexReader[] { pr });
+    iwOut.addIndexes(pr);
 		
     iwOut.optimize();
     iwOut.close();
@@ -112,7 +111,7 @@ public class TestParallelReaderEmptyIndex extends LuceneTestCase {
     pr.add(IndexReader.open(rd2,true));
 
     // When unpatched, Lucene crashes here with an ArrayIndexOutOfBoundsException (caused by TermVectorsWriter)
-    iwOut.addIndexes(new IndexReader[] { pr });
+    iwOut.addIndexes(pr);
 
     // ParallelReader closes any IndexReader you added to it:
     pr.close();

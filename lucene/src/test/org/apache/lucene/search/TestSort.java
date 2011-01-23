@@ -25,21 +25,21 @@ import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
-
-import junit.framework.Test;
-import junit.framework.TestSuite;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.LogMergePolicy;
+import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.FieldValueHitQueue.Entry;
@@ -50,10 +50,12 @@ import org.apache.lucene.search.cache.FloatValuesCreator;
 import org.apache.lucene.search.cache.IntValuesCreator;
 import org.apache.lucene.search.cache.LongValuesCreator;
 import org.apache.lucene.search.cache.ShortValuesCreator;
-import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.DocIdBitSet;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util._TestUtil;
 
 /**
  * Unit tests for sorting code.
@@ -155,9 +157,12 @@ public class TestSort extends LuceneTestCase implements Serializable {
   private IndexSearcher getFullStrings() throws CorruptIndexException, LockObtainFailedException, IOException {
     Directory indexStore = newDirectory();
     dirs.add(indexStore);
-    IndexWriter writer = new IndexWriter(indexStore, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(4));
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(97);
+    IndexWriter writer = new IndexWriter(
+        indexStore,
+        new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+            setMaxBufferedDocs(4).
+            setMergePolicy(newLogMergePolicy(97))
+    );
     for (int i=0; i<NUM_STRINGS; i++) {
         Document doc = new Document();
         String num = getRandomCharString(getRandomNumber(2, 8), 48, 52);
@@ -453,7 +458,7 @@ public class TestSort extends LuceneTestCase implements Serializable {
 
   // test sorts when there's nothing in the index
   public void testEmptyIndex() throws Exception {
-    Searcher empty = getEmptyIndex();
+    IndexSearcher empty = getEmptyIndex();
 
     sort = new Sort();
     assertMatches (empty, queryX, sort, "");
@@ -501,8 +506,8 @@ public class TestSort extends LuceneTestCase implements Serializable {
     }
 
     @Override
-    public FieldComparator setNextReader(IndexReader reader, int docBase) throws IOException {
-      docValues = FieldCache.DEFAULT.getInts(reader, "parser", new FieldCache.IntParser() {
+    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      docValues = FieldCache.DEFAULT.getInts(context.reader, "parser", new FieldCache.IntParser() {
           public final int parseInt(final BytesRef term) {
             return (term.bytes[term.offset]-'A') * 123456;
           }
@@ -596,22 +601,9 @@ public class TestSort extends LuceneTestCase implements Serializable {
         new SortField ("float", SortField.FLOAT, true) );
     assertMatches (full, queryG, sort, "ZYXW");
 
-    // Do the same for a MultiSearcher
-    Searcher multiSearcher=new MultiSearcher (new Searchable[] { full });
-
-    sort.setSort (new SortField ("int", SortField.INT),
-                                new SortField ("string", SortField.STRING),
-        new SortField ("float", SortField.FLOAT) );
-    assertMatches (multiSearcher, queryG, sort, "ZWXY");
-
-    sort.setSort (new SortField ("int", SortField.INT),
-                                new SortField ("string", SortField.STRING),
-        new SortField ("float", SortField.FLOAT, true) );
-    assertMatches (multiSearcher, queryG, sort, "ZYXW");
-    // Don't close the multiSearcher. it would close the full searcher too!
-
     // Do the same for a ParallelMultiSearcher
-                Searcher parallelSearcher=new ParallelMultiSearcher (new Searchable[] { full });
+    ExecutorService exec = Executors.newFixedThreadPool(_TestUtil.nextInt(random, 2, 8));
+    IndexSearcher parallelSearcher=new IndexSearcher (full.getIndexReader(), exec);
 
     sort.setSort (new SortField ("int", SortField.INT),
                                 new SortField ("string", SortField.STRING),
@@ -622,7 +614,9 @@ public class TestSort extends LuceneTestCase implements Serializable {
                                 new SortField ("string", SortField.STRING),
         new SortField ("float", SortField.FLOAT, true) );
     assertMatches (parallelSearcher, queryG, sort, "ZYXW");
-    // Don't close the parallelSearcher. it would close the full searcher too!
+    parallelSearcher.close();
+    exec.shutdown();
+    exec.awaitTermination(1000, TimeUnit.MILLISECONDS);
   }
 
   // test sorts using a series of fields
@@ -667,112 +661,17 @@ public class TestSort extends LuceneTestCase implements Serializable {
     assertMatches (full, queryX, sort, "EACGI");
   }
     
-    // Test the MultiSearcher's ability to preserve locale-sensitive ordering
-    // by wrapping it around a single searcher
-  public void testInternationalMultiSearcherSort() throws Exception {
-    Searcher multiSearcher = new MultiSearcher (new Searchable[] { full });
-    
-    sort.setSort (new SortField ("i18n", new Locale("sv", "se")));
-    assertMatches (multiSearcher, queryY, sort, "BJDFH");
-    
-    sort.setSort (new SortField ("i18n", Locale.US));
-    assertMatches (multiSearcher, queryY, sort, oStrokeFirst ? "BFJHD" : "BFJDH");
-    
-    sort.setSort (new SortField ("i18n", new Locale("da", "dk")));
-    assertMatches (multiSearcher, queryY, sort, "BJDHF");
-  } 
-
-  // test a variety of sorts using more than one searcher
-  public void testMultiSort() throws Exception {
-    MultiSearcher searcher = new MultiSearcher (new Searchable[] { searchX, searchY });
-    runMultiSorts(searcher, false);
-  }
-
   // test a variety of sorts using a parallel multisearcher
   public void testParallelMultiSort() throws Exception {
-    Searcher searcher = new ParallelMultiSearcher (new Searchable[] { searchX, searchY });
+    ExecutorService exec = Executors.newFixedThreadPool(_TestUtil.nextInt(random, 2, 8));
+    IndexSearcher searcher = new IndexSearcher(
+                                  new MultiReader(
+                                       new IndexReader[] {searchX.getIndexReader(),
+                                                          searchY.getIndexReader()}), exec);
     runMultiSorts(searcher, false);
-  }
-
-  // test that the relevancy scores are the same even if
-  // hits are sorted
-  public void testNormalizedScores() throws Exception {
-
-    // capture relevancy scores
-    HashMap<String,Float> scoresX = getScores (full.search (queryX, null, 1000).scoreDocs, full);
-    HashMap<String,Float> scoresY = getScores (full.search (queryY, null, 1000).scoreDocs, full);
-    HashMap<String,Float> scoresA = getScores (full.search (queryA, null, 1000).scoreDocs, full);
-
-    // we'll test searching locally, remote and multi
-    
-    MultiSearcher multi  = new MultiSearcher (new Searchable[] { searchX, searchY });
-
-    // change sorting and make sure relevancy stays the same
-
-    sort = new Sort();
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort(SortField.FIELD_DOC);
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort (new SortField("int", SortField.INT));
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort (new SortField("float", SortField.FLOAT));
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort (new SortField("string", SortField.STRING));
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort (new SortField("int", SortField.INT),new SortField("float", SortField.FLOAT));
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort (new SortField ("int", SortField.INT, true), new SortField (null, SortField.DOC, true) );
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
-    sort.setSort (new SortField("int", SortField.INT),new SortField("string", SortField.STRING));
-    assertSameValues (scoresX, getScores (full.search (queryX, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresX, getScores (multi.search (queryX, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresY, getScores (full.search (queryY, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresY, getScores (multi.search (queryY, null, 1000, sort).scoreDocs, multi));
-    assertSameValues (scoresA, getScores (full.search (queryA, null, 1000, sort).scoreDocs, full));
-    assertSameValues (scoresA, getScores (multi.search (queryA, null, 1000, sort).scoreDocs, multi));
-
+    searcher.close();
+    exec.shutdown();
+    exec.awaitTermination(1000, TimeUnit.MILLISECONDS);
   }
 
   public void testTopDocsScores() throws Exception {
@@ -789,9 +688,9 @@ public class TestSort extends LuceneTestCase implements Serializable {
     // a filter that only allows through the first hit
     Filter filt = new Filter() {
       @Override
-      public DocIdSet getDocIdSet(IndexReader reader) throws IOException {
-        BitSet bs = new BitSet(reader.maxDoc());
-        bs.set(0, reader.maxDoc());
+      public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
+        BitSet bs = new BitSet(context.reader.maxDoc());
+        bs.set(0, context.reader.maxDoc());
         bs.set(docs1.scoreDocs[0].doc);
         return new DocIdBitSet(bs);
       }
@@ -1016,7 +915,7 @@ public class TestSort extends LuceneTestCase implements Serializable {
   }
   
   // runs a variety of sorts useful for multisearchers
-  private void runMultiSorts(Searcher multi, boolean isFull) throws Exception {
+  private void runMultiSorts(IndexSearcher multi, boolean isFull) throws Exception {
     sort.setSort(SortField.FIELD_DOC);
     String expected = isFull ? "ABCDEFGHIJ" : "ACEGIBDFHJ";
     assertMatches(multi, queryA, sort, expected);
@@ -1093,15 +992,15 @@ public class TestSort extends LuceneTestCase implements Serializable {
 
   }
 
-  private void assertMatches(Searcher searcher, Query query, Sort sort, String expectedResult) throws IOException {
+  private void assertMatches(IndexSearcher searcher, Query query, Sort sort, String expectedResult) throws IOException {
     assertMatches( null, searcher, query, sort, expectedResult );
   }
 
   // make sure the documents returned by the search match the expected list
-  private void assertMatches(String msg, Searcher searcher, Query query, Sort sort,
+  private void assertMatches(String msg, IndexSearcher searcher, Query query, Sort sort,
       String expectedResult) throws IOException {
     //ScoreDoc[] result = searcher.search (query, null, 1000, sort).scoreDocs;
-    TopDocs hits = searcher.search (query, null, expectedResult.length(), sort);
+    TopDocs hits = searcher.search (query, null, Math.max(1, expectedResult.length()), sort);
     ScoreDoc[] result = hits.scoreDocs;
     assertEquals(expectedResult.length(),hits.totalHits);
     StringBuilder buff = new StringBuilder(10);
@@ -1116,7 +1015,7 @@ public class TestSort extends LuceneTestCase implements Serializable {
     assertEquals (msg, expectedResult, buff.toString());
   }
 
-  private HashMap<String,Float> getScores (ScoreDoc[] hits, Searcher searcher)
+  private HashMap<String,Float> getScores (ScoreDoc[] hits, IndexSearcher searcher)
   throws IOException {
     HashMap<String,Float> scoreMap = new HashMap<String,Float>();
     int n = hits.length;
@@ -1194,4 +1093,23 @@ public class TestSort extends LuceneTestCase implements Serializable {
     indexStore.close();
   }
 
+  public void testCountingCollector() throws Exception {
+    Directory indexStore = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random, indexStore);
+    for (int i=0; i<5; i++) {
+      Document doc = new Document();
+      doc.add (new Field ("string", "a"+i, Field.Store.NO, Field.Index.NOT_ANALYZED));
+      doc.add (new Field ("string", "b"+i, Field.Store.NO, Field.Index.NOT_ANALYZED));
+      writer.addDocument (doc);
+    }
+    IndexReader reader = writer.getReader();
+    writer.close();
+
+    IndexSearcher searcher = new IndexSearcher(reader);
+    TotalHitCountCollector c = new TotalHitCountCollector();
+    searcher.search(new MatchAllDocsQuery(), null, c);
+    assertEquals(5, c.getTotalHits());
+    reader.close();
+    indexStore.close();
+  }
 }

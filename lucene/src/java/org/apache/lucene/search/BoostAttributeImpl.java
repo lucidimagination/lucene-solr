@@ -17,7 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
 
 /** Implementation class for {@link BoostAttribute}.
@@ -37,20 +36,6 @@ public final class BoostAttributeImpl extends AttributeImpl implements BoostAttr
   @Override
   public void clear() {
     boost = 1.0f;
-  }
-
-  @Override
-  public boolean equals(Object other) {
-    if (this == other)
-      return true;
-    if (other instanceof BoostAttributeImpl)
-      return ((BoostAttributeImpl) other).boost == boost;
-    return false;
-  }
-
-  @Override
-  public int hashCode() {
-    return Float.floatToIntBits(boost);
   }
   
   @Override

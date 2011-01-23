@@ -18,7 +18,7 @@
 package org.apache.solr.update;
 
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -61,15 +61,18 @@ public abstract class UpdateHandler implements SolrInfoMBean {
   protected Vector<SolrEventListener> optimizeCallbacks = new Vector<SolrEventListener>();
 
   private void parseEventListeners() {
-    for (PluginInfo pluginInfo : core.getSolrConfig().getPluginInfos(SolrEventListener.class.getName())) {
-      String event = pluginInfo.attributes.get("event");
-      SolrEventListener listener = core.createInitInstance(pluginInfo,SolrEventListener.class,"Event Listener",null);
+    final Class<SolrEventListener> clazz = SolrEventListener.class;
+    final String label = "Event Listener";
+    for (PluginInfo info : core.getSolrConfig().getPluginInfos(SolrEventListener.class.getName())) {
+      String event = info.attributes.get("event");
       if ("postCommit".equals(event)) {
-        commitCallbacks.add(core.createInitInstance(pluginInfo,SolrEventListener.class,"Event Listener",null));
-        log.info("added SolrEventListener for postCommit: " + listener);
+        SolrEventListener obj = core.createInitInstance(info,clazz,label,null);
+        commitCallbacks.add(obj);
+        log.info("added SolrEventListener for postCommit: " + obj);
       } else if ("postOptimize".equals(event)) {
-        optimizeCallbacks.add(listener);
-        log.info("added SolrEventListener for postOptimize: " + listener);
+        SolrEventListener obj = core.createInitInstance(info,clazz,label,null);
+        optimizeCallbacks.add(obj);
+        log.info("added SolrEventListener for postOptimize: " + obj);
       }
     }
   }
@@ -149,7 +152,7 @@ public abstract class UpdateHandler implements SolrInfoMBean {
     @Override
     public void collect(int doc) {
       try {
-        searcher.getReader().deleteDocument(doc + docBase);
+        searcher.getIndexReader().deleteDocument(doc + docBase);
         deleted++;
       } catch (IOException e) {
         // don't try to close the searcher on failure for now...
@@ -164,8 +167,8 @@ public abstract class UpdateHandler implements SolrInfoMBean {
     }
 
     @Override
-    public void setNextReader(IndexReader arg0, int docBase) throws IOException {
-      this.docBase = docBase;
+    public void setNextReader(AtomicReaderContext context) throws IOException {
+      docBase = context.docBase;
     }
 
     @Override

@@ -19,8 +19,6 @@ package org.apache.solr.client.solrj.response;
 
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.solr.common.util.NamedList;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertSame;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -50,7 +48,7 @@ public class DocumentAnalysisResponseTest extends LuceneTestCase {
     DocumentAnalysisResponse response = new DocumentAnalysisResponse() {
 
       @Override
-      protected List<AnalysisPhase> buildPhases(NamedList<Object> phaseNL) {
+      protected List<AnalysisPhase> buildPhases(NamedList<List<NamedList<Object>>> phaseNL) {
         return phases;
       }
     };

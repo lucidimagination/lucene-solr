@@ -17,48 +17,48 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.PayloadProcessorProvider.DirPayloadProcessor;
-import org.apache.lucene.search.Similarity;
+import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.DefaultSegmentInfosWriter;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.store.AlreadyClosedException;
+import org.apache.lucene.store.BufferedIndexInput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockObtainFailedException;
-import org.apache.lucene.store.AlreadyClosedException;
-import org.apache.lucene.store.BufferedIndexInput;
-import org.apache.lucene.util.Constants;
-import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.util.ThreadInterruptedException;
-import org.apache.lucene.util.Version;
 import org.apache.lucene.util.Bits;
-
-import java.io.IOException;
-import java.io.Closeable;
-import java.io.PrintStream;
-import java.util.List;
-import java.util.Collection;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Date;
+import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
   An <code>IndexWriter</code> creates and maintains an index.
 
   <p>The <code>create</code> argument to the {@link
-  #IndexWriter(Directory, Analyzer, boolean, MaxFieldLength) constructor} determines 
+  #IndexWriter(Directory, IndexWriterConfig) constructor} determines 
   whether a new index is created, or whether an existing index is
   opened.  Note that you can open an index with <code>create=true</code>
   even while readers are using the index.  The old readers will 
   continue to search the "point in time" snapshot they had opened, 
   and won't see the newly created index until they re-open.  There are
-  also {@link #IndexWriter(Directory, Analyzer, MaxFieldLength) constructors}
+  also {@link #IndexWriter(Directory, IndexWriterConfig) constructors}
   with no <code>create</code> argument which will create a new index
   if there is not already an index at the provided path and otherwise 
   open the existing index.</p>
@@ -74,11 +74,11 @@ import java.util.Date;
   <p>These changes are buffered in memory and periodically
   flushed to the {@link Directory} (during the above method
   calls).  A flush is triggered when there are enough
-  buffered deletes (see {@link #setMaxBufferedDeleteTerms})
+  buffered deletes (see {@link IndexWriterConfig#setMaxBufferedDeleteTerms})
   or enough added documents since the last flush, whichever
   is sooner.  For the added documents, flushing is triggered
   either by RAM usage of the documents (see {@link
-  #setRAMBufferSizeMB}) or the number of added documents.
+  IndexWriterConfig#setRAMBufferSizeMB}) or the number of added documents.
   The default is to flush when RAM usage hits 16 MB.  For
   best indexing speed you should flush by RAM usage with a
   large RAM buffer.  Note that flushing just moves the
@@ -180,67 +180,10 @@ import java.util.Date;
  * keeps track of the last non commit checkpoint.
  */
 public class IndexWriter implements Closeable {
-
-  /**
-   * Default value for the write lock timeout (1,000).
-   * @see #setDefaultWriteLockTimeout
-   * @deprecated use {@link IndexWriterConfig#WRITE_LOCK_TIMEOUT} instead
-   */
-  @Deprecated
-  public static long WRITE_LOCK_TIMEOUT = IndexWriterConfig.WRITE_LOCK_TIMEOUT;
-
-  private long writeLockTimeout;
-
   /**
    * Name of the write lock in the index.
    */
   public static final String WRITE_LOCK_NAME = "write.lock";
-
-  /**
-   * Value to denote a flush trigger is disabled
-   * @deprecated use {@link IndexWriterConfig#DISABLE_AUTO_FLUSH} instead
-   */
-  @Deprecated
-  public final static int DISABLE_AUTO_FLUSH = IndexWriterConfig.DISABLE_AUTO_FLUSH;
-
-  /**
-   * Disabled by default (because IndexWriter flushes by RAM usage
-   * by default). Change using {@link #setMaxBufferedDocs(int)}.
-   * @deprecated use {@link IndexWriterConfig#DEFAULT_MAX_BUFFERED_DOCS} instead.
-   */
-  @Deprecated
-  public final static int DEFAULT_MAX_BUFFERED_DOCS = IndexWriterConfig.DEFAULT_MAX_BUFFERED_DOCS;
-
-  /**
-   * Default value is 16 MB (which means flush when buffered
-   * docs consume 16 MB RAM).  Change using {@link #setRAMBufferSizeMB}.
-   * @deprecated use {@link IndexWriterConfig#DEFAULT_RAM_BUFFER_SIZE_MB} instead.
-   */
-  @Deprecated
-  public final static double DEFAULT_RAM_BUFFER_SIZE_MB = IndexWriterConfig.DEFAULT_RAM_BUFFER_SIZE_MB;
-
-  /**
-   * Disabled by default (because IndexWriter flushes by RAM usage
-   * by default). Change using {@link #setMaxBufferedDeleteTerms(int)}.
-   * @deprecated use {@link IndexWriterConfig#DEFAULT_MAX_BUFFERED_DELETE_TERMS} instead
-   */
-  @Deprecated
-  public final static int DEFAULT_MAX_BUFFERED_DELETE_TERMS = IndexWriterConfig.DEFAULT_MAX_BUFFERED_DELETE_TERMS;
-
-  /**
-   * Default value is 10,000. Change using {@link #setMaxFieldLength(int)}.
-   * 
-   * @deprecated see {@link IndexWriterConfig}
-   */
-  @Deprecated
-  public final static int DEFAULT_MAX_FIELD_LENGTH = 10000;
-
-  /**
-   * Default value is 128. Change using {@link #setTermIndexInterval(int)}.
-   * @deprecated use {@link IndexWriterConfig#DEFAULT_TERM_INDEX_INTERVAL} instead.
-   */
-  @Deprecated
-  public final static int DEFAULT_TERM_INDEX_INTERVAL = IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL;
 
   /**
    * Absolute hard maximum length for a term, in bytes once
@@ -260,16 +203,12 @@ public class IndexWriter implements Closeable {
   private final static int MERGE_READ_BUFFER_SIZE = 4096;
 
   // Used for printing messages
-  private static Object MESSAGE_ID_LOCK = new Object();
-  private static int MESSAGE_ID = 0;
-  private int messageID = -1;
+  private static final AtomicInteger MESSAGE_ID = new AtomicInteger();
+  private int messageID = MESSAGE_ID.getAndIncrement();
   volatile private boolean hitOOM;
 
   private final Directory directory;  // where this index resides
   private final Analyzer analyzer;    // how to analyze text
-
-  // TODO 4.0: this should be made final once the setter is out
-  private /*final*/Similarity similarity = Similarity.getDefault(); // how to normalize
 
   private volatile long changeCount; // increments every time a change is completed
   private long lastCommitChangeCount; // last changeCount that was committed
@@ -280,7 +219,7 @@ public class IndexWriter implements Closeable {
   volatile SegmentInfos pendingCommit;            // set when a commit is pending (after prepareCommit() & before commit())
   volatile long pendingCommitChangeCount;
 
-  private final SegmentInfos segmentInfos;       // the segments
+  final SegmentInfos segmentInfos;       // the segments
 
   private DocumentsWriter docWriter;
   private IndexFileDeleter deleter;
@@ -290,8 +229,7 @@ public class IndexWriter implements Closeable {
 
   private Lock writeLock;
 
-  // TODO 4.0: this should be made final once the setter is out
-  private /*final*/int termIndexInterval;
+  private final int termIndexInterval;
 
   private boolean closed;
   private boolean closing;
@@ -301,18 +239,18 @@ public class IndexWriter implements Closeable {
   private HashSet<SegmentInfo> mergingSegments = new HashSet<SegmentInfo>();
 
   private MergePolicy mergePolicy;
-  // TODO 4.0: this should be made final once the setter is removed
-  private /*final*/MergeScheduler mergeScheduler;
+  private final MergeScheduler mergeScheduler;
   private LinkedList<MergePolicy.OneMerge> pendingMerges = new LinkedList<MergePolicy.OneMerge>();
   private Set<MergePolicy.OneMerge> runningMerges = new HashSet<MergePolicy.OneMerge>();
   private List<MergePolicy.OneMerge> mergeExceptions = new ArrayList<MergePolicy.OneMerge>();
   private long mergeGen;
   private boolean stopMerges;
 
-  private int flushCount;
-  private int flushDeletesCount;
+  private final AtomicInteger flushCount = new AtomicInteger();
+  private final AtomicInteger flushDeletesCount = new AtomicInteger();
 
   final ReaderPool readerPool = new ReaderPool();
+  final BufferedDeletes bufferedDeletes;
   
   // This is a "write once" variable (like the organic dye
   // on a DVD-R that may or may not be heated by a laser and
@@ -409,7 +347,7 @@ public class IndexWriter implements Closeable {
     // just like we do when loading segments_N
     IndexReader r;
     synchronized(this) {
-      flush(false, true, true);
+      flush(false, true);
       r = new DirectoryReader(this, segmentInfos, config.getReaderTermsIndexDivisor(), codecs);
       if (infoStream != null) {
         message("return reader version=" + r.getVersion() + " reader=" + r);
@@ -466,20 +404,26 @@ public class IndexWriter implements Closeable {
     /**
      * Release the segment reader (i.e. decRef it and close if there
      * are no more references.
+     * @return true if this release altered the index (eg
+     * the SegmentReader had pending changes to del docs and
+     * was closed).  Caller must call checkpoint() if so.
      * @param sr
      * @throws IOException
      */
-    public synchronized void release(SegmentReader sr) throws IOException {
-      release(sr, false);
+    public synchronized boolean release(SegmentReader sr) throws IOException {
+      return release(sr, false);
     }
     
     /**
      * Release the segment reader (i.e. decRef it and close if there
      * are no more references.
+     * @return true if this release altered the index (eg
+     * the SegmentReader had pending changes to del docs and
+     * was closed).  Caller must call checkpoint() if so.
      * @param sr
      * @throws IOException
      */
-    public synchronized void release(SegmentReader sr, boolean drop) throws IOException {
+    public synchronized boolean release(SegmentReader sr, boolean drop) throws IOException {
 
       final boolean pooled = readerMap.containsKey(sr.getSegmentInfo());
 
@@ -510,13 +454,10 @@ public class IndexWriter implements Closeable {
         // not pooling readers, we release it:
         readerMap.remove(sr.getSegmentInfo());
 
-        if (hasChanges) {
-          // Must checkpoint w/ deleter, because this
-          // segment reader will have created new _X_N.del
-          // file.
-          deleter.checkpoint(segmentInfos, false);
-        }
+        return hasChanges;
       }
+
+      return false;
     }
     
     /** Remove all our references to readers, and commits
@@ -664,6 +605,8 @@ public class IndexWriter implements Closeable {
     }
   }
   
+  
+  
   /**
    * Obtain the number of deleted docs for a pooled reader.
    * If the reader isn't being pooled, the segmentInfo's 
@@ -710,296 +653,6 @@ public class IndexWriter implements Closeable {
       infoStream.println("IW " + messageID + " [" + new Date() + "; " + Thread.currentThread().getName() + "]: " + message);
   }
 
-  private synchronized void setMessageID(PrintStream infoStream) {
-    if (infoStream != null && messageID == -1) {
-      synchronized(MESSAGE_ID_LOCK) {
-        messageID = MESSAGE_ID++;
-      }
-    }
-    this.infoStream = infoStream;
-  }
-
-  /**
-   * Casts current mergePolicy to LogMergePolicy, and throws
-   * an exception if the mergePolicy is not a LogMergePolicy.
-   */
-  private LogMergePolicy getLogMergePolicy() {
-    if (mergePolicy instanceof LogMergePolicy)
-      return (LogMergePolicy) mergePolicy;
-    else
-      throw new IllegalArgumentException("this method can only be called when the merge policy is the default LogMergePolicy");
-  }
-
-  /** <p>Get the current setting of whether newly flushed
-   *  segments will use the compound file format.  Note that
-   *  this just returns the value previously set with
-   *  setUseCompoundFile(boolean), or the default value
-   *  (true).  You cannot use this to query the status of
-   *  previously flushed segments.</p>
-   *
-   *  <p>Note that this method is a convenience method: it
-   *  just calls mergePolicy.getUseCompoundFile as long as
-   *  mergePolicy is an instance of {@link LogMergePolicy}.
-   *  Otherwise an IllegalArgumentException is thrown.</p>
-   *
-   *  @see #setUseCompoundFile(boolean)
-   *  @deprecated use {@link LogMergePolicy#getUseCompoundDocStore()} and
-   *  {@link LogMergePolicy#getUseCompoundFile()} directly.
-   */
-  @Deprecated
-  public boolean getUseCompoundFile() {
-    return getLogMergePolicy().getUseCompoundFile();
-  }
-
-  /**
-   * <p>
-   * Setting to turn on usage of a compound file. When on, multiple files for
-   * each segment are merged into a single file when a new segment is flushed.
-   * </p>
-   * 
-   * <p>
-   * Note that this method is a convenience method: it just calls
-   * mergePolicy.setUseCompoundFile as long as mergePolicy is an instance of
-   * {@link LogMergePolicy}. Otherwise an IllegalArgumentException is thrown.
-   * </p>
-   * 
-   * @deprecated use {@link LogMergePolicy#setUseCompoundDocStore(boolean)} and
-   *             {@link LogMergePolicy#setUseCompoundFile(boolean)} directly.
-   *             Note that this method set the given value on both, therefore
-   *             you should consider doing the same.
-   */
-  @Deprecated
-  public void setUseCompoundFile(boolean value) {
-    getLogMergePolicy().setUseCompoundFile(value);
-    getLogMergePolicy().setUseCompoundDocStore(value);
-  }
-
-  /** Expert: Set the Similarity implementation used by this IndexWriter.
-   *
-   * @see Similarity#setDefault(Similarity)
-   * @deprecated use {@link IndexWriterConfig#setSimilarity(Similarity)} instead
-   */
-  @Deprecated
-  public void setSimilarity(Similarity similarity) {
-    ensureOpen();
-    this.similarity = similarity;
-    docWriter.setSimilarity(similarity);
-    // Required so config.getSimilarity returns the right value. But this will
-    // go away together with the method in 4.0.
-    config.setSimilarity(similarity);
-  }
-
-  /** Expert: Return the Similarity implementation used by this IndexWriter.
-   *
-   * <p>This defaults to the current value of {@link Similarity#getDefault()}.
-   * @deprecated use {@link IndexWriterConfig#getSimilarity()} instead
-   */
-  @Deprecated
-  public Similarity getSimilarity() {
-    ensureOpen();
-    return similarity;
-  }
-
-  /** Expert: Set the interval between indexed terms.  Large values cause less
-   * memory to be used by IndexReader, but slow random-access to terms.  Small
-   * values cause more memory to be used by an IndexReader, and speed
-   * random-access to terms.
-   *
-   * This parameter determines the amount of computation required per query
-   * term, regardless of the number of documents that contain that term.  In
-   * particular, it is the maximum number of other terms that must be
-   * scanned before a term is located and its frequency and position information
-   * may be processed.  In a large index with user-entered query terms, query
-   * processing time is likely to be dominated not by term lookup but rather
-   * by the processing of frequency and positional data.  In a small index
-   * or when many uncommon query terms are generated (e.g., by wildcard
-   * queries) term lookup may become a dominant cost.
-   *
-   * In particular, <code>numUniqueTerms/interval</code> terms are read into
-   * memory by an IndexReader, and, on average, <code>interval/2</code> terms
-   * must be scanned for each random term access.
-   *
-   * @see #DEFAULT_TERM_INDEX_INTERVAL
-   * @deprecated use {@link IndexWriterConfig#setTermIndexInterval(int)}
-   */
-  @Deprecated
-  public void setTermIndexInterval(int interval) {
-    ensureOpen();
-    this.termIndexInterval = interval;
-    // Required so config.getTermIndexInterval returns the right value. But this
-    // will go away together with the method in 4.0.
-    config.setTermIndexInterval(interval);
-  }
-
-  /** Expert: Return the interval between indexed terms.
-   *
-   * @see #setTermIndexInterval(int)
-   * @deprecated use {@link IndexWriterConfig#getTermIndexInterval()}
-   */
-  @Deprecated
-  public int getTermIndexInterval() {
-    // We pass false because this method is called by SegmentMerger while we are in the process of closing
-    ensureOpen(false);
-    return termIndexInterval;
-  }
-
-  /**
-   * Constructs an IndexWriter for the index in <code>d</code>.
-   * Text will be analyzed with <code>a</code>.  If <code>create</code>
-   * is true, then a new, empty index will be created in
-   * <code>d</code>, replacing the index already there, if any.
-   *
-   * @param d the index directory
-   * @param a the analyzer to use
-   * @param create <code>true</code> to create the index or overwrite
-   *  the existing one; <code>false</code> to append to the existing
-   *  index
-   * @param mfl Maximum field length in number of terms/tokens: LIMITED, UNLIMITED, or user-specified
-   *   via the MaxFieldLength constructor.
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws LockObtainFailedException if another writer
-   *  has this index open (<code>write.lock</code> could not
-   *  be obtained)
-   * @throws IOException if the directory cannot be read/written to, or
-   *  if it does not exist and <code>create</code> is
-   *  <code>false</code> or if there is any other low-level
-   *  IO error
-   *  @deprecated use {@link #IndexWriter(Directory, IndexWriterConfig)} instead
-   */
-  @Deprecated
-  public IndexWriter(Directory d, Analyzer a, boolean create, MaxFieldLength mfl)
-       throws CorruptIndexException, LockObtainFailedException, IOException {
-    this(d, new IndexWriterConfig(Version.LUCENE_31, a).setOpenMode(
-        create ? OpenMode.CREATE : OpenMode.APPEND).setMaxFieldLength(
-        mfl.getLimit()));
-  }
-
-  /**
-   * Constructs an IndexWriter for the index in
-   * <code>d</code>, first creating it if it does not
-   * already exist.  Text will be analyzed with
-   * <code>a</code>.
-   *
-   * @param d the index directory
-   * @param a the analyzer to use
-   * @param mfl Maximum field length in number of terms/tokens: LIMITED, UNLIMITED, or user-specified
-   *   via the MaxFieldLength constructor.
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws LockObtainFailedException if another writer
-   *  has this index open (<code>write.lock</code> could not
-   *  be obtained)
-   * @throws IOException if the directory cannot be
-   *  read/written to or if there is any other low-level
-   *  IO error
-   *  @deprecated use {@link #IndexWriter(Directory, IndexWriterConfig)} instead
-   */
-  @Deprecated
-  public IndexWriter(Directory d, Analyzer a, MaxFieldLength mfl)
-    throws CorruptIndexException, LockObtainFailedException, IOException {
-    this(d, new IndexWriterConfig(Version.LUCENE_31, a)
-        .setMaxFieldLength(mfl.getLimit()));
-  }
-
-  /**
-   * Expert: constructs an IndexWriter with a custom {@link
-   * IndexDeletionPolicy}, for the index in <code>d</code>,
-   * first creating it if it does not already exist.  Text
-   * will be analyzed with <code>a</code>.
-   *
-   * @param d the index directory
-   * @param a the analyzer to use
-   * @param deletionPolicy see <a href="#deletionPolicy">above</a>
-   * @param mfl whether or not to limit field lengths
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws LockObtainFailedException if another writer
-   *  has this index open (<code>write.lock</code> could not
-   *  be obtained)
-   * @throws IOException if the directory cannot be
-   *  read/written to or if there is any other low-level
-   *  IO error
-   *  @deprecated use {@link #IndexWriter(Directory, IndexWriterConfig)} instead
-   */
-  @Deprecated
-  public IndexWriter(Directory d, Analyzer a, IndexDeletionPolicy deletionPolicy, MaxFieldLength mfl)
-    throws CorruptIndexException, LockObtainFailedException, IOException {
-    this(d, new IndexWriterConfig(Version.LUCENE_31, a).setMaxFieldLength(
-        mfl.getLimit()).setIndexDeletionPolicy(deletionPolicy));
-  }
-
-  /**
-   * Expert: constructs an IndexWriter with a custom {@link
-   * IndexDeletionPolicy}, for the index in <code>d</code>.
-   * Text will be analyzed with <code>a</code>.  If
-   * <code>create</code> is true, then a new, empty index
-   * will be created in <code>d</code>, replacing the index
-   * already there, if any.
-   *
-   * @param d the index directory
-   * @param a the analyzer to use
-   * @param create <code>true</code> to create the index or overwrite
-   *  the existing one; <code>false</code> to append to the existing
-   *  index
-   * @param deletionPolicy see <a href="#deletionPolicy">above</a>
-   * @param mfl {@link org.apache.lucene.index.IndexWriter.MaxFieldLength}, whether or not to limit field lengths.  Value is in number of terms/tokens
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws LockObtainFailedException if another writer
-   *  has this index open (<code>write.lock</code> could not
-   *  be obtained)
-   * @throws IOException if the directory cannot be read/written to, or
-   *  if it does not exist and <code>create</code> is
-   *  <code>false</code> or if there is any other low-level
-   *  IO error
-   *  @deprecated use {@link #IndexWriter(Directory, IndexWriterConfig)} instead
-   */
-  @Deprecated
-  public IndexWriter(Directory d, Analyzer a, boolean create, IndexDeletionPolicy deletionPolicy, MaxFieldLength mfl)
-       throws CorruptIndexException, LockObtainFailedException, IOException {
-    this(d, new IndexWriterConfig(Version.LUCENE_31, a).setOpenMode(
-        create ? OpenMode.CREATE : OpenMode.APPEND).setMaxFieldLength(
-        mfl.getLimit()).setIndexDeletionPolicy(deletionPolicy));
-  }
-  
-  /**
-   * Expert: constructs an IndexWriter on specific commit
-   * point, with a custom {@link IndexDeletionPolicy}, for
-   * the index in <code>d</code>.  Text will be analyzed
-   * with <code>a</code>.
-   *
-   * <p> This is only meaningful if you've used a {@link
-   * IndexDeletionPolicy} in that past that keeps more than
-   * just the last commit.
-   * 
-   * <p>This operation is similar to {@link #rollback()},
-   * except that method can only rollback what's been done
-   * with the current instance of IndexWriter since its last
-   * commit, whereas this method can rollback to an
-   * arbitrary commit point from the past, assuming the
-   * {@link IndexDeletionPolicy} has preserved past
-   * commits.
-   *
-   * @param d the index directory
-   * @param a the analyzer to use
-   * @param deletionPolicy see <a href="#deletionPolicy">above</a>
-   * @param mfl whether or not to limit field lengths, value is in number of terms/tokens.  See {@link org.apache.lucene.index.IndexWriter.MaxFieldLength}.
-   * @param commit which commit to open
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws LockObtainFailedException if another writer
-   *  has this index open (<code>write.lock</code> could not
-   *  be obtained)
-   * @throws IOException if the directory cannot be read/written to, or
-   *  if it does not exist and <code>create</code> is
-   *  <code>false</code> or if there is any other low-level
-   *  IO error
-   *  @deprecated use {@link #IndexWriter(Directory, IndexWriterConfig)} instead
-   */
-  @Deprecated
-  public IndexWriter(Directory d, Analyzer a, IndexDeletionPolicy deletionPolicy, MaxFieldLength mfl, IndexCommit commit)
-       throws CorruptIndexException, LockObtainFailedException, IOException {
-    this(d, new IndexWriterConfig(Version.LUCENE_31, a)
-        .setOpenMode(OpenMode.APPEND).setMaxFieldLength(mfl.getLimit())
-        .setIndexDeletionPolicy(deletionPolicy).setIndexCommit(commit));
-  }
-  
   CodecProvider codecs;
 
   /**
@@ -1009,9 +662,6 @@ public class IndexWriter implements Closeable {
    * IndexWriter. Additionally, calling {@link #getConfig()} and changing the
    * parameters does not affect that IndexWriter instance.
    * <p>
-   * <b>NOTE:</b> by default, {@link IndexWriterConfig#getMaxFieldLength()}
-   * returns {@link IndexWriterConfig#UNLIMITED_FIELD_LENGTH}. Pay attention to
-   * whether this setting fits your application.
    * 
    * @param d
    *          the index directory. The index is either created or appended
@@ -1035,17 +685,16 @@ public class IndexWriter implements Closeable {
     config = (IndexWriterConfig) conf.clone();
     directory = d;
     analyzer = conf.getAnalyzer();
-    setMessageID(defaultInfoStream);
-    maxFieldLength = conf.getMaxFieldLength();
+    infoStream = defaultInfoStream;
     termIndexInterval = conf.getTermIndexInterval();
-    writeLockTimeout = conf.getWriteLockTimeout();
-    similarity = conf.getSimilarity();
     mergePolicy = conf.getMergePolicy();
     mergePolicy.setIndexWriter(this);
     mergeScheduler = conf.getMergeScheduler();
     mergedSegmentWarmer = conf.getMergedSegmentWarmer();
     codecs = conf.getCodecProvider();
     
+    bufferedDeletes = new BufferedDeletes(messageID);
+    bufferedDeletes.setInfoStream(infoStream);
     poolReaders = conf.getReaderPooling();
 
     OpenMode mode = conf.getOpenMode();
@@ -1061,7 +710,7 @@ public class IndexWriter implements Closeable {
 
     writeLock = directory.makeLock(WRITE_LOCK_NAME);
 
-    if (!writeLock.obtain(writeLockTimeout)) // obtain write lock
+    if (!writeLock.obtain(conf.getWriteLockTimeout())) // obtain write lock
       throw new LockObtainFailedException("Index locked for write: " + writeLock);
 
     boolean success = false;
@@ -1088,6 +737,7 @@ public class IndexWriter implements Closeable {
         // Record that we have a change (zero out all
         // segments) pending:
         changeCount++;
+        segmentInfos.changed();
       } else {
         segmentInfos.read(directory, codecs);
 
@@ -1104,6 +754,7 @@ public class IndexWriter implements Closeable {
           oldInfos.read(directory, commit.getSegmentsFileName(), codecs);
           segmentInfos.replace(oldInfos);
           changeCount++;
+          segmentInfos.changed();
           if (infoStream != null)
             message("init: loaded commit \"" + commit.getSegmentsFileName() + "\"");
         }
@@ -1111,24 +762,24 @@ public class IndexWriter implements Closeable {
 
       setRollbackSegmentInfos(segmentInfos);
 
-      docWriter = new DocumentsWriter(directory, this, conf.getIndexingChain(), conf.getMaxThreadStates());
+      docWriter = new DocumentsWriter(directory, this, conf.getIndexingChain(), conf.getMaxThreadStates(), getCurrentFieldInfos(), bufferedDeletes);
       docWriter.setInfoStream(infoStream);
-      docWriter.setMaxFieldLength(maxFieldLength);
 
       // Default deleter (for backwards compatibility) is
       // KeepOnlyLastCommitDeleter:
       deleter = new IndexFileDeleter(directory,
                                      conf.getIndexDeletionPolicy(),
-                                     segmentInfos, infoStream, docWriter, codecs);
+                                     segmentInfos, infoStream, codecs);
 
-      if (deleter.startingCommitDeleted)
+      if (deleter.startingCommitDeleted) {
         // Deletion policy deleted the "head" commit point.
         // We have to mark ourself as changed so that if we
         // are closed w/o any further changes we write a new
         // segments_N file.
         changeCount++;
+        segmentInfos.changed();
+      }
 
-      docWriter.setMaxBufferedDeleteTerms(conf.getMaxBufferedDeleteTerms());
       docWriter.setRAMBufferSizeMB(conf.getRAMBufferSizeMB());
       docWriter.setMaxBufferedDocs(conf.getMaxBufferedDocs());
       pushMaxBufferedDocs();
@@ -1154,7 +805,48 @@ public class IndexWriter implements Closeable {
       }
     }
   }
-  
+
+  private FieldInfos getFieldInfos(SegmentInfo info) throws IOException {
+    Directory cfsDir = null;
+    try {
+      if (info.getUseCompoundFile()) {
+        cfsDir = new CompoundFileReader(directory, IndexFileNames.segmentFileName(info.name, "", IndexFileNames.COMPOUND_FILE_EXTENSION));
+      } else {
+        cfsDir = directory;
+      }
+      return new FieldInfos(cfsDir, IndexFileNames.segmentFileName(info.name, "", IndexFileNames.FIELD_INFOS_EXTENSION));
+    } finally {
+      if (info.getUseCompoundFile() && cfsDir != null) {
+        cfsDir.close();
+      }
+    }
+  }
+
+  private FieldInfos getCurrentFieldInfos() throws IOException {
+    final FieldInfos fieldInfos;
+    if (segmentInfos.size() > 0) {
+      if (segmentInfos.getFormat() > DefaultSegmentInfosWriter.FORMAT_HAS_VECTORS) {
+        // Pre-4.0 index.  In this case we sweep all
+        // segments, merging their FieldInfos:
+        fieldInfos = new FieldInfos();
+        for(SegmentInfo info : segmentInfos) {
+          final FieldInfos segFieldInfos = getFieldInfos(info);
+          final int fieldCount = segFieldInfos.size();
+          for(int fieldNumber=0;fieldNumber<fieldCount;fieldNumber++) {
+            fieldInfos.add(segFieldInfos.fieldInfo(fieldNumber));
+          }
+        }
+      } else {
+        // Already a 4.0 index; just seed the FieldInfos
+        // from the last segment
+        fieldInfos = getFieldInfos(segmentInfos.info(segmentInfos.size()-1));
+      }
+    } else {
+      fieldInfos = new FieldInfos();
+    }
+    return fieldInfos;
+  }
+
   private synchronized void setRollbackSegmentInfos(SegmentInfos infos) {
     rollbackSegmentInfos = (SegmentInfos) infos.clone();
     rollbackSegments = new HashMap<SegmentInfo,Integer>();
@@ -1177,202 +869,12 @@ public class IndexWriter implements Closeable {
   }
   
   /**
-   * Expert: set the merge policy used by this writer.
-   * 
-   * @deprecated use {@link IndexWriterConfig#setMergePolicy(MergePolicy)} instead.
-   */
-  @Deprecated
-  public void setMergePolicy(MergePolicy mp) {
-    ensureOpen();
-    if (mp == null)
-      throw new NullPointerException("MergePolicy must be non-null");
-
-    if (mergePolicy != mp)
-      mergePolicy.close();
-    mergePolicy = mp;
-    mergePolicy.setIndexWriter(this);
-    pushMaxBufferedDocs();
-    if (infoStream != null)
-      message("setMergePolicy " + mp);
-    // Required so config.getMergePolicy returns the right value. But this will
-    // go away together with the method in 4.0.
-    config.setMergePolicy(mp);
-  }
-
-  /**
-   * Expert: returns the current MergePolicy in use by this writer.
-   * @see #setMergePolicy
-   * 
-   * @deprecated use {@link IndexWriterConfig#getMergePolicy()} instead
-   */
-  @Deprecated
-  public MergePolicy getMergePolicy() {
-    ensureOpen();
-    return mergePolicy;
-  }
-
-  /**
-   * Expert: set the merge scheduler used by this writer.
-   * @deprecated use {@link IndexWriterConfig#setMergeScheduler(MergeScheduler)} instead
-   */
-  @Deprecated
-  synchronized public void setMergeScheduler(MergeScheduler mergeScheduler) throws CorruptIndexException, IOException {
-    ensureOpen();
-    if (mergeScheduler == null)
-      throw new NullPointerException("MergeScheduler must be non-null");
-
-    if (this.mergeScheduler != mergeScheduler) {
-      finishMerges(true);
-      this.mergeScheduler.close();
-    }
-    this.mergeScheduler = mergeScheduler;
-    if (infoStream != null)
-      message("setMergeScheduler " + mergeScheduler);
-    // Required so config.getMergeScheduler returns the right value. But this will
-    // go away together with the method in 4.0.
-    config.setMergeScheduler(mergeScheduler);
-  }
-
-  /**
-   * Expert: returns the current MergeScheduler in use by this
-   * writer.
-   * @see #setMergeScheduler(MergeScheduler)
-   * @deprecated use {@link IndexWriterConfig#getMergeScheduler()} instead
-   */
-  @Deprecated
-  public MergeScheduler getMergeScheduler() {
-    ensureOpen();
-    return mergeScheduler;
-  }
-
-  /** <p>Determines the largest segment (measured by
-   * document count) that may be merged with other segments.
-   * Small values (e.g., less than 10,000) are best for
-   * interactive indexing, as this limits the length of
-   * pauses while indexing to a few seconds.  Larger values
-   * are best for batched indexing and speedier
-   * searches.</p>
-   *
-   * <p>The default value is {@link Integer#MAX_VALUE}.</p>
-   *
-   * <p>Note that this method is a convenience method: it
-   * just calls mergePolicy.setMaxMergeDocs as long as
-   * mergePolicy is an instance of {@link LogMergePolicy}.
-   * Otherwise an IllegalArgumentException is thrown.</p>
-   *
-   * <p>The default merge policy ({@link
-   * LogByteSizeMergePolicy}) also allows you to set this
-   * limit by net size (in MB) of the segment, using {@link
-   * LogByteSizeMergePolicy#setMaxMergeMB}.</p>
-   * @deprecated use {@link LogMergePolicy#setMaxMergeDocs(int)} directly.
-   */
-  @Deprecated
-  public void setMaxMergeDocs(int maxMergeDocs) {
-    getLogMergePolicy().setMaxMergeDocs(maxMergeDocs);
-  }
-
-  /**
-   * <p>Returns the largest segment (measured by document
-   * count) that may be merged with other segments.</p>
-   *
-   * <p>Note that this method is a convenience method: it
-   * just calls mergePolicy.getMaxMergeDocs as long as
-   * mergePolicy is an instance of {@link LogMergePolicy}.
-   * Otherwise an IllegalArgumentException is thrown.</p>
-   *
-   * @see #setMaxMergeDocs
-   * @deprecated use {@link LogMergePolicy#getMaxMergeDocs()} directly.
-   */
-  @Deprecated
-  public int getMaxMergeDocs() {
-    return getLogMergePolicy().getMaxMergeDocs();
-  }
-
-  /**
-   * The maximum number of terms that will be indexed for a single field in a
-   * document.  This limits the amount of memory required for indexing, so that
-   * collections with very large files will not crash the indexing process by
-   * running out of memory.  This setting refers to the number of running terms,
-   * not to the number of different terms.<p/>
-   * <strong>Note:</strong> this silently truncates large documents, excluding from the
-   * index all terms that occur further in the document.  If you know your source
-   * documents are large, be sure to set this value high enough to accomodate
-   * the expected size.  If you set it to Integer.MAX_VALUE, then the only limit
-   * is your memory, but you should anticipate an OutOfMemoryError.<p/>
-   * By default, no more than {@link #DEFAULT_MAX_FIELD_LENGTH} terms
-   * will be indexed for a field.
-   * @deprecated use {@link IndexWriterConfig#setMaxFieldLength(int)} instead
-   */
-  @Deprecated
-  public void setMaxFieldLength(int maxFieldLength) {
-    ensureOpen();
-    this.maxFieldLength = maxFieldLength;
-    docWriter.setMaxFieldLength(maxFieldLength);
-    if (infoStream != null)
-      message("setMaxFieldLength " + maxFieldLength);
-    // Required so config.getMaxFieldLength returns the right value. But this
-    // will go away together with the method in 4.0.
-    config.setMaxFieldLength(maxFieldLength);
-  }
-
-  /**
-   * Returns the maximum number of terms that will be
-   * indexed for a single field in a document.
-   * @see #setMaxFieldLength
-   * @deprecated use {@link IndexWriterConfig#getMaxFieldLength()} instead
-   */
-  @Deprecated
-  public int getMaxFieldLength() {
-    ensureOpen();
-    return maxFieldLength;
-  }
-
-  /** Determines the minimal number of documents required
-   * before the buffered in-memory documents are flushed as
-   * a new Segment.  Large values generally gives faster
-   * indexing.
-   *
-   * <p>When this is set, the writer will flush every
-   * maxBufferedDocs added documents.  Pass in {@link
-   * #DISABLE_AUTO_FLUSH} to prevent triggering a flush due
-   * to number of buffered documents.  Note that if flushing
-   * by RAM usage is also enabled, then the flush will be
-   * triggered by whichever comes first.</p>
-   *
-   * <p>Disabled by default (writer flushes by RAM usage).</p>
-   *
-   * @throws IllegalArgumentException if maxBufferedDocs is
-   * enabled but smaller than 2, or it disables maxBufferedDocs
-   * when ramBufferSize is already disabled
-   * @see #setRAMBufferSizeMB
-   * @deprecated use {@link IndexWriterConfig#setMaxBufferedDocs(int)} instead.
-   */
-  @Deprecated
-  public void setMaxBufferedDocs(int maxBufferedDocs) {
-    ensureOpen();
-    if (maxBufferedDocs != DISABLE_AUTO_FLUSH && maxBufferedDocs < 2)
-      throw new IllegalArgumentException(
-          "maxBufferedDocs must at least be 2 when enabled");
-    if (maxBufferedDocs == DISABLE_AUTO_FLUSH
-        && getRAMBufferSizeMB() == DISABLE_AUTO_FLUSH)
-      throw new IllegalArgumentException(
-          "at least one of ramBufferSize and maxBufferedDocs must be enabled");
-    docWriter.setMaxBufferedDocs(maxBufferedDocs);
-    pushMaxBufferedDocs();
-    if (infoStream != null)
-      message("setMaxBufferedDocs " + maxBufferedDocs);
-    // Required so config.getMaxBufferedDocs returns the right value. But this
-    // will go away together with the method in 4.0.
-    config.setMaxBufferedDocs(maxBufferedDocs);
-  }
-
-  /**
    * If we are flushing by doc count (not by RAM usage), and
    * using LogDocMergePolicy then push maxBufferedDocs down
    * as its minMergeDocs, to keep backwards compatibility.
    */
   private void pushMaxBufferedDocs() {
-    if (docWriter.getMaxBufferedDocs() != DISABLE_AUTO_FLUSH) {
+    if (docWriter.getMaxBufferedDocs() != IndexWriterConfig.DISABLE_AUTO_FLUSH) {
       final MergePolicy mp = mergePolicy;
       if (mp instanceof LogDocMergePolicy) {
         LogDocMergePolicy lmp = (LogDocMergePolicy) mp;
@@ -1384,164 +886,6 @@ public class IndexWriter implements Closeable {
         }
       }
     }
-  }
-
-  /**
-   * Returns the number of buffered added documents that will
-   * trigger a flush if enabled.
-   * @see #setMaxBufferedDocs
-   * @deprecated use {@link IndexWriterConfig#getMaxBufferedDocs()} instead.
-   */
-  @Deprecated
-  public int getMaxBufferedDocs() {
-    ensureOpen();
-    return docWriter.getMaxBufferedDocs();
-  }
-
-  /** Determines the amount of RAM that may be used for
-   * buffering added documents and deletions before they are
-   * flushed to the Directory.  Generally for faster
-   * indexing performance it's best to flush by RAM usage
-   * instead of document count and use as large a RAM buffer
-   * as you can.
-   *
-   * <p>When this is set, the writer will flush whenever
-   * buffered documents and deletions use this much RAM.
-   * Pass in {@link #DISABLE_AUTO_FLUSH} to prevent
-   * triggering a flush due to RAM usage.  Note that if
-   * flushing by document count is also enabled, then the
-   * flush will be triggered by whichever comes first.</p>
-   *
-   * <p> <b>NOTE</b>: the account of RAM usage for pending
-   * deletions is only approximate.  Specifically, if you
-   * delete by Query, Lucene currently has no way to measure
-   * the RAM usage if individual Queries so the accounting
-   * will under-estimate and you should compensate by either
-   * calling commit() periodically yourself, or by using
-   * {@link #setMaxBufferedDeleteTerms} to flush by count
-   * instead of RAM usage (each buffered delete Query counts
-   * as one).
-   *
-   * <p> <b>NOTE</b>: because IndexWriter uses
-   * <code>int</code>s when managing its internal storage,
-   * the absolute maximum value for this setting is somewhat
-   * less than 2048 MB.  The precise limit depends on
-   * various factors, such as how large your documents are,
-   * how many fields have norms, etc., so it's best to set
-   * this value comfortably under 2048.</p>
-   *
-   * <p> The default value is {@link #DEFAULT_RAM_BUFFER_SIZE_MB}.</p>
-   * 
-   * @throws IllegalArgumentException if ramBufferSize is
-   * enabled but non-positive, or it disables ramBufferSize
-   * when maxBufferedDocs is already disabled
-   * @deprecated use {@link IndexWriterConfig#setRAMBufferSizeMB(double)} instead.
-   */
-  @Deprecated
-  public void setRAMBufferSizeMB(double mb) {
-    if (mb > 2048.0) {
-      throw new IllegalArgumentException("ramBufferSize " + mb + " is too large; should be comfortably less than 2048");
-    }
-    if (mb != DISABLE_AUTO_FLUSH && mb <= 0.0)
-      throw new IllegalArgumentException(
-          "ramBufferSize should be > 0.0 MB when enabled");
-    if (mb == DISABLE_AUTO_FLUSH && getMaxBufferedDocs() == DISABLE_AUTO_FLUSH)
-      throw new IllegalArgumentException(
-          "at least one of ramBufferSize and maxBufferedDocs must be enabled");
-    docWriter.setRAMBufferSizeMB(mb);
-    if (infoStream != null)
-      message("setRAMBufferSizeMB " + mb);
-    // Required so config.getRAMBufferSizeMB returns the right value. But this
-    // will go away together with the method in 4.0.
-    config.setRAMBufferSizeMB(mb);
-  }
-
-  /**
-   * Returns the value set by {@link #setRAMBufferSizeMB} if enabled.
-   * @deprecated use {@link IndexWriterConfig#getRAMBufferSizeMB()} instead.
-   */
-  @Deprecated
-  public double getRAMBufferSizeMB() {
-    return docWriter.getRAMBufferSizeMB();
-  }
-
-  /**
-   * <p>Determines the minimal number of delete terms required before the buffered
-   * in-memory delete terms are applied and flushed. If there are documents
-   * buffered in memory at the time, they are merged and a new segment is
-   * created.</p>
-
-   * <p>Disabled by default (writer flushes by RAM usage).</p>
-   * 
-   * @throws IllegalArgumentException if maxBufferedDeleteTerms
-   * is enabled but smaller than 1
-   * @see #setRAMBufferSizeMB
-   * @deprecated use {@link IndexWriterConfig#setMaxBufferedDeleteTerms(int)} instead.
-   */
-  @Deprecated
-  public void setMaxBufferedDeleteTerms(int maxBufferedDeleteTerms) {
-    ensureOpen();
-    if (maxBufferedDeleteTerms != DISABLE_AUTO_FLUSH
-        && maxBufferedDeleteTerms < 1)
-      throw new IllegalArgumentException(
-          "maxBufferedDeleteTerms must at least be 1 when enabled");
-    docWriter.setMaxBufferedDeleteTerms(maxBufferedDeleteTerms);
-    if (infoStream != null)
-      message("setMaxBufferedDeleteTerms " + maxBufferedDeleteTerms);
-    // Required so config.getMaxBufferedDeleteTerms returns the right value. But
-    // this will go away together with the method in 4.0.
-    config.setMaxBufferedDeleteTerms(maxBufferedDeleteTerms);
-  }
-
-  /**
-   * Returns the number of buffered deleted terms that will
-   * trigger a flush if enabled.
-   * @see #setMaxBufferedDeleteTerms
-   * @deprecated use {@link IndexWriterConfig#getMaxBufferedDeleteTerms()} instead
-   */
-  @Deprecated
-  public int getMaxBufferedDeleteTerms() {
-    ensureOpen();
-    return docWriter.getMaxBufferedDeleteTerms();
-  }
-
-  /** Determines how often segment indices are merged by addDocument().  With
-   * smaller values, less RAM is used while indexing, and searches on
-   * unoptimized indices are faster, but indexing speed is slower.  With larger
-   * values, more RAM is used during indexing, and while searches on unoptimized
-   * indices are slower, indexing is faster.  Thus larger values (> 10) are best
-   * for batch index creation, and smaller values (< 10) for indices that are
-   * interactively maintained.
-   *
-   * <p>Note that this method is a convenience method: it
-   * just calls mergePolicy.setMergeFactor as long as
-   * mergePolicy is an instance of {@link LogMergePolicy}.
-   * Otherwise an IllegalArgumentException is thrown.</p>
-   *
-   * <p>This must never be less than 2.  The default value is 10.
-   * @deprecated use {@link LogMergePolicy#setMergeFactor(int)} directly.
-   */
-  @Deprecated
-  public void setMergeFactor(int mergeFactor) {
-    getLogMergePolicy().setMergeFactor(mergeFactor);
-  }
-
-  /**
-   * <p>Returns the number of segments that are merged at
-   * once and also controls the total number of segments
-   * allowed to accumulate in the index.</p>
-   *
-   * <p>Note that this method is a convenience method: it
-   * just calls mergePolicy.getMergeFactor as long as
-   * mergePolicy is an instance of {@link LogMergePolicy}.
-   * Otherwise an IllegalArgumentException is thrown.</p>
-   *
-   * @see #setMergeFactor
-   * @deprecated use {@link LogMergePolicy#getMergeFactor()} directly.
-   */
-  @Deprecated
-  public int getMergeFactor() {
-    return getLogMergePolicy().getMergeFactor();
   }
 
   /** If non-null, this will be the default infoStream used
@@ -1567,9 +911,10 @@ public class IndexWriter implements Closeable {
    */
   public void setInfoStream(PrintStream infoStream) {
     ensureOpen();
-    setMessageID(infoStream);
+    this.infoStream = infoStream;
     docWriter.setInfoStream(infoStream);
     deleter.setInfoStream(infoStream);
+    bufferedDeletes.setInfoStream(infoStream);
     if (infoStream != null)
       messageState();
   }
@@ -1595,52 +940,6 @@ public class IndexWriter implements Closeable {
     return infoStream != null;
   }
   
-  /**
-   * Sets the maximum time to wait for a write lock (in milliseconds) for this instance of IndexWriter.  @see
-   * @see #setDefaultWriteLockTimeout to change the default value for all instances of IndexWriter.
-   * @deprecated use {@link IndexWriterConfig#setWriteLockTimeout(long)} instead
-   */
-  @Deprecated
-  public void setWriteLockTimeout(long writeLockTimeout) {
-    ensureOpen();
-    this.writeLockTimeout = writeLockTimeout;
-    // Required so config.getWriteLockTimeout returns the right value. But this
-    // will go away together with the method in 4.0.
-    config.setWriteLockTimeout(writeLockTimeout);
-  }
-
-  /**
-   * Returns allowed timeout when acquiring the write lock.
-   * @see #setWriteLockTimeout
-   * @deprecated use {@link IndexWriterConfig#getWriteLockTimeout()}
-   */
-  @Deprecated
-  public long getWriteLockTimeout() {
-    ensureOpen();
-    return writeLockTimeout;
-  }
-
-  /**
-   * Sets the default (for any instance of IndexWriter) maximum time to wait for a write lock (in
-   * milliseconds).
-   * @deprecated use {@link IndexWriterConfig#setDefaultWriteLockTimeout(long)} instead
-   */
-  @Deprecated
-  public static void setDefaultWriteLockTimeout(long writeLockTimeout) {
-    IndexWriterConfig.setDefaultWriteLockTimeout(writeLockTimeout);
-  }
-
-  /**
-   * Returns default write lock timeout for newly
-   * instantiated IndexWriters.
-   * @see #setDefaultWriteLockTimeout
-   * @deprecated use {@link IndexWriterConfig#getDefaultWriteLockTimeout()} instead
-   */
-  @Deprecated
-  public static long getDefaultWriteLockTimeout() {
-    return IndexWriterConfig.getDefaultWriteLockTimeout();
-  }
-
   /**
    * Commits all changes to an index and closes all
    * associated files.  Note that this may be a costly
@@ -1746,8 +1045,6 @@ public class IndexWriter implements Closeable {
 
   private void closeInternal(boolean waitForMerges) throws CorruptIndexException, IOException {
 
-    docWriter.pauseAllThreads();
-
     try {
       if (infoStream != null)
         message("now flush at close");
@@ -1757,7 +1054,7 @@ public class IndexWriter implements Closeable {
       // Only allow a new merge to be triggered if we are
       // going to wait for merges:
       if (!hitOOM) {
-        flush(waitForMerges, true, true);
+        flush(waitForMerges, true);
       }
 
       if (waitForMerges)
@@ -1767,8 +1064,10 @@ public class IndexWriter implements Closeable {
 
       mergePolicy.close();
 
-      finishMerges(waitForMerges);
-      stopMerges = true;
+      synchronized(this) {
+        finishMerges(waitForMerges);
+        stopMerges = true;
+      }
 
       mergeScheduler.close();
 
@@ -1802,94 +1101,11 @@ public class IndexWriter implements Closeable {
         closing = false;
         notifyAll();
         if (!closed) {
-          if (docWriter != null)
-            docWriter.resumeAllThreads();
           if (infoStream != null)
             message("hit exception while closing");
         }
       }
     }
-  }
-
-  /** Tells the docWriter to close its currently open shared
-   *  doc stores (stored fields & vectors files).
-   *  Return value specifices whether new doc store files are compound or not.
-   */
-  private synchronized boolean flushDocStores() throws IOException {
-
-    if (infoStream != null) {
-      message("flushDocStores segment=" + docWriter.getDocStoreSegment());
-    }
-
-    boolean useCompoundDocStore = false;
-    if (infoStream != null) {
-      message("closeDocStores segment=" + docWriter.getDocStoreSegment());
-    }
-
-    String docStoreSegment;
-
-    boolean success = false;
-    try {
-      docStoreSegment = docWriter.closeDocStore();
-      success = true;
-    } finally {
-      if (!success && infoStream != null) {
-        message("hit exception closing doc store segment");
-      }
-    }
-
-    if (infoStream != null) {
-      message("flushDocStores files=" + docWriter.closedFiles());
-    }
-
-    useCompoundDocStore = mergePolicy.useCompoundDocStore(segmentInfos);
-      
-    if (useCompoundDocStore && docStoreSegment != null && docWriter.closedFiles().size() != 0) {
-      // Now build compound doc store file
-
-      if (infoStream != null) {
-        message("create compound file " + IndexFileNames.segmentFileName(docStoreSegment, "", IndexFileNames.COMPOUND_FILE_STORE_EXTENSION));
-      }
-
-      success = false;
-
-      final int numSegments = segmentInfos.size();
-      final String compoundFileName = IndexFileNames.segmentFileName(docStoreSegment, "", IndexFileNames.COMPOUND_FILE_STORE_EXTENSION);
-
-      try {
-        CompoundFileWriter cfsWriter = new CompoundFileWriter(directory, compoundFileName);
-        for (final String file :  docWriter.closedFiles() ) {
-          cfsWriter.addFile(file);
-        }
-      
-        // Perform the merge
-        cfsWriter.close();
-        success = true;
-
-      } finally {
-        if (!success) {
-          if (infoStream != null)
-            message("hit exception building compound file doc store for segment " + docStoreSegment);
-          deleter.deleteFile(compoundFileName);
-          docWriter.abort();
-        }
-      }
-
-      for(int i=0;i<numSegments;i++) {
-        SegmentInfo si = segmentInfos.info(i);
-        if (si.getDocStoreOffset() != -1 &&
-            si.getDocStoreSegment().equals(docStoreSegment))
-          si.setDocStoreIsCompoundFile(true);
-      }
-
-      checkpoint();
-
-      // In case the files we just merged into a CFS were
-      // not previously checkpointed:
-      deleter.deleteNewFiles(docWriter.closedFiles());
-    }
-
-    return useCompoundDocStore;
   }
 
   /** Returns the Directory used by this index. */
@@ -1912,7 +1128,7 @@ public class IndexWriter implements Closeable {
   public synchronized int maxDoc() {
     int count;
     if (docWriter != null)
-      count = docWriter.getNumDocsInRAM();
+      count = docWriter.getNumDocs();
     else
       count = 0;
 
@@ -1930,21 +1146,25 @@ public class IndexWriter implements Closeable {
   public synchronized int numDocs() throws IOException {
     int count;
     if (docWriter != null)
-      count = docWriter.getNumDocsInRAM();
+      count = docWriter.getNumDocs();
     else
       count = 0;
 
     for (int i = 0; i < segmentInfos.size(); i++) {
       final SegmentInfo info = segmentInfos.info(i);
-      count += info.docCount - info.getDelCount();
+      count += info.docCount - numDeletedDocs(info);
     }
     return count;
   }
 
   public synchronized boolean hasDeletions() throws IOException {
     ensureOpen();
-    if (docWriter.hasDeletes())
+    if (bufferedDeletes.any()) {
       return true;
+    }
+    if (docWriter.anyDeletions()) {
+      return true;
+    }
     for (int i = 0; i < segmentInfos.size(); i++)
       if (segmentInfos.info(i).hasDeletions())
         return true;
@@ -1952,25 +1172,7 @@ public class IndexWriter implements Closeable {
   }
 
   /**
-   * The maximum number of terms that will be indexed for a single field in a
-   * document.  This limits the amount of memory required for indexing, so that
-   * collections with very large files will not crash the indexing process by
-   * running out of memory.<p/>
-   * Note that this effectively truncates large documents, excluding from the
-   * index terms that occur further in the document.  If you know your source
-   * documents are large, be sure to set this value high enough to accommodate
-   * the expected size.  If you set it to Integer.MAX_VALUE, then the only limit
-   * is your memory, but you should anticipate an OutOfMemoryError.<p/>
-   * By default, no more than 10,000 terms will be indexed for a field.
-   *
-   * @see MaxFieldLength
-   */
-  private int maxFieldLength;
-
-  /**
-   * Adds a document to this index.  If the document contains more than
-   * {@link #setMaxFieldLength(int)} terms for a given field, the remainder are
-   * discarded.
+   * Adds a document to this index.
    *
    * <p> Note that if an Exception is hit (for example disk full)
    * then the index will be consistent, but this document
@@ -2017,9 +1219,7 @@ public class IndexWriter implements Closeable {
 
   /**
    * Adds a document to this index, using the provided analyzer instead of the
-   * value of {@link #getAnalyzer()}.  If the document contains more than
-   * {@link #setMaxFieldLength(int)} terms for a given field, the remainder are
-   * discarded.
+   * value of {@link #getAnalyzer()}.
    *
    * <p>See {@link #addDocument(Document)} for details on
    * index and IndexWriter state after an Exception, and
@@ -2038,27 +1238,14 @@ public class IndexWriter implements Closeable {
     boolean success = false;
     try {
       try {
-        doFlush = docWriter.addDocument(doc, analyzer);
+        doFlush = docWriter.updateDocument(doc, analyzer, null);
         success = true;
       } finally {
-        if (!success) {
-
-          if (infoStream != null)
-            message("hit exception adding document");
-
-          synchronized (this) {
-            // If docWriter has some aborted files that were
-            // never incref'd, then we clean them up here
-            if (docWriter != null) {
-              final Collection<String> files = docWriter.abortedFiles();
-              if (files != null)
-                deleter.deleteNewFiles(files);
-            }
-          }
-        }
+        if (!success && infoStream != null)
+          message("hit exception adding document");
       }
       if (doFlush)
-        flush(true, false, false);
+        flush(true, false);
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "addDocument");
     }
@@ -2078,9 +1265,9 @@ public class IndexWriter implements Closeable {
   public void deleteDocuments(Term term) throws CorruptIndexException, IOException {
     ensureOpen();
     try {
-      boolean doFlush = docWriter.bufferDeleteTerm(term);
-      if (doFlush)
-        flush(true, false, false);
+      if (docWriter.deleteTerm(term, false)) {
+        flush(true, false);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteDocuments(Term)");
     }
@@ -2102,9 +1289,9 @@ public class IndexWriter implements Closeable {
   public void deleteDocuments(Term... terms) throws CorruptIndexException, IOException {
     ensureOpen();
     try {
-      boolean doFlush = docWriter.bufferDeleteTerms(terms);
-      if (doFlush)
-        flush(true, false, false);
+      if (docWriter.deleteTerms(terms)) {
+        flush(true, false);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteDocuments(Term..)");
     }
@@ -2123,9 +1310,13 @@ public class IndexWriter implements Closeable {
    */
   public void deleteDocuments(Query query) throws CorruptIndexException, IOException {
     ensureOpen();
-    boolean doFlush = docWriter.bufferDeleteQuery(query);
-    if (doFlush)
-      flush(true, false, false);
+    try {
+      if (docWriter.deleteQuery(query)) {
+        flush(true, false);
+      }
+    } catch (OutOfMemoryError oom) {
+      handleOOM(oom, "deleteDocuments(Query)");
+    }
   }
 
   /**
@@ -2143,9 +1334,13 @@ public class IndexWriter implements Closeable {
    */
   public void deleteDocuments(Query... queries) throws CorruptIndexException, IOException {
     ensureOpen();
-    boolean doFlush = docWriter.bufferDeleteQueries(queries);
-    if (doFlush)
-      flush(true, false, false);
+    try {
+      if (docWriter.deleteQueries(queries)) {
+        flush(true, false);
+      }
+    } catch (OutOfMemoryError oom) {
+      handleOOM(oom, "deleteDocuments(Query..)");
+    }
   }
 
   /**
@@ -2195,25 +1390,15 @@ public class IndexWriter implements Closeable {
       boolean doFlush = false;
       boolean success = false;
       try {
-        doFlush = docWriter.updateDocument(term, doc, analyzer);
+        doFlush = docWriter.updateDocument(doc, analyzer, term);
         success = true;
       } finally {
-        if (!success) {
-
-          if (infoStream != null)
-            message("hit exception updating document");
-
-          synchronized (this) {
-            // If docWriter has some aborted files that were
-            // never incref'd, then we clean them up here
-            final Collection<String> files = docWriter.abortedFiles();
-            if (files != null)
-              deleter.deleteNewFiles(files);
-          }
-        }
+        if (!success && infoStream != null)
+          message("hit exception updating document");
       }
-      if (doFlush)
-        flush(true, false, false);
+      if (doFlush) {
+        flush(true, false);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "updateDocument");
     }
@@ -2226,7 +1411,7 @@ public class IndexWriter implements Closeable {
 
   // for test purpose
   final synchronized int getNumBufferedDocuments(){
-    return docWriter.getNumDocsInRAM();
+    return docWriter.getNumDocs();
   }
 
   // for test purpose
@@ -2239,13 +1424,13 @@ public class IndexWriter implements Closeable {
   }
 
   // for test purpose
-  final synchronized int getFlushCount() {
-    return flushCount;
+  final int getFlushCount() {
+    return flushCount.get();
   }
 
   // for test purpose
-  final synchronized int getFlushDeletesCount() {
-    return flushDeletesCount;
+  final int getFlushDeletesCount() {
+    return flushDeletesCount.get();
   }
 
   final String newSegmentName() {
@@ -2258,6 +1443,7 @@ public class IndexWriter implements Closeable {
       // name that was previously returned which can cause
       // problems at least with ConcurrentMergeScheduler.
       changeCount++;
+      segmentInfos.changed();
       return "_" + Integer.toString(segmentInfos.counter++, Character.MAX_RADIX);
     }
   }
@@ -2324,7 +1510,7 @@ public class IndexWriter implements Closeable {
    *
    * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
-   * @see LogMergePolicy#findMergesForOptimize
+   * @see MergePolicy#findMergesForOptimize
   */
   public void optimize() throws CorruptIndexException, IOException {
     optimize(true);
@@ -2376,10 +1562,12 @@ public class IndexWriter implements Closeable {
     if (maxNumSegments < 1)
       throw new IllegalArgumentException("maxNumSegments must be >= 1; got " + maxNumSegments);
 
-    if (infoStream != null)
+    if (infoStream != null) {
       message("optimize: index now " + segString());
+      message("now flush at optimize");
+    }
 
-    flush(true, false, true);
+    flush(true, true);
 
     synchronized(this) {
       resetMergeExceptions();
@@ -2660,16 +1848,23 @@ public class IndexWriter implements Closeable {
       message("rollback");
     }
 
-    docWriter.pauseAllThreads();
-
     try {
-      finishMerges(false);
+      synchronized(this) {
+        finishMerges(false);
+        stopMerges = true;
+      }
+
+      if (infoStream != null ) {
+        message("rollback: done finish merges");
+      }
 
       // Must pre-close these two, in case they increment
       // changeCount so that we can then set it to false
       // before calling closeInternal
       mergePolicy.close();
       mergeScheduler.close();
+
+      bufferedDeletes.clear();
 
       synchronized(this) {
 
@@ -2709,7 +1904,6 @@ public class IndexWriter implements Closeable {
     } finally {
       synchronized(this) {
         if (!success) {
-          docWriter.resumeAllThreads();
           closing = false;
           notifyAll();
           if (infoStream != null)
@@ -2737,7 +1931,6 @@ public class IndexWriter implements Closeable {
    *    will receive {@link MergePolicy.MergeAbortedException}s.
    */
   public synchronized void deleteAll() throws IOException {
-    docWriter.pauseAllThreads();
     try {
 
       // Abort any running merges
@@ -2745,7 +1938,6 @@ public class IndexWriter implements Closeable {
 
       // Remove any buffered docs
       docWriter.abort();
-      docWriter.setFlushedDocCount(0);
 
       // Remove all segments
       segmentInfos.clear();
@@ -2759,10 +1951,10 @@ public class IndexWriter implements Closeable {
 
       // Mark that the index has changed
       ++changeCount;
+      segmentInfos.changed();
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteAll");
     } finally {
-      docWriter.resumeAllThreads();
       if (infoStream != null) {
         message("hit exception during deleteAll");
       }
@@ -2838,8 +2030,9 @@ public class IndexWriter implements Closeable {
    * the index files referenced exist (correctly) in the
    * index directory.
    */
-  private synchronized void checkpoint() throws IOException {
+  synchronized void checkpoint() throws IOException {
     changeCount++;
+    segmentInfos.changed();
     deleter.checkpoint(segmentInfos, false);
   }
 
@@ -2914,7 +2107,7 @@ public class IndexWriter implements Closeable {
     try {
       if (infoStream != null)
         message("flush at addIndexes(Directory...)");
-      flush(false, false, true);
+      flush(false, true);
 
       int docCount = 0;
       List<SegmentInfo> infos = new ArrayList<SegmentInfo>();
@@ -2924,7 +2117,8 @@ public class IndexWriter implements Closeable {
         }
         SegmentInfos sis = new SegmentInfos(codecs); // read infos from dir
         sis.read(dir, codecs);
-        Map<String, String> dsNames = new HashMap<String, String>();
+        final Set<String> dsFilesCopied = new HashSet<String>();
+        final Map<String, String> dsNames = new HashMap<String, String>();
         for (SegmentInfo info : sis) {
           assert !infos.contains(info): "dup info dir=" + info.dir + " name=" + info.name;
 
@@ -2933,7 +2127,7 @@ public class IndexWriter implements Closeable {
           String dsName = info.getDocStoreSegment();
 
           if (infoStream != null) {
-            message("addIndexes: process segment origName=" + info.name + " newName=" + newSegName + " dsName=" + dsName);
+            message("addIndexes: process segment origName=" + info.name + " newName=" + newSegName + " dsName=" + dsName + " info=" + info);
           }
 
           // Determine if the doc store of this segment needs to be copied. It's
@@ -2943,22 +2137,32 @@ public class IndexWriter implements Closeable {
           // NOTE: pre-3x segments include a null DSName if they don't share doc
           // store. So the following code ensures we don't accidentally insert
           // 'null' to the map.
-          String newDsName = newSegName;
-          boolean docStoreCopied = false;
-          if (dsNames.containsKey(dsName)) {
-            newDsName = dsNames.get(dsName);
-            docStoreCopied = true;
-          } else if (dsName != null) {
-            dsNames.put(dsName, newSegName);
-            docStoreCopied = false;
+          final String newDsName;
+          if (dsName != null) {
+            if (dsNames.containsKey(dsName)) {
+              newDsName = dsNames.get(dsName);
+            } else {
+              dsNames.put(dsName, newSegName);
+              newDsName = newSegName;
+            }
+          } else {
+            newDsName = newSegName;
           }
 
           // Copy the segment files
-          for (String file : info.files()) {
-            if (docStoreCopied && IndexFileNames.isDocStoreFile(file)) {
-              continue;
-            } 
-            dir.copy(directory, file, newSegName + IndexFileNames.stripSegmentName(file));
+          for (String file: info.files()) {
+            final String newFileName;
+            if (IndexFileNames.isDocStoreFile(file)) {
+              newFileName = newDsName + IndexFileNames.stripSegmentName(file);
+              if (dsFilesCopied.contains(newFileName)) {
+                continue;
+              }
+              dsFilesCopied.add(newFileName);
+            } else {
+              newFileName = newSegName + IndexFileNames.stripSegmentName(file);
+            }
+            assert !directory.fileExists(newFileName): "file \"" + newFileName + "\" already exists";
+            dir.copy(directory, file, newFileName);
           }
 
           // Update SI appropriately
@@ -2973,9 +2177,6 @@ public class IndexWriter implements Closeable {
       synchronized (this) {
         ensureOpen();
         segmentInfos.addAll(infos);
-        // Notify DocumentsWriter that the flushed count just increased
-        docWriter.updateFlushedDocCount(docCount);
-
         checkpoint();
       }
 
@@ -3003,61 +2204,44 @@ public class IndexWriter implements Closeable {
    * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
-  public void addIndexes(IndexReader... readers)
-    throws CorruptIndexException, IOException {
+  public void addIndexes(IndexReader... readers) throws CorruptIndexException, IOException {
     ensureOpen();
 
     try {
       String mergedName = newSegmentName();
       SegmentMerger merger = new SegmentMerger(directory, termIndexInterval,
-          mergedName, null, codecs, payloadProcessorProvider);
+                                               mergedName, null, codecs, payloadProcessorProvider,
+                                               ((FieldInfos) docWriter.getFieldInfos().clone()));
       
       for (IndexReader reader : readers)      // add new indexes
         merger.add(reader);
       
       int docCount = merger.merge();                // merge 'em
       
-      SegmentInfo info = null;
-      synchronized(this) {
-        info = new SegmentInfo(mergedName, docCount, directory, false, -1,
-            null, false, merger.hasProx(), merger.getSegmentCodecs());
-        setDiagnostics(info, "addIndexes(IndexReader...)");
-        segmentInfos.add(info);
-        checkpoint();
-        
-        // Notify DocumentsWriter that the flushed count just increased
-        docWriter.updateFlushedDocCount(docCount);
+      SegmentInfo info = new SegmentInfo(mergedName, docCount, directory,
+                                         false, merger.fieldInfos().hasProx(), merger.getSegmentCodecs(),
+                                         merger.fieldInfos().hasVectors());
+      setDiagnostics(info, "addIndexes(IndexReader...)");
+
+      boolean useCompoundFile;
+      synchronized(this) { // Guard segmentInfos
+        useCompoundFile = mergePolicy.useCompoundFile(segmentInfos, info);
       }
       
       // Now create the compound file if needed
-      if (mergePolicy instanceof LogMergePolicy && getUseCompoundFile()) {
+      if (useCompoundFile) {
+        merger.createCompoundFile(mergedName + ".cfs", info);
+        
+        // delete new non cfs files directly: they were never
+        // registered with IFD
+        deleter.deleteNewFiles(info.files());
+        info.setUseCompoundFile(true);
+      }
 
-        List<String> files = null;
-
-        synchronized(this) {
-          // Must incRef our files so that if another thread
-          // is running merge/optimize, it doesn't delete our
-          // segment's files before we have a chance to
-          // finish making the compound file.
-          if (segmentInfos.contains(info)) {
-            files = info.files();
-            deleter.incRef(files);
-          }
-        }
-
-        if (files != null) {
-          try {
-            merger.createCompoundFile(mergedName + ".cfs", info);
-            synchronized(this) {
-              info.setUseCompoundFile(true);
-              checkpoint();
-            }
-          } finally {
-            synchronized(this) {
-              deleter.decRef(files);
-            }
-          }
-        }
+      // Register the new segment
+      synchronized(this) {
+        segmentInfos.add(info);
+        checkpoint();
       }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "addIndexes(IndexReader...)");
@@ -3131,7 +2315,7 @@ public class IndexWriter implements Closeable {
     if (infoStream != null)
       message("prepareCommit: flush");
 
-    flush(true, true, true);
+    flush(true, true);
 
     startCommit(commitUserData);
   }
@@ -3248,12 +2432,9 @@ public class IndexWriter implements Closeable {
    * to the Directory.
    * @param triggerMerge if true, we may merge segments (if
    *  deletes or docs were flushed) if necessary
-   * @param flushDocStores if false we are allowed to keep
-   *  doc stores open to share with the next segment
    * @param flushDeletes whether pending deletes should also
-   *  be flushed
    */
-  protected final void flush(boolean triggerMerge, boolean flushDocStores, boolean flushDeletes) throws CorruptIndexException, IOException {
+  protected final void flush(boolean triggerMerge, boolean flushDeletes) throws CorruptIndexException, IOException {
 
     // NOTE: this method cannot be sync'd because
     // maybeMerge() in turn calls mergeScheduler.merge which
@@ -3264,196 +2445,91 @@ public class IndexWriter implements Closeable {
 
     // We can be called during close, when closing==true, so we must pass false to ensureOpen:
     ensureOpen(false);
-    if (doFlush(flushDocStores, flushDeletes) && triggerMerge)
+    if (doFlush(flushDeletes) && triggerMerge) {
       maybeMerge();
-  }
-
-  // TODO: this method should not have to be entirely
-  // synchronized, ie, merges should be allowed to commit
-  // even while a flush is happening
-  private synchronized final boolean doFlush(boolean flushDocStores, boolean flushDeletes) throws CorruptIndexException, IOException {
-    try {
-      try {
-        return doFlushInternal(flushDocStores, flushDeletes);
-      } finally {
-        docWriter.balanceRAM();
-      }
-    } finally {
-      docWriter.clearFlushPending();
     }
   }
 
   // TODO: this method should not have to be entirely
   // synchronized, ie, merges should be allowed to commit
   // even while a flush is happening
-  private synchronized final boolean doFlushInternal(boolean flushDocStores, boolean flushDeletes) throws CorruptIndexException, IOException {
+  private synchronized boolean doFlush(boolean applyAllDeletes) throws CorruptIndexException, IOException {
 
     if (hitOOM) {
       throw new IllegalStateException("this writer hit an OutOfMemoryError; cannot flush");
     }
 
-    ensureOpen(false);
+    doBeforeFlush();
 
     assert testPoint("startDoFlush");
 
-    doBeforeFlush();
-    
-    flushCount++;
+    // We may be flushing because it was triggered by doc
+    // count, del count, ram usage (in which case flush
+    // pending is already set), or we may be flushing
+    // due to external event eg getReader or commit is
+    // called (in which case we now set it, and this will
+    // pause all threads):
+    flushControl.setFlushPendingNoWait("explicit flush");
 
-    // If we are flushing because too many deletes
-    // accumulated, then we should apply the deletes to free
-    // RAM:
-    flushDeletes |= docWriter.doApplyDeletes();
-
-    // Make sure no threads are actively adding a document.
-    // Returns true if docWriter is currently aborting, in
-    // which case we skip flushing this segment
-    if (infoStream != null) {
-      message("flush: now pause all indexing threads");
-    }
-    if (docWriter.pauseAllThreads()) {
-      docWriter.resumeAllThreads();
-      return false;
-    }
+    boolean success = false;
 
     try {
 
-      SegmentInfo newSegment = null;
-
-      final int numDocs = docWriter.getNumDocsInRAM();
-
-      // Always flush docs if there are any
-      boolean flushDocs = numDocs > 0;
-
-      String docStoreSegment = docWriter.getDocStoreSegment();
-
-      assert docStoreSegment != null || numDocs == 0: "dss=" + docStoreSegment + " numDocs=" + numDocs;
-
-      if (docStoreSegment == null)
-        flushDocStores = false;
-
-      int docStoreOffset = docWriter.getDocStoreOffset();
-
-      boolean docStoreIsCompoundFile = false;
-
       if (infoStream != null) {
-        message("  flush: segment=" + docWriter.getSegment() +
-                " docStoreSegment=" + docWriter.getDocStoreSegment() +
-                " docStoreOffset=" + docStoreOffset +
-                " flushDocs=" + flushDocs +
-                " flushDeletes=" + flushDeletes +
-                " flushDocStores=" + flushDocStores +
-                " numDocs=" + numDocs +
-                " numBufDelTerms=" + docWriter.getNumBufferedDeleteTerms());
+        message("  start flush: applyAllDeletes=" + applyAllDeletes);
         message("  index before flush " + segString());
       }
-
-      // Check if the doc stores must be separately flushed
-      // because other segments, besides the one we are about
-      // to flush, reference it
-      if (flushDocStores && (!flushDocs || !docWriter.getSegment().equals(docWriter.getDocStoreSegment()))) {
-        // We must separately flush the doc store
-        if (infoStream != null)
-          message("  flush shared docStore segment " + docStoreSegment);
-      
-        docStoreIsCompoundFile = flushDocStores();
-        flushDocStores = false;
-      }
-
-      String segment = docWriter.getSegment();
-
-      // If we are flushing docs, segment must not be null:
-      assert segment != null || !flushDocs;
-
-      if (flushDocs) {
-
-        boolean success = false;
-        final int flushedDocCount;
-
-        try {
-          flushedDocCount = docWriter.flush(flushDocStores);
-          if (infoStream != null) {
-            message("flushedFiles=" + docWriter.getFlushedFiles());
-          }
-          success = true;
-        } finally {
-          if (!success) {
-            if (infoStream != null)
-              message("hit exception flushing segment " + segment);
-            deleter.refresh(segment);
-          }
-        }
-        
-        if (0 == docStoreOffset && flushDocStores) {
-          // This means we are flushing private doc stores
-          // with this segment, so it will not be shared
-          // with other segments
-          assert docStoreSegment != null;
-          assert docStoreSegment.equals(segment);
-          docStoreOffset = -1;
-          docStoreIsCompoundFile = false;
-          docStoreSegment = null;
-        }
-
-        // Create new SegmentInfo, but do not add to our
-        // segmentInfos until deletes are flushed
-        // successfully.
-        newSegment = new SegmentInfo(segment,
-                                     flushedDocCount,
-                                     directory, false, docStoreOffset,
-                                     docStoreSegment, docStoreIsCompoundFile,
-                                     docWriter.hasProx(),    
-                                     docWriter.getSegmentCodecs());
-
-        if (infoStream != null) {
-          message("flush codec=" + docWriter.getSegmentCodecs());
-        }
+    
+      final SegmentInfo newSegment = docWriter.flush(this, deleter, mergePolicy, segmentInfos);
+      if (newSegment != null) {
         setDiagnostics(newSegment, "flush");
-      }
-
-      docWriter.pushDeletes();
-
-      if (flushDocs) {
         segmentInfos.add(newSegment);
         checkpoint();
       }
 
-      if (flushDocs && mergePolicy.useCompoundFile(segmentInfos, newSegment)) {
-        // Now build compound file
-        boolean success = false;
-        try {
-          docWriter.createCompoundFile(segment);
-          success = true;
-        } finally {
-          if (!success) {
-            if (infoStream != null)
-              message("hit exception creating compound file for newly flushed segment " + segment);
-            deleter.deleteFile(IndexFileNames.segmentFileName(segment, "", IndexFileNames.COMPOUND_FILE_EXTENSION));
+      if (!applyAllDeletes) {
+        // If deletes alone are consuming > 1/2 our RAM
+        // buffer, force them all to apply now. This is to
+        // prevent too-frequent flushing of a long tail of
+        // tiny segments:
+        if (flushControl.getFlushDeletes() ||
+            (config.getRAMBufferSizeMB() != IndexWriterConfig.DISABLE_AUTO_FLUSH &&
+             bufferedDeletes.bytesUsed() > (1024*1024*config.getRAMBufferSizeMB()/2))) {
+          applyAllDeletes = true;
+          if (infoStream != null) {
+            message("force apply deletes bytesUsed=" + bufferedDeletes.bytesUsed() + " vs ramBuffer=" + (1024*1024*config.getRAMBufferSizeMB()));
           }
         }
-
-        newSegment.setUseCompoundFile(true);
-        checkpoint();
       }
 
-      if (flushDeletes) {
-        applyDeletes();
+      if (applyAllDeletes) {
+        if (infoStream != null) {
+          message("apply all deletes during flush");
+        }
+        flushDeletesCount.incrementAndGet();
+        if (bufferedDeletes.applyDeletes(readerPool, segmentInfos, segmentInfos)) {
+          checkpoint();
+        }
+        flushControl.clearDeletes();
+      } else if (infoStream != null) {
+        message("don't apply deletes now delTermCount=" + bufferedDeletes.numTerms() + " bytesUsed=" + bufferedDeletes.bytesUsed());
       }
-      
-      if (flushDocs)
-        checkpoint();
 
       doAfterFlush();
+      flushCount.incrementAndGet();
 
-      return flushDocs;
+      success = true;
+
+      return newSegment != null;
 
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "doFlush");
       // never hit
       return false;
     } finally {
-      docWriter.clearFlushPending();
-      docWriter.resumeAllThreads();
+      flushControl.clearFlushPending();
+      if (!success && infoStream != null)
+        message("hit exception during flush");
     }
   }
 
@@ -3462,14 +2538,14 @@ public class IndexWriter implements Closeable {
    */
   public final long ramSizeInBytes() {
     ensureOpen();
-    return docWriter.getRAMUsed();
+    return docWriter.bytesUsed() + bufferedDeletes.bytesUsed();
   }
 
   /** Expert:  Return the number of documents currently
    *  buffered in RAM. */
   public final synchronized int numRamDocs() {
     ensureOpen();
-    return docWriter.getNumDocsInRAM();
+    return docWriter.getNumDocs();
   }
 
   private int ensureContiguousMerge(MergePolicy.OneMerge merge) {
@@ -3505,7 +2581,7 @@ public class IndexWriter implements Closeable {
    *  saves the resulting deletes file (incrementing the
    *  delete generation for merge.info).  If no deletes were
    *  flushed, no new deletes file is saved. */
-  synchronized private void commitMergedDeletes(MergePolicy.OneMerge merge, SegmentReader mergeReader) throws IOException {
+  synchronized private void commitMergedDeletes(MergePolicy.OneMerge merge, SegmentReader mergedReader) throws IOException {
 
     assert testPoint("startCommitMergeDeletes");
 
@@ -3544,7 +2620,7 @@ public class IndexWriter implements Closeable {
               assert currentDelDocs.get(j);
             else {
               if (currentDelDocs.get(j)) {
-                mergeReader.doDelete(docUpto);
+                mergedReader.doDelete(docUpto);
                 delCount++;
               }
               docUpto++;
@@ -3558,7 +2634,7 @@ public class IndexWriter implements Closeable {
         // does:
         for(int j=0; j<docCount; j++) {
           if (currentDelDocs.get(j)) {
-            mergeReader.doDelete(docUpto);
+            mergedReader.doDelete(docUpto);
             delCount++;
           }
           docUpto++;
@@ -3568,13 +2644,13 @@ public class IndexWriter implements Closeable {
         docUpto += info.docCount;
     }
 
-    assert mergeReader.numDeletedDocs() == delCount;
+    assert mergedReader.numDeletedDocs() == delCount;
 
-    mergeReader.hasChanges = delCount > 0;
+    mergedReader.hasChanges = delCount > 0;
   }
 
   /* FIXME if we want to support non-contiguous segment merges */
-  synchronized private boolean commitMerge(MergePolicy.OneMerge merge, SegmentMerger merger, int mergedDocCount, SegmentReader mergedReader) throws IOException {
+  synchronized private boolean commitMerge(MergePolicy.OneMerge merge, SegmentReader mergedReader) throws IOException {
 
     assert testPoint("startCommitMerge");
 
@@ -3602,7 +2678,6 @@ public class IndexWriter implements Closeable {
     final int start = ensureContiguousMerge(merge);
 
     commitMergedDeletes(merge, mergedReader);
-    docWriter.remapDeletes(segmentInfos, merger.getDocMaps(), merger.getDelCounts(), merge, mergedDocCount);
       
     // If the doc store we are using has been closed and
     // is in now compound format (but wasn't when we
@@ -3610,12 +2685,10 @@ public class IndexWriter implements Closeable {
     // format as well:
     setMergeDocStoreIsCompoundFile(merge);
 
-    merge.info.setHasProx(merger.hasProx());
-
     segmentInfos.subList(start, start + merge.segments.size()).clear();
     assert !segmentInfos.contains(merge.info);
     segmentInfos.add(start, merge.info);
-
+    
     closeMergeReaders(merge, false);
 
     // Must note the change to segmentInfos so any commits
@@ -3626,6 +2699,12 @@ public class IndexWriter implements Closeable {
     // them so that they don't bother writing them to
     // disk, updating SegmentInfo, etc.:
     readerPool.clear(merge.segments);
+    
+    // remove pending deletes of the segments 
+    // that were merged, moving them onto the segment just
+    // before the merged segment
+    // Lock order: IW -> BD
+    bufferedDeletes.commitMerge(merge);
 
     if (merge.optimize) {
       // cascade the optimize:
@@ -3785,16 +2864,23 @@ public class IndexWriter implements Closeable {
   final synchronized void mergeInit(MergePolicy.OneMerge merge) throws IOException {
     boolean success = false;
     try {
+      // Lock order: IW -> BD
+      if (bufferedDeletes.applyDeletes(readerPool, segmentInfos, merge.segments)) {
+        checkpoint();
+      }
       _mergeInit(merge);
       success = true;
     } finally {
       if (!success) {
+        if (infoStream != null) {
+          message("hit exception in mergeInit");
+        }
         mergeFinish(merge);
       }
     }
   }
 
-  final synchronized private void _mergeInit(MergePolicy.OneMerge merge) throws IOException {
+  synchronized private void _mergeInit(MergePolicy.OneMerge merge) throws IOException {
 
     assert testPoint("startMergeInit");
 
@@ -3812,126 +2898,19 @@ public class IndexWriter implements Closeable {
     if (merge.isAborted())
       return;
 
-    applyDeletes();
-
-    final SegmentInfos sourceSegments = merge.segments;
-    final int end = sourceSegments.size();
-
-    // Check whether this merge will allow us to skip
-    // merging the doc stores (stored field & vectors).
-    // This is a very substantial optimization (saves tons
-    // of IO).
-
-    Directory lastDir = directory;
-    String lastDocStoreSegment = null;
-    int next = -1;
-
-    boolean mergeDocStores = false;
-    boolean doFlushDocStore = false;
-    final String currentDocStoreSegment = docWriter.getDocStoreSegment();
-
-    // Test each segment to be merged: check if we need to
-    // flush/merge doc stores
-    for (int i = 0; i < end; i++) {
-      SegmentInfo si = sourceSegments.info(i);
-
-      // If it has deletions we must merge the doc stores
-      if (si.hasDeletions())
-        mergeDocStores = true;
-
-      // If it has its own (private) doc stores we must
-      // merge the doc stores
-      if (-1 == si.getDocStoreOffset())
-        mergeDocStores = true;
-
-      // If it has a different doc store segment than
-      // previous segments, we must merge the doc stores
-      String docStoreSegment = si.getDocStoreSegment();
-      if (docStoreSegment == null)
-        mergeDocStores = true;
-      else if (lastDocStoreSegment == null)
-        lastDocStoreSegment = docStoreSegment;
-      else if (!lastDocStoreSegment.equals(docStoreSegment))
-        mergeDocStores = true;
-
-      // Segments' docScoreOffsets must be in-order,
-      // contiguous.  For the default merge policy now
-      // this will always be the case but for an arbitrary
-      // merge policy this may not be the case
-      if (-1 == next)
-        next = si.getDocStoreOffset() + si.docCount;
-      else if (next != si.getDocStoreOffset())
-        mergeDocStores = true;
-      else
-        next = si.getDocStoreOffset() + si.docCount;
-      
-      // If the segment comes from a different directory
-      // we must merge
-      if (lastDir != si.dir)
-        mergeDocStores = true;
-
-      // If the segment is referencing the current "live"
-      // doc store outputs then we must merge
-      if (si.getDocStoreOffset() != -1 && currentDocStoreSegment != null && si.getDocStoreSegment().equals(currentDocStoreSegment)) {
-        doFlushDocStore = true;
-      }
-    }
-
-    // if a mergedSegmentWarmer is installed, we must merge
-    // the doc stores because we will open a full
-    // SegmentReader on the merged segment:
-    if (!mergeDocStores && mergedSegmentWarmer != null && currentDocStoreSegment != null && lastDocStoreSegment != null && lastDocStoreSegment.equals(currentDocStoreSegment)) {
-      mergeDocStores = true;
-    }
-
-    final int docStoreOffset;
-    final String docStoreSegment;
-    final boolean docStoreIsCompoundFile;
-
-    if (mergeDocStores) {
-      docStoreOffset = -1;
-      docStoreSegment = null;
-      docStoreIsCompoundFile = false;
-    } else {
-      SegmentInfo si = sourceSegments.info(0);        
-      docStoreOffset = si.getDocStoreOffset();
-      docStoreSegment = si.getDocStoreSegment();
-      docStoreIsCompoundFile = si.getDocStoreIsCompoundFile();
-    }
-
-    if (mergeDocStores && doFlushDocStore) {
-      // SegmentMerger intends to merge the doc stores
-      // (stored fields, vectors), and at least one of the
-      // segments to be merged refers to the currently
-      // live doc stores.
-
-      // TODO: if we know we are about to merge away these
-      // newly flushed doc store files then we should not
-      // make compound file out of them...
-      if (infoStream != null)
-        message("now flush at merge");
-      doFlush(true, false);
-      updatePendingMerges(1, false);
-    }
-
-    merge.mergeDocStores = mergeDocStores;
-
     // Bind a new segment name here so even with
     // ConcurrentMergePolicy we keep deterministic segment
     // names.
-    merge.info = new SegmentInfo(newSegmentName(), 0,
-                                 directory, false, docStoreOffset,
-                                 docStoreSegment,
-                                 docStoreIsCompoundFile,
-                                 false,
-                                 null);
-
+    merge.info = new SegmentInfo(newSegmentName(), 0, directory, false, false, null, false);
 
     Map<String,String> details = new HashMap<String,String>();
     details.put("optimize", Boolean.toString(merge.optimize));
-    details.put("mergeFactor", Integer.toString(end));
-    details.put("mergeDocStores", Boolean.toString(mergeDocStores));
+    details.put("mergeFactor", Integer.toString(merge.segments.size()));
     setDiagnostics(merge.info, "merge", details);
+
+    if (infoStream != null) {
+      message("merge seg=" + merge.info.name);
+    }
 
     // Also enroll the merged segment into mergingSegments;
     // this prevents it from getting selected for a merge
@@ -3998,15 +2977,16 @@ public class IndexWriter implements Closeable {
     }
   }
 
-  private final synchronized void closeMergeReaders(MergePolicy.OneMerge merge, boolean suppressExceptions) throws IOException {
+  private synchronized void closeMergeReaders(MergePolicy.OneMerge merge, boolean suppressExceptions) throws IOException {
     final int numSegments = merge.segments.size();
     if (suppressExceptions) {
       // Suppress any new exceptions so we throw the
       // original cause
+      boolean anyChanges = false;
       for (int i=0;i<numSegments;i++) {
         if (merge.readers[i] != null) {
           try {
-            readerPool.release(merge.readers[i], false);
+            anyChanges |= readerPool.release(merge.readers[i], false);
           } catch (Throwable t) {
           }
           merge.readers[i] = null;
@@ -4022,6 +3002,9 @@ public class IndexWriter implements Closeable {
           assert merge.readersClone[i].getRefCount() == 0: "refCount should be 0 but is " + merge.readersClone[i].getRefCount();
           merge.readersClone[i] = null;
         }
+      }
+      if (anyChanges) {
+        checkpoint();
       }
     } else {
       for (int i=0;i<numSegments;i++) {
@@ -4043,37 +3026,30 @@ public class IndexWriter implements Closeable {
   /** Does the actual (time-consuming) work of the merge,
    *  but without holding synchronized lock on IndexWriter
    *  instance */
-  final private int mergeMiddle(MergePolicy.OneMerge merge) 
+  private int mergeMiddle(MergePolicy.OneMerge merge)
     throws CorruptIndexException, IOException {
     
     merge.checkAborted(directory);
 
     final String mergedName = merge.info.name;
     
-    SegmentMerger merger = null;
-
     int mergedDocCount = 0;
 
     SegmentInfos sourceSegments = merge.segments;
     final int numSegments = sourceSegments.size();
 
-    if (infoStream != null)
-      message("merging " + merge.segString(directory));
+    SegmentMerger merger = new SegmentMerger(directory, termIndexInterval, mergedName, merge,
+                                             codecs, payloadProcessorProvider,
+                                             ((FieldInfos) docWriter.getFieldInfos().clone()));
 
-    merger = new SegmentMerger(directory, termIndexInterval, mergedName, merge, codecs, payloadProcessorProvider);
+    if (infoStream != null) {
+      message("merging " + merge.segString(directory) + " mergeVectors=" + merger.fieldInfos().hasVectors());
+    }
 
+    merge.info.setHasVectors(merger.fieldInfos().hasVectors());
     merge.readers = new SegmentReader[numSegments];
     merge.readersClone = new SegmentReader[numSegments];
 
-    boolean mergeDocStores = false;
-
-    final String currentDocStoreSegment;
-    synchronized(this) {
-      currentDocStoreSegment = docWriter.getDocStoreSegment();
-    }
-
-    boolean currentDSSMerged = false;
-      
     // This is try/finally to make sure merger's readers are
     // closed:
     boolean success = false;
@@ -4085,7 +3061,7 @@ public class IndexWriter implements Closeable {
 
         // Hold onto the "live" reader; we will use this to
         // commit merged deletes
-        SegmentReader reader = merge.readers[i] = readerPool.get(info, merge.mergeDocStores,
+        SegmentReader reader = merge.readers[i] = readerPool.get(info, true,
                                                                  MERGE_READ_BUFFER_SIZE,
                                                                  -config.getReaderTermsIndexDivisor());
 
@@ -4094,14 +3070,6 @@ public class IndexWriter implements Closeable {
         // need readers that will not change
         SegmentReader clone = merge.readersClone[i] = (SegmentReader) reader.clone(true);
         merger.add(clone);
-
-        if (clone.hasDeletions()) {
-          mergeDocStores = true;
-        }
-        
-        if (info.getDocStoreOffset() != -1 && currentDocStoreSegment != null) {
-          currentDSSMerged |= currentDocStoreSegment.equals(info.getDocStoreSegment());
-        }
 
         totDocCount += clone.numDocs();
       }
@@ -4112,45 +3080,15 @@ public class IndexWriter implements Closeable {
 
       merge.checkAborted(directory);
 
-      // If deletions have arrived and it has now become
-      // necessary to merge doc stores, go and open them:
-      if (mergeDocStores && !merge.mergeDocStores) {
-        merge.mergeDocStores = true;
-        synchronized(this) {
-
-          // If 1) we must now merge doc stores, and 2) at
-          // least one of the segments we are merging uses
-          // the doc store we are now writing to, we must at
-          // this point force this doc store closed (by
-          // calling flush).  If we didn't do this then the
-          // readers will attempt to open an IndexInput
-          // on files that have still-open IndexOutputs
-          // against them:
-          if (currentDSSMerged) {
-            if (infoStream != null) {
-              message("now flush at mergeMiddle");
-            }
-            doFlush(true, false);
-            updatePendingMerges(1, false);
-          }
-        }
-
-        for(int i=0;i<numSegments;i++) {
-          merge.readersClone[i].openDocStores();
-        }
-
-        // Clear DSS
-        merge.info.setDocStore(-1, null, false);
-      }
-
       // This is where all the work happens:
-      mergedDocCount = merge.info.docCount = merger.merge(merge.mergeDocStores);
+      mergedDocCount = merge.info.docCount = merger.merge();
 
       // Record which codec was used to write the segment
       merge.info.setSegmentCodecs(merger.getSegmentCodecs());
 
       if (infoStream != null) {
         message("merge segmentCodecs=" + merger.getSegmentCodecs());
+        message("merge store matchedCount=" + merger.getMatchedSubReaderCount() + " vs " + numSegments);
       }
       
       assert mergedDocCount == totDocCount;
@@ -4159,10 +3097,14 @@ public class IndexWriter implements Closeable {
       // because codec must know if prox was written for
       // this segment:
       //System.out.println("merger set hasProx=" + merger.hasProx() + " seg=" + merge.info.name);
-      merge.info.setHasProx(merger.hasProx());
+      merge.info.setHasProx(merger.fieldInfos().hasProx());
 
-      if (merge.useCompoundFile) {
+      boolean useCompoundFile;
+      synchronized (this) { // Guard segmentInfos
+        useCompoundFile = mergePolicy.useCompoundFile(segmentInfos, merge.info);
+      }
 
+      if (useCompoundFile) {
         success = false;
         final String compoundFileName = IndexFileNames.segmentFileName(mergedName, "", IndexFileNames.COMPOUND_FILE_EXTENSION);
 
@@ -4192,7 +3134,7 @@ public class IndexWriter implements Closeable {
 
             synchronized(this) {
               deleter.deleteFile(compoundFileName);
-              deleter.deleteNewFiles(merger.getMergedFiles(merge.info));
+              deleter.deleteNewFiles(merge.info.files());
             }
           }
         }
@@ -4203,7 +3145,7 @@ public class IndexWriter implements Closeable {
 
           // delete new non cfs files directly: they were never
           // registered with IFD
-          deleter.deleteNewFiles(merger.getMergedFiles(merge.info));
+          deleter.deleteNewFiles(merge.info.files());
 
           if (merge.isAborted()) {
             if (infoStream != null) {
@@ -4220,12 +3162,7 @@ public class IndexWriter implements Closeable {
       final int termsIndexDivisor;
       final boolean loadDocStores;
 
-      // if the merged segment warmer was not installed when
-      // this merge was started, causing us to not force
-      // the docStores to close, we can't warm it now
-      final boolean canWarm = merge.info.getDocStoreSegment() == null || currentDocStoreSegment == null || !merge.info.getDocStoreSegment().equals(currentDocStoreSegment);
-
-      if (poolReaders && mergedSegmentWarmer != null && canWarm) {
+      if (poolReaders && mergedSegmentWarmer != null) {
         // Load terms index & doc stores so the segment
         // warmer can run searches, load documents/term
         // vectors
@@ -4246,15 +3183,21 @@ public class IndexWriter implements Closeable {
           mergedSegmentWarmer.warm(mergedReader);
         }
 
-        if (!commitMerge(merge, merger, mergedDocCount, mergedReader)) {
+        if (!commitMerge(merge, mergedReader)) {
           // commitMerge will return false if this merge was aborted
           return 0;
         }
       } finally {
         synchronized(this) {
-          readerPool.release(mergedReader);
+          if (readerPool.release(mergedReader)) {
+            // Must checkpoint after releasing the
+            // mergedReader since it may have written a new
+            // deletes file:
+            checkpoint();
+          }
         }
       }
+
       success = true;
 
     } finally {
@@ -4274,37 +3217,14 @@ public class IndexWriter implements Closeable {
       mergeExceptions.add(merge);
   }
 
-  // Apply buffered deletes to all segments.
-  private final synchronized boolean applyDeletes() throws CorruptIndexException, IOException {
-    assert testPoint("startApplyDeletes");
-    if (infoStream != null) {
-      message("applyDeletes");
-    }
-    flushDeletesCount++;
-    boolean success = false;
-    boolean changed;
-    try {
-      changed = docWriter.applyDeletes(segmentInfos);
-      success = true;
-    } finally {
-      if (!success && infoStream != null) {
-        message("hit exception flushing deletes");
-      }
-    }
-
-    if (changed)
-      checkpoint();
-    return changed;
+  // For test purposes.
+  final int getBufferedDeleteTermsSize() {
+    return docWriter.getPendingDeletes().terms.size();
   }
 
   // For test purposes.
-  final synchronized int getBufferedDeleteTermsSize() {
-    return docWriter.getBufferedDeleteTerms().size();
-  }
-
-  // For test purposes.
-  final synchronized int getNumBufferedDeleteTerms() {
-    return docWriter.getNumBufferedDeleteTerms();
+  final int getNumBufferedDeleteTerms() {
+    return docWriter.getPendingDeletes().numTermDeletes.get();
   }
 
   // utility routines for tests
@@ -4335,7 +3255,7 @@ public class IndexWriter implements Closeable {
     // NOTE: the callers of this method should in theory
     // be able to do simply wait(), but, as a defense
     // against thread timing hazards where notifyAll()
-    // falls to be called, we wait for at most 1 second
+    // fails to be called, we wait for at most 1 second
     // and then return so caller can check if wait
     // conditions are satisfied:
     try {
@@ -4355,7 +3275,7 @@ public class IndexWriter implements Closeable {
       // are called, deleter should know about every
       // file referenced by the current head
       // segmentInfos:
-      assert deleter.exists(fileName) : "IndexFileDeleter doesn't know about file " + fileName;
+      assert deleter.exists(fileName): "IndexFileDeleter doesn't know about file " + fileName;
     }
     return true;
   }
@@ -4394,7 +3314,7 @@ public class IndexWriter implements Closeable {
         }
         
         // First, we clone & incref the segmentInfos we intend
-        // to sync, then, without locking, we sync() each file
+        // to sync, then, without locking, we sync() all files
         // referenced by toSync, in the background.
         
         if (infoStream != null)
@@ -4402,24 +3322,7 @@ public class IndexWriter implements Closeable {
 
         readerPool.commit();
         
-        // It's possible another flush (that did not close
-        // the open do stores) snuck in after the flush we
-        // just did, so we remove any tail segments
-        // referencing the open doc store from the
-        // SegmentInfos we are about to sync (the main
-        // SegmentInfos will keep them):
         toSync = (SegmentInfos) segmentInfos.clone();
-        final String dss = docWriter.getDocStoreSegment();
-        if (dss != null) {
-          while(true) {
-            final String dss2 = toSync.info(toSync.size()-1).getDocStoreSegment();
-            if (dss2 == null || !dss2.equals(dss)) {
-              break;
-            }
-            toSync.remove(toSync.size()-1);
-            changeCount++;
-          }
-        }
         assert filesExist(toSync);
         
         if (commitUserData != null)
@@ -4507,63 +3410,6 @@ public class IndexWriter implements Closeable {
     directory.makeLock(IndexWriter.WRITE_LOCK_NAME).release();
   }
 
-  /**
-   * Specifies maximum field length (in number of tokens/terms) in
-   * {@link IndexWriter} constructors. {@link #setMaxFieldLength(int)} overrides
-   * the value set by the constructor.
-   * 
-   * @deprecated use {@link IndexWriterConfig} and pass
-   *             {@link IndexWriterConfig#UNLIMITED_FIELD_LENGTH} or your own
-   *             value.
-   */
-  @Deprecated
-  public static final class MaxFieldLength {
-
-    private int limit;
-    private String name;
-
-    /**
-     * Private type-safe-enum-pattern constructor.
-     * 
-     * @param name instance name
-     * @param limit maximum field length
-     */
-    private MaxFieldLength(String name, int limit) {
-      this.name = name;
-      this.limit = limit;
-    }
-
-    /**
-     * Public constructor to allow users to specify the maximum field size limit.
-     * 
-     * @param limit The maximum field length
-     */
-    public MaxFieldLength(int limit) {
-      this("User-specified", limit);
-    }
-    
-    public int getLimit() {
-      return limit;
-    }
-    
-    @Override
-    public String toString()
-    {
-      return name + ":" + limit;
-    }
-
-    /** Sets the maximum field length to {@link Integer#MAX_VALUE}. */
-    public static final MaxFieldLength UNLIMITED
-        = new MaxFieldLength("UNLIMITED", Integer.MAX_VALUE);
-
-    /**
-     *  Sets the maximum field length to 
-     * {@link #DEFAULT_MAX_FIELD_LENGTH} 
-     * */
-    public static final MaxFieldLength LIMITED
-        = new MaxFieldLength("LIMITED", DEFAULT_MAX_FIELD_LENGTH);
-  }
-
   /** If {@link #getReader} has been called (ie, this writer
    *  is in near real-time mode), then after a merge
    *  completes, this class can be invoked to warm the
@@ -4581,31 +3427,6 @@ public class IndexWriter implements Closeable {
   }
 
   private IndexReaderWarmer mergedSegmentWarmer;
-
-  /**
-   * Set the merged segment warmer. See {@link IndexReaderWarmer}.
-   * 
-   * @deprecated use
-   *             {@link IndexWriterConfig#setMergedSegmentWarmer}
-   *             instead.
-   */
-  @Deprecated
-  public void setMergedSegmentWarmer(IndexReaderWarmer warmer) {
-    mergedSegmentWarmer = warmer;
-    // Required so config.getMergedSegmentWarmer returns the right value. But
-    // this will go away together with the method in 4.0.
-    config.setMergedSegmentWarmer(mergedSegmentWarmer);
-  }
-
-  /**
-   * Returns the current merged segment warmer. See {@link IndexReaderWarmer}.
-   * 
-   * @deprecated use {@link IndexWriterConfig#getMergedSegmentWarmer()} instead.
-   */
-  @Deprecated
-  public IndexReaderWarmer getMergedSegmentWarmer() {
-    return mergedSegmentWarmer;
-  }
 
   private void handleOOM(OutOfMemoryError oom, String location) {
     if (infoStream != null) {
@@ -4625,24 +3446,13 @@ public class IndexWriter implements Closeable {
   //   finishStartCommit
   //   startCommitMergeDeletes
   //   startMergeInit
-  //   startApplyDeletes
   //   DocumentsWriter.ThreadState.init start
   boolean testPoint(String name) {
     return true;
   }
 
   synchronized boolean nrtIsCurrent(SegmentInfos infos) {
-    if (!infos.equals(segmentInfos)) {
-      // if any structural changes (new segments), we are
-      // stale
-      return false;
-    } else if (infos.getGeneration() != segmentInfos.getGeneration()) {
-      // if any commit took place since we were opened, we
-      // are stale
-      return false;
-    } else {
-      return !docWriter.anyChanges();
-    }
+    return infos.version == segmentInfos.version && !docWriter.anyChanges() && !bufferedDeletes.any();
   }
 
   synchronized boolean isClosed() {
@@ -4679,7 +3489,6 @@ public class IndexWriter implements Closeable {
     deleter.revisitPolicy();
   }
 
-
   /**
    * Sets the {@link PayloadProcessorProvider} to use when merging payloads.
    * Note that the given <code>pcp</code> will be invoked for every segment that
@@ -4710,4 +3519,123 @@ public class IndexWriter implements Closeable {
     return payloadProcessorProvider;
   }
 
+  // decides when flushes happen
+  final class FlushControl {
+
+    private boolean flushPending;
+    private boolean flushDeletes;
+    private int delCount;
+    private int docCount;
+    private boolean flushing;
+
+    private synchronized boolean setFlushPending(String reason, boolean doWait) {
+      if (flushPending || flushing) {
+        if (doWait) {
+          while(flushPending || flushing) {
+            try {
+              wait();
+            } catch (InterruptedException ie) {
+              throw new ThreadInterruptedException(ie);
+            }
+          }
+        }
+        return false;
+      } else {
+        if (infoStream != null) {
+          message("now trigger flush reason=" + reason);
+        }
+        flushPending = true;
+        return flushPending;
+      }
+    }
+
+    public synchronized void setFlushPendingNoWait(String reason) {
+      setFlushPending(reason, false);
+    }
+
+    public synchronized boolean getFlushPending() {
+      return flushPending;
+    }
+
+    public synchronized boolean getFlushDeletes() {
+      return flushDeletes;
+    }
+
+    public synchronized void clearFlushPending() {
+      if (infoStream != null) {
+        message("clearFlushPending");
+      }
+      flushPending = false;
+      flushDeletes = false;
+      docCount = 0;
+      notifyAll();
+    }
+
+    public synchronized void clearDeletes() {
+      delCount = 0;
+    }
+
+    public synchronized boolean waitUpdate(int docInc, int delInc) {
+      return waitUpdate(docInc, delInc, false);
+    }
+
+    public synchronized boolean waitUpdate(int docInc, int delInc, boolean skipWait) {
+      while(flushPending) {
+        try {
+          wait();
+        } catch (InterruptedException ie) {
+          throw new ThreadInterruptedException(ie);
+        }
+      }
+
+      // skipWait is only used when a thread is BOTH adding
+      // a doc and buffering a del term, and, the adding of
+      // the doc already triggered a flush
+      if (skipWait) {
+        docCount += docInc;
+        delCount += delInc;
+        return false;
+      }
+
+      final int maxBufferedDocs = config.getMaxBufferedDocs();
+      if (maxBufferedDocs != IndexWriterConfig.DISABLE_AUTO_FLUSH &&
+          (docCount+docInc) >= maxBufferedDocs) {
+        return setFlushPending("maxBufferedDocs", true);
+      }
+      docCount += docInc;
+
+      final int maxBufferedDeleteTerms = config.getMaxBufferedDeleteTerms();
+      if (maxBufferedDeleteTerms != IndexWriterConfig.DISABLE_AUTO_FLUSH &&
+          (delCount+delInc) >= maxBufferedDeleteTerms) {
+        flushDeletes = true;
+        return setFlushPending("maxBufferedDeleteTerms", true);
+      }
+      delCount += delInc;
+
+      return flushByRAMUsage("add delete/doc");
+    }
+
+    public synchronized boolean flushByRAMUsage(String reason) {
+      final double ramBufferSizeMB = config.getRAMBufferSizeMB();
+      if (ramBufferSizeMB != IndexWriterConfig.DISABLE_AUTO_FLUSH) {
+        final long limit = (long) (ramBufferSizeMB*1024*1024);
+        long used = bufferedDeletes.bytesUsed() + docWriter.bytesUsed();
+        if (used >= limit) {
+          
+          // DocumentsWriter may be able to free up some
+          // RAM:
+          // Lock order: FC -> DW
+          docWriter.balanceRAM();
+
+          used = bufferedDeletes.bytesUsed() + docWriter.bytesUsed();
+          if (used >= limit) {
+            return setFlushPending("ram full: " + reason, false);
+          }
+        }
+      }
+      return false;
+    }
+  }
+
+  final FlushControl flushControl = new FlushControl();
 }

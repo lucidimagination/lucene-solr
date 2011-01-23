@@ -58,7 +58,6 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MultiPhraseQuery;
-import org.apache.lucene.search.MultiSearcher;
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.PhraseQuery;
@@ -70,12 +69,7 @@ import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.highlight.SynonymTokenizer.TestHighlightRunner;
 import org.apache.lucene.search.regex.RegexQuery;
-import org.apache.lucene.search.regex.SpanRegexQuery;
-import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.search.spans.SpanNotQuery;
-import org.apache.lucene.search.spans.SpanOrQuery;
-import org.apache.lucene.search.spans.SpanQuery;
-import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.automaton.BasicAutomata;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
@@ -300,8 +294,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
   }
   
   public void testSpanRegexQuery() throws Exception {
-    query = new SpanOrQuery(new SpanQuery [] {
-        new SpanRegexQuery(new Term(FIELD_NAME, "ken.*")) });
+    query = new SpanOrQuery(new SpanMultiTermQueryWrapper<RegexQuery>(new RegexQuery(new Term(FIELD_NAME, "ken.*"))));
     searcher = new IndexSearcher(ramDir, true);
     hits = searcher.search(query, 100);
     int maxNumFragmentsRequired = 2;
@@ -698,8 +691,8 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       String text = searcher.doc(hits.scoreDocs[i].doc).get(HighlighterTest.FIELD_NAME);
       int maxNumFragmentsRequired = 2;
       String fragmentSeparator = "...";
-      QueryScorer scorer = null;
-      TokenStream tokenStream = null;
+      QueryScorer scorer;
+      TokenStream tokenStream;
 
       tokenStream = analyzer.tokenStream(HighlighterTest.FIELD_NAME, new StringReader(text));
       
@@ -726,8 +719,8 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       String text = searcher.doc(hits.scoreDocs[i].doc).get(HighlighterTest.FIELD_NAME);
       int maxNumFragmentsRequired = 2;
       String fragmentSeparator = "...";
-      QueryScorer scorer = null;
-      TokenStream tokenStream = null;
+      QueryScorer scorer;
+      TokenStream tokenStream;
 
       tokenStream = analyzer.tokenStream(HighlighterTest.FIELD_NAME, new StringReader(text));
       
@@ -754,8 +747,8 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       String text = searcher.doc(hits.scoreDocs[i].doc).get(HighlighterTest.FIELD_NAME);
       int maxNumFragmentsRequired = 2;
       String fragmentSeparator = "...";
-      QueryScorer scorer = null;
-      TokenStream tokenStream = null;
+      QueryScorer scorer;
+      TokenStream tokenStream;
 
       tokenStream = analyzer.tokenStream(HighlighterTest.FIELD_NAME, new StringReader(text));
       
@@ -820,8 +813,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
         Highlighter hg = new Highlighter(new SimpleHTMLFormatter(), new QueryTermScorer(query));
         hg.setTextFragmenter(new NullFragmenter());
 
-        String match = null;
-        match = hg.getBestFragment(analyzer, "data", "help me [54-65]");
+        String match = hg.getBestFragment(analyzer, "data", "help me [54-65]");
         assertEquals("<B>help</B> me [54-65]", match);
 
       }
@@ -1133,7 +1125,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
 
         TermQuery query = new TermQuery(new Term("data", goodWord));
 
-        String match = null;
+        String match;
         StringBuilder sb = new StringBuilder();
         sb.append(goodWord);
         for (int i = 0; i < 10000; i++) {
@@ -1246,8 +1238,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       public void run() throws Exception {
         doSearching("AnInvalidQueryWhichShouldYieldNoResults");
 
-        for (int i = 0; i < texts.length; i++) {
-          String text = texts[i];
+        for (String text : texts) {
           TokenStream tokenStream = analyzer.tokenStream(FIELD_NAME, new StringReader(text));
           Highlighter highlighter = getHighlighter(query, FIELD_NAME, tokenStream,
               HighlighterTest.this);
@@ -1307,68 +1298,6 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
     Element h2 = (Element) nodes.item(0);
     String decodedSnippet = h2.getFirstChild().getNodeValue();
     assertEquals("XHTML Encoding should have worked:", rawDocContent, decodedSnippet);
-  }
-
-  public void testMultiSearcher() throws Exception {
-    // setup index 1
-    Directory ramDir1 = newDirectory();
-    IndexWriter writer1 = new IndexWriter(ramDir1, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET, true)));
-    Document d = new Document();
-    Field f = new Field(FIELD_NAME, "multiOne", Field.Store.YES, Field.Index.ANALYZED);
-    d.add(f);
-    writer1.addDocument(d);
-    writer1.optimize();
-    writer1.close();
-    IndexReader reader1 = IndexReader.open(ramDir1, true);
-
-    // setup index 2
-    Directory ramDir2 = newDirectory();
-    IndexWriter writer2 = new IndexWriter(ramDir2, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET, true)));
-    d = new Document();
-    f = new Field(FIELD_NAME, "multiTwo", Field.Store.YES, Field.Index.ANALYZED);
-    d.add(f);
-    writer2.addDocument(d);
-    writer2.optimize();
-    writer2.close();
-    IndexReader reader2 = IndexReader.open(ramDir2, true);
-
-    IndexSearcher searchers[] = new IndexSearcher[2];
-    searchers[0] = new IndexSearcher(ramDir1, true);
-    searchers[1] = new IndexSearcher(ramDir2, true);
-    MultiSearcher multiSearcher = new MultiSearcher(searchers);
-    QueryParser parser = new QueryParser(TEST_VERSION_CURRENT, FIELD_NAME, new MockAnalyzer(MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET, true));
-    parser.setMultiTermRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
-    query = parser.parse("multi*");
-    if (VERBOSE) System.out.println("Searching for: " + query.toString(FIELD_NAME));
-    // at this point the multisearcher calls combine(query[])
-    hits = multiSearcher.search(query, null, 1000);
-
-    // query = QueryParser.parse("multi*", FIELD_NAME, new StandardAnalyzer(TEST_VERSION));
-    Query expandedQueries[] = new Query[2];
-    expandedQueries[0] = query.rewrite(reader1);
-    expandedQueries[1] = query.rewrite(reader2);
-    query = query.combine(expandedQueries);
-
-    // create an instance of the highlighter with the tags used to surround
-    // highlighted text
-    Highlighter highlighter = new Highlighter(this, new QueryTermScorer(query));
-
-    for (int i = 0; i < hits.totalHits; i++) {
-      String text = multiSearcher.doc(hits.scoreDocs[i].doc).get(FIELD_NAME);
-      TokenStream tokenStream = analyzer.tokenStream(FIELD_NAME, new StringReader(text));
-      String highlightedText = highlighter.getBestFragment(tokenStream, text);
-      if (VERBOSE) System.out.println(highlightedText);
-    }
-    assertTrue("Failed to find correct number of highlights " + numHighlights + " found",
-        numHighlights == 2);
-    reader1.close();
-    reader2.close();
-    searchers[0].close();
-    searchers[1].close();
-    ramDir1.close();
-    ramDir2.close();
   }
 
   public void testFieldSpecificHighlighting() throws Exception {
@@ -1716,8 +1645,8 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
     ramDir = newDirectory();
     IndexWriter writer = new IndexWriter(ramDir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET, true)));
-    for (int i = 0; i < texts.length; i++) {
-      addDoc(writer, texts[i]);
+    for (String text : texts) {
+      addDoc(writer, text);
     }
     Document doc = new Document();
     NumericField nfield = new NumericField(NUMERIC_FIELD_NAME, Store.YES, true);
@@ -1881,7 +1810,7 @@ final class SynonymTokenizer extends TokenStream {
     }
     
     public Highlighter getHighlighter(Query query, String fieldName, TokenStream stream, Formatter formatter, boolean expanMultiTerm) {
-      Scorer scorer = null;
+      Scorer scorer;
       if (mode == QUERY) {
         scorer = new QueryScorer(query, fieldName);
         if(!expanMultiTerm) {

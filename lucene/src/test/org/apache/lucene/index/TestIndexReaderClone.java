@@ -272,13 +272,13 @@ public class TestIndexReaderClone extends LuceneTestCase {
    * @throws Exception
    */
   private void performDefaultTests(IndexReader r1) throws Exception {
-    float norm1 = Similarity.getDefault().decodeNormValue(r1.norms("field1")[4]);
+    float norm1 = Similarity.getDefault().decodeNormValue(MultiNorms.norms(r1, "field1")[4]);
 
     IndexReader pr1Clone = (IndexReader) r1.clone();
     pr1Clone.deleteDocument(10);
-    pr1Clone.setNorm(4, "field1", 0.5f);
-    assertTrue(Similarity.getDefault().decodeNormValue(r1.norms("field1")[4]) == norm1);
-    assertTrue(Similarity.getDefault().decodeNormValue(pr1Clone.norms("field1")[4]) != norm1);
+    pr1Clone.setNorm(4, "field1", Similarity.getDefault().encodeNormValue(0.5f));
+    assertTrue(Similarity.getDefault().decodeNormValue(MultiNorms.norms(r1, "field1")[4]) == norm1);
+    assertTrue(Similarity.getDefault().decodeNormValue(MultiNorms.norms(pr1Clone, "field1")[4]) != norm1);
 
     final Bits delDocs = MultiFields.getDeletedDocs(r1);
     assertTrue(delDocs == null || !delDocs.get(10));
@@ -302,7 +302,7 @@ public class TestIndexReaderClone extends LuceneTestCase {
     IndexReader r1 = IndexReader.open(dir1, false);
     IndexReader r2 = IndexReader.open(dir2, false);
 
-    MultiReader multiReader = new MultiReader(new IndexReader[] { r1, r2 });
+    MultiReader multiReader = new MultiReader(r1, r2);
     performDefaultTests(multiReader);
     multiReader.close();
     dir1.close();
@@ -312,7 +312,7 @@ public class TestIndexReaderClone extends LuceneTestCase {
   public void testSegmentReaderUndeleteall() throws Exception {
     final Directory dir1 = newDirectory();
     TestIndexReaderReopen.createIndex(random, dir1, false);
-    SegmentReader origSegmentReader = SegmentReader.getOnlySegmentReader(dir1);
+    SegmentReader origSegmentReader = getOnlySegmentReader(IndexReader.open(dir1, false));
     origSegmentReader.deleteDocument(10);
     assertDelDocsRefCountEquals(1, origSegmentReader);
     origSegmentReader.undeleteAll();
@@ -325,9 +325,9 @@ public class TestIndexReaderClone extends LuceneTestCase {
   public void testSegmentReaderCloseReferencing() throws Exception {
     final Directory dir1 = newDirectory();
     TestIndexReaderReopen.createIndex(random, dir1, false);
-    SegmentReader origSegmentReader = SegmentReader.getOnlySegmentReader(dir1);
+    SegmentReader origSegmentReader = getOnlySegmentReader(IndexReader.open(dir1, false));
     origSegmentReader.deleteDocument(1);
-    origSegmentReader.setNorm(4, "field1", 0.5f);
+    origSegmentReader.setNorm(4, "field1", Similarity.getDefault().encodeNormValue(0.5f));
 
     SegmentReader clonedSegmentReader = (SegmentReader) origSegmentReader
         .clone();
@@ -346,7 +346,7 @@ public class TestIndexReaderClone extends LuceneTestCase {
     TestIndexReaderReopen.createIndex(random, dir1, false);
 
     IndexReader origReader = IndexReader.open(dir1, false);
-    SegmentReader origSegmentReader = SegmentReader.getOnlySegmentReader(origReader);
+    SegmentReader origSegmentReader = getOnlySegmentReader(origReader);
     // deletedDocsRef should be null because nothing has updated yet
     assertNull(origSegmentReader.deletedDocsRef);
 
@@ -358,7 +358,7 @@ public class TestIndexReaderClone extends LuceneTestCase {
     // the cloned segmentreader should have 2 references, 1 to itself, and 1 to
     // the original segmentreader
     IndexReader clonedReader = (IndexReader) origReader.clone();
-    SegmentReader clonedSegmentReader = SegmentReader.getOnlySegmentReader(clonedReader);
+    SegmentReader clonedSegmentReader = getOnlySegmentReader(clonedReader);
     assertDelDocsRefCountEquals(2, origSegmentReader);
     // deleting a document creates a new deletedDocs bitvector, the refs goes to
     // 1
@@ -395,7 +395,7 @@ public class TestIndexReaderClone extends LuceneTestCase {
     // test a reopened reader
     IndexReader reopenedReader = clonedReader.reopen();
     IndexReader cloneReader2 = (IndexReader) reopenedReader.clone();
-    SegmentReader cloneSegmentReader2 = SegmentReader.getOnlySegmentReader(cloneReader2);
+    SegmentReader cloneSegmentReader2 = getOnlySegmentReader(cloneReader2);
     assertDelDocsRefCountEquals(2, cloneSegmentReader2);
     clonedReader.close();
     reopenedReader.close();
@@ -426,9 +426,9 @@ public class TestIndexReaderClone extends LuceneTestCase {
     final Directory dir1 = newDirectory();
     TestIndexReaderReopen.createIndex(random, dir1, false);
     IndexReader orig = IndexReader.open(dir1, false);
-    orig.setNorm(1, "field1", 17.0f);
+    orig.setNorm(1, "field1", Similarity.getDefault().encodeNormValue(17.0f));
     final byte encoded = Similarity.getDefault().encodeNormValue(17.0f);
-    assertEquals(encoded, orig.norms("field1")[1]);
+    assertEquals(encoded, MultiNorms.norms(orig, "field1")[1]);
 
     // the cloned segmentreader should have 2 references, 1 to itself, and 1 to
     // the original segmentreader
@@ -437,7 +437,7 @@ public class TestIndexReaderClone extends LuceneTestCase {
     clonedReader.close();
 
     IndexReader r = IndexReader.open(dir1, false);
-    assertEquals(encoded, r.norms("field1")[1]);
+    assertEquals(encoded, MultiNorms.norms(r, "field1")[1]);
     r.close();
     dir1.close();
   }
@@ -490,10 +490,11 @@ public class TestIndexReaderClone extends LuceneTestCase {
 
   public void testCloseStoredFields() throws Exception {
     final Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer()));
-    ((LogMergePolicy) w.getConfig().getMergePolicy()).setUseCompoundFile(false);
-    ((LogMergePolicy) w.getConfig().getMergePolicy()).setUseCompoundDocStore(false);
+    IndexWriter w = new IndexWriter(
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+            setMergePolicy(newLogMergePolicy(false))
+    );
     Document doc = new Document();
     doc.add(newField("field", "yes it's stored", Field.Store.YES, Field.Index.ANALYZED));
     w.addDocument(doc);

@@ -1,17 +1,13 @@
 package org.apache.lucene.index;
 
-import static org.junit.Assert.*;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.Random;
-import java.io.File;
 import java.io.IOException;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.index.IndexCommit;
@@ -21,7 +17,6 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ThreadInterruptedException;
-import org.apache.lucene.util._TestUtil;
 import org.junit.Test;
 
 //
@@ -83,18 +78,9 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
   
   @Test
   public void testSnapshotDeletionPolicy() throws Exception {
-    File dir = _TestUtil.getTempDir(INDEX_PATH);
-    try {
-      Directory fsDir = FSDirectory.open(dir);
-      runTest(random, fsDir);
-      fsDir.close();
-    } finally {
-      _TestUtil.rmDir(dir);
-    }
-
-    Directory dir2 = newDirectory();
-    runTest(random, dir2);
-    dir2.close();
+    Directory fsDir = newDirectory();
+    runTest(random, fsDir);
+    fsDir.close();
   }
 
   private void runTest(Random random, Directory dir) throws Exception {

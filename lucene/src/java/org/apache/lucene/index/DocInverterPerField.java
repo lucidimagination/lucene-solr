@@ -63,8 +63,6 @@ final class DocInverterPerField extends DocFieldConsumerPerField {
 
     fieldState.reset(docState.doc.getBoost());
 
-    final int maxFieldLength = docState.maxFieldLength;
-
     final boolean doInvert = consumer.start(fields, count);
 
     for(int i=0;i<count;i++) {
@@ -126,8 +124,6 @@ final class DocInverterPerField extends DocFieldConsumerPerField {
 
           // reset the TokenStream to the first token
           stream.reset();
-
-          final int startLength = fieldState.length;
           
           try {
             boolean hasMoreTokens = stream.incrementToken();
@@ -173,12 +169,8 @@ final class DocInverterPerField extends DocFieldConsumerPerField {
                 if (!success)
                   docState.docWriter.setAborting();
               }
+              fieldState.length++;
               fieldState.position++;
-              if (++fieldState.length >= maxFieldLength) {
-                if (docState.infoStream != null)
-                  docState.infoStream.println("maxFieldLength " +maxFieldLength+ " reached for field " + fieldInfo.name + ", ignoring following tokens");
-                break;
-              }
 
               hasMoreTokens = stream.incrementToken();
             }

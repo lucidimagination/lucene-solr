@@ -29,9 +29,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.spelling.AbstractLuceneSpellChecker;
 import org.junit.BeforeClass;
 import org.junit.Test;
- 
-
-import static org.junit.Assert.*;
 
 /**
  * @since solr 1.3
@@ -43,6 +40,10 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
   @BeforeClass
   public static void beforeClass() throws Exception {
     initCore("solrconfig-spellcheckcomponent.xml","schema.xml");
+  }
+  
+  public void setUp() throws Exception {
+    super.setUp();
     assertU(adoc("id", "0", "lowerfilt", "This is a title"));
     assertU((adoc("id", "1", "lowerfilt",
             "The quick reb fox jumped over the lazy brown dogs.")));
@@ -58,6 +59,14 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
     assertU((commit()));
   }
   
+  public void tearDown() throws Exception {
+    super.tearDown();
+    assertU(delQ("*:*"));
+    optimize();
+    assertU((commit()));
+
+  }
+  
   @Test
   public void testExtendedResultsCount() throws Exception {
     assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellCheckComponent.SPELLCHECK_BUILD, "true", "q","bluo", SpellCheckComponent.SPELLCHECK_COUNT,"5", SpellCheckComponent.SPELLCHECK_EXTENDED_RESULTS,"false")
@@ -66,7 +75,7 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
     );
 
     assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", "q","bluo", SpellCheckComponent.SPELLCHECK_COUNT,"3", SpellCheckComponent.SPELLCHECK_EXTENDED_RESULTS,"true")
-       ,"/spellcheck/suggestions/[1]/suggestion==[{'word':'blue','freq':1}, {'word':'blud','freq':1}, {'word':'boue','freq':1}]"
+       ,"/spellcheck/suggestions/[1]/suggestion==[{'word':'blud','freq':1}, {'word':'blue','freq':1}, {'word':'blee','freq':1}]"
     );
   }
 
@@ -153,10 +162,7 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
     request = req("qt", "spellCheckCompRH", "q", "*:*", "spellcheck.q", "ttle",
         "spellcheck", "true", "spellcheck.dictionary", "default",
         "spellcheck.reload", "true");
-    ResponseBuilder rb = new ResponseBuilder();
-    rb.req = request;
-    rb.rsp = new SolrQueryResponse();
-    rb.components = new ArrayList(h.getCore().getSearchComponents().values());
+    ResponseBuilder rb = new ResponseBuilder(request, new SolrQueryResponse(), new ArrayList(h.getCore().getSearchComponents().values()));
     checker.prepare(rb);
 
     try {

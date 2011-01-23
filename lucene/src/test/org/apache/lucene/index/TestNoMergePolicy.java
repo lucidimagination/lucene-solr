@@ -17,8 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import static org.junit.Assert.*;
-
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -35,16 +33,13 @@ public class TestNoMergePolicy extends LuceneTestCase {
     assertNull(mp.findMerges(null));
     assertNull(mp.findMergesForOptimize(null, 0, null));
     assertNull(mp.findMergesToExpungeDeletes(null));
-    assertFalse(mp.useCompoundDocStore(null));
     assertFalse(mp.useCompoundFile(null, null));
     mp.close();
   }
 
   @Test
   public void testCompoundFiles() throws Exception {
-    assertFalse(NoMergePolicy.NO_COMPOUND_FILES.useCompoundDocStore(null));
     assertFalse(NoMergePolicy.NO_COMPOUND_FILES.useCompoundFile(null, null));
-    assertTrue(NoMergePolicy.COMPOUND_FILES.useCompoundDocStore(null));
     assertTrue(NoMergePolicy.COMPOUND_FILES.useCompoundFile(null, null));
   }
 

@@ -28,6 +28,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
@@ -203,7 +204,7 @@ public class FuzzyLikeThisQuery extends Query
                   AttributeSource atts = new AttributeSource();
                   MaxNonCompetitiveBoostAttribute maxBoostAtt =
                     atts.addAttribute(MaxNonCompetitiveBoostAttribute.class);
-                  FuzzyTermsEnum fe = new FuzzyTermsEnum(reader, atts, startTerm, f.minSimilarity, f.prefixLength);
+                  FuzzyTermsEnum fe = new FuzzyTermsEnum(MultiFields.getTerms(reader, startTerm.field()).iterator(), atts, startTerm, f.minSimilarity, f.prefixLength);
                   //store the df so all variants use same idf
                   int df = reader.docFreq(startTerm);
                   int numVariants=0;
@@ -291,7 +292,7 @@ public class FuzzyLikeThisQuery extends Query
             {
                 //optimize where only one selected variant
                 ScoreTerm st= variants.get(0);
-                TermQuery tq = new FuzzyTermQuery(st.term,ignoreTF);
+                Query tq = ignoreTF ? new ConstantScoreQuery(new TermQuery(st.term)) : new TermQuery(st.term, 1);
                 tq.setBoost(st.score); // set the boost to a mix of IDF and score
                 bq.add(tq, BooleanClause.Occur.SHOULD); 
             }
@@ -302,7 +303,8 @@ public class FuzzyLikeThisQuery extends Query
                         .hasNext();)
                 {
                     ScoreTerm st = iterator2.next();
-                    TermQuery tq = new FuzzyTermQuery(st.term,ignoreTF);      // found a match
+                    // found a match
+                    Query tq = ignoreTF ? new ConstantScoreQuery(new TermQuery(st.term)) : new TermQuery(st.term, 1);                    
                     tq.setBoost(st.score); // set the boost using the ScoreTerm's score
                     termVariants.add(tq, BooleanClause.Occur.SHOULD);          // add to query                    
                 }
@@ -347,45 +349,8 @@ public class FuzzyLikeThisQuery extends Query
             return termA.score < termB.score;
         }
         
-      }
+      }    
       
-      //overrides basic TermQuery to negate effects of IDF (idf is factored into boost of containing BooleanQuery)
-      private static class FuzzyTermQuery extends TermQuery
-      {
-    	  boolean ignoreTF;
-          public FuzzyTermQuery(Term t, boolean ignoreTF)
-          {
-        	  super(t);
-        	  this.ignoreTF=ignoreTF;
-          }
-          @Override
-          public Similarity getSimilarity(Searcher searcher)
-          {            
-              Similarity result = super.getSimilarity(searcher);
-              result = new SimilarityDelegator(result) {
-                  
-                  @Override
-                  public float tf(float freq)
-                  {
-                	  if(ignoreTF)
-                	  {
-                          return 1; //ignore tf
-                	  }
-            		  return super.tf(freq);
-                  }
-                  @Override
-                  public float idf(int docFreq, int numDocs)
-                  {
-                      //IDF is already factored into individual term boosts
-                      return 1;
-                  }               
-              };
-              return result;
-          }        
-      }
-      
-      
-
     /* (non-Javadoc)
      * @see org.apache.lucene.search.Query#toString(java.lang.String)
      */

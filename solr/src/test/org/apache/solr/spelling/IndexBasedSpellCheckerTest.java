@@ -16,24 +16,22 @@
  */
 package org.apache.solr.spelling;
 
-import static org.junit.Assert.*;
-
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.spell.JaroWinklerDistance;
 import org.apache.lucene.search.spell.SpellChecker;
 import org.apache.lucene.search.spell.StringDistance;
 import org.apache.lucene.search.spell.SuggestWord;
 import org.apache.lucene.search.spell.SuggestWordFrequencyComparator;
-import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.Directory;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.handler.component.SpellCheckComponent;
 import org.apache.solr.util.RefCounted;
 import org.apache.solr.search.SolrIndexSearcher;
@@ -123,7 +121,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
     try {
     checker.build(core, searcher);
 
-    IndexReader reader = searcher.getReader();
+    IndexReader reader = searcher.getIndexReader();
     Collection<Token> tokens = queryConverter.convert("documemt");
     SpellingOptions spellOpts = new SpellingOptions(tokens, reader);
     SpellingResult result = checker.getSuggestions(spellOpts);
@@ -198,7 +196,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
     try {
     checker.build(core, searcher);
 
-    IndexReader reader = searcher.getReader();
+    IndexReader reader = searcher.getIndexReader();
     Collection<Token> tokens = queryConverter.convert("documemt");
     SpellingOptions spellOpts = new SpellingOptions(tokens, reader, 1, false, true, 0.5f, null);
     SpellingResult result = checker.getSuggestions(spellOpts);
@@ -283,7 +281,11 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
     File indexDir = new File(TEMP_DIR, "spellingIdx" + new Date().getTime());
     //create a standalone index
     File altIndexDir = new File(TEMP_DIR, "alternateIdx" + new Date().getTime());
-    IndexWriter iw = new IndexWriter(FSDirectory.open(altIndexDir), new WhitespaceAnalyzer(), IndexWriter.MaxFieldLength.LIMITED);
+    Directory dir = newFSDirectory(altIndexDir);
+    IndexWriter iw = new IndexWriter(
+        dir,
+        new IndexWriterConfig(TEST_VERSION_CURRENT, new WhitespaceAnalyzer(TEST_VERSION_CURRENT))
+    );
     for (int i = 0; i < ALT_DOCS.length; i++) {
       Document doc = new Document();
       doc.add(new Field("title", ALT_DOCS[i], Field.Store.YES, Field.Index.ANALYZED));
@@ -291,6 +293,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
     }
     iw.optimize();
     iw.close();
+    dir.close();
     indexDir.mkdirs();
     spellchecker.add(AbstractLuceneSpellChecker.INDEX_DIR, indexDir.getAbsolutePath());
     spellchecker.add(AbstractLuceneSpellChecker.LOCATION, altIndexDir.getAbsolutePath());
@@ -305,7 +308,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
     try {
     checker.build(core, searcher);
 
-    IndexReader reader = searcher.getReader();
+    IndexReader reader = searcher.getIndexReader();
     Collection<Token> tokens = queryConverter.convert("flesh");
     SpellingOptions spellOpts = new SpellingOptions(tokens, reader, 1, false, true, 0.5f, null);
     SpellingResult result = checker.getSuggestions(spellOpts);

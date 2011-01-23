@@ -35,7 +35,6 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.SolrQueryResponse;
 
 import org.apache.commons.codec.binary.Base64;
@@ -96,7 +95,7 @@ public final class HttpCacheHeaderUtil {
   public static String calcEtag(final SolrQueryRequest solrReq) {
     final SolrCore core = solrReq.getCore();
     final long currentIndexVersion
-      = solrReq.getSearcher().getReader().getVersion();
+      = solrReq.getSearcher().getIndexReader().getVersion();
 
     EtagCacheVal etagCache = etagCoreCache.get(core);
     if (null == etagCache) {
@@ -153,7 +152,7 @@ public final class HttpCacheHeaderUtil {
       // assume default, change if needed (getOpenTime() should be fast)
       lastMod =
         LastModFrom.DIRLASTMOD == lastModFrom
-        ? IndexReader.lastModified(searcher.getReader().directory())
+        ? IndexReader.lastModified(searcher.getIndexReader().directory())
         : searcher.getOpenTime();
     } catch (IOException e) {
       // we're pretty freaking screwed if this happens

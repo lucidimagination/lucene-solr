@@ -19,7 +19,6 @@ package org.apache.solr.client.solrj.response;
 
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.solr.common.util.NamedList;
-import static org.junit.Assert.*;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -50,7 +49,7 @@ public class FieldAnalysisResponseTest extends LuceneTestCase {
     NamedList responseNL = buildResponse();
     FieldAnalysisResponse response = new FieldAnalysisResponse() {
       @Override
-      protected List<AnalysisPhase> buildPhases(NamedList<Object> phaseNL) {
+      protected List<AnalysisPhase> buildPhases(NamedList<List<NamedList<Object>>> phaseNL) {
         return phases;
       }
     };

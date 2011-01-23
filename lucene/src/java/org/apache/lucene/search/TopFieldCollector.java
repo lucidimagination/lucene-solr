@@ -19,7 +19,7 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.FieldValueHitQueue.Entry;
 import org.apache.lucene.util.PriorityQueue;
 
@@ -92,9 +92,9 @@ public abstract class TopFieldCollector extends TopDocsCollector<Entry> {
     }
     
     @Override
-    public void setNextReader(IndexReader reader, int docBase) throws IOException {
-      this.docBase = docBase;
-      queue.setComparator(0, comparator.setNextReader(reader, docBase));
+    public void setNextReader(AtomicReaderContext context) throws IOException {
+      this.docBase = context.docBase;
+      queue.setComparator(0, comparator.setNextReader(context));
       comparator = queue.firstComparator;
     }
     
@@ -447,10 +447,10 @@ public abstract class TopFieldCollector extends TopDocsCollector<Entry> {
     }
 
     @Override
-    public void setNextReader(IndexReader reader, int docBase) throws IOException {
-      this.docBase = docBase;
+    public void setNextReader(AtomicReaderContext context) throws IOException {
+      docBase = context.docBase;
       for (int i = 0; i < comparators.length; i++) {
-        queue.setComparator(i, comparators[i].setNextReader(reader, docBase));
+        queue.setComparator(i, comparators[i].setNextReader(context));
       }
     }
 
@@ -913,6 +913,10 @@ public abstract class TopFieldCollector extends TopDocsCollector<Entry> {
       throw new IllegalArgumentException("Sort must contain at least one field");
     }
     
+    if (numHits <= 0) {
+      throw new IllegalArgumentException("numHits must be > 0; please use TotalHitCountCollector if you just need the total hit count");
+    }
+
     FieldValueHitQueue queue = FieldValueHitQueue.create(sort.fields, numHits);
     if (queue.getComparators().length == 1) {
       if (docsScoredInOrder) {

@@ -20,11 +20,9 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.Comparator;
 
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.util.AttributeSource;
@@ -62,22 +60,11 @@ public abstract class FilteredTermsEnum extends TermsEnum {
   protected abstract AcceptStatus accept(BytesRef term) throws IOException;
 
   /**
-   * Creates a filtered {@link TermsEnum} for the given field name and reader.
-   */
-  public FilteredTermsEnum(final IndexReader reader, final String field) throws IOException {
-    final Terms terms = MultiFields.getTerms(reader, field);
-    if (terms != null) {
-      tenum = terms.iterator();
-    } else {
-      tenum = null;
-    }
-  }
-
-  /**
    * Creates a filtered {@link TermsEnum} on a terms enum.
-   * @param tenum the terms enumeration to filter, if {@code null} this is the null iterator.
+   * @param tenum the terms enumeration to filter.
    */
   public FilteredTermsEnum(final TermsEnum tenum) {
+    assert tenum != null;
     this.tenum = tenum;
   }
 
@@ -121,27 +108,27 @@ public abstract class FilteredTermsEnum extends TermsEnum {
    */
   @Override
   public AttributeSource attributes() {
-    /* if we have no tenum, we return a new attributes instance,
-     * to prevent NPE in subclasses that use attributes.
-     * in all other cases we share the attributes with our delegate. */
-    return (tenum == null) ? super.attributes() : tenum.attributes();
+    return tenum.attributes();
   }
   
   @Override
   public BytesRef term() throws IOException {
-    assert tenum != null;
     return tenum.term();
   }
 
   @Override
   public Comparator<BytesRef> getComparator() throws IOException {
-    return (tenum == null) ? null : tenum.getComparator();
+    return tenum.getComparator();
   }
     
   @Override
   public int docFreq() {
-    assert tenum != null;
     return tenum.docFreq();
+  }
+
+  @Override
+  public long totalTermFreq() {
+    return tenum.totalTermFreq();
   }
 
   /** This enum does not support seeking!
@@ -162,32 +149,39 @@ public abstract class FilteredTermsEnum extends TermsEnum {
 
   @Override
   public long ord() throws IOException {
-    assert tenum != null;
     return tenum.ord();
   }
 
   @Override
   public DocsEnum docs(Bits bits, DocsEnum reuse) throws IOException {
-    assert tenum != null;
     return tenum.docs(bits, reuse);
   }
     
   @Override
   public DocsAndPositionsEnum docsAndPositions(Bits bits, DocsAndPositionsEnum reuse) throws IOException {
-    assert tenum != null;
     return tenum.docsAndPositions(bits, reuse);
   }
-
+  
+  /** This enum does not support seeking!
+   * @throws UnsupportedOperationException
+   */
   @Override
-  public void cacheCurrentTerm() throws IOException {
-    tenum.cacheCurrentTerm();
+  public SeekStatus seek(BytesRef term, TermState state) throws IOException {
+    throw new UnsupportedOperationException(getClass().getName()+" does not support seeking");
   }
-    
+  
+  /**
+   * Returns the filtered enums term state 
+   */
+  @Override
+  public TermState termState() throws IOException {
+    assert tenum != null;
+    return tenum.termState();
+  }
+
   @SuppressWarnings("fallthrough")
   @Override
   public BytesRef next() throws IOException {
-    if (tenum == null)
-      return null;
     for (;;) {
       // Seek or forward the iterator
       if (doSeek) {

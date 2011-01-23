@@ -26,16 +26,15 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Searcher;
 import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestWordnet extends LuceneTestCase {
-  private Searcher searcher;
-    
-  String storePathName = 
-    new File(TEMP_DIR,"testLuceneWordnet").getAbsolutePath();
+  private IndexSearcher searcher;
+  private Directory dir;
+  
+  String storePathName = new File(TEMP_DIR,"testLuceneWordnet").getAbsolutePath();
   
   @Override
   public void setUp() throws Exception {
@@ -48,7 +47,8 @@ public class TestWordnet extends LuceneTestCase {
       Syns2Index.main(commandLineArgs);
     } catch (Throwable t) { throw new RuntimeException(t); }
     
-    searcher = new IndexSearcher(FSDirectory.open(new File(storePathName)), true);
+    dir = newFSDirectory(new File(storePathName));
+    searcher = new IndexSearcher(dir, true);
   }
   
   public void testExpansion() throws IOException {
@@ -72,6 +72,7 @@ public class TestWordnet extends LuceneTestCase {
   @Override
   public void tearDown() throws Exception {
     searcher.close();
+    dir.close();
     rmDir(storePathName); // delete our temporary synonym index
     super.tearDown();
   }

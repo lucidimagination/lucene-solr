@@ -18,7 +18,6 @@
 package org.apache.solr.handler;
 
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.util.AbstractSolrTestCase;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ContentStreamBase;
@@ -77,7 +76,7 @@ public class TestCSVLoader extends SolrTestCaseJ4 {
   }
 
   void cleanup() {
-    assertU(delQ("id:[100 TO 110]"));
+    assertU(delQ("*:*"));
     assertU(commit());
   }
 

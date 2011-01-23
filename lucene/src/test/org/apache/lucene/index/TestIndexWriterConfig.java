@@ -17,9 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import static org.junit.Assert.*;
-
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -28,11 +25,9 @@ import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.index.DocumentsWriter.IndexingChain;
-import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.Similarity;
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
 
@@ -52,22 +47,12 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     
   }
 
-  private static final class MyWarmer extends IndexReaderWarmer {
-    // Does not implement anything - used only for type checking on IndexWriterConfig.
-
-    @Override
-    public void warm(IndexReader reader) throws IOException {
-    }
-    
-  }
-  
   @Test
   public void testDefaults() throws Exception {
     IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer());
     assertEquals(MockAnalyzer.class, conf.getAnalyzer().getClass());
     assertNull(conf.getIndexCommit());
     assertEquals(KeepOnlyLastCommitDeletionPolicy.class, conf.getIndexDeletionPolicy().getClass());
-    assertEquals(IndexWriterConfig.UNLIMITED_FIELD_LENGTH, conf.getMaxFieldLength());
     assertEquals(ConcurrentMergeScheduler.class, conf.getMergeScheduler().getClass());
     assertEquals(OpenMode.CREATE_OR_APPEND, conf.getOpenMode());
     assertTrue(Similarity.getDefault() == conf.getSimilarity());
@@ -132,7 +117,6 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     // Tests that the values of the constants does not change
     assertEquals(1000, IndexWriterConfig.WRITE_LOCK_TIMEOUT);
     assertEquals(32, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL);
-    assertEquals(Integer.MAX_VALUE, IndexWriterConfig.UNLIMITED_FIELD_LENGTH);
     assertEquals(-1, IndexWriterConfig.DISABLE_AUTO_FLUSH);
     assertEquals(IndexWriterConfig.DISABLE_AUTO_FLUSH, IndexWriterConfig.DEFAULT_MAX_BUFFERED_DELETE_TERMS);
     assertEquals(IndexWriterConfig.DISABLE_AUTO_FLUSH, IndexWriterConfig.DEFAULT_MAX_BUFFERED_DOCS);
@@ -249,52 +233,4 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     conf.setMergePolicy(null);
     assertEquals(LogByteSizeMergePolicy.class, conf.getMergePolicy().getClass());
   }
-
-  /**
-   * @deprecated should be removed once all the deprecated setters are removed
-   *             from IndexWriter.
-   */
-  @Test @Deprecated
-  public void testIndexWriterSetters() throws Exception {
-    // This test intentionally tests deprecated methods. The purpose is to pass
-    // whatever the user set on IW to IWC, so that if the user calls
-    // iw.getConfig().getXYZ(), he'll get the same value he passed to
-    // iw.setXYZ().
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer());
-    Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, conf);
-
-    writer.setSimilarity(new MySimilarity());
-    assertEquals(MySimilarity.class, writer.getConfig().getSimilarity().getClass());
-
-    writer.setMaxBufferedDeleteTerms(4);
-    assertEquals(4, writer.getConfig().getMaxBufferedDeleteTerms());
-
-    writer.setMaxBufferedDocs(10);
-    assertEquals(10, writer.getConfig().getMaxBufferedDocs());
-
-    writer.setMaxFieldLength(10);
-    assertEquals(10, writer.getConfig().getMaxFieldLength());
-    
-    writer.setMergeScheduler(new SerialMergeScheduler());
-    assertEquals(SerialMergeScheduler.class, writer.getConfig().getMergeScheduler().getClass());
-    
-    writer.setRAMBufferSizeMB(1.5);
-    assertEquals(1.5, writer.getConfig().getRAMBufferSizeMB(), 0.0);
-    
-    writer.setTermIndexInterval(40);
-    assertEquals(40, writer.getConfig().getTermIndexInterval());
-    
-    writer.setWriteLockTimeout(100);
-    assertEquals(100, writer.getConfig().getWriteLockTimeout());
-    
-    writer.setMergedSegmentWarmer(new MyWarmer());
-    assertEquals(MyWarmer.class, writer.getConfig().getMergedSegmentWarmer().getClass());
-    
-    writer.setMergePolicy(new LogDocMergePolicy());
-    assertEquals(LogDocMergePolicy.class, writer.getConfig().getMergePolicy().getClass());
-    writer.close();
-    dir.close();
-  }
-
 }

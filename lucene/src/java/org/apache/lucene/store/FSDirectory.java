@@ -26,7 +26,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import java.util.Collection;
-import java.util.Collections;
 import static java.util.Collections.synchronizedSet;
 import java.util.HashSet;
 import java.util.Set;
@@ -156,30 +155,16 @@ public abstract class FSDirectory extends Directory {
       throw new NoSuchDirectoryException("file '" + directory + "' exists but is not a directory");
 
     setLockFactory(lockFactory);
-    
-    // for filesystem based LockFactory, delete the lockPrefix, if the locks are placed
-    // in index dir. If no index dir is given, set ourselves
-    if (lockFactory instanceof FSLockFactory) {
-      final FSLockFactory lf = (FSLockFactory) lockFactory;
-      final File dir = lf.getLockDir();
-      // if the lock factory has no lockDir set, use the this directory as lockDir
-      if (dir == null) {
-        lf.setLockDir(directory);
-        lf.setLockPrefix(null);
-      } else if (dir.getCanonicalPath().equals(directory.getCanonicalPath())) {
-        lf.setLockPrefix(null);
-      }
-    }
   }
 
   /** Creates an FSDirectory instance, trying to pick the
    *  best implementation given the current environment.
    *  The directory returned uses the {@link NativeFSLockFactory}.
    *
-   *  <p>Currently this returns {@link NIOFSDirectory}
-   *  on non-Windows JREs, {@link MMapDirectory} on 64-bit 
-   *  Sun Windows JREs, and {@link SimpleFSDirectory} for other
-   *  JRes on Windows. It is highly recommended that you consult the
+   *  <p>Currently this returns {@link MMapDirectory} for most Solaris
+   *  and Windows 64-bit JREs, {@link NIOFSDirectory} for other
+   *  non-Windows JREs, and {@link SimpleFSDirectory} for other
+   *  JREs on Windows. It is highly recommended that you consult the
    *  implementation's documentation for your platform before
    *  using this method.
    *
@@ -199,16 +184,36 @@ public abstract class FSDirectory extends Directory {
   /** Just like {@link #open(File)}, but allows you to
    *  also specify a custom {@link LockFactory}. */
   public static FSDirectory open(File path, LockFactory lockFactory) throws IOException {
-    if (Constants.WINDOWS) {
-      if (MMapDirectory.UNMAP_SUPPORTED && Constants.JRE_IS_64BIT)
-        return new MMapDirectory(path, lockFactory);
-      else
-        return new SimpleFSDirectory(path, lockFactory);
+    if ((Constants.WINDOWS || Constants.SUN_OS)
+          && Constants.JRE_IS_64BIT && MMapDirectory.UNMAP_SUPPORTED) {
+      return new MMapDirectory(path, lockFactory);
+    } else if (Constants.WINDOWS) {
+      return new SimpleFSDirectory(path, lockFactory);
     } else {
       return new NIOFSDirectory(path, lockFactory);
     }
   }
 
+  @Override
+  public void setLockFactory(LockFactory lockFactory) throws IOException {
+    super.setLockFactory(lockFactory);
+
+    // for filesystem based LockFactory, delete the lockPrefix, if the locks are placed
+    // in index dir. If no index dir is given, set ourselves
+    if (lockFactory instanceof FSLockFactory) {
+      final FSLockFactory lf = (FSLockFactory) lockFactory;
+      final File dir = lf.getLockDir();
+      // if the lock factory has no lockDir set, use the this directory as lockDir
+      if (dir == null) {
+        lf.setLockDir(directory);
+        lf.setLockPrefix(null);
+      } else if (dir.getCanonicalPath().equals(directory.getCanonicalPath())) {
+        lf.setLockPrefix(null);
+      }
+    }
+
+  }
+  
   /** Lists all files (not subdirectories) in the
    *  directory.  This method never returns null (throws
    *  {@link IOException} instead).
@@ -321,12 +326,6 @@ public abstract class FSDirectory extends Directory {
     staleFiles.add(io.name);
   }
 
-  @Deprecated
-  @Override
-  public void sync(String name) throws IOException {
-    sync(Collections.singleton(name));
-  }
-
   @Override
   public void sync(Collection<String> names) throws IOException {
     ensureOpen();
@@ -381,12 +380,6 @@ public abstract class FSDirectory extends Directory {
   @Override
   public synchronized void close() {
     isOpen = false;
-  }
-
-  /** @deprecated Use {@link #getDirectory} instead. */
-  @Deprecated
-  public File getFile() {
-    return getDirectory();
   }
 
   /** @return the underlying filesystem directory */

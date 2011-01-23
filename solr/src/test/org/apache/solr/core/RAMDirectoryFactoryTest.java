@@ -18,12 +18,9 @@
 package org.apache.solr.core;
 
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.store.SingleInstanceLockFactory;
 import org.apache.lucene.util.LuceneTestCase;
-import org.easymock.EasyMock;
-
 import java.io.IOException;
-import java.io.File;
 
 /**
  * Test-case for RAMDirectoryFactory
@@ -31,7 +28,7 @@ import java.io.File;
 public class RAMDirectoryFactoryTest extends LuceneTestCase {
   public void testOpenReturnsTheSameForSamePath() throws IOException {
     final Directory directory = new RefCntRamDirectory();
-    RAMDirectoryFactory factory = new RAMDirectoryFactory() {
+    RAMDirectoryFactory factory = new RAMDirectoryFactory()  {
       @Override
       Directory openNew(String path) throws IOException {
         return directory;
@@ -44,6 +41,8 @@ public class RAMDirectoryFactoryTest extends LuceneTestCase {
         "every time open() is called for the same path", directory, dir1);
     assertEquals("RAMDirectoryFactory should not create new instance of RefCntRamDirectory " +
         "every time open() is called for the same path", directory, dir2);
+    dir1.close();
+    dir2.close();
   }
 
   public void testOpenSucceedForEmptyDir() throws IOException {

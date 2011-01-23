@@ -52,7 +52,7 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
 
 	/**
 	 * Thai numeric tokens were typed as <ALPHANUM> instead of <NUM>.
-	 * @deprecated testing backwards behavior
+	 * @deprecated (3.1) testing backwards behavior
  	 */
 	@Deprecated
 	public void testBuggyTokenType30() throws Exception {
@@ -64,7 +64,7 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
                                         "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>" });
 	}
 	
-	/** @deprecated testing backwards behavior */
+	/** @deprecated (3.1) testing backwards behavior */
 	@Deprecated
     public void testAnalyzer30() throws Exception {
 	  assumeTrue("JRE does not support Thai dictionary-based BreakIterator", ThaiWordFilter.DBBI_AVAILABLE);
@@ -123,10 +123,10 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
       assertAnalyzesToReuse(
           analyzer,
           "บริษัทชื่อ XY&Z - คุยกับ xyz@demo.com",
-          new String[] { "บริษัท", "ชื่อ", "xy", "z", "คุย", "กับ", "xyz@demo.com" });
+          new String[] { "บริษัท", "ชื่อ", "xy", "z", "คุย", "กับ", "xyz", "demo.com" });
 	}
 	
-	/** @deprecated, for version back compat */
+	/** @deprecated (3.1) for version back compat */
 	@Deprecated
 	public void testReusableTokenStream30() throws Exception {
 	    assumeTrue("JRE does not support Thai dictionary-based BreakIterator", ThaiWordFilter.DBBI_AVAILABLE);

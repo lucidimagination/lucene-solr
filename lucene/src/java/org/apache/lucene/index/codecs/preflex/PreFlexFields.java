@@ -44,7 +44,10 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.UnicodeUtil;
 
 /** Exposes flex API on a pre-flex index, as a codec. 
- * @lucene.experimental */
+ * @lucene.experimental
+ * @deprecated (4.0)
+ */
+@Deprecated
 public class PreFlexFields extends FieldsProducer {
   
   private static final boolean DEBUG_SURROGATES = false;
@@ -258,6 +261,11 @@ public class PreFlexFields extends FieldsProducer {
       } else {
         return BytesRef.getUTF8SortedAsUTF16Comparator();
       }
+    }
+
+    @Override
+    public long getSumTotalTermFreq() {
+      return -1;
     }
   }
 
@@ -739,11 +747,6 @@ public class PreFlexFields extends FieldsProducer {
     }
 
     @Override
-    public void cacheCurrentTerm() throws IOException {
-      getTermsDict().cacheCurrentTerm(termEnum);
-    }
-
-    @Override
     public SeekStatus seek(long ord) throws IOException {
       throw new UnsupportedOperationException();
     }
@@ -937,6 +940,11 @@ public class PreFlexFields extends FieldsProducer {
     @Override
     public int docFreq() {
       return termEnum.docFreq();
+    }
+
+    @Override
+    public long totalTermFreq() {
+      return -1;
     }
 
     @Override

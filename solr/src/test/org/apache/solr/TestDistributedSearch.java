@@ -17,9 +17,6 @@
 
 package org.apache.solr;
 
-import junit.framework.TestCase;
-
-import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.params.CommonParams;
 
 /**
@@ -98,6 +95,7 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
 
     // these queries should be exactly ordered and scores should exactly match
     query("q","*:*", "sort",i1+" desc");
+    query("q","*:*", "sort","{!func}add("+i1+",5)"+" desc");
     query("q","*:*", "sort",i1+" asc");
     query("q","*:*", "sort",i1+" desc", "fl","*,score");
     query("q","*:*", "sort",tlong+" asc", "fl","score");  // test legacy behavior - "score"=="*,score"
@@ -129,6 +127,10 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
             "hl","true","hl.fl",t1);
 
     query("q","matchesnothing","fl","*,score");  
+
+    // test that a single NOW value is propagated to all shards... if that is true
+    // then the primary sort should always be a tie and then the secondary should always decide
+    query("q","{!func}ms(NOW)", "sort","score desc,"+i1+" desc","fl","id");    
 
     query("q","*:*", "rows",100, "facet","true", "facet.field",t1);
     query("q","*:*", "rows",100, "facet","true", "facet.field",t1, "facet.limit",-1, "facet.sort","count");

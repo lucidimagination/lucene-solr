@@ -31,11 +31,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Locale;
 import java.io.File;
 
 
@@ -46,7 +43,7 @@ import java.io.File;
 public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
   @BeforeClass
   public static void beforeClass() throws Exception {
-    initCore("solrconfig.xml", "schema.xml");
+    initCore("solrconfig.xml", "schema.xml", "solr-extraction");
   }
 
   @Before
@@ -58,13 +55,15 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
 
   @Test
   public void testExtraction() throws Exception {
-    // broken for turkish: https://issues.apache.org/jira/browse/SOLR-2088
-    String defLang = Locale.getDefault().getLanguage();
-    assumeFalse("Known bugs under Turkish locale: https://issues.apache.org/jira/browse/SOLR-2088", defLang.equals("tr") || defLang.equals("az"));
     ExtractingRequestHandler handler = (ExtractingRequestHandler) h.getCore().getRequestHandler("/update/extract");
     assertTrue("handler is null and it shouldn't be", handler != null);
-    loadLocal("solr-word.pdf", "fmap.created", "extractedDate", "fmap.producer", "extractedProducer",
+    loadLocal("solr-word.pdf",
+            "fmap.created", "extractedDate",
+            "fmap.producer", "extractedProducer",
             "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
+            "fmap.Creation-Date", "extractedDate",
+            "fmap.AAPL:Keywords", "ignored_a",
+            "fmap.xmpTPg:NPages", "ignored_a",
             "fmap.Author", "extractedAuthor",
             "fmap.content", "extractedContent",
            "literal.id", "one",
@@ -146,12 +145,14 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
 
   }
 
+
   @Test
   public void testDefaultField() throws Exception {
     ExtractingRequestHandler handler = (ExtractingRequestHandler) h.getCore().getRequestHandler("/update/extract");
     assertTrue("handler is null and it shouldn't be", handler != null);
     try {
       ignoreException("unknown field 'a'");
+      ignoreException("unknown field 'meta'");  // TODO: should this exception be happening?
       loadLocal("simple.html",
       "literal.id","simple2",
       "lowernames", "true",
@@ -349,6 +350,9 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
 
     loadLocal("arabic.pdf", "fmap.created", "extractedDate", "fmap.producer", "extractedProducer",
         "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
+        "fmap.Creation-Date", "extractedDate",
+        "fmap.AAPL:Keywords", "ignored_a",
+        "fmap.xmpTPg:NPages", "ignored_a",
         "fmap.Author", "extractedAuthor",
         "fmap.content", "wdf_nocase",
        "literal.id", "one",
@@ -364,7 +368,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
       // TODO: stop using locally defined streams once stream.file and
       // stream.body work everywhere
       List<ContentStream> cs = new ArrayList<ContentStream>();
-      cs.add(new ContentStreamBase.FileStream(new File(filename)));
+      cs.add(new ContentStreamBase.FileStream(getFile(filename)));
       req.setContentStreams(cs);
       return h.queryAndResponse("/update/extract", req);
     } finally {

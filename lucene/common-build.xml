@@ -53,6 +53,10 @@
     <pathelement location="${junit-location.jar}"/>
   </path>
 
+  <path id="ant-path">
+    <fileset dir="${common.dir}/lib" includes="ant-*.jar"/>
+  </path>
+
   <!-- default arguments to pass to JVM executing tests -->
   <property name="testmethod" value=""/>
   <property name="args" value=""/>
@@ -68,9 +72,9 @@
   <property name="tests.locale" value="random" />
   <property name="tests.timezone" value="random" />
   <property name="tests.directory" value="random" />
+  <property name="tests.linedocsfile" value="europarl.lines.txt.gz" />
   <property name="tests.iter" value="1" />
   <property name="tests.seed" value="random" />
-  <property name="tests.userdir" value="."/>
   <property name="tests.loggingfile" value="/dev/null"/>
   <property name="tests.nightly" value="false" />
     
@@ -80,6 +84,9 @@
   <property name="javac.target" value="1.5"/>
   <property name="javac.source.backwards" value="1.5"/>
   <property name="javac.target.backwards" value="1.5"/>
+  <!-- clover wants to run with -lib, otherwise we prefer a repeatable
+       classpath -->
+  <property name="javac.includeAntRuntime" value="${run.clover}"/>
 
   <property name="javadoc.link" value="http://java.sun.com/j2se/1.5/docs/api/"/>
   <property name="javadoc.access" value="protected"/>
@@ -135,7 +142,11 @@
   <property name="junit.reports" location="${build.dir}/test/reports"/>
   <property name="junit.reports.backwards" location="${build.dir.backwards}/test/reports"/>
   <property name="junit.excludes" value=""/>
-  <property name="junit.details.formatter" value="org.apache.lucene.util.LuceneJUnitResultFormatter"/>
+  <condition property="junit.details.formatter" 
+      value="org.apache.tools.ant.taskdefs.optional.junit.BriefJUnitResultFormatter"
+      else="org.apache.lucene.util.LuceneJUnitResultFormatter">
+    <isset property="tests.sequential"/>
+  </condition>
   <property name="junit.parallel.selector" value="org.apache.lucene.util.LuceneJUnitDividingSelector"/>
 
   <property name="manifest.file" location="${common.dir}/build/MANIFEST.MF"/>
@@ -436,7 +447,7 @@
 	    -->
     	<touch file="@{tempDir}/@{threadNum}/quiet.ant" verbose="false" mkdirs="true"/>
 	    <junit printsummary="off" haltonfailure="no" maxmemory="512M" tempdir="@{tempDir}/@{threadNum}"
-	      errorProperty="tests.failed" failureProperty="tests.failed" forkmode="perBatch" dir="${tests.userdir}">
+	      errorProperty="tests.failed" failureProperty="tests.failed" forkmode="perBatch" dir="@{tempDir}/@{threadNum}">
 	      <classpath refid="@{junit.classpath}"/>
 	      <assertions>
 	        <enable package="org.apache.lucene"/>
@@ -455,6 +466,8 @@
 	      <sysproperty key="tests.timezone" value="${tests.timezone}"/>
               <!-- set the directory tests should run with -->
               <sysproperty key="tests.directory" value="${tests.directory}"/>
+              <!-- set the line file source for oal.util.LineFileDocs -->
+              <sysproperty key="tests.linedocsfile" value="${tests.linedocsfile}"/>
               <!-- set the number of times tests should run -->
               <sysproperty key="tests.iter" value="${tests.iter}"/>
               <!-- set the test seed -->
@@ -648,6 +661,7 @@
     <sequential>
       <mkdir dir="@{destdir}"/>
       <javac
+        includeAntRuntime="${javac.includeAntRuntime}"
         encoding="${build.encoding}"
         srcdir="@{srcdir}"
         destdir="@{destdir}"

@@ -18,11 +18,10 @@
 package org.apache.solr.highlight;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.core.SolrCore;
+import org.apache.solr.handler.component.HighlightComponent;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.util.*;
 import org.apache.solr.common.params.HighlightParams;
@@ -30,9 +29,6 @@ import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
-import java.io.IOException;
 import java.io.StringReader;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -67,7 +63,7 @@ public class HighlighterTest extends SolrTestCaseJ4 {
   @Test
   public void testConfig()
   {
-    SolrHighlighter highlighter = h.getCore().getHighlighter();
+    SolrHighlighter highlighter = HighlightComponent.getHighlighter(h.getCore());
 
     // Make sure we loaded the one formatter
     SolrFormatter fmt1 = highlighter.formatters.get( null );
@@ -158,12 +154,12 @@ public class HighlighterTest extends SolrTestCaseJ4 {
   @Test
   public void testTermOffsetsTokenStream() throws Exception {
     String[] multivalued = { "a b c d", "e f g", "h", "i j k l m n" };
-    Analyzer a1 = new WhitespaceAnalyzer();
+    Analyzer a1 = new WhitespaceAnalyzer(TEST_VERSION_CURRENT);
     TermOffsetsTokenStream tots = new TermOffsetsTokenStream(
         a1.tokenStream( "", new StringReader( "a b c d e f g h i j k l m n" ) ) );
     for( String v : multivalued ){
       TokenStream ts1 = tots.getMultiValuedTokenStream( v.length() );
-      Analyzer a2 = new WhitespaceAnalyzer();
+      Analyzer a2 = new WhitespaceAnalyzer(TEST_VERSION_CURRENT);
       TokenStream ts2 = a2.tokenStream( "", new StringReader( v ) );
       while (ts1.incrementToken()) {
         assertTrue(ts2.incrementToken());
@@ -702,7 +698,7 @@ public class HighlighterTest extends SolrTestCaseJ4 {
         10, args);
 
     SolrQueryRequest request = lrf.makeRequest("test");
-    SolrHighlighter highlighter = request.getCore().getHighlighter();
+    SolrHighlighter highlighter = HighlightComponent.getHighlighter(h.getCore());
     List<String> highlightFieldNames = Arrays.asList(highlighter
         .getHighlightFields(null, request, new String[] {}));
     assertTrue("Expected to highlight on field \"title\"", highlightFieldNames
@@ -716,7 +712,7 @@ public class HighlighterTest extends SolrTestCaseJ4 {
     args.put("hl.fl", "foo_*");
     lrf = h.getRequestFactory("standard", 0, 10, args);
     request = lrf.makeRequest("test");
-    highlighter = request.getCore().getHighlighter();
+    highlighter = HighlightComponent.getHighlighter(h.getCore());
     highlightFieldNames = Arrays.asList(highlighter.getHighlightFields(null,
         request, new String[] {}));
     assertEquals("Expected one field to highlight on", 1, highlightFieldNames

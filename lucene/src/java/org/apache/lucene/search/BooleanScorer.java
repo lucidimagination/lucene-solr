@@ -20,8 +20,9 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.List;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery.BooleanWeight;
 
 /* Description from Doug Cutting (excerpted from
  * LUCENE-1483):
@@ -92,7 +93,7 @@ final class BooleanScorer extends Scorer {
     }
     
     @Override
-    public void setNextReader(IndexReader reader, int docBase) {
+    public void setNextReader(AtomicReaderContext context) {
       // not needed by this implementation
     }
     
@@ -197,9 +198,9 @@ final class BooleanScorer extends Scorer {
   private Bucket current;
   private int doc = -1;
   
-  BooleanScorer(Weight weight, Similarity similarity, int minNrShouldMatch,
+  BooleanScorer(BooleanWeight weight, boolean disableCoord, int minNrShouldMatch,
       List<Scorer> optionalScorers, List<Scorer> prohibitedScorers, int maxCoord) throws IOException {
-    super(similarity, weight);
+    super(null, weight);   // Similarity not used
     this.minNrShouldMatch = minNrShouldMatch;
 
     if (optionalScorers != null && optionalScorers.size() > 0) {
@@ -222,15 +223,14 @@ final class BooleanScorer extends Scorer {
     }
 
     coordFactors = new float[optionalScorers.size() + 1];
-    Similarity sim = getSimilarity();
     for (int i = 0; i < coordFactors.length; i++) {
-      coordFactors[i] = sim.coord(i, maxCoord); 
+      coordFactors[i] = disableCoord ? 1.0f : weight.coord(i, maxCoord); 
     }
   }
 
   // firstDocID is ignored since nextDoc() initializes 'current'
   @Override
-  protected boolean score(Collector collector, int max, int firstDocID) throws IOException {
+  public boolean score(Collector collector, int max, int firstDocID) throws IOException {
     boolean more;
     Bucket tmp;
     BucketScorer bs = new BucketScorer();

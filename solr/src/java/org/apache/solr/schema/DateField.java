@@ -18,7 +18,7 @@
 package org.apache.solr.schema;
 
 import org.apache.lucene.document.Fieldable;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermRangeQuery;
@@ -28,7 +28,6 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.DateUtil;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.function.*;
 import org.apache.solr.util.ByteUtils;
@@ -218,10 +217,6 @@ public class DateField extends FieldType {
 
   public ValueSource getValueSource(SchemaField field) {
     return new OrdFieldSource(field.name);
-  }
-
-  public void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException {
-    xmlWriter.writeDate(name, toExternal(f));
   }
 
   public void write(TextResponseWriter writer, String name, Fieldable f) throws IOException {
@@ -432,8 +427,8 @@ class DateFieldSource extends FieldCacheSource {
     return "date(" + field + ')';
   }
 
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    return new StringIndexDocValues(this, reader, field) {
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    return new StringIndexDocValues(this, readerContext, field) {
       protected String toTerm(String readableValue) {
         // needed for frange queries to work properly
         return ft.toInternal(readableValue);

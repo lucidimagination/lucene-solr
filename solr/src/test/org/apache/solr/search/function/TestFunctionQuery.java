@@ -17,14 +17,13 @@
 
 package org.apache.solr.search.function;
 
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Similarity;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.internal.runners.statements.Fail;
-
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
@@ -32,8 +31,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
-
-import static org.junit.Assert.assertTrue;
 
 /**
  * Tests some basic functionality of Solr while demonstrating good
@@ -220,7 +217,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertTrue(orig != FileFloatSource.onlyForTesting);
 
 
-    Random r = new Random();
+    Random r = random;
     for (int i=0; i<10; i++) {   // do more iterations for a thorough test
       int len = r.nextInt(ids.length+1);
       boolean sorted = r.nextBoolean();
@@ -298,8 +295,11 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
         "//float[@name='score']='" + similarity.idf(3,6)  + "'");
     assertQ(req("fl","*,score","q", "{!func}tf(a_t,cow)", "fq","id:6"),
         "//float[@name='score']='" + similarity.tf(5)  + "'");
+    FieldInvertState state = new FieldInvertState();
+    state.setBoost(1.0f);
+    state.setLength(4);
     assertQ(req("fl","*,score","q", "{!func}norm(a_t)", "fq","id:2"),
-        "//float[@name='score']='" + similarity.lengthNorm("a_t",4)  + "'");  // sqrt(4)==2 and is exactly representable when quantized to a byte
+        "//float[@name='score']='" + similarity.computeNorm("a_t",state)  + "'");  // sqrt(4)==2 and is exactly representable when quantized to a byte
 
     // test that ord and rord are working on a global index basis, not just
     // at the segment level (since Lucene 2.9 has switched to per-segment searching)
@@ -318,21 +318,26 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
     assertQ(req("fl","*,score","q", "{!func}ms(2009-08-31T12:10:10.125Z/SECOND,2009-08-31T12:10:10.124Z/SECOND)", "fq","id:1"), "//float[@name='score']='0.0'");
 
+    // test that we can specify "NOW"
+    assertQ(req("fl","*,score","q", "{!func}ms(NOW)", "NOW","1000"), "//float[@name='score']='1000.0'");
+
+
     for (int i=100; i<112; i++) {
       assertU(adoc("id",""+i, "text","batman"));
     }
     assertU(commit());
-    assertU(adoc("id","120", "text","batman superman"));   // in a segment by itself
+    assertU(adoc("id","120", "text","batman superman"));   // in a smaller segment
+    assertU(adoc("id","121", "text","superman"));
     assertU(commit());
 
-    // batman and superman have the same idf in single-doc segment, but very different in the complete index.
+    // superman has a higher df (thus lower idf) in one segment, but reversed in the complete index
     String q ="{!func}query($qq)";
     String fq="id:120"; 
     assertQ(req("fl","*,score","q", q, "qq","text:batman", "fq",fq), "//float[@name='score']<'1.0'");
     assertQ(req("fl","*,score","q", q, "qq","text:superman", "fq",fq), "//float[@name='score']>'1.0'");
 
     // test weighting through a function range query
-    assertQ(req("fl","*,score", "q", "{!frange l=1 u=10}query($qq)", "qq","text:superman"), "//*[@numFound='1']");
+    assertQ(req("fl","*,score", "fq",fq,  "q", "{!frange l=1 u=10}query($qq)", "qq","text:superman"), "//*[@numFound='1']");
 
     // test weighting through a complex function
     q ="{!func}sub(div(sum(0.0,product(1,query($qq))),1),0)";
@@ -356,18 +361,28 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
       // OK
     }
 
+    // test that sorting by function weights correctly.  superman should sort higher than batman due to idf of the whole index
+
+    assertQ(req("q", "*:*", "fq","id:120 OR id:121", "sort","{!func v=$sortfunc} desc", "sortfunc","query($qq)", "qq","text:(batman OR superman)")
+           ,"*//doc[1]/float[.='120.0']"
+           ,"*//doc[2]/float[.='121.0']"
+    );
+
+
     purgeFieldCache(FieldCache.DEFAULT);   // avoid FC insanity
   }
 
   @Test
   public void testSortByFunc() throws Exception {
-    assertU(adoc("id", "1", "x_i", "100"));
-    assertU(adoc("id", "2", "x_i", "300"));
-    assertU(adoc("id", "3", "x_i", "200"));
+    assertU(adoc("id", "1", "const_s", "xx", "x_i", "100", "1_s", "a"));
+    assertU(adoc("id", "2", "const_s", "xx", "x_i", "300", "1_s", "c"));
+    assertU(adoc("id", "3", "const_s", "xx", "x_i", "200", "1_s", "b"));
     assertU(commit());
 
     String desc = "/response/docs==[{'x_i':300},{'x_i':200},{'x_i':100}]";
     String asc =  "/response/docs==[{'x_i':100},{'x_i':200},{'x_i':300}]";
+
+    String threeonetwo =  "/response/docs==[{'x_i':200},{'x_i':100},{'x_i':300}]";
 
     String q = "id:[1 TO 3]";
     assertJQ(req("q",q,  "fl","x_i", "sort","add(x_i,x_i) desc")
@@ -375,27 +390,32 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     );
 
     // param sub of entire function
-    assertJQ(req("q",q,  "fl","x_i", "sort", "$x asc", "x","add(x_i,x_i)")
+    assertJQ(req("q",q,  "fl","x_i", "sort", "const_s asc, $x asc", "x","add(x_i,x_i)")
       ,asc
     );
 
     // multiple functions
-    assertJQ(req("q",q,  "fl","x_i", "sort", "$x asc, $y desc", "x", "5", "y","add(x_i,x_i)")
+    assertJQ(req("q",q,  "fl","x_i", "sort", "$x asc, const_s asc, $y desc", "x", "5", "y","add(x_i,x_i)")
       ,desc
     );
 
     // multiple functions inline
-    assertJQ(req("q",q,  "fl","x_i", "sort", "add( 10 , 10 ) asc, add(x_i , $const) desc", "const","50")
+    assertJQ(req("q",q,  "fl","x_i", "sort", "add( 10 , 10 ) asc, const_s asc, add(x_i , $const) desc", "const","50")
       ,desc
     );
 
     // test function w/ local params + func inline
-     assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=foo}add(x_i,x_i) desc")
-      ,desc
+    assertJQ(req("q",q,  "fl","x_i", 
+                 "sort", "const_s asc, {!key=foo}add(x_i,x_i) desc")
+             ,desc
+    );
+    assertJQ(req("q",q,  "fl","x_i", 
+                 "sort", "{!key=foo}add(x_i,x_i) desc, const_s asc")
+             ,desc
     );
 
     // test multiple functions w/ local params + func inline
-    assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=bar}add(10,20) asc, {!key=foo}add(x_i,x_i) desc")
+    assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=bar}add(10,20) asc, const_s asc, {!key=foo}add(x_i,x_i) desc")
       ,desc
     );
 
@@ -403,6 +423,31 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=bar v=$s1} asc, {!key=foo v=$s2} desc", "s1","add(3,4)", "s2","add(x_i,5)")
       ,desc
     );
+
+    // no space between inlined localparams and sort order
+    assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=bar v=$s1}asc,const_s asc,{!key=foo v=$s2}desc", "s1","add(3,4)", "s2","add(x_i,5)")
+      ,desc
+    );
+
+    // field name that isn't a legal java Identifier 
+    // and starts with a number to trick function parser
+    assertJQ(req("q",q,  "fl","x_i", "sort", "1_s asc")
+             ,asc
+    );
+
+    // really ugly field name that isn't a java Id, and can't be 
+    // parsed as a func, but sorted fine in Solr 1.4
+    assertJQ(req("q",q,  "fl","x_i", 
+                 "sort", "[]_s asc, {!key=foo}add(x_i,x_i) desc")
+             ,desc
+    );
+    // use localparms to sort by a lucene query, then a function
+    assertJQ(req("q",q,  "fl","x_i", 
+                 "sort", "{!lucene v='id:3'}desc, {!key=foo}add(x_i,x_i) asc")
+             ,threeonetwo
+    );
+
+
   }
 
   @Test

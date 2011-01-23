@@ -22,29 +22,29 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
-
-import java.util.List;
-import java.util.Random;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Similarity;
 import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.AlreadyClosedException;
-import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BitVector;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util._TestUtil;
 
 public class TestIndexReaderReopen extends LuceneTestCase {
     
@@ -149,12 +149,12 @@ public class TestIndexReaderReopen extends LuceneTestCase {
   // in each iteration verify the work of previous iteration. 
   // try this once with reopen once recreate, on both RAMDir and FSDir.
   public void testCommitReopenFS () throws IOException {
-    Directory dir = FSDirectory.open(indexDir);
+    Directory dir = newFSDirectory(indexDir);
     doTestReopenWithCommit(random, dir, true);
     dir.close();
   }
   public void testCommitRecreateFS () throws IOException {
-    Directory dir = FSDirectory.open(indexDir);
+    Directory dir = newFSDirectory(indexDir);
     doTestReopenWithCommit(random, dir, false);
     dir.close();
   }
@@ -230,9 +230,8 @@ public class TestIndexReaderReopen extends LuceneTestCase {
 
       @Override
       protected IndexReader openReader() throws IOException {
-        return new MultiReader(new IndexReader[] 
-                        {IndexReader.open(dir1, false), 
-                         IndexReader.open(dir2, false)});
+        return new MultiReader(IndexReader.open(dir1, false),
+            IndexReader.open(dir2, false));
       }
       
     });
@@ -256,12 +255,11 @@ public class TestIndexReaderReopen extends LuceneTestCase {
 
       @Override
       protected IndexReader openReader() throws IOException {
-        return new MultiReader(new IndexReader[] 
-                        {IndexReader.open(dir3, false), 
-                         IndexReader.open(dir4, false),
-                         // Does not implement reopen, so
-                         // hits exception:
-                         new FilterIndexReader(IndexReader.open(dir3, false))});
+        return new MultiReader(IndexReader.open(dir3, false),
+            IndexReader.open(dir4, false),
+            // Does not implement reopen, so
+            // hits exception:
+            new FilterIndexReader(IndexReader.open(dir3, false)));
       }
       
     });
@@ -297,10 +295,8 @@ public class TestIndexReaderReopen extends LuceneTestCase {
         ParallelReader pr = new ParallelReader();
         pr.add(IndexReader.open(dir1, false));
         pr.add(IndexReader.open(dir2, false));
-        MultiReader mr = new MultiReader(new IndexReader[] {
-            IndexReader.open(dir3, false), IndexReader.open(dir4, false)});
-        return new MultiReader(new IndexReader[] {
-           pr, mr, IndexReader.open(dir5, false)});
+        MultiReader mr = new MultiReader(IndexReader.open(dir3, false), IndexReader.open(dir4, false));
+        return new MultiReader(pr, mr, IndexReader.open(dir5, false));
       }
     });
     dir1.close();
@@ -612,19 +608,19 @@ public class TestIndexReaderReopen extends LuceneTestCase {
     createIndex(random, dir1, false);
     
     IndexReader reader1 = IndexReader.open(dir1, false);
-    SegmentReader segmentReader1 = SegmentReader.getOnlySegmentReader(reader1);
+    SegmentReader segmentReader1 = getOnlySegmentReader(reader1);
     IndexReader modifier = IndexReader.open(dir1, false);
     modifier.deleteDocument(0);
     modifier.close();
     
     IndexReader reader2 = reader1.reopen();
     modifier = IndexReader.open(dir1, false);
-    modifier.setNorm(1, "field1", 50);
-    modifier.setNorm(1, "field2", 50);
+    modifier.setNorm(1, "field1", Similarity.getDefault().encodeNormValue(50f));
+    modifier.setNorm(1, "field2", Similarity.getDefault().encodeNormValue(50f));
     modifier.close();
     
     IndexReader reader3 = reader2.reopen();
-    SegmentReader segmentReader3 = SegmentReader.getOnlySegmentReader(reader3);
+    SegmentReader segmentReader3 = getOnlySegmentReader(reader3);
     modifier = IndexReader.open(dir1, false);
     modifier.deleteDocument(2);
     modifier.close();
@@ -713,7 +709,7 @@ public class TestIndexReaderReopen extends LuceneTestCase {
       protected void modifyIndex(int i) throws IOException {
         if (i % 3 == 0) {
           IndexReader modifier = IndexReader.open(dir, false);
-          modifier.setNorm(i, "field1", 50);
+          modifier.setNorm(i, "field1", Similarity.getDefault().encodeNormValue(50f));
           modifier.close();
         } else if (i % 3 == 1) {
           IndexReader modifier = IndexReader.open(dir, false);
@@ -755,7 +751,7 @@ public class TestIndexReaderReopen extends LuceneTestCase {
       
       ReaderThreadTask task;
       
-      if (i < 4 ||( i >=10 && i < 14) || i > 18) {
+      if (i < 4 || (i >=10 && i < 14) || i > 18) {
         task = new ReaderThreadTask() {
           
           @Override
@@ -773,7 +769,6 @@ public class TestIndexReaderReopen extends LuceneTestCase {
                 // not synchronized
                 IndexReader refreshed = r.reopen();
                 
-                
                 IndexSearcher searcher = new IndexSearcher(refreshed);
                 ScoreDoc[] hits = searcher.search(
                     new TermQuery(new Term("field1", "a" + rnd.nextInt(refreshed.maxDoc()))),
@@ -782,19 +777,12 @@ public class TestIndexReaderReopen extends LuceneTestCase {
                   searcher.doc(hits[0].doc);
                 }
                 
-                // r might have changed because this is not a 
-                // synchronized method. However we don't want
-                // to make it synchronized to test 
-                // thread-safety of IndexReader.close().
-                // That's why we add refreshed also to 
-                // readersToClose, because double closing is fine
                 if (refreshed != r) {
                   refreshed.close();
                 }
-                readersToClose.add(refreshed);
               }
               synchronized(this) {
-                wait(1000);
+                wait(_TestUtil.nextInt(random, 1, 100));
               }
             }
           }
@@ -812,12 +800,10 @@ public class TestIndexReaderReopen extends LuceneTestCase {
               }
               
               synchronized(this) {
-                wait(100);
+                wait(_TestUtil.nextInt(random, 1, 100));
               }
             }
-                        
           }
-          
         };
       }
       
@@ -874,7 +860,7 @@ public class TestIndexReaderReopen extends LuceneTestCase {
   }
   
   private abstract static class ReaderThreadTask {
-    protected boolean stopped;
+    protected volatile boolean stopped;
     public void stop() {
       this.stopped = true;
     }
@@ -999,9 +985,9 @@ public class TestIndexReaderReopen extends LuceneTestCase {
       }
       case 1: {
         IndexReader reader = IndexReader.open(dir, false);
-        reader.setNorm(4, "field1", 123);
-        reader.setNorm(44, "field2", 222);
-        reader.setNorm(44, "field4", 22);
+        reader.setNorm(4, "field1", Similarity.getDefault().encodeNormValue(123f));
+        reader.setNorm(44, "field2", Similarity.getDefault().encodeNormValue(222f));
+        reader.setNorm(44, "field4", Similarity.getDefault().encodeNormValue(22f));
         reader.close();
         break;
       }
@@ -1022,8 +1008,8 @@ public class TestIndexReaderReopen extends LuceneTestCase {
       }
       case 4: {
         IndexReader reader = IndexReader.open(dir, false);
-        reader.setNorm(5, "field1", 123);
-        reader.setNorm(55, "field2", 222);
+        reader.setNorm(5, "field1", Similarity.getDefault().encodeNormValue(123f));
+        reader.setNorm(55, "field2", Similarity.getDefault().encodeNormValue(222f));
         reader.close();
         break;
       }
@@ -1167,7 +1153,7 @@ public class TestIndexReaderReopen extends LuceneTestCase {
 
     IndexReader[] rs2 = r2.getSequentialSubReaders();
 
-    SegmentReader sr1 = SegmentReader.getOnlySegmentReader(r1);
+    SegmentReader sr1 = getOnlySegmentReader(r1);
     SegmentReader sr2 = (SegmentReader) rs2[0];
 
     // At this point they share the same BitVector
@@ -1190,9 +1176,13 @@ public class TestIndexReaderReopen extends LuceneTestCase {
 
   public void testReopenOnCommit() throws Throwable {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-                                                                   TEST_VERSION_CURRENT, new MockAnalyzer()).setIndexDeletionPolicy(new KeepAllCommits()).setMaxBufferedDocs(-1));
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(10);
+    IndexWriter writer = new IndexWriter(
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+            setIndexDeletionPolicy(new KeepAllCommits()).
+            setMaxBufferedDocs(-1).
+            setMergePolicy(newLogMergePolicy(10))
+    );
     for(int i=0;i<4;i++) {
       Document doc = new Document();
       doc.add(newField("id", ""+i, Field.Store.NO, Field.Index.NOT_ANALYZED));

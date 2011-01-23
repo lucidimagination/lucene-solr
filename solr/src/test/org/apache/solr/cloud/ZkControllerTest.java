@@ -33,7 +33,6 @@ import org.apache.zookeeper.KeeperException;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
-import static org.junit.Assert.*;
 
 public class ZkControllerTest extends SolrTestCaseJ4 {
 
@@ -72,7 +71,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
     try {
       server = new ZkTestServer(zkDir);
       server.run();
-
+      AbstractZkTestCase.tryCleanSolrZkNode(server.getZkHost());
       AbstractZkTestCase.makeSolrZkNode(server.getZkHost());
 
       zkClient = new SolrZkClient(server.getZkAddress(), TIMEOUT);
@@ -189,7 +188,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
       zkController = new ZkController(server.getZkAddress(),
           TIMEOUT, 1000, "localhost", "8983", "/solr");
 
-      zkController.uploadToZK(new File("solr/conf"),
+      zkController.uploadToZK(getFile("solr/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
 
       if (DEBUG) {

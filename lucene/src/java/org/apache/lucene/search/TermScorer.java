@@ -20,7 +20,6 @@ package org.apache.lucene.search;
 import java.io.IOException;
 
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.search.BooleanClause.Occur;
 
 /** Expert: A <code>Scorer</code> for documents matching a <code>Term</code>.
  */
@@ -78,7 +77,7 @@ final class TermScorer extends Scorer {
 
   // firstDocID is ignored since nextDoc() sets 'doc'
   @Override
-  protected boolean score(Collector c, int end, int firstDocID) throws IOException {
+  public boolean score(Collector c, int end, int firstDocID) throws IOException {
     c.setScorer(this);
     while (doc < end) {                           // for docs in window
       c.collect(doc);                      // collect score

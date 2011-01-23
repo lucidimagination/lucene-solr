@@ -18,15 +18,14 @@ package org.apache.lucene.ant;
  */
 
 import java.io.File;
-import java.io.IOException;
+import java.io.IOException;  // javadoc
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.StopAnalyzer;
 import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Searcher;
-import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.Directory;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.types.FileSet;
 import org.apache.lucene.util.LuceneTestCase;
@@ -39,9 +38,9 @@ public class IndexTaskTest extends LuceneTestCase {
     private final static String docHandler =
             "org.apache.lucene.ant.FileExtensionDocumentHandler";
 
-    private Searcher searcher;
+    private IndexSearcher searcher;
     private Analyzer analyzer;
-    private FSDirectory dir;
+    private Directory dir;
 
 
     /**
@@ -68,7 +67,7 @@ public class IndexTaskTest extends LuceneTestCase {
         task.setProject(project);
         task.execute();
 
-        dir = FSDirectory.open(indexDir);
+        dir = newFSDirectory(indexDir);
         searcher = new IndexSearcher(dir, true);
         analyzer = new StopAnalyzer(TEST_VERSION_CURRENT);
     }

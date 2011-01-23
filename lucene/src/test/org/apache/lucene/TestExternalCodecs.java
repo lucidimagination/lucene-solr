@@ -18,6 +18,7 @@ package org.apache.lucene;
  */
 
 import org.apache.lucene.util.*;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.index.*;
 import org.apache.lucene.document.*;
 import org.apache.lucene.search.*;
@@ -101,6 +102,8 @@ public class TestExternalCodecs extends LuceneTestCase {
     static class RAMField extends Terms {
       final String field;
       final SortedMap<String,RAMTerm> termToDocs = new TreeMap<String,RAMTerm>();
+      long sumTotalTermFreq;
+
       RAMField(String field) {
         this.field = field;
       }
@@ -108,6 +111,11 @@ public class TestExternalCodecs extends LuceneTestCase {
       @Override
       public long getUniqueTermCount() {
         return termToDocs.size();
+      }
+
+      @Override
+      public long getSumTotalTermFreq() {
+        return sumTotalTermFreq;
       }
 
       @Override
@@ -123,6 +131,7 @@ public class TestExternalCodecs extends LuceneTestCase {
 
     static class RAMTerm {
       final String term;
+      long totalTermFreq;
       final List<RAMDoc> docs = new ArrayList<RAMDoc>();
       public RAMTerm(String term) {
         this.term = term;
@@ -188,14 +197,16 @@ public class TestExternalCodecs extends LuceneTestCase {
       }
 
       @Override
-      public void finishTerm(BytesRef text, int numDocs) {
-        assert numDocs > 0;
-        assert numDocs == current.docs.size();
+      public void finishTerm(BytesRef text, TermStats stats) {
+        assert stats.docFreq > 0;
+        assert stats.docFreq == current.docs.size();
+        current.totalTermFreq = stats.totalTermFreq;
         field.termToDocs.put(current.term, current);
       }
 
       @Override
-      public void finish() {
+      public void finish(long sumTotalTermFreq) {
+        field.sumTotalTermFreq = sumTotalTermFreq;
       }
     }
 
@@ -330,10 +341,10 @@ public class TestExternalCodecs extends LuceneTestCase {
       }
 
       @Override
-      public void cacheCurrentTerm() {
+      public long totalTermFreq() {
+        return ramField.termToDocs.get(current).totalTermFreq;
       }
 
-      @Override
       public DocsEnum docs(Bits skipDocs, DocsEnum reuse) {
         return new RAMDocsEnum(ramField.termToDocs.get(current), skipDocs);
       }
@@ -620,10 +631,12 @@ public class TestExternalCodecs extends LuceneTestCase {
     
     final int NUM_DOCS = 173;
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir,
-                                    newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, true, true)).setCodecProvider(provider));
-
-    w.setMergeFactor(3);
+    IndexWriter w = new IndexWriter(
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, true, true)).
+            setCodecProvider(provider).
+            setMergePolicy(newLogMergePolicy(3))
+    );
     Document doc = new Document();
     // uses default codec:
     doc.add(newField("field1", "this field uses the standard codec as the test", Field.Store.NO, Field.Index.ANALYZED));

@@ -21,9 +21,6 @@ import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.search.*;
 import org.junit.Test;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -122,7 +119,7 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
   private static class CustomMulAddQuery extends CustomScoreQuery {
     // constructor
     CustomMulAddQuery(Query q, ValueSourceQuery qValSrc1, ValueSourceQuery qValSrc2) {
-      super(q, new ValueSourceQuery[]{qValSrc1, qValSrc2});
+      super(q, qValSrc1, qValSrc2);
     }
 
     /*(non-Javadoc) @see org.apache.lucene.search.function.CustomScoreQuery#name() */
@@ -332,7 +329,7 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     }
   }
 
-  private void logResult(String msg, Searcher s, Query q, int doc, float score1) throws IOException {
+  private void logResult(String msg, IndexSearcher s, Query q, int doc, float score1) throws IOException {
     log(msg+" "+score1);
     log("Explain by: "+q);
     log(s.explain(q,doc));

@@ -8,11 +8,9 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.response.SolrQueryResponse;
 
-import java.util.Date;
 import java.util.Set;
 import java.util.Map;
 import java.util.HashSet;
-import java.util.HashMap;
 
 /**
  * A request handler that provides info about all 
@@ -37,17 +35,17 @@ public class SolrInfoMBeanHandler extends RequestHandlerBase {
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
     SolrCore core = req.getCore();
     
-    NamedList cats = new NamedList();
+    NamedList<NamedList<NamedList<Object>>> cats = new NamedList<NamedList<NamedList<Object>>>();
     rsp.add("solr-mbeans", cats);
     
     String[] requestedCats = req.getParams().getParams("cat");
     if (null == requestedCats || 0 == requestedCats.length) {
       for (SolrInfoMBean.Category cat : SolrInfoMBean.Category.values()) {
-        cats.add(cat.name(), new SimpleOrderedMap());
+        cats.add(cat.name(), new SimpleOrderedMap<NamedList<Object>>());
       }
     } else {
       for (String catName : requestedCats) {
-        cats.add(catName,new SimpleOrderedMap());
+        cats.add(catName,new SimpleOrderedMap<NamedList<Object>>());
       }
     }
          
@@ -60,10 +58,10 @@ public class SolrInfoMBeanHandler extends RequestHandlerBase {
 
       if ( ! ( requestedKeys.isEmpty() || requestedKeys.contains(key) ) ) continue;
 
-      NamedList catInfo = (NamedList) cats.get(m.getCategory().name());
+      NamedList<NamedList<Object>> catInfo = cats.get(m.getCategory().name());
       if ( null == catInfo ) continue;
 
-      NamedList mBeanInfo = new SimpleOrderedMap();
+      NamedList<Object> mBeanInfo = new SimpleOrderedMap<Object>();
       mBeanInfo.add("class", m.getName());
       mBeanInfo.add("version", m.getVersion());
       mBeanInfo.add("description", m.getDescription());

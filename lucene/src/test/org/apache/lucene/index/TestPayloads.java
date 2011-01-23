@@ -17,7 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
@@ -36,14 +35,13 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util._TestUtil;
-
 
 public class TestPayloads extends LuceneTestCase {
     
@@ -115,9 +113,9 @@ public class TestPayloads extends LuceneTestCase {
         analyzer.setPayloadData("f2", 1, "somedata".getBytes(), 0, 1);
         writer.addDocument(d);
         // flush
-        writer.close();        
-        
-        SegmentReader reader = SegmentReader.getOnlySegmentReader(ram);
+        writer.close();
+
+      SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
         FieldInfos fi = reader.fieldInfos();
         assertFalse("Payload field bit should not be set.", fi.fieldInfo("f1").storePayloads);
         assertTrue("Payload field bit should be set.", fi.fieldInfo("f2").storePayloads);
@@ -143,7 +141,7 @@ public class TestPayloads extends LuceneTestCase {
         // flush
         writer.close();
 
-        reader = SegmentReader.getOnlySegmentReader(ram);
+      reader = getOnlySegmentReader(IndexReader.open(ram, false));
         fi = reader.fieldInfos();
         assertFalse("Payload field bit should not be set.", fi.fieldInfo("f1").storePayloads);
         assertTrue("Payload field bit should be set.", fi.fieldInfo("f2").storePayloads);
@@ -154,15 +152,8 @@ public class TestPayloads extends LuceneTestCase {
 
     // Tests if payloads are correctly stored and loaded using both RamDirectory and FSDirectory
     public void testPayloadsEncoding() throws Exception {
-        // first perform the test using a RAMDirectory
         Directory dir = newDirectory();
         performTest(dir);
-        dir.close();
-        // now use a FSDirectory and repeat same test
-        File dirName = _TestUtil.getTempDir("test_payloads");
-        dir = FSDirectory.open(dirName);
-        performTest(dir);
-       _TestUtil.rmDir(dirName);
         dir.close();
     }
     
@@ -236,7 +227,7 @@ public class TestPayloads extends LuceneTestCase {
                                                     new BytesRef(terms[i].text()));
         }
         
-        while (tps[0].nextDoc() != DocsEnum.NO_MORE_DOCS) {
+        while (tps[0].nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             for (int i = 1; i < numTerms; i++) {
                 tps[i].nextDoc();
             }
@@ -521,7 +512,7 @@ public class TestPayloads extends LuceneTestCase {
         while (terms.next() != null) {
           String termText = terms.term().utf8ToString();
           tp = terms.docsAndPositions(delDocs, tp);
-          while(tp.nextDoc() != DocsEnum.NO_MORE_DOCS) {
+          while(tp.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             int freq = tp.freq();
             for (int i = 0; i < freq; i++) {
               tp.nextPosition();

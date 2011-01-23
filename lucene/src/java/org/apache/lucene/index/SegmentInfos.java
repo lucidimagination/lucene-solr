@@ -74,6 +74,8 @@ public final class SegmentInfos extends Vector<SegmentInfo> {
   
   private CodecProvider codecs;
 
+  private int format;
+
   /**
    * If non-null, information about loading segments_N files
    * will be printed here.  @see #setInfoStream.
@@ -86,6 +88,14 @@ public final class SegmentInfos extends Vector<SegmentInfo> {
   
   public SegmentInfos(CodecProvider codecs) {
     this.codecs = codecs;
+  }
+
+  public void setFormat(int format) {
+    this.format = format;
+  }
+
+  public int getFormat() {
+    return format;
   }
 
   public final SegmentInfo info(int i) {
@@ -696,7 +706,6 @@ public final class SegmentInfos extends Vector<SegmentInfo> {
   void updateGeneration(SegmentInfos other) {
     lastGeneration = other.lastGeneration;
     generation = other.generation;
-    version = other.version;
   }
 
   final void rollbackCommit(Directory dir) throws IOException {
@@ -727,7 +736,12 @@ public final class SegmentInfos extends Vector<SegmentInfo> {
    *  segments file, but writes an invalid checksum at the
    *  end, so that it is not visible to readers.  Once this
    *  is called you must call {@link #finishCommit} to complete
-   *  the commit or {@link #rollbackCommit} to abort it. */
+   *  the commit or {@link #rollbackCommit} to abort it.
+   *  <p>
+   *  Note: {@link #changed()} should be called prior to this
+   *  method if changes have been made to this {@link SegmentInfos} instance
+   *  </p>  
+   **/
   final void prepareCommit(Directory dir) throws IOException {
     if (pendingSegnOutput != null)
       throw new IllegalStateException("prepareCommit was already called");
@@ -811,7 +825,12 @@ public final class SegmentInfos extends Vector<SegmentInfo> {
   }
 
   /** Writes & syncs to the Directory dir, taking care to
-   *  remove the segments file on exception */
+   *  remove the segments file on exception
+   *  <p>
+   *  Note: {@link #changed()} should be called prior to this
+   *  method if changes have been made to this {@link SegmentInfos} instance
+   *  </p>  
+   **/
   final void commit(Directory dir) throws IOException {
     prepareCommit(dir);
     finishCommit(dir);
@@ -861,5 +880,11 @@ public final class SegmentInfos extends Vector<SegmentInfo> {
       count += info.docCount;
     }
     return count;
+  }
+
+  /** Call this before committing if changes have been made to the
+   *  segments. */
+  public void changed() {
+    version++;
   }
 }

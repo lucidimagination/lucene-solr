@@ -30,12 +30,14 @@ public class TestFlex extends LuceneTestCase {
 
     final int DOC_COUNT = 177;
 
-    IndexWriter w = new IndexWriter(d, new MockAnalyzer(),
-                                    IndexWriter.MaxFieldLength.UNLIMITED);
+    IndexWriter w = new IndexWriter(
+        d,
+        new IndexWriterConfig(Version.LUCENE_31, new MockAnalyzer()).
+            setMaxBufferedDocs(7)
+    );
 
     for(int iter=0;iter<2;iter++) {
       if (iter == 0) {
-        w.setMaxBufferedDocs(7);
         Document doc = new Document();
         doc.add(newField("field1", "this is field1", Field.Store.NO, Field.Index.ANALYZED));
         doc.add(newField("field2", "this is field2", Field.Store.NO, Field.Index.ANALYZED));
@@ -69,7 +71,11 @@ public class TestFlex extends LuceneTestCase {
     IndexReader r = w.getReader();
     TermsEnum terms = r.getSequentialSubReaders()[0].fields().terms("f").iterator();
     assertTrue(terms.next() != null);
-    assertEquals(0, terms.ord());
+    try {
+      assertEquals(0, terms.ord());
+    } catch (UnsupportedOperationException uoe) {
+      // ok -- codec is not required to support this op
+    }
     r.close();
     w.close();
     d.close();

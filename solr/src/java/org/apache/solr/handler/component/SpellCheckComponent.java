@@ -23,11 +23,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.lucene.search.spell.LevensteinDistance;
-import org.apache.lucene.search.spell.SpellChecker;
 import org.apache.lucene.search.spell.StringDistance;
 import org.apache.lucene.search.spell.SuggestWord;
 import org.apache.lucene.search.spell.SuggestWordQueue;
-import org.apache.lucene.util.PriorityQueue;
 import org.apache.solr.client.solrj.response.SpellCheckResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.slf4j.Logger;
@@ -145,7 +143,7 @@ public class SpellCheckComponent extends SearchComponent implements SolrCoreAwar
         boolean extendedResults = params.getBool(SPELLCHECK_EXTENDED_RESULTS,
             false);
         NamedList response = new SimpleOrderedMap();
-        IndexReader reader = rb.req.getSearcher().getReader();
+        IndexReader reader = rb.req.getSearcher().getIndexReader();
         boolean collate = params.getBool(SPELLCHECK_COLLATE, false);
         float accuracy = params.getFloat(SPELLCHECK_ACCURACY, Float.MIN_VALUE);
         SolrParams customParams = getCustomParams(getDictionaryName(params), params, shardRequest);
@@ -640,7 +638,7 @@ public class SpellCheckComponent extends SearchComponent implements SolrCoreAwar
         IndexSchema schema = core.getSchema();
         String fieldTypeName = (String) initParams.get("queryAnalyzerFieldType");
         FieldType fieldType = schema.getFieldTypes().get(fieldTypeName);
-        Analyzer analyzer = fieldType == null ? new WhitespaceAnalyzer()
+        Analyzer analyzer = fieldType == null ? new WhitespaceAnalyzer(core.getSolrConfig().luceneMatchVersion)
                 : fieldType.getQueryAnalyzer();
         //TODO: There's got to be a better way!  Where's Spring when you need it?
         queryConverter.setAnalyzer(analyzer);
@@ -680,7 +678,7 @@ public class SpellCheckComponent extends SearchComponent implements SolrCoreAwar
         if (buildOnCommit)  {
           buildSpellIndex(newSearcher);
         } else if (buildOnOptimize) {
-          if (newSearcher.getReader().isOptimized())  {
+          if (newSearcher.getIndexReader().isOptimized())  {
             buildSpellIndex(newSearcher);
           } else  {
             LOG.info("Index is not optimized therefore skipping building spell check index for: " + checker.getDictionaryName());

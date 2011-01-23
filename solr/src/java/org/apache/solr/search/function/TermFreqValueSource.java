@@ -18,9 +18,8 @@
 package org.apache.solr.search.function;
 
 import org.apache.lucene.index.*;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Searcher;
-import org.apache.lucene.search.Similarity;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrException;
 
@@ -38,9 +37,8 @@ public class TermFreqValueSource extends DocFreqValueSource {
   }
 
   @Override
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    // use MultiFields, just in case someone did a top() function
-    Fields fields = MultiFields.getFields(reader);
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    Fields fields = readerContext.reader.fields();
     final Terms terms = fields.terms(field);
 
     return new IntDocValues(this) {

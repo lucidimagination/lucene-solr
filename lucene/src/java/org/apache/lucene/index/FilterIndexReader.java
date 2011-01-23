@@ -19,6 +19,7 @@ package org.apache.lucene.index;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
+import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.search.FieldCache; // not great (circular); used only to purge FieldCache entry on close
@@ -98,6 +99,11 @@ public class FilterIndexReader extends IndexReader {
     public long getUniqueTermCount() throws IOException {
       return in.getUniqueTermCount();
     }
+
+    @Override
+    public long getSumTotalTermFreq() throws IOException {
+      return in.getSumTotalTermFreq();
+    }
   }
 
   /** Base class for filtering {@link TermsEnum} implementations. */
@@ -130,11 +136,6 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public void cacheCurrentTerm() throws IOException {
-      in.cacheCurrentTerm();
-    }
-
-    @Override
     public SeekStatus seek(long ord) throws IOException {
       return in.seek(ord);
     }
@@ -160,6 +161,11 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
+    public long totalTermFreq() {
+      return in.totalTermFreq();
+    }
+
+    @Override
     public DocsEnum docs(Bits skipDocs, DocsEnum reuse) throws IOException {
       return in.docs(skipDocs, reuse);
     }
@@ -172,6 +178,16 @@ public class FilterIndexReader extends IndexReader {
     @Override
     public Comparator<BytesRef> getComparator() throws IOException {
       return in.getComparator();
+    }
+
+    @Override
+    public SeekStatus seek(BytesRef term, TermState state) throws IOException {
+      return in.seek(term, state);
+    }
+
+    @Override
+    public TermState termState() throws IOException {
+      return in.termState();
     }
   }
 
@@ -350,12 +366,6 @@ public class FilterIndexReader extends IndexReader {
   }
 
   @Override
-  public void norms(String f, byte[] bytes, int offset) throws IOException {
-    ensureOpen();
-    in.norms(f, bytes, offset);
-  }
-
-  @Override
   protected void doSetNorm(int d, String f, byte b) throws CorruptIndexException, IOException {
     in.setNorm(d, f, b);
   }
@@ -416,6 +426,11 @@ public class FilterIndexReader extends IndexReader {
   @Override
   public IndexReader[] getSequentialSubReaders() {
     return in.getSequentialSubReaders();
+  }
+  
+  @Override
+  public ReaderContext getTopReaderContext() {
+    return in.getTopReaderContext();
   }
 
   @Override

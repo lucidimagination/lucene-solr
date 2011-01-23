@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  * @since solr 1.5
  */
 public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
-  public static Random r = new Random(0);
+  public static Random r = random;
 
   protected int shardCount = 4;
   /**
@@ -124,12 +124,21 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     return randVals;
   }
 
+  /**
+   * Subclasses can override this to change a test's solr home
+   * (default is in test-files)
+   */
+  public String getSolrHome() {
+    return SolrTestCaseJ4.TEST_HOME;
+  }
+  
   @Override
   public void setUp() throws Exception {
     SolrTestCaseJ4.resetExceptionIgnores();  // ignore anything with ignore_exception in it
     super.setUp();
     System.setProperty("solr.test.sys.prop1", "propone");
     System.setProperty("solr.test.sys.prop2", "proptwo");
+    System.setProperty("solr.solr.home", getSolrHome());
     testDir = new File(TEMP_DIR,
             getClass().getName() + "-" + System.currentTimeMillis());
     testDir.mkdirs();
@@ -581,7 +590,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   }
 
   public static abstract class RandVal {
-    public static Random r = new Random();
+    public static Random r = random;
     public static Set uniqueValues = new HashSet();
 
     public abstract Object val();

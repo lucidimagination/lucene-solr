@@ -89,7 +89,7 @@ public class DocumentBuilder {
         }
       }
     } else {
-      Field field = sfield.createField(val, boost);
+      Fieldable field = sfield.createField(val, boost);
       if (field != null) {
         if (!sfield.multiValued()) {
           String oldValue = map.put(sfield.getName(), val);
@@ -221,7 +221,7 @@ public class DocumentBuilder {
         }
       }
     } else {
-      Field f = field.createField(val, boost);
+      Fieldable f = field.createField(val, boost);
       if (f != null) {
         doc.add(f);  // null fields are not added
         res.add(f);
@@ -312,7 +312,7 @@ public class DocumentBuilder {
       if (sfield != null && sfield.getType() instanceof BinaryField) {
         isBinaryField = true;
         BinaryField binaryField = (BinaryField) sfield.getType();
-        Field f = binaryField.createField(sfield,v,boost);
+        Fieldable f = binaryField.createField(sfield,v,boost);
         if(f != null){
           out.add(f);
         }
@@ -351,7 +351,7 @@ public class DocumentBuilder {
           if (destinationField.getType() instanceof BinaryField) {
             BinaryField binaryField = (BinaryField) destinationField.getType();
             //TODO: safe to assume that binary fields only create one?
-            fields = new Field[]{binaryField.createField(destinationField, v, boost)};
+            fields = new Fieldable[]{binaryField.createField(destinationField, v, boost)};
           }
         } else {
           fields = destinationField.createFields(cf.getLimitedValue(val), boost);

@@ -24,11 +24,9 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Comparator;
 
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.apache.lucene.document.Document;
@@ -286,7 +284,7 @@ public class MoreLikeThisHandler extends RequestHandlerBase
     public MoreLikeThisHelper( SolrParams params, SolrIndexSearcher searcher )
     {
       this.searcher = searcher;
-      this.reader = searcher.getReader();
+      this.reader = searcher.getIndexReader();
       this.uniqueKeyField = searcher.getSchema().getUniqueKeyField();
       this.needDocSet = params.getBool(FacetParams.FACET,false);
       

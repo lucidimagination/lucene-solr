@@ -22,14 +22,13 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.text.Collator;
@@ -199,8 +198,8 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
         assertEquals("score for doc " + (doc + base) + " was not correct", 1.0f, scorer.score());
       }
       @Override
-      public void setNextReader(IndexReader reader, int docBase) {
-        base = docBase;
+      public void setNextReader(AtomicReaderContext context) {
+        base = context.docBase;
       }
       @Override
       public boolean acceptsDocsOutOfOrder() {

@@ -25,6 +25,7 @@ import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.codecs.PostingsWriterBase;
+import org.apache.lucene.index.codecs.TermStats;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CodecUtil;
@@ -85,24 +86,20 @@ public final class SepPostingsWriterImpl extends PostingsWriterBase {
     super();
 
     final String docFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, DOC_EXTENSION);
-    state.flushedFiles.add(docFileName);
     docOut = factory.createOutput(state.directory, docFileName);
     docIndex = docOut.index();
 
     if (state.fieldInfos.hasProx()) {
       final String frqFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, FREQ_EXTENSION);
-      state.flushedFiles.add(frqFileName);
       freqOut = factory.createOutput(state.directory, frqFileName);
       freqIndex = freqOut.index();
 
       final String posFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, POS_EXTENSION);
       posOut = factory.createOutput(state.directory, posFileName);
-      state.flushedFiles.add(posFileName);
       posIndex = posOut.index();
 
       // TODO: -- only if at least one field stores payloads?
       final String payloadFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, PAYLOAD_EXTENSION);
-      state.flushedFiles.add(payloadFileName);
       payloadOut = state.directory.createOutput(payloadFileName);
 
     } else {
@@ -114,7 +111,6 @@ public final class SepPostingsWriterImpl extends PostingsWriterBase {
     }
 
     final String skipFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, SKIP_EXTENSION);
-    state.flushedFiles.add(skipFileName);
     skipOut = state.directory.createOutput(skipFileName);
 
     totalNumDocs = state.numDocs;
@@ -211,6 +207,7 @@ public final class SepPostingsWriterImpl extends PostingsWriterBase {
     assert !omitTF;
 
     final int delta = position - lastPosition;
+    assert delta > 0 || position == 0: "position=" + position + " lastPosition=" + lastPosition;            // not quite right (if pos=0 is repeated twice we don't catch it)
     lastPosition = position;
 
     if (storePayloads) {
@@ -243,11 +240,11 @@ public final class SepPostingsWriterImpl extends PostingsWriterBase {
 
   /** Called when we are done adding docs to this term */
   @Override
-  public void finishTerm(int docCount, boolean isIndexTerm) throws IOException {
+  public void finishTerm(TermStats stats, boolean isIndexTerm) throws IOException {
 
     // TODO: -- wasteful we are counting this in two places?
-    assert docCount > 0;
-    assert docCount == df;
+    assert stats.docFreq > 0;
+    assert stats.docFreq == df;
 
     docIndex.write(termsOut, isIndexTerm);
 

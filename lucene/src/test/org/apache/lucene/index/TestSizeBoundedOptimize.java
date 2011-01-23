@@ -59,11 +59,11 @@ public class TestSizeBoundedOptimize extends LuceneTestCase {
 
     SegmentInfos sis = new SegmentInfos();
     sis.read(dir);
-    double min = sis.info(0).sizeInBytes();
+    double min = sis.info(0).sizeInBytes(true);
 
     conf = newWriterConfig();
     LogByteSizeMergePolicy lmp = new LogByteSizeMergePolicy();
-    lmp.setMaxMergeMB((min + 1) / (1 << 20));
+    lmp.setMaxMergeMBForOptimize((min + 1) / (1 << 20));
     conf.setMergePolicy(lmp);
     
     writer = new IndexWriter(dir, conf);

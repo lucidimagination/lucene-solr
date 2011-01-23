@@ -18,6 +18,7 @@ package org.apache.lucene.index;
  */
 
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.search.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
@@ -40,17 +41,22 @@ public class TestIndexFileDeleter extends LuceneTestCase {
   public void testDeleteLeftoverFiles() throws IOException {
     MockDirectoryWrapper dir = newDirectory();
     dir.setPreventDoubleWrite(false);
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer())
-        .setMaxBufferedDocs(10));
-    ((LogMergePolicy) writer.getMergePolicy()).setMergeFactor(10);
-    ((LogMergePolicy) writer.getMergePolicy()).setUseCompoundFile(true);
+
+    LogMergePolicy mergePolicy = newLogMergePolicy(true, 10);
+    mergePolicy.setNoCFSRatio(1); // This test expects all of its segments to be in CFS
+
+    IndexWriter writer = new IndexWriter(
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+            setMaxBufferedDocs(10).
+            setMergePolicy(mergePolicy)
+    );
+
     int i;
     for(i=0;i<35;i++) {
       addDoc(writer, i);
     }
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundFile(false);
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundDocStore(false);
+    mergePolicy.setUseCompoundFile(false);
     for(;i<45;i++) {
       addDoc(writer, i);
     }
@@ -63,7 +69,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     assertEquals("didn't delete the right number of documents", 1, delCount);
 
     // Set one norm so we get a .s0 file:
-    reader.setNorm(21, "content", (float) 1.5);
+    reader.setNorm(21, "content", Similarity.getDefault().encodeNormValue(1.5f));
     reader.close();
 
     // Now, artificially create an extra .del file & extra

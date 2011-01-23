@@ -26,15 +26,16 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestNRTReaderWithThreads extends LuceneTestCase {
-  Random random = new Random();
   AtomicInteger seq = new AtomicInteger(1);
 
   public void testIndexing() throws Exception {
     Directory mainDir = newDirectory();
-    IndexWriter writer = new IndexWriter(mainDir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(10));
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(2);
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundFile(false);
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundDocStore(false);
+    IndexWriter writer = new IndexWriter(
+        mainDir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+            setMaxBufferedDocs(10).
+            setMergePolicy(newLogMergePolicy(false,2))
+    );
     IndexReader reader = writer.getReader(); // start pooling readers
     reader.close();
     RunThread[] indexThreads = new RunThread[4];
@@ -75,7 +76,8 @@ public class TestNRTReaderWithThreads extends LuceneTestCase {
     int delCount = 0;
     int addCount = 0;
     int type;
-
+    final Random r = new Random(random.nextLong());
+    
     public RunThread(int type, IndexWriter writer) {
       this.type = type;
       this.writer = writer;
@@ -95,7 +97,7 @@ public class TestNRTReaderWithThreads extends LuceneTestCase {
             // we may or may not delete because the term may not exist,
             // however we're opening and closing the reader rapidly
             IndexReader reader = writer.getReader();
-            int id = random.nextInt(seq.intValue());
+            int id = r.nextInt(seq.intValue());
             Term term = new Term("id", Integer.toString(id));
             int count = TestIndexWriterReader.count(term, reader);
             writer.deleteDocuments(term);

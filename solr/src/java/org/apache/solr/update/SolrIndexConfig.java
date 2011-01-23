@@ -17,11 +17,12 @@
 
 package org.apache.solr.update;
 
+import org.apache.lucene.index.*;
+import org.apache.lucene.util.Version;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.PluginInfo;
-import org.apache.lucene.index.LogByteSizeMergePolicy;
-import org.apache.lucene.index.ConcurrentMergeScheduler;
-import org.apache.lucene.index.IndexWriter;
+import org.apache.solr.schema.IndexSchema;
+import org.apache.solr.util.SolrPluginUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,21 +46,22 @@ public class SolrIndexConfig {
   public static final String DEFAULT_MERGE_SCHEDULER_CLASSNAME = ConcurrentMergeScheduler.class.getName();
   static final SolrIndexConfig defaultDefaults = new SolrIndexConfig();
 
-
   private SolrIndexConfig() {
+    luceneVersion = Version.LUCENE_40;
     useCompoundFile = true;
     maxBufferedDocs = -1;
     maxMergeDocs = -1;
     mergeFactor = -1;
     ramBufferSizeMB = 16;
-    maxFieldLength = -1;
     writeLockTimeout = -1;
     commitLockTimeout = -1;
     lockType = null;
-    termIndexInterval = IndexWriter.DEFAULT_TERM_INDEX_INTERVAL;
+    termIndexInterval = IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL;
     mergePolicyInfo = null;
     mergeSchedulerInfo = null;
   }
+
+  public final Version luceneVersion;
   
   public final boolean useCompoundFile;
   public final int maxBufferedDocs;
@@ -68,7 +70,6 @@ public class SolrIndexConfig {
 
   public final double ramBufferSizeMB;
 
-  public final int maxFieldLength;
   public final int writeLockTimeout;
   public final int commitLockTimeout;
   public final String lockType;
@@ -83,13 +84,15 @@ public class SolrIndexConfig {
       prefix = defaultsName;
     if (def == null)
       def = defaultDefaults;
+
+    luceneVersion = solrConfig.luceneMatchVersion;
+
     useCompoundFile=solrConfig.getBool(prefix+"/useCompoundFile", def.useCompoundFile);
     maxBufferedDocs=solrConfig.getInt(prefix+"/maxBufferedDocs",def.maxBufferedDocs);
     maxMergeDocs=solrConfig.getInt(prefix+"/maxMergeDocs",def.maxMergeDocs);
     mergeFactor=solrConfig.getInt(prefix+"/mergeFactor",def.mergeFactor);
     ramBufferSizeMB = solrConfig.getDouble(prefix+"/ramBufferSizeMB", def.ramBufferSizeMB);
 
-    maxFieldLength=solrConfig.getInt(prefix+"/maxFieldLength",def.maxFieldLength);
     writeLockTimeout=solrConfig.getInt(prefix+"/writeLockTimeout", def.writeLockTimeout);
     commitLockTimeout=solrConfig.getInt(prefix+"/commitLockTimeout", def.commitLockTimeout);
     lockType=solrConfig.get(prefix+"/lockType", def.lockType);
@@ -129,11 +132,71 @@ public class SolrIndexConfig {
       infoStreamFile= solrConfig.get(prefix + "/infoStream/@file", null);
       log.info("IndexWriter infoStream debug log is enabled: " + infoStreamFile);
     }
-
   }
 
   private PluginInfo getPluginInfo(String path, SolrConfig solrConfig, PluginInfo def)  {
     List<PluginInfo> l = solrConfig.readPluginInfos(path, false, true);
     return l.isEmpty() ? def : l.get(0);
+  }
+
+  public IndexWriterConfig toIndexWriterConfig(IndexSchema schema) {
+    IndexWriterConfig iwc = new IndexWriterConfig(luceneVersion, schema.getAnalyzer());
+    if (maxBufferedDocs != -1)
+      iwc.setMaxBufferedDocs(maxBufferedDocs);
+
+    if (ramBufferSizeMB != -1)
+      iwc.setRAMBufferSizeMB(ramBufferSizeMB);
+
+    if (termIndexInterval != -1)
+      iwc.setTermIndexInterval(termIndexInterval);
+
+    if (writeLockTimeout != -1)
+      iwc.setWriteLockTimeout(writeLockTimeout);
+
+    iwc.setSimilarity(schema.getSimilarity());
+    iwc.setMergePolicy(buildMergePolicy(schema));
+    iwc.setMergeScheduler(buildMergeScheduler(schema));
+
+    return iwc;
+  }
+
+  private MergePolicy buildMergePolicy(IndexSchema schema) {
+    MergePolicy policy;
+    String mpClassName = mergePolicyInfo == null ? SolrIndexConfig.DEFAULT_MERGE_POLICY_CLASSNAME : mergePolicyInfo.className;
+
+    try {
+      policy = (MergePolicy) schema.getResourceLoader().newInstance(mpClassName, null, new Class[]{IndexWriter.class}, new Object[]{this});
+    } catch (Exception e) {
+      policy = (MergePolicy) schema.getResourceLoader().newInstance(mpClassName);
+    }
+
+    if (mergePolicyInfo != null)
+      SolrPluginUtils.invokeSetters(policy, mergePolicyInfo.initArgs);
+
+    if (policy instanceof LogMergePolicy) {
+      LogMergePolicy logMergePolicy = (LogMergePolicy) policy;
+
+      if (maxMergeDocs != -1)
+        logMergePolicy.setMaxMergeDocs(maxMergeDocs);
+
+      logMergePolicy.setUseCompoundFile(useCompoundFile);
+
+      if (mergeFactor != -1)
+        logMergePolicy.setMergeFactor(mergeFactor);
+    } else {
+      log.warn("Use of compound file format or mergefactor cannot be configured if merge policy is not an instance of LogMergePolicy. The configured policy's defaults will be used.");
+    }
+
+    return policy;
+  }
+
+  private MergeScheduler buildMergeScheduler(IndexSchema schema) {
+    String msClassName = mergeSchedulerInfo == null ? SolrIndexConfig.DEFAULT_MERGE_SCHEDULER_CLASSNAME : mergeSchedulerInfo.className;
+    MergeScheduler scheduler = (MergeScheduler) schema.getResourceLoader().newInstance(msClassName);
+
+    if (mergeSchedulerInfo != null)
+      SolrPluginUtils.invokeSetters(scheduler, mergeSchedulerInfo.initArgs);
+
+    return scheduler;
   }
 }
