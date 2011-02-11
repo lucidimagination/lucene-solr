@@ -40,7 +40,6 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.OrdTermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.codecs.CodecProvider;
@@ -60,11 +59,13 @@ public class TestFSTs extends LuceneTestCase {
 
   private MockDirectoryWrapper dir;
 
+  @Override
   public void setUp() throws IOException {
     dir = newDirectory();
     dir.setPreventDoubleWrite(false);
   }
 
+  @Override
   public void tearDown() throws IOException {
     dir.close();
   }
@@ -959,7 +960,7 @@ public class TestFSTs extends LuceneTestCase {
       writer.addDocument(doc);
       docCount++;
     }
-    IndexReader r = IndexReader.open(writer);
+    IndexReader r = IndexReader.open(writer, true);
     writer.close();
     final PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton(random.nextBoolean());
     Builder<Long> builder = new Builder<Long>(FST.INPUT_TYPE.BYTE1, 0, 0, true, outputs);
@@ -975,6 +976,9 @@ public class TestFSTs extends LuceneTestCase {
     Terms terms = MultiFields.getTerms(r, "body");
     if (terms != null) {
       final TermsEnum termsEnum = terms.iterator();
+      if (VERBOSE) {
+        System.out.println("TEST: got termsEnum=" + termsEnum);
+      }
       BytesRef term;
       int ord = 0;
       while((term = termsEnum.next()) != null) {
@@ -982,6 +986,9 @@ public class TestFSTs extends LuceneTestCase {
           try {
             termsEnum.ord();
           } catch (UnsupportedOperationException uoe) {
+            if (VERBOSE) {
+              System.out.println("TEST: codec doesn't support ord; FST stores docFreq");
+            }
             storeOrd = false;
           }
         }
@@ -1023,6 +1030,9 @@ public class TestFSTs extends LuceneTestCase {
             for(int nextIter=0;nextIter<10;nextIter++) {
               if (VERBOSE) {
                 System.out.println("TEST: next");
+                if (storeOrd) {
+                  System.out.println("  ord=" + termsEnum.ord());
+                }
               }
               if (termsEnum.next() != null) {
                 if (VERBOSE) {

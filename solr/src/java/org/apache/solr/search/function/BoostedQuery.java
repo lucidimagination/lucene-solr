@@ -41,6 +41,7 @@ public class BoostedQuery extends Query {
   public Query getQuery() { return q; }
   public ValueSource getValueSource() { return boostVal; }
 
+  @Override
   public Query rewrite(IndexReader reader) throws IOException {
     Query newQ = q.rewrite(reader);
     if (newQ == q) return this;
@@ -49,10 +50,12 @@ public class BoostedQuery extends Query {
     return bq;
   }
 
+  @Override
   public void extractTerms(Set terms) {
     q.extractTerms(terms);
   }
 
+  @Override
   public Weight createWeight(IndexSearcher searcher) throws IOException {
     return new BoostedQuery.BoostedWeight(searcher);
   }
@@ -69,10 +72,12 @@ public class BoostedQuery extends Query {
       boostVal.createWeight(fcontext,searcher);
     }
 
+    @Override
     public Query getQuery() {
       return BoostedQuery.this;
     }
 
+    @Override
     public float getValue() {
       return getBoost();
     }
@@ -96,7 +101,7 @@ public class BoostedQuery extends Query {
       if(subQueryScorer == null) {
         return null;
       }
-      return new BoostedQuery.CustomScorer(searcher.getSimilarity(), context, this, subQueryScorer, boostVal);
+      return new BoostedQuery.CustomScorer(context, this, subQueryScorer, boostVal);
     }
 
     @Override
@@ -123,9 +128,9 @@ public class BoostedQuery extends Query {
     private final DocValues vals;
     private final AtomicReaderContext readerContext;
 
-    private CustomScorer(Similarity similarity, AtomicReaderContext readerContext, BoostedQuery.BoostedWeight w,
+    private CustomScorer(AtomicReaderContext readerContext, BoostedQuery.BoostedWeight w,
         Scorer scorer, ValueSource vs) throws IOException {
-      super(similarity);
+      super(w);
       this.weight = w;
       this.qWeight = w.getValue();
       this.scorer = scorer;
@@ -173,6 +178,7 @@ public class BoostedQuery extends Query {
   }
 
 
+  @Override
   public String toString(String field) {
     StringBuilder sb = new StringBuilder();
     sb.append("boost(").append(q.toString(field)).append(',').append(boostVal).append(')');
@@ -180,6 +186,7 @@ public class BoostedQuery extends Query {
     return sb.toString();
   }
 
+  @Override
   public boolean equals(Object o) {
     if (getClass() != o.getClass()) return false;
     BoostedQuery other = (BoostedQuery)o;
@@ -188,6 +195,7 @@ public class BoostedQuery extends Query {
            && this.boostVal.equals(other.boostVal);
   }
 
+  @Override
   public int hashCode() {
     int h = q.hashCode();
     h ^= (h << 17) | (h >>> 16);

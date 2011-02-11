@@ -44,7 +44,7 @@ import org.apache.lucene.index.Term;
     <li>{@link org.apache.lucene.queryParser.QueryParser QueryParser}
     </ul>
 */
-public abstract class Query implements java.io.Serializable, Cloneable {
+public abstract class Query implements Cloneable {
   private float boost = 1.0f;                     // query boost factor
 
   /** Sets the boost for this query clause to <code>b</code>.  Documents
@@ -98,7 +98,7 @@ public abstract class Query implements java.io.Serializable, Cloneable {
     Query query = searcher.rewrite(this);
     Weight weight = query.createWeight(searcher);
     float sum = weight.sumOfSquaredWeights();
-    float norm = searcher.getSimilarity().queryNorm(sum);
+    float norm = searcher.getSimilarityProvider().queryNorm(sum);
     if (Float.isInfinite(norm) || Float.isNaN(norm))
       norm = 1.0f;
     weight.normalize(norm);

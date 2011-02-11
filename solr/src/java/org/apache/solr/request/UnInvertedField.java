@@ -882,6 +882,7 @@ public class UnInvertedField {
     return te.skipTo(termNum);
   }
 
+  @Override
   public String toString() {
     return "{field=" + field
             + ",memSize="+memSize()
@@ -996,12 +997,12 @@ class NumberedTermsEnum extends TermsEnum {
   }
 
   @Override
-  public int docFreq() {
+  public int docFreq() throws IOException {
     return tenum.docFreq();
   }
 
   @Override
-  public long totalTermFreq() {
+  public long totalTermFreq() throws IOException {
     return tenum.totalTermFreq();
   }
 
@@ -1158,6 +1159,7 @@ class TermIndex {
       ArrayList<BytesRef> lst;
       PagedBytes bytes;
 
+      @Override
       protected BytesRef setTerm() throws IOException {
         BytesRef br = super.setTerm();
         if (br != null && (pos & intervalMask)==0) {
@@ -1173,10 +1175,12 @@ class TermIndex {
         return br;
       }
 
+      @Override
       public BytesRef skipTo(int termNumber) throws IOException {
         throw new UnsupportedOperationException();
       }
 
+      @Override
       public void close() throws IOException {
         nTerms=pos;
         super.close();

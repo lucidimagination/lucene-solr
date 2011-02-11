@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.Constants;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.DefaultSegmentInfosWriter;
@@ -65,11 +66,11 @@ public final class SegmentInfo {
 
   private boolean isCompoundFile;         
 
-  private List<String> files;                     // cached list of files that this segment uses
+  private volatile List<String> files;                     // cached list of files that this segment uses
                                                   // in the Directory
 
-  private long sizeInBytesNoStore = -1;           // total byte size of all but the store files (computed on demand)
-  private long sizeInBytesWithStore = -1;         // total byte size of all of our files (computed on demand)
+  private volatile long sizeInBytesNoStore = -1;           // total byte size of all but the store files (computed on demand)
+  private volatile long sizeInBytesWithStore = -1;         // total byte size of all of our files (computed on demand)
 
   private int docStoreOffset;                     // if this segment shares stored fields & vectors, this
                                                   // offset is where in that file this segment's docs begin
@@ -87,6 +88,17 @@ public final class SegmentInfo {
 
   private Map<String,String> diagnostics;
 
+  // Tracks the Lucene version this segment was created with, since 3.1. Null 
+  // indicates an older than 3.0 index, and it's used to detect a too old index.
+  // The format expected is "x.y" - "2.x" for pre-3.0 indexes (or null), and 
+  // specific versions afterwards ("3.0", "3.1" etc.).
+  // see Constants.LUCENE_MAIN_VERSION.
+  private String version;
+
+  // NOTE: only used in-RAM by IW to track buffered deletes;
+  // this is never written to/read from the Directory
+  private long bufferedDeletesGen;
+  
   public SegmentInfo(String name, int docCount, Directory dir, boolean isCompoundFile,
                      boolean hasProx, SegmentCodecs segmentCodecs, boolean hasVectors) {
     this.name = name;
@@ -95,10 +107,12 @@ public final class SegmentInfo {
     delGen = NO;
     this.isCompoundFile = isCompoundFile;
     this.docStoreOffset = -1;
+    this.docStoreSegment = name;
     this.hasProx = hasProx;
     this.segmentCodecs = segmentCodecs;
     this.hasVectors = hasVectors;
     delCount = 0;
+    version = Constants.LUCENE_MAIN_VERSION;
   }
 
   /**
@@ -106,11 +120,13 @@ public final class SegmentInfo {
    */
   void reset(SegmentInfo src) {
     clearFiles();
+    version = src.version;
     name = src.name;
     docCount = src.docCount;
     dir = src.dir;
     delGen = src.delGen;
     docStoreOffset = src.docStoreOffset;
+    docStoreSegment = src.docStoreSegment;
     docStoreIsCompoundFile = src.docStoreIsCompoundFile;
     hasVectors = src.hasVectors;
     hasProx = src.hasProx;
@@ -145,6 +161,9 @@ public final class SegmentInfo {
    */
   public SegmentInfo(Directory dir, int format, IndexInput input, CodecProvider codecs) throws IOException {
     this.dir = dir;
+    if (format <= DefaultSegmentInfosWriter.FORMAT_3_1) {
+      version = input.readString();
+    }
     name = input.readString();
     docCount = input.readInt();
     delGen = input.readLong();
@@ -226,24 +245,31 @@ public final class SegmentInfo {
    */
   public long sizeInBytes(boolean includeDocStores) throws IOException {
     if (includeDocStores) {
-      if (sizeInBytesWithStore != -1) return sizeInBytesWithStore;
-      sizeInBytesWithStore = 0;
+      if (sizeInBytesWithStore != -1) {
+        return sizeInBytesWithStore;
+      }
+      long sum = 0;
       for (final String fileName : files()) {
-        // We don't count bytes used by a shared doc store against this segment
+        // We don't count bytes used by a shared doc store
+        // against this segment
         if (docStoreOffset == -1 || !IndexFileNames.isDocStoreFile(fileName)) {
-          sizeInBytesWithStore += dir.fileLength(fileName);
+          sum += dir.fileLength(fileName);
         }
       }
+      sizeInBytesWithStore = sum;
       return sizeInBytesWithStore;
     } else {
-      if (sizeInBytesNoStore != -1) return sizeInBytesNoStore;
-      sizeInBytesNoStore = 0;
+      if (sizeInBytesNoStore != -1) {
+        return sizeInBytesNoStore;
+      }
+      long sum = 0;
       for (final String fileName : files()) {
         if (IndexFileNames.isDocStoreFile(fileName)) {
           continue;
         }
-        sizeInBytesNoStore += dir.fileLength(fileName);
+        sum += dir.fileLength(fileName);
       }
+      sizeInBytesNoStore = sum;
       return sizeInBytesNoStore;
     }
   }
@@ -293,6 +319,7 @@ public final class SegmentInfo {
       si.normGen = normGen.clone();
     }
     si.hasVectors = hasVectors;
+    si.version = version;
     return si;
   }
 
@@ -433,6 +460,8 @@ public final class SegmentInfo {
   public void write(IndexOutput output)
     throws IOException {
     assert delCount <= docCount: "delCount=" + delCount + " docCount=" + docCount + " segment=" + name;
+    // Write the Lucene version that created this segment, since 3.1
+    output.writeString(version);
     output.writeString(name);
     output.writeInt(docCount);
     output.writeLong(delGen);
@@ -574,8 +603,9 @@ public final class SegmentInfo {
   /** Used for debugging.  Format may suddenly change.
    * 
    *  <p>Current format looks like
-   *  <code>_a:c45/4->_1</code>, which means the segment's
-   *  name is <code>_a</code>; it's using compound file
+   *  <code>_a(3.1):c45/4->_1</code>, which means the segment's
+   *  name is <code>_a</code>; it was created with Lucene 3.1 (or
+   *  '?' if it's unkown); it's using compound file
    *  format (would be <code>C</code> if not compound); it
    *  has 45 documents; it has 4 deletions (this part is
    *  left off when there are no deletions); it's using the
@@ -585,7 +615,7 @@ public final class SegmentInfo {
   public String toString(Directory dir, int pendingDelCount) {
 
     StringBuilder s = new StringBuilder();
-    s.append(name).append(':');
+    s.append(name).append('(').append(version == null ? "?" : version).append(')').append(':');
 
     char cfs = getUseCompoundFile() ? 'c' : 'C';
     s.append(cfs);
@@ -632,5 +662,33 @@ public final class SegmentInfo {
   @Override
   public int hashCode() {
     return dir.hashCode() + name.hashCode();
+  }
+
+  /**
+   * Used by DefaultSegmentInfosReader to upgrade a 3.0 segment to record its
+   * version is "3.0". This method can be removed when we're not required to
+   * support 3x indexes anymore, e.g. in 5.0.
+   * <p>
+   * <b>NOTE:</b> this method is used for internal purposes only - you should
+   * not modify the version of a SegmentInfo, or it may result in unexpected
+   * exceptions thrown when you attempt to open the index.
+   * 
+   * @lucene.internal
+   */
+  public void setVersion(String version) {
+    this.version = version;
+  }
+  
+  /** Returns the version of the code which wrote the segment. */
+  public String getVersion() {
+    return version;
+  }
+
+  long getBufferedDeletesGen() {
+    return bufferedDeletesGen;
+  }
+
+  void setBufferedDeletesGen(long v) {
+    bufferedDeletesGen = v;
   }
 }

@@ -28,7 +28,7 @@ import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Similarity;
+import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -42,7 +42,7 @@ public class TestFieldNormModifier extends LuceneTestCase {
   public Directory store;
   
   /** inverts the normal notion of lengthNorm */
-  public static Similarity s = new DefaultSimilarity() {
+  public static SimilarityProvider s = new DefaultSimilarity() {
     @Override
     public float computeNorm(String fieldName, FieldInvertState state) {
       return state.getBoost() * (discountOverlaps ? state.getLength() - state.getNumOverlap() : state.getLength());
@@ -54,7 +54,7 @@ public class TestFieldNormModifier extends LuceneTestCase {
     super.setUp();
     store = newDirectory();
     IndexWriter writer = new IndexWriter(store, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer()));
+                                                                     TEST_VERSION_CURRENT, new MockAnalyzer()).setMergePolicy(newInOrderLogMergePolicy()));
     
     for (int i = 0; i < NUM_DOCS; i++) {
       Document d = new Document();

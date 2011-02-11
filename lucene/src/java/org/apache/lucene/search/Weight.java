@@ -18,7 +18,6 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
-import java.io.Serializable;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
@@ -44,7 +43,7 @@ import org.apache.lucene.index.IndexReader.ReaderContext;
  * <code>IndexSearcher</code> ({@link Query#createWeight(IndexSearcher)}).
  * <li>The {@link #sumOfSquaredWeights()} method is called on the
  * <code>Weight</code> to compute the query normalization factor
- * {@link Similarity#queryNorm(float)} of the query clauses contained in the
+ * {@link SimilarityProvider#queryNorm(float)} of the query clauses contained in the
  * query.
  * <li>The query normalization factor is passed to {@link #normalize(float)}. At
  * this point the weighting is complete.
@@ -54,7 +53,7 @@ import org.apache.lucene.index.IndexReader.ReaderContext;
  * 
  * @since 2.9
  */
-public abstract class Weight implements Serializable {
+public abstract class Weight {
 
   /**
    * An explanation of the score computation for the named document.

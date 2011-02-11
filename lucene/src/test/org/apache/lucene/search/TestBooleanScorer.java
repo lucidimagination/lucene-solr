@@ -56,9 +56,10 @@ public class TestBooleanScorer extends LuceneTestCase
     query.add(booleanQuery1, BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(FIELD, "9")), BooleanClause.Occur.MUST_NOT);
 
-    IndexSearcher indexSearcher = new IndexSearcher(ir);
+    IndexSearcher indexSearcher = newSearcher(ir);
     ScoreDoc[] hits = indexSearcher.search(query, null, 1000).scoreDocs;
     assertEquals("Number of matched documents", 2, hits.length);
+    indexSearcher.close();
     ir.close();
     directory.close();
   }
@@ -74,10 +75,9 @@ public class TestBooleanScorer extends LuceneTestCase
     writer.commit();
     IndexReader ir = writer.getReader();
     writer.close();
-    IndexSearcher searcher = new IndexSearcher(ir);
-    
-    Similarity sim = Similarity.getDefault();
-    Scorer[] scorers = new Scorer[] {new Scorer(sim) {
+    IndexSearcher searcher = newSearcher(ir);
+    BooleanWeight weight = (BooleanWeight) new BooleanQuery().createWeight(searcher);
+    Scorer[] scorers = new Scorer[] {new Scorer(weight) {
       private int doc = -1;
       @Override public float score() throws IOException { return 0; }
       @Override public int docID() { return doc; }
@@ -91,7 +91,7 @@ public class TestBooleanScorer extends LuceneTestCase
       }
       
     }};
-    BooleanWeight weight = (BooleanWeight) new BooleanQuery().createWeight(searcher);
+    
     BooleanScorer bs = new BooleanScorer(weight, false, 1, Arrays.asList(scorers), null, scorers.length);
     
     assertEquals("should have received 3000", 3000, bs.nextDoc());
