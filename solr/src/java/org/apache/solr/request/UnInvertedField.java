@@ -27,7 +27,7 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
-import org.apache.lucene.util.PagedBytes;
+import org.apache.lucene.util.*;
 import org.apache.noggit.CharArr;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.util.NamedList;
@@ -42,9 +42,6 @@ import org.apache.solr.util.LongPriorityQueue;
 import org.apache.solr.util.PrimUtils;
 import org.apache.solr.handler.component.StatsValues;
 import org.apache.solr.handler.component.FieldFacetStats;
-import org.apache.lucene.util.OpenBitSet;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.Bits;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -255,11 +252,13 @@ public class UnInvertedField {
 
         if (deState == null) {
           deState = new SolrIndexSearcher.DocsEnumState();
+          deState.fieldName = StringHelper.intern(field);
           deState.termsEnum = te.tenum;
-          deState.reuse = te.docsEnum;
+          deState.docsEnum = te.docsEnum;
+          deState.minSetSizeCached = threshold;
         }
-        DocSet set = searcher.getDocSet(new TermQuery(new Term(ti.field, topTerm.term)), deState);
-        te.docsEnum = deState.reuse;
+        DocSet set = searcher.getDocSet(deState);
+        te.docsEnum = deState.docsEnum;
 
         maxTermCounts[termNum] = set.size();
 
