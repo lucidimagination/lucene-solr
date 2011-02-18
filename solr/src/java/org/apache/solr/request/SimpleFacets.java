@@ -781,8 +781,9 @@ public class SimpleFacets {
    * SolrParams
    *
    * @see FacetParams#FACET_DATE
+   * @deprecated Use getFacetRangeCounts which is more generalized
    */
-
+  @Deprecated
   public NamedList<Object> getFacetDateCounts()
     throws IOException, ParseException {
 
@@ -804,6 +805,10 @@ public class SimpleFacets {
     return resOuter;
   }
 
+  /**
+   * @deprecated Use getFacetRangeCounts which is more generalized
+   */
+  @Deprecated
   public void getFacetDateCounts(String dateFacet, NamedList<Object> resOuter)
       throws IOException, ParseException {
 
@@ -1160,6 +1165,10 @@ public class SimpleFacets {
     return searcher.numDocs(rangeQ ,base);
   }
 
+  /**
+   * @deprecated Use rangeCount(SchemaField,String,String,boolean,boolean) which is more generalized
+   */
+  @Deprecated
   protected int rangeCount(SchemaField sf, Date low, Date high,
                            boolean iLow, boolean iHigh) throws IOException {
     Query rangeQ = ((DateField)(sf.getType())).getRangeQuery(null, sf,low,high,iLow,iHigh);
