@@ -68,7 +68,7 @@
         %>[<%=lname%>]<%
       } else {
         // we hard code %url% to solr in LucidWorks because we are running under the root context
-        %>[<a href="solr/<%=lname%>/admin/"><%=lname%></a>]<%
+        %>[<a href="/solr/<%=lname%>/admin/"><%=lname%></a>]<%
       }
   }%></td></tr><%
 }}%>
