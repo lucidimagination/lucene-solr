@@ -67,7 +67,8 @@
       if(name.equals(core.getName())) {
         %>[<%=lname%>]<%
       } else {
-        %>[<a href="<%=url%>/<%=lname%>/admin/"><%=lname%></a>]<%
+        // we hard code %url% to solr in LucidWorks because we are running under the root context
+        %>[<a href="solr/<%=lname%>/admin/"><%=lname%></a>]<%
       }
   }%></td></tr><%
 }}%>
