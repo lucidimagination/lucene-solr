@@ -54,6 +54,7 @@ public class QueryScorer implements Scorer {
   private IndexReader reader;
   private boolean skipInitExtractor;
   private boolean wrapToCaching = true;
+  private int maxCharsToAnalyze;
 
   /**
    * @param query Query to use for highlighting
@@ -173,7 +174,8 @@ public class QueryScorer implements Scorer {
   /* (non-Javadoc)
    * @see org.apache.lucene.search.highlight.Scorer#init(org.apache.lucene.analysis.TokenStream)
    */
-  public TokenStream init(TokenStream tokenStream) throws IOException {
+  public TokenStream init(TokenStream tokenStream, int maxDocCharsToAnalyze) throws IOException {
+    this.maxCharsToAnalyze = maxDocCharsToAnalyze;
     position = -1;
     termAtt = tokenStream.addAttribute(CharTermAttribute.class);
     posIncAtt = tokenStream.addAttribute(PositionIncrementAttribute.class);
@@ -209,7 +211,7 @@ public class QueryScorer implements Scorer {
   private TokenStream initExtractor(TokenStream tokenStream) throws IOException {
     WeightedSpanTermExtractor qse = defaultField == null ? new WeightedSpanTermExtractor()
         : new WeightedSpanTermExtractor(defaultField);
-
+    qse.setMaxDocCharsToAnalyze(maxCharsToAnalyze);
     qse.setExpandMultiTermQuery(expandMultiTermQuery);
     qse.setWrapIfNotCachingTokenFilter(wrapToCaching);
     if (reader == null) {

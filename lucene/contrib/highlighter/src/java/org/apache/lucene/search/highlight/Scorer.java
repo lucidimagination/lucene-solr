@@ -37,7 +37,7 @@ public interface Scorer {
    *         using the same {@link TokenStream} that was passed in.
    * @throws IOException
    */
-  public TokenStream init(TokenStream tokenStream) throws IOException;
+  public TokenStream init(TokenStream tokenStream, int maxDocCharsToAnalyze) throws IOException;
 
   /**
    * Called when a new fragment is started for consideration.

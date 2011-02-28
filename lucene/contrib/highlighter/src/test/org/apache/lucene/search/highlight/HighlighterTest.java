@@ -1274,7 +1274,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
         return 1;
       }
 
-      public TokenStream init(TokenStream tokenStream) {
+      public TokenStream init(TokenStream tokenStream, int macDocCharsToAnalyze) {
         return null;
       }
     });
