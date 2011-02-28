@@ -116,7 +116,8 @@ public class Suggester extends SolrSpellChecker {
         dictionary = new FileDictionary(new InputStreamReader(
                 core.getResourceLoader().openResource(sourceLocation), "UTF-8"));
       } catch (UnsupportedEncodingException e) {
-        e.printStackTrace();
+        // should not happen
+        LOG.error("should not happen", e);
       }
     }
     try {
@@ -125,7 +126,7 @@ public class Suggester extends SolrSpellChecker {
         lookup.store(storeDir);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOG.error("Error while building or storing Suggester data", e);
     }
   }
 

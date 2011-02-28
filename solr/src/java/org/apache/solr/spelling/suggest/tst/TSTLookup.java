@@ -103,9 +103,12 @@ public class TSTLookup extends Lookup {
       return false;
     }
     DataInputStream in = new DataInputStream(new FileInputStream(data));
-    root = new TernaryTreeNode();
-    readRecursively(in, root);
-    in.close();
+    try {
+      root = new TernaryTreeNode();
+      readRecursively(in, root);
+    } finally {
+      in.close();
+    }
     return true;
   }
   
@@ -140,9 +143,12 @@ public class TSTLookup extends Lookup {
     }
     File data = new File(storeDir, FILENAME);
     DataOutputStream out = new DataOutputStream(new FileOutputStream(data));
-    writeRecursively(out, root);
-    out.flush();
-    out.close();
+    try {
+      writeRecursively(out, root);
+    } finally {
+      out.close();
+    }
+
     return true;
   }
   
