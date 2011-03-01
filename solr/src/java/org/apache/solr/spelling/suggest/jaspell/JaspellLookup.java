@@ -108,8 +108,8 @@ public class JaspellLookup extends Lookup {
       return false;
     }
     DataInputStream in = new DataInputStream(new FileInputStream(data));
+    TSTNode root = trie.new TSTNode('\0', null);
     try {
-      TSTNode root = trie.new TSTNode('\0', null);
       readRecursively(in, root);
       trie.setRoot(root);
     } finally {
@@ -154,6 +154,7 @@ public class JaspellLookup extends Lookup {
     DataOutputStream out = new DataOutputStream(new FileOutputStream(data));
     try {
       writeRecursively(out, root);
+      out.flush();
     } finally {
       out.close();
     }

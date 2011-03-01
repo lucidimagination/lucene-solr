@@ -103,8 +103,8 @@ public class TSTLookup extends Lookup {
       return false;
     }
     DataInputStream in = new DataInputStream(new FileInputStream(data));
+    root = new TernaryTreeNode();
     try {
-      root = new TernaryTreeNode();
       readRecursively(in, root);
     } finally {
       in.close();
@@ -120,7 +120,7 @@ public class TSTLookup extends Lookup {
       node.token = in.readUTF();
     }
     if ((mask & HAS_VALUE) != 0) {
-      node.val = new Integer(in.readInt());
+      node.val = new Float(in.readFloat());
     }
     if ((mask & LO_KID) != 0) {
       node.loKid = new TernaryTreeNode();
@@ -145,10 +145,10 @@ public class TSTLookup extends Lookup {
     DataOutputStream out = new DataOutputStream(new FileOutputStream(data));
     try {
       writeRecursively(out, root);
+      out.flush();
     } finally {
       out.close();
     }
-
     return true;
   }
   
@@ -165,7 +165,7 @@ public class TSTLookup extends Lookup {
     if (node.val != null) mask |= HAS_VALUE;
     out.writeByte(mask);
     if (node.token != null) out.writeUTF(node.token);
-    if (node.val != null) out.writeInt((Integer)node.val);
+    if (node.val != null) out.writeFloat((Float)node.val);
     // recurse and write kids
     if (node.loKid != null) {
       writeRecursively(out, node.loKid);

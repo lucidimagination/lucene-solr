@@ -175,6 +175,10 @@ Other Changes
   using Generics where applicable in method/object declatations, and
   adding @SuppressWarnings("unchecked") when appropriate (hossman)
 
+* SOLR-2375: Suggester Lookup implementations now store trie data
+  and load it back on init. This means that large tries don't have to be
+  rebuilt on every commit or core reload. (ab)
+
 Documentation
 ----------------------
 
@@ -818,6 +822,13 @@ Other Changes
 * SOLR-2381: Include a patched version of Jetty (6.1.26 + JETTY-1340) 
   to fix problematic UTF-8 handling for supplementary characters.
   (uschindler, yonik, rmuir)
+
+* SOLR-2391: The preferred Content-Type for XML was changed to
+  application/xml. XMLResponseWriter now only delivers using this
+  type; updating documents and analyzing documents is still supported
+  using text/xml as Content-Type, too. If you have clients that are
+  hardcoded on text/xml as Content-Type, you have to change them.
+  (uschindler, rmuir)
 
 
 Build

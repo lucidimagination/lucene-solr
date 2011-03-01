@@ -47,14 +47,14 @@ public class PersistenceTest extends SolrTestCaseJ4 {
   public void testTSTPersistence() throws Exception {
     TSTLookup lookup = new TSTLookup();
     for (String k : keys) {
-      lookup.add(k, new Integer(k.length()));
+      lookup.add(k, new Float(k.length()));
     }
     File storeDir = new File(TEST_HOME);
     lookup.store(storeDir);
     lookup = new TSTLookup();
     lookup.load(storeDir);
     for (String k : keys) {
-      Integer val = (Integer)lookup.get(k);
+      Float val = (Float)lookup.get(k);
       assertNotNull(k, val);
       assertEquals(k, k.length(), val.intValue());
     }
