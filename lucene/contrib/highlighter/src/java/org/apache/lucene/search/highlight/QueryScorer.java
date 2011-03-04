@@ -174,8 +174,7 @@ public class QueryScorer implements Scorer {
   /* (non-Javadoc)
    * @see org.apache.lucene.search.highlight.Scorer#init(org.apache.lucene.analysis.TokenStream)
    */
-  public TokenStream init(TokenStream tokenStream, int maxDocCharsToAnalyze) throws IOException {
-    this.maxCharsToAnalyze = maxDocCharsToAnalyze;
+  public TokenStream init(TokenStream tokenStream) throws IOException {
     position = -1;
     termAtt = tokenStream.addAttribute(CharTermAttribute.class);
     posIncAtt = tokenStream.addAttribute(PositionIncrementAttribute.class);
@@ -266,5 +265,9 @@ public class QueryScorer implements Scorer {
    */
   public void setWrapIfNotCachingTokenFilter(boolean wrap) {
     this.wrapToCaching = wrap;
+  }
+
+  public void setMaxDocCharsToAnalyze(int maxDocCharsToAnalyze) {
+    this.maxCharsToAnalyze = maxDocCharsToAnalyze;
   }
 }

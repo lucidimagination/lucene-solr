@@ -40,8 +40,8 @@ public final class OffsetLimitTokenFilter extends TokenFilter {
   
   @Override
   public boolean incrementToken() throws IOException {
-    int offsetLength = offsetAttrib.endOffset() - offsetAttrib.startOffset();
     if (offsetCount < offsetLimit && input.incrementToken()) {
+      int offsetLength = offsetAttrib.endOffset() - offsetAttrib.startOffset();
       offsetCount += offsetLength;
       return true;
     }
