@@ -17,8 +17,10 @@ package org.apache.lucene.search.highlight;
  * limitations under the License.
  */
 
+import java.io.Reader;
 import java.io.StringReader;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
@@ -44,5 +46,15 @@ public class OffsetLimitTokenFilterTest extends BaseTokenStreamTestCase {
     filter = new OffsetLimitTokenFilter(stream, 30);
     assertTokenStreamContents(filter, new String[] {"short", "toolong",
         "evenmuchlongertext"});
+    
+    
+    checkOneTermReuse(new Analyzer() {
+      
+      @Override
+      public TokenStream tokenStream(String fieldName, Reader reader) {
+        return new OffsetLimitTokenFilter(new MockTokenizer(reader,
+            MockTokenizer.WHITESPACE, false), 10);
+      }
+    }, "llengües", "llengües");
   }
 }
