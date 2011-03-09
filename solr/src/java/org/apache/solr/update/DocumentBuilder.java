@@ -230,6 +230,15 @@ public class DocumentBuilder {
     return res;
   }
   
+  private static String getID( SolrInputDocument doc, IndexSchema schema )
+  {
+    String id = "";
+    SchemaField sf = schema.getUniqueKeyField();
+    if( sf != null ) {
+      id = "[doc="+doc.getFieldValue( sf.getName() )+"] ";
+    }
+    return id;
+  }
 
   /**
    * Convert a SolrInputDocument to a lucene Document.
@@ -295,13 +304,14 @@ public class DocumentBuilder {
         id = "["+doc.getFieldValue( sf.getName() )+"] ";
       }
       throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,
-          "ERROR: "+id+"multiple values encountered for non multiValued field " + 
+          "ERROR: "+getID(doc, schema)+"multiple values encountered for non multiValued field " + 
             sfield.getName() + ": " +field.getValue() );
     }
     
 
     // load each field value
     boolean hasField = false;
+    try {    
     for( Object v : field ) {
       if( v == null ) {
         continue;
@@ -340,8 +350,8 @@ public class DocumentBuilder {
         // check if the copy field is a multivalued or not
         if (!destinationField.multiValued() && out.get(destinationField.getName()) != null) {
           throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                  "ERROR: multiple values encountered for non multiValued copy field " +
-                          destinationField.getName() + ": " + val);
+                   "ERROR: "+getID(doc, schema)+"multiple values encountered for non multiValued copy field " +
+                           destinationField.getName() + ": " + val);
         }
 
         used = true;
@@ -362,18 +372,25 @@ public class DocumentBuilder {
           }
         }
       }
+
       
       // In lucene, the boost for a given field is the product of the 
       // document boost and *all* boosts on values of that field. 
       // For multi-valued fields, we only want to set the boost on the
       // first field.
       boost = 1.0f; 
+      
+     }
     }
-    
+    catch( Exception ex ) {
+      throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,
+          "ERROR: "+getID(doc, schema)+"Error adding field '" + 
+            field.getName() + "'='" +field.getValue()+"'", ex );
+    }
     // make sure the field was used somehow...
     if( !used && hasField ) {
-      throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,"ERROR:unknown field '" +
-              name + "'");
+      throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,
+          "ERROR: "+getID(doc, schema)+"unknown field '" +name + "'");
     }
 
   }

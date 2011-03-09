@@ -530,7 +530,7 @@ class FragmentQueue extends PriorityQueue<TextFragment>
 {
 	public FragmentQueue(int size)
 	{
-		initialize(size);
+		super(size);
 	}
 
 	@Override
