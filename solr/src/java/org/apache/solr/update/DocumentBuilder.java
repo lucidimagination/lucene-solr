@@ -20,6 +20,7 @@ package org.apache.solr.update;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -310,6 +311,12 @@ public class DocumentBuilder {
         continue;
       }
       hasField = true;
+      
+      // TODO!!! HACK -- date conversion
+      if (sfield != null && v instanceof Date && sfield.getType() instanceof DateField) {
+        DateField df = (DateField) sfield.getType();
+        v = df.toInternal((Date) v) + 'Z';
+      }
       
       if (sfield != null) {
         used = true;
