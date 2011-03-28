@@ -58,7 +58,6 @@
       <groupId>org.apache.lucene</groupId>
       <artifactId>lucene-test-framework</artifactId>
       <version>${project.version}</version>
-      <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -76,23 +75,23 @@
     </dependency>
     <dependency>
       <groupId>org.apache.solr</groupId>
-      <artifactId>uima-alchemy-annotator</artifactId>
+      <artifactId>solr-uima-an-alchemy</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.solr</groupId>
-      <artifactId>uima-OpenCalaisAnnotator</artifactId>
+      <artifactId>solr-uima-an-calais</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.solr</groupId>
-      <artifactId>uima-Tagger</artifactId>
+      <artifactId>solr-uima-an-tagger</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.solr</groupId>
-      <artifactId>uima-WhitespaceTokenizer</artifactId>
+      <artifactId>solr-uima-an-wst</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.solr</groupId>
-      <artifactId>uima-uimaj-core</artifactId>
+      <groupId>org.apache.uima</groupId>
+      <artifactId>uimaj-core</artifactId>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
