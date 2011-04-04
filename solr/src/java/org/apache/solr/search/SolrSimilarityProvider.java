@@ -43,8 +43,9 @@ public class SolrSimilarityProvider extends DefaultSimilarityProvider {
    */
   // note: this is intentionally final, to maintain consistency with
   // whatever is specified in the the schema!
+  // FIXME: remove this local hack
   @Override
-  public final Similarity get(String field) {
+  public /* final */ Similarity get(String field) {
     FieldType fieldType = schema.getFieldTypeNoEx(field);
     if (fieldType == null) {
       return schema.getFallbackSimilarity();
