@@ -113,8 +113,8 @@
     <!-- Type of checksum to compute for distribution files -->
   <property name="checksum.algorithm" value="md5" />
   
-  <property name="fullname" value="apache-${ant.project.name}"/>
-  <property name="fullnamever" value="apache-${ant.project.name}-${version}"/>
+  <property name="fullname" value="lucidworks-${ant.project.name}"/>
+  <property name="fullnamever" value="lucidworks-${ant.project.name}-${version}"/>
 
   <!-- Destination for compiled classes and binaries -->
   <property name="dest" value="build" />

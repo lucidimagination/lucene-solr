@@ -871,6 +871,7 @@
         prefix="${fullnamever}/docs/"
         excludes="api/solr/** api/contrib-*/**"
        />
+       <tarfileset dir=".." prefix="${fullnamever}" includes="LUCIDWORKS.txt" />
     </tar>
     <solr-checksum file="${package.dir}/${fullnamever}.tgz"/>
 
