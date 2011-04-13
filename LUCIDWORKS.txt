@@ -1,0 +1,15 @@
+LucidWorks for Solr 3.1.0_01, by Lucid Imagination
+
+LucidWorks for Solr is a commercially supported distribution of Apache Solr.
+
+The full source code of this release can be found at
+https://github.com/lucidimagination/lucene-solr/tree/lucene_solr_3_1
+
+=== CHANGES ===
+LucidWorks for Solr 3.1.0_01 has the following changes compared
+to Apache Solr 3.1.0
+
+* LUCENE-2996: addIndexes(IndexReader) did not flush before adding the new 
+  indexes, causing existing deletions to be applied on the incoming indexes as 
+  well. (Shai Erera, Mike McCandless)
+
