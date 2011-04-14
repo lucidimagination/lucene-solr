@@ -68,7 +68,8 @@
         %>[<%=lname%>]<%
       } else {
         // we hard code %url% to solr in LucidWorks because we are running under the root context
-        %>[<a href="/solr/<%=lname%>/admin/"><%=lname%></a>]<%
+        String encodedUrl = response.encodeURL("/solr/" + lname + "/admin/");
+        %>[<a href="<%=encodedUrl%>"><%=lname%></a>]<%
       }
   }%></td></tr><%
 }}%>
