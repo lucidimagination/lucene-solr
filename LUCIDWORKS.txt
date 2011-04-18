@@ -9,7 +9,17 @@ https://github.com/lucidimagination/lucene-solr/tree/lucene_solr_3_1
 LucidWorks for Solr 3.1.0_01 has the following changes compared
 to Apache Solr 3.1.0
 
+* SOLR-2455: Prevent double submit of forms in admin interface.
+  (Jeffrey Chang via uschindler)
+
+* SOLR-2464: Fix potential slowness in QueryValueSource (the query()
+  function) when the query is very sparse and may not match any documents
+  in a segment. (yonik)
+
+* SOLR-2469: When using java replication with replicateAfter=startup, the
+  first commit point on server startup is never removed. (yonik)
+
 * LUCENE-2996: addIndexes(IndexReader) did not flush before adding the new 
-  indexes, causing existing deletions to be applied on the incoming indexes as 
-  well. (Shai Erera, Mike McCandless)
+  indexes, causing existing deletions to be applied on the incoming indexes
+  as well. (Shai Erera, Mike McCandless)
 
