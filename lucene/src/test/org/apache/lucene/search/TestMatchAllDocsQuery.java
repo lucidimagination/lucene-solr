@@ -35,12 +35,12 @@ import org.apache.lucene.util.LuceneTestCase;
  *
  */
 public class TestMatchAllDocsQuery extends LuceneTestCase {
-  private Analyzer analyzer = new MockAnalyzer();
+  private Analyzer analyzer = new MockAnalyzer(random);
   
   public void testQuery() throws Exception {
     Directory dir = newDirectory();
     IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(
-                                                               TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(2).setMergePolicy(newInOrderLogMergePolicy()));
+                                                               TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(2).setMergePolicy(newLogMergePolicy()));
     addDoc("one", iw, 1f);
     addDoc("two", iw, 20f);
     addDoc("three four", iw, 300f);

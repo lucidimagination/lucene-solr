@@ -174,8 +174,8 @@ final class DocFieldProcessorPerThread extends DocConsumerPerThread {
           rehash();
       } else {
         fieldInfos.addOrUpdate(fp.fieldInfo.name, field.isIndexed(), field.isTermVectorStored(),
-                            field.isStorePositionWithTermVector(), field.isStoreOffsetWithTermVector(),
-                            field.getOmitNorms(), false, field.getOmitTermFreqAndPositions());
+                               field.isStorePositionWithTermVector(), field.isStoreOffsetWithTermVector(),
+                               field.getOmitNorms(), false, field.getOmitTermFreqAndPositions());
       }
       if (thisFieldGen != fp.lastGen) {
 

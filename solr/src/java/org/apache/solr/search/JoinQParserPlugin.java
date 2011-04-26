@@ -23,11 +23,19 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.OpenBitSet;
 import org.apache.lucene.util.StringHelper;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrCore;
+import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.TrieField;
+import org.apache.solr.util.RefCounted;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,11 +53,12 @@ public class JoinQParserPlugin extends QParserPlugin {
     return new QParser(qstr, localParams, params, req) {
       public Query parse() throws ParseException {
         String fromField = getParam("from");
+        String fromIndex = getParam("fromIndex");
         String toField = getParam("to");
         String v = localParams.get("v");
         QParser fromQueryParser = subQuery(v, "lucene");
         Query fromQuery = fromQueryParser.getQuery();
-        JoinQuery jq = new JoinQuery(fromField, toField, fromQuery);
+        JoinQuery jq = new JoinQuery(fromField, toField, fromIndex, fromQuery);
         return jq;
       }
     };
@@ -57,25 +66,16 @@ public class JoinQParserPlugin extends QParserPlugin {
 }
 
 
-
-//
-//  Enable directly getting internal DocSet ( for filter generation )
-//  Always need to get ahold of top level searcher though.
-//
-//  Recursively call SolrIndexSearcher.getDocSet(q) since subquery could be another join query
-//  what about scoring version though?
-//
-//  If used as the main query, the first time (should we wait for a call to weight.score()?)
-//  we need to generate the whole docset.  Then return a scorer over a filter?
-//
 class JoinQuery extends Query {
   String fromField;
   String toField;
+  String fromIndex;
   Query q;
 
-  public JoinQuery(String fromField, String toField, Query subQuery) {
+  public JoinQuery(String fromField, String toField, String fromIndex, Query subQuery) {
     this.fromField = fromField;
     this.toField = toField;
+    this.fromIndex = fromIndex;
     this.q = subQuery;
   }
 
@@ -100,13 +100,69 @@ class JoinQuery extends Query {
   }
 
   private class JoinQueryWeight extends Weight {
-    final SolrIndexSearcher searcher;
+    SolrIndexSearcher fromSearcher;
+    RefCounted<SolrIndexSearcher> fromRef;
+    SolrIndexSearcher toSearcher;
     private Similarity similarity;
     private float queryNorm;
     private float queryWeight;
+    ResponseBuilder rb;
 
     public JoinQueryWeight(SolrIndexSearcher searcher) throws IOException {
-      this.searcher = searcher;
+      this.fromSearcher = searcher;
+      SolrRequestInfo info = SolrRequestInfo.getRequestInfo();
+      if (info != null) {
+        rb = info.getResponseBuilder();
+      }
+
+      if (fromIndex == null) {
+        this.fromSearcher = searcher;
+      } else {
+        if (info == null) {
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join must have SolrRequestInfo");
+        }
+
+        CoreContainer container = searcher.getCore().getCoreDescriptor().getCoreContainer();
+        final SolrCore fromCore = container.getCore(fromIndex);
+
+        if (fromCore == null) {
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core ");
+        }
+
+        if (info.getReq().getCore() == fromCore) {
+          // if this is the same core, use the searcher passed in... otherwise we could be warming and
+          // get an older searcher from the core.
+          fromSearcher = searcher;
+        } else {
+          // This could block if there is a static warming query with a join in it, and if useColdSearcher is true.
+          // Deadlock could result if two cores both had useColdSearcher and had joins that used eachother.
+          // This would be very predictable though (should happen every time if misconfigured)
+          fromRef = fromCore.getSearcher(false, true, null);
+
+          // be careful not to do anything with this searcher that requires the thread local
+          // SolrRequestInfo in a manner that requires the core in the request to match
+          fromSearcher = fromRef.get();
+        }
+
+        if (fromRef != null) {
+          final RefCounted<SolrIndexSearcher> ref = fromRef;
+          info.addCloseHook(new Closeable() {
+            @Override
+            public void close() throws IOException {
+              ref.decref();
+            }
+          });
+        }
+
+        info.addCloseHook(new Closeable() {
+          @Override
+          public void close() throws IOException {
+            fromCore.close();
+          }
+        });
+
+      }
+      this.toSearcher = searcher;
     }
 
     public Query getQuery() {
@@ -133,10 +189,36 @@ class JoinQuery extends Query {
     Filter filter;
 
 
+
     @Override
     public Scorer scorer(IndexReader.AtomicReaderContext context, ScorerContext scorerContext) throws IOException {
       if (filter == null) {
+        boolean debug = rb != null && rb.isDebug();
+        long start = debug ? System.currentTimeMillis() : 0;
         resultSet = getDocSet();
+        long end = debug ? System.currentTimeMillis() : 0;
+
+        if (debug) {
+          SimpleOrderedMap<Object> dbg = new SimpleOrderedMap<Object>();
+          dbg.add("time", (end-start));
+          dbg.add("fromSetSize", fromSetSize);  // the input
+          dbg.add("toSetSize", resultSet.size());    // the output
+
+          dbg.add("fromTermCount", fromTermCount);
+          dbg.add("fromTermTotalDf", fromTermTotalDf);
+          dbg.add("fromTermDirectCount", fromTermDirectCount);
+          dbg.add("fromTermHits", fromTermHits);
+          dbg.add("fromTermHitsTotalDf", fromTermHitsTotalDf);
+          dbg.add("toTermHits", toTermHits);
+          dbg.add("toTermHitsTotalDf", toTermHitsTotalDf);
+          dbg.add("toTermDirectCount", toTermDirectCount);
+          dbg.add("smallSetsDeferred", smallSetsDeferred);
+          dbg.add("toSetDocsAdded", resultListDocs);
+
+          // TODO: perhaps synchronize  addDebug in the future...
+          rb.addDebug(dbg, "join", JoinQuery.this.toString());
+        }
+
         filter = resultSet.getTopFilter();
       }
 
@@ -145,32 +227,49 @@ class JoinQuery extends Query {
       return new JoinScorer(this, readerSet.iterator());
     }
 
+
+    int fromSetSize;          // number of docs in the fromSet (that match the from query)
+    long resultListDocs;      // total number of docs collected
+    int fromTermCount;
+    long fromTermTotalDf;
+    int fromTermDirectCount;  // number of fromTerms that were too small to use the filter cache
+    int fromTermHits;         // number of fromTerms that intersected the from query
+    long fromTermHitsTotalDf; // sum of the df of the matching terms
+    int toTermHits;           // num if intersecting from terms that match a term in the to field
+    long toTermHitsTotalDf;   // sum of the df for the toTermHits
+    int toTermDirectCount;    // number of toTerms that we set directly on a bitset rather than doing set intersections
+    int smallSetsDeferred;    // number of small sets collected to be used later to intersect w/ bitset or create another small set
+
+
     public DocSet getDocSet() throws IOException {
       OpenBitSet resultBits = null;
 
       // minimum docFreq to use the cache
-      int minDocFreq = Math.max(5, searcher.maxDoc() >> 13);
+      int minDocFreqFrom = Math.max(5, fromSearcher.maxDoc() >> 13);
+      int minDocFreqTo = Math.max(5, toSearcher.maxDoc() >> 13);
 
       // use a smaller size than normal since we will need to sort and dedup the results
-      int maxSortedIntSize = Math.max(10, searcher.maxDoc() >> 10);
+      int maxSortedIntSize = Math.max(10, toSearcher.maxDoc() >> 10);
 
-      DocSet fromSet = searcher.getDocSet(q);
+      DocSet fromSet = fromSearcher.getDocSet(q);
+      fromSetSize = fromSet.size();
+
       List<DocSet> resultList = new ArrayList<DocSet>(10);
-      int resultListDocs = 0;
 
       // make sure we have a set that is fast for random access, if we will use it for that
       DocSet fastForRandomSet = fromSet;
-      if (minDocFreq>0 && fromSet instanceof SortedIntDocSet) {
+      if (minDocFreqFrom>0 && fromSet instanceof SortedIntDocSet) {
         SortedIntDocSet sset = (SortedIntDocSet)fromSet;
         fastForRandomSet = new HashDocSet(sset.getDocs(), 0, sset.size());
       }
 
-      Fields fields = MultiFields.getFields(searcher.getIndexReader());
-      if (fields == null) return DocSet.EMPTY;
-      Terms terms = fields.terms(fromField);
-      Terms toTerms = fields.terms(toField);
+      Fields fromFields = MultiFields.getFields(fromSearcher.getIndexReader());
+      Fields toFields = fromSearcher==toSearcher ? fromFields : MultiFields.getFields(toSearcher.getIndexReader());
+      if (fromFields == null) return DocSet.EMPTY;
+      Terms terms = fromFields.terms(fromField);
+      Terms toTerms = toFields.terms(toField);
       if (terms == null || toTerms==null) return DocSet.EMPTY;
-      String prefixStr = TrieField.getMainValuePrefix(searcher.getSchema().getFieldType(fromField));
+      String prefixStr = TrieField.getMainValuePrefix(fromSearcher.getSchema().getFieldType(fromField));
       BytesRef prefix = prefixStr == null ? null : new BytesRef(prefixStr);
 
       BytesRef term = null;
@@ -187,28 +286,35 @@ class JoinQuery extends Query {
         }
       }
 
-      Bits deletedDocs = MultiFields.getDeletedDocs(searcher.getIndexReader());
+      Bits fromDeletedDocs = MultiFields.getDeletedDocs(fromSearcher.getIndexReader());
+      Bits toDeletedDocs = fromSearcher == toSearcher ? fromDeletedDocs : MultiFields.getDeletedDocs(toSearcher.getIndexReader());
 
       fromDeState = new SolrIndexSearcher.DocsEnumState();
       fromDeState.fieldName = StringHelper.intern(fromField);
-      fromDeState.deletedDocs = deletedDocs;
+      fromDeState.deletedDocs = fromDeletedDocs;
       fromDeState.termsEnum = termsEnum;
       fromDeState.docsEnum = null;
-      fromDeState.minSetSizeCached = minDocFreq;
+      fromDeState.minSetSizeCached = minDocFreqFrom;
 
       toDeState = new SolrIndexSearcher.DocsEnumState();
       toDeState.fieldName = StringHelper.intern(toField);
-      toDeState.deletedDocs = deletedDocs;
+      toDeState.deletedDocs = toDeletedDocs;
       toDeState.termsEnum = toTermsEnum;
       toDeState.docsEnum = null;
-      toDeState.minSetSizeCached = minDocFreq;
+      toDeState.minSetSizeCached = minDocFreqTo;
 
       while (term != null) {
         if (prefix != null && !term.startsWith(prefix))
           break;
 
+        fromTermCount++;
+
         boolean intersects = false;
-        if (termsEnum.docFreq() < minDocFreq) {
+        int freq = termsEnum.docFreq();
+        fromTermTotalDf++;
+
+        if (freq < minDocFreqFrom) {
+          fromTermDirectCount++;
           // OK to skip deletedDocs, since we check for intersection with docs matching query
           fromDeState.docsEnum = fromDeState.termsEnum.docs(null, fromDeState.docsEnum);
           DocsEnum docsEnum = fromDeState.docsEnum;
@@ -253,25 +359,28 @@ class JoinQuery extends Query {
           }
         } else {
           // use the filter cache
-          DocSet fromTermSet = searcher.getDocSet(fromDeState);
+          DocSet fromTermSet = fromSearcher.getDocSet(fromDeState);
           intersects = fromSet.intersects(fromTermSet);
         }
 
         if (intersects) {
+          fromTermHits++;
+          fromTermHitsTotalDf++;
           TermsEnum.SeekStatus status = toTermsEnum.seek(term);
           if (status == TermsEnum.SeekStatus.END) break;
           if (status == TermsEnum.SeekStatus.FOUND) {
-
+            toTermHits++;
             int df = toTermsEnum.docFreq();
+            toTermHitsTotalDf += df;
             if (resultBits==null && df + resultListDocs > maxSortedIntSize && resultList.size() > 0) {
-              resultBits = new OpenBitSet(searcher.maxDoc());
+              resultBits = new OpenBitSet(toSearcher.maxDoc());
             }
 
             // if we don't have a bitset yet, or if the resulting set will be too large
             // use the filterCache to get a DocSet
-            if (toTermsEnum.docFreq() >= minDocFreq || resultBits == null) {
+            if (toTermsEnum.docFreq() >= minDocFreqTo || resultBits == null) {
               // use filter cache
-              DocSet toTermSet = searcher.getDocSet(toDeState);
+              DocSet toTermSet = toSearcher.getDocSet(toDeState);
               resultListDocs += toTermSet.size();
               if (resultBits != null) {
                 toTermSet.setBitsOn(resultBits);
@@ -283,6 +392,8 @@ class JoinQuery extends Query {
                 }
               }
             } else {
+              toTermDirectCount++;
+
               // need to use deletedDocs here so we don't map to any deleted ones
               toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.deletedDocs, toDeState.docsEnum);
               DocsEnum docsEnum = toDeState.docsEnum;              
@@ -328,6 +439,8 @@ class JoinQuery extends Query {
 
         term = termsEnum.next();
       }
+
+      smallSetsDeferred = resultList.size();
 
       if (resultBits != null) {
         for (DocSet set : resultList) {
@@ -432,7 +545,9 @@ class JoinQuery extends Query {
 
   @Override
   public String toString(String field) {
-    return "{!join from="+fromField+" to="+toField+"}"+q.toString();
+    return "{!join from="+fromField+" to="+toField
+        + (fromIndex != null ? " fromIndex="+fromIndex : "")
+        +"}"+q.toString();
   }
 
   @Override
@@ -442,7 +557,8 @@ class JoinQuery extends Query {
     return this.fromField.equals(other.fromField)
            && this.toField.equals(other.toField)
            && this.getBoost() == other.getBoost()
-           && this.q.equals(other.q);
+           && this.q.equals(other.q)
+           && (this.fromIndex == other.fromIndex || this.fromIndex != null && this.fromIndex.equals(other.fromIndex));
   }
 
   @Override

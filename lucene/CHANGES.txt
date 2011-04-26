@@ -157,11 +157,10 @@ Changes in Runtime Behavior
 * LUCENE-2720: IndexWriter throws IndexFormatTooOldException on open, rather 
   than later when e.g. a merge starts. (Shai Erera, Mike McCandless, Uwe Schindler)
 
-* LUCENE-1076: The default merge policy is now able to merge
-  non-contiguous segments, which means docIDs no longer necessarily
-  say "in order".  If this is a problem then you can use either of the
-  LogMergePolicy impls, and call setRequireContiguousMerge(true).
-  (Mike McCandless)
+* LUCENE-1076: The default merge policy (TieredMergePolicy) is now
+  able to merge non-contiguous segments, which means docIDs no longer
+  necessarily say "in order".  If this is a problem then you can use
+  either of the LogMergePolicy impls.  (Mike McCandless)
   
 * LUCENE-2881: FieldInfos is now tracked per segment.  Before it was tracked
   per IndexWriter session, which resulted in FieldInfos that had the FieldInfo
@@ -333,10 +332,17 @@ New features
 
 * LUCENE-2862: Added TermsEnum.totalTermFreq() and
   Terms.getSumTotalTermFreq().  (Mike McCandless, Robert Muir)
-  
+
 * LUCENE-3001: Added TrieFieldHelper to write solr compatible numeric
   fields without the solr dependency. (ryan)
   
+* LUCENE-3003: Added new expert class oal.index.DocTermsOrd,
+  refactored from Solr's UnInvertedField, for accessing term ords for
+  multi-valued fields, per document.  This is similar to FieldCache in
+  that it inverts the index to compute the ords, but differs in that
+  it's able to handle multi-valued fields and does not hold the term
+  bytes in RAM. (Mike McCandless)
+
 Optimizations
 
 * LUCENE-2588: Don't store unnecessary suffixes when writing the terms
@@ -381,8 +387,8 @@ Test Cases
 
 Build
 
-* LUCENE-3006: Building javadocs will fail on warnings by default.  Override with -Dfailonjavadocwarning=false (sarowe, gsingers)
-
+* LUCENE-3006: Building javadocs will fail on warnings by default. 
+  Override with -Dfailonjavadocwarning=false (sarowe, gsingers)
 
 ======================= Lucene 3.x (not yet released) =======================
 
@@ -397,6 +403,20 @@ Optimizations
 
 * LUCENE-2990: ArrayUtil/CollectionUtil.*Sort() methods now exit early
   on empty or one-element lists/arrays.  (Uwe Schindler)
+
+Bug fixes
+
+* LUCENE-3024: Index with more than 2.1B terms was hitting AIOOBE when
+  seeking TermEnum (eg used by Solr's faceting) (Tom Burton-West, Mike
+  McCandless)
+
+* LUCENE-3042: When a filter or consumer added Attributes to a TokenStream
+  chain after it was already (partly) consumed [or clearAttributes(),
+  captureState(), cloneAttributes(),... was called by the Tokenizer],
+  the Tokenizer calling clearAttributes() or capturing state after addition 
+  may not do this on the newly added Attribute. This bug affected only
+  very special use cases of the TokenStream-API, most users would not
+  have recognized it.  (Uwe Schindler, Robert Muir)
 
 ======================= Lucene 3.1.0 =======================
 

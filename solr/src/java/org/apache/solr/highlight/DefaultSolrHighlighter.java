@@ -461,7 +461,6 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
         highlighter = getHighlighter(query, fieldName, req);
       }
       
-
       if (maxCharsToAnalyze < 0) {
         highlighter.setMaxDocCharsToAnalyze(docTexts[j].length());
       } else {

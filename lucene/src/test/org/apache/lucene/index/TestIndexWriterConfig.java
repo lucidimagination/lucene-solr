@@ -49,7 +49,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
 
   @Test
   public void testDefaults() throws Exception {
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer());
+    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
     assertEquals(MockAnalyzer.class, conf.getAnalyzer().getClass());
     assertNull(conf.getIndexCommit());
     assertEquals(KeepOnlyLastCommitDeletionPolicy.class, conf.getIndexDeletionPolicy().getClass());
@@ -68,7 +68,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     assertNull(conf.getMergedSegmentWarmer());
     assertEquals(IndexWriterConfig.DEFAULT_MAX_THREAD_STATES, conf.getMaxThreadStates());
     assertEquals(IndexWriterConfig.DEFAULT_READER_TERMS_INDEX_DIVISOR, conf.getReaderTermsIndexDivisor());
-    assertEquals(LogByteSizeMergePolicy.class, conf.getMergePolicy().getClass());
+    assertEquals(TieredMergePolicy.class, conf.getMergePolicy().getClass());
     
     // Sanity check - validate that all getters are covered.
     Set<String> getters = new HashSet<String>();
@@ -129,7 +129,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
   
   @Test
   public void testToString() throws Exception {
-    String str = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).toString();
+    String str = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).toString();
     for (Field f : IndexWriterConfig.class.getDeclaredFields()) {
       int modifiers = f.getModifiers();
       if (Modifier.isStatic(modifiers) && Modifier.isFinal(modifiers)) {
@@ -146,7 +146,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
   
   @Test
   public void testClone() throws Exception {
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer());
+    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
     IndexWriterConfig clone = (IndexWriterConfig) conf.clone();
     
     // Clone is shallow since not all parameters are cloneable.
@@ -158,7 +158,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
 
   @Test
   public void testInvalidValues() throws Exception {
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer());
+    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
     
     // Test IndexDeletionPolicy
     assertEquals(KeepOnlyLastCommitDeletionPolicy.class, conf.getIndexDeletionPolicy().getClass());
@@ -246,7 +246,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     assertEquals(IndexWriterConfig.DEFAULT_MAX_THREAD_STATES, conf.getMaxThreadStates());
     
     // Test MergePolicy
-    assertEquals(LogByteSizeMergePolicy.class, conf.getMergePolicy().getClass());
+    assertEquals(TieredMergePolicy.class, conf.getMergePolicy().getClass());
     conf.setMergePolicy(new LogDocMergePolicy());
     assertEquals(LogDocMergePolicy.class, conf.getMergePolicy().getClass());
     conf.setMergePolicy(null);

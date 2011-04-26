@@ -128,6 +128,9 @@ public abstract class LuceneTestCase extends Assert {
     TEMP_DIR = new File(s);
     TEMP_DIR.mkdirs();
   }
+  
+  /** set of directories we created, in afterclass we try to clean these up */
+  static final Set<String> tempDirs = Collections.synchronizedSet(new HashSet<String>());
 
   // by default we randomly pick a different codec for
   // each test case (non-J4 tests) and each test class (J4
@@ -323,6 +326,7 @@ public abstract class LuceneTestCase extends Assert {
   public static void beforeClassLuceneTestCaseJ4() {
     staticSeed = "random".equals(TEST_SEED) ? seedRand.nextLong() : TwoLongs.fromString(TEST_SEED).l1;
     random.setSeed(staticSeed);
+    tempDirs.clear();
     stores = Collections.synchronizedMap(new IdentityHashMap<MockDirectoryWrapper,StackTraceElement[]>());
     savedCodecProvider = CodecProvider.getDefault();
     if ("randomPerField".equals(TEST_CODEC)) {
@@ -410,6 +414,16 @@ public abstract class LuceneTestCase extends Assert {
           + "threads=" + Thread.activeCount() + ","
           + "free=" + Runtime.getRuntime().freeMemory() + ","
           + "total=" + Runtime.getRuntime().totalMemory());
+    }
+    // clear out any temp directories if we can
+    if (!testsFailed) {
+      for (String path : tempDirs) {
+        try {
+          _TestUtil.rmDir(new File(path));
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
     }
   }
 
@@ -768,9 +782,11 @@ public abstract class LuceneTestCase extends Assert {
     }
 
     if (r.nextBoolean()) {
-      c.setMergePolicy(new MockRandomMergePolicy(r));
-    } else {
+      c.setMergePolicy(newTieredMergePolicy());
+    } else if (r.nextBoolean()) {
       c.setMergePolicy(newLogMergePolicy());
+    } else {
+      c.setMergePolicy(new MockRandomMergePolicy(r));
     }
 
     c.setReaderPooling(r.nextBoolean());
@@ -780,6 +796,10 @@ public abstract class LuceneTestCase extends Assert {
 
   public static LogMergePolicy newLogMergePolicy() {
     return newLogMergePolicy(random);
+  }
+
+  public static TieredMergePolicy newTieredMergePolicy() {
+    return newTieredMergePolicy(random);
   }
 
   public static LogMergePolicy newLogMergePolicy(Random r) {
@@ -794,17 +814,22 @@ public abstract class LuceneTestCase extends Assert {
     return logmp;
   }
 
-  public static LogMergePolicy newInOrderLogMergePolicy() {
-    LogMergePolicy logmp = newLogMergePolicy();
-    logmp.setRequireContiguousMerge(true);
-    return logmp;
-  }
-
-  public static LogMergePolicy newInOrderLogMergePolicy(int mergeFactor) {
-    LogMergePolicy logmp = newLogMergePolicy();
-    logmp.setMergeFactor(mergeFactor);
-    logmp.setRequireContiguousMerge(true);
-    return logmp;
+  public static TieredMergePolicy newTieredMergePolicy(Random r) {
+    TieredMergePolicy tmp = new TieredMergePolicy();
+    if (r.nextInt(3) == 2) {
+      tmp.setMaxMergeAtOnce(2);
+      tmp.setMaxMergeAtOnceExplicit(2);
+    } else {
+      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 2, 20));
+      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 2, 30));
+    }
+    tmp.setMaxMergedSegmentMB(0.2 + r.nextDouble() * 2.0);
+    tmp.setFloorSegmentMB(0.2 + r.nextDouble() * 2.0);
+    tmp.setExpungeDeletesPctAllowed(0.0 + r.nextDouble() * 30.0);
+    tmp.setSegmentsPerTier(_TestUtil.nextInt(r, 2, 20));
+    tmp.setUseCompoundFile(r.nextBoolean());
+    tmp.setNoCFSRatio(0.1 + r.nextDouble()*0.8);
+    return tmp;
   }
 
   public static LogMergePolicy newLogMergePolicy(boolean useCFS) {
@@ -1052,6 +1077,7 @@ public abstract class LuceneTestCase extends Assert {
         final File tmpFile = File.createTempFile("test", "tmp", TEMP_DIR);
         tmpFile.delete();
         tmpFile.mkdir();
+        tempDirs.add(tmpFile.getAbsolutePath());
         return newFSDirectoryImpl(clazz.asSubclass(FSDirectory.class), tmpFile, null);
       }
 

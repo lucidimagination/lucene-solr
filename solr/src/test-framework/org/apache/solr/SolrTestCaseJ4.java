@@ -1062,7 +1062,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
     return value_to_id;
   }
-  
+
 
   /** Gets a resource from the context classloader as {@link File}. This method should only be used,
    * if a real file is needed. To get a stream, code should prefer

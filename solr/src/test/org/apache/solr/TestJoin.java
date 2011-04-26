@@ -20,8 +20,13 @@ package org.apache.solr;
 import org.apache.lucene.search.FieldCache;
 import org.apache.noggit.JSONUtil;
 import org.apache.noggit.ObjectBuilder;
+import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.core.SolrCore;
+import org.apache.solr.handler.JsonUpdateRequestHandler;
 import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.schema.IndexSchema;
+import org.apache.solr.servlet.DirectSolrConnection;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -49,6 +54,11 @@ public class TestJoin extends SolrTestCaseJ4 {
     assertU(add(doc("id","13", "dept_id_s", "Support", "text","These guys help customers")));
 
     assertU(commit());
+
+    // test debugging
+    assertJQ(req("q","{!join from=dept_s to=dept_id_s}title:MTS", "fl","id", "debugQuery","true")
+        ,"/debug/join/{!join from=dept_s to=dept_id_s}title:MTS=={'_MATCH_':'fromSetSize,toSetSize', 'fromSetSize':2, 'toSetSize':3}"
+    );
 
     assertJQ(req("q","{!join from=dept_s to=dept_id_s}title:MTS", "fl","id")
         ,"/response=={'numFound':3,'start':0,'docs':[{'id':'10'},{'id':'12'},{'id':'13'}]}"
@@ -78,6 +88,11 @@ public class TestJoin extends SolrTestCaseJ4 {
     assertJQ(req("q","{!join from=title to=title}name:dave", "fl","id")
         ,"/response=={'numFound':2,'start':0,'docs':[{'id':'3'},{'id':'4'}]}"
     );
+
+    assertJQ(req("q","{!join from=dept_s to=dept_id_s}title:MTS", "fl","id", "debugQuery","true")
+        ,"/response=={'numFound':3,'start':0,'docs':[{'id':'10'},{'id':'12'},{'id':'13'}]}"
+    );
+
   }
 
 
@@ -134,7 +149,9 @@ public class TestJoin extends SolrTestCaseJ4 {
         // todo: use filters
 
         SolrQueryRequest req = req("wt","json","indent","true", "echoParams","all",
-            "q","{!join from="+fromField+" to="+toField+"}*:*"
+            "q","{!join from="+fromField+" to="+toField
+                + (random.nextInt(4)==0 ? " fromIndex=collection1" : "")
+                +"}*:*"
         );
 
         String strResponse = h.query(req);

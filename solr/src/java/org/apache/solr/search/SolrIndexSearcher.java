@@ -28,12 +28,17 @@ import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.OpenBitSet;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrInfoMBean;
+import org.apache.solr.request.LocalSolrQueryRequest;
+import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.request.UnInvertedField;
+import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.slf4j.Logger;
@@ -187,6 +192,10 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   @Override
   public String toString() {
     return name;
+  }
+
+  public SolrCore getCore() {
+    return core;
   }
 
 
@@ -1572,14 +1581,12 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     DocIterator iter = set.iterator();
     int base=0;
     int end=0;
-    int readerIndex = -1;
-    
-    AtomicReaderContext leaf = null;
+    int readerIndex = 0;
 
-    for (int i = 0; i < leafContexts.length; i++) {
+    while (iter.hasNext()) {
       int doc = iter.nextDoc();
       while (doc>=end) {
-        leaf = leafContexts[i++];
+        AtomicReaderContext leaf = leafContexts[readerIndex++];
         base = leaf.docBase;
         end = base + leaf.reader.maxDoc();
         topCollector.setNextReader(leaf);
@@ -1690,9 +1697,29 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     boolean logme = log.isInfoEnabled();
     long warmingStartTime = System.currentTimeMillis();
     // warm the caches in order...
+    ModifiableSolrParams params = new ModifiableSolrParams();
+    params.add("warming","true");
     for (int i=0; i<cacheList.length; i++) {
       if (logme) log.info("autowarming " + this + " from " + old + "\n\t" + old.cacheList[i]);
-      this.cacheList[i].warm(this, old.cacheList[i]);
+
+
+      SolrQueryRequest req = new LocalSolrQueryRequest(core,params) {
+        @Override public SolrIndexSearcher getSearcher() { return SolrIndexSearcher.this; }
+        @Override public void close() { }
+      };
+
+      SolrQueryResponse rsp = new SolrQueryResponse();
+      SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, rsp));
+      try {
+        this.cacheList[i].warm(this, old.cacheList[i]);
+      } finally {
+        try {
+          req.close();
+        } finally {
+          SolrRequestInfo.clearRequestInfo();
+        }
+      }
+
       if (logme) log.info("autowarming result for " + this + "\n\t" + this.cacheList[i]);
     }
     warmupTime = System.currentTimeMillis() - warmingStartTime;
