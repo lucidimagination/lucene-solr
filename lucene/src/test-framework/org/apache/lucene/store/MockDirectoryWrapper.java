@@ -34,6 +34,7 @@ import java.util.Set;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.ThrottledIndexOutput;
 import org.apache.lucene.util._TestUtil;
 
 /**
@@ -69,6 +70,8 @@ public class MockDirectoryWrapper extends Directory {
   private Set<String> createdFiles;
   Set<String> openFilesForWrite = new HashSet<String>();
   volatile boolean crashed;
+  private ThrottledIndexOutput throttledOutput;
+  private Throttling throttling = Throttling.SOMETIMES;
 
   // use this for tracking files for crash.
   // additionally: provides debugging information in case you leave one open
@@ -102,6 +105,8 @@ public class MockDirectoryWrapper extends Directory {
     // called from different threads; else test failures may
     // not be reproducible from the original seed
     this.randomState = new Random(random.nextInt());
+    this.throttledOutput = new ThrottledIndexOutput(ThrottledIndexOutput
+        .mBitsToBytes(40 + randomState.nextInt(10)), 5 + randomState.nextInt(5), null);
     init();
   }
 
@@ -113,6 +118,19 @@ public class MockDirectoryWrapper extends Directory {
    *  file is opened by createOutput, ever. */
   public void setPreventDoubleWrite(boolean value) {
     preventDoubleWrite = value;
+  }
+  
+  public static enum Throttling {
+    /** always emulate a slow hard disk. could be very slow! */
+    ALWAYS,
+    /** sometimes (2% of the time) emulate a slow hard disk. */
+    SOMETIMES,
+    /** never throttle output */
+    NEVER
+  };
+  
+  public void setThrottling(Throttling throttling) {
+    this.throttling = throttling;
   }
 
   @Override
@@ -348,7 +366,17 @@ public class MockDirectoryWrapper extends Directory {
     IndexOutput io = new MockIndexOutputWrapper(this, delegate.createOutput(name), name);
     openFileHandles.put(io, new RuntimeException("unclosed IndexOutput"));
     openFilesForWrite.add(name);
-    return io;
+    
+    // throttling REALLY slows down tests, so don't do it very often for SOMETIMES.
+    if (throttling == Throttling.ALWAYS || 
+        (throttling == Throttling.SOMETIMES && randomState.nextInt(50) == 0)) {
+      if (LuceneTestCase.VERBOSE) {
+        System.out.println("MockDirectoryWrapper: throttling indexOutput");
+      }
+      return throttledOutput.newFromDelegate(io);
+    } else {
+      return io;
+    }
   }
 
   @Override
@@ -578,4 +606,5 @@ public class MockDirectoryWrapper extends Directory {
     maybeYield();
     delegate.copy(to, src, dest);
   }
+  
 }

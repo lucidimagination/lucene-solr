@@ -201,7 +201,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     Map<String,Document> docs = new HashMap<String,Document>();
     IndexWriter w = new MockIndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.CREATE)
-             .setRAMBufferSizeMB(0.1).setMaxBufferedDocs(maxBufferedDocs).setMaxThreadStates(maxThreadStates)
+             .setRAMBufferSizeMB(0.1).setMaxBufferedDocs(maxBufferedDocs).setIndexerThreadPool(new ThreadAffinityDocumentsWriterThreadPool(maxThreadStates))
              .setReaderPooling(doReaderPooling).setMergePolicy(newLogMergePolicy()));
     w.setInfoStream(VERBOSE ? System.out : null);
     LogMergePolicy lmp = (LogMergePolicy) w.getConfig().getMergePolicy();
@@ -616,7 +616,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
       }
 
       for(int i=start;i<end;i++) {
-        int t = nextInt(6);
+        int t = nextInt(5);
         if (0 == t && i < end-1) {
           // Make a surrogate pair
           // High surrogate
@@ -631,13 +631,6 @@ public class TestStressIndexing2 extends LuceneTestCase {
           buffer[i] = (char) nextInt(0x800, 0xd800);
         else if (4 == t)
           buffer[i] = (char) nextInt(0xe000, 0xffff);
-        else if (5 == t) {
-          // Illegal unpaired surrogate
-          if (r.nextBoolean())
-            buffer[i] = (char) nextInt(0xd800, 0xdc00);
-          else
-            buffer[i] = (char) nextInt(0xdc00, 0xe000);
-        }
       }
       buffer[end] = ' ';
       return 1+end;

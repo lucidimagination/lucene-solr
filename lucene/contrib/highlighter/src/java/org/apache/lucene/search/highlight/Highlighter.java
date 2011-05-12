@@ -356,6 +356,7 @@ public class Highlighter
 			{
 				try
 				{
+				  tokenStream.end();
 					tokenStream.close();
 				}
 				catch (Exception e)

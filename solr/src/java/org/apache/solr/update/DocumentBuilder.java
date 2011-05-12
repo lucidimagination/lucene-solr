@@ -269,7 +269,7 @@ public class DocumentBuilder {
     // Now validate required fields or add default values
     // fields with default values are defacto 'required'
     for (SchemaField field : schema.getRequiredFields()) {
-      if (out.getField(field.getName() ) == null) {
+      if (out.getFieldable(field.getName() ) == null) {
         if (field.getDefaultValue() != null) {
           List<Fieldable> newFields = addField(out, field, field.getDefaultValue(), 1.0f);
           // newly added fields may be doc-altering fields
@@ -467,8 +467,7 @@ public class DocumentBuilder {
    */
   public SolrDocument loadStoredFields( SolrDocument doc, Document luceneDoc  )
   {
-    for( Object f : luceneDoc.getFields() ) {
-      Fieldable field = (Fieldable)f;
+    for( Fieldable field : luceneDoc.getFields() ) {
       if( field.isStored() ) {
         SchemaField sf = schema.getField( field.name() );
         if( !schema.isCopyFieldTarget( sf ) ) {
