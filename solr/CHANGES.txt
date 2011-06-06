@@ -22,6 +22,11 @@ See README.txt and http://lucene.apache.org/solr for more information
 on how to get started.
 
 
+* SOLR-2462: Fix extremely high memory usage problems with spellcheck.collate.
+  Separately, an additional spellcheck.maxCollationEvaluations (default=10000)
+  parameter is added to avoid excessive CPU time in extreme cases (e.g. long
+  queries with many misspelled words).  (James Dyer via rmuir)
+
 ==================  3.2.0  ==================
 Versions of Major Components
 ---------------------
