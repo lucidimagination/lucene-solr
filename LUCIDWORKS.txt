@@ -1,0 +1,16 @@
+LucidWorks for Lucene/Solr 3.2.0_01, by Lucid Imagination
+
+LucidWorks for Lucene/Solr is a commercially supported distribution of
+Apache Lucene/Solr.  This release notes document is shared by the
+LucidWorks for Lucene and Lucidworks for Solr distributions
+and some listed changes will only apply to LucidWorks for Solr.
+
+The full source code of this release can be found at
+https://github.com/lucidimagination/lucene-solr/tree/lucene_solr_3_2
+
+Lucene and Solr are trademarks of the Apache Software Foundation.
+
+=== CHANGES ===
+LucidWorks for Lucene/Solr 3.2.0_01 has the following changes compared
+to Apache Lucene/Solr 3.2.0
+
