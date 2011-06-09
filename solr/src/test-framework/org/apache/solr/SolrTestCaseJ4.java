@@ -19,6 +19,7 @@
 package org.apache.solr;
 
 
+import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.noggit.CharArr;
 import org.apache.noggit.JSONUtil;
@@ -62,6 +63,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
   @BeforeClass
   public static void beforeClassSolrTestCase() throws Exception {
+    startTrackingSearchers();
     ignoreException("ignore_exception");
   }
 
@@ -69,6 +71,17 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   public static void afterClassSolrTestCase() throws Exception {
     deleteCore();
     resetExceptionIgnores();
+    endTrackingSearchers();
+  }
+  
+  // SOLR-2279: hack to shut these directories down
+  // we still keep the ability to track open index files this way
+  public static void closeDirectories() throws Exception {
+    for (MockDirectoryWrapper d : stores.keySet()) {
+      if (d.isOpen()) {
+        d.close();
+      }
+    }
   }
 
   @Override
@@ -92,7 +105,6 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   /** Call initCore in @BeforeClass to instantiate a solr core in your test class.
    * deleteCore will be called for you via SolrTestCaseJ4 @AfterClass */
   public static void initCore(String config, String schema, String solrHome) throws Exception {
-    startTrackingSearchers();
     configString = config;
     schemaString = schema;
     if (solrHome != null) {
@@ -104,12 +116,12 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
   static long numOpens;
   static long numCloses;
-  protected static void startTrackingSearchers() {
+  public static void startTrackingSearchers() {
     numOpens = SolrIndexSearcher.numOpens.get();
     numCloses = SolrIndexSearcher.numCloses.get();
   }
 
-  protected static void endTrackingSearchers() {
+  public static void endTrackingSearchers() {
      long endNumOpens = SolrIndexSearcher.numOpens.get();
      long endNumCloses = SolrIndexSearcher.numCloses.get();
 
@@ -269,6 +281,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   public static void deleteCore() throws Exception {
     log.info("###deleteCore" );
     if (h != null) { h.close(); }
+    closeDirectories();
     if (dataDir != null) {
       String skip = System.getProperty("solr.test.leavedatadir");
       if (null != skip && 0 != skip.trim().length()) {
@@ -289,8 +302,6 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     h = null;
     lrf = null;
     configString = schemaString = null;
-
-    endTrackingSearchers();
   }
 
 
@@ -374,15 +385,29 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     }
   }
 
-  /** Validates a query matches some JSON test expressions and closes the query.
-   * The text expression is of the form path:JSON.  To facilitate easy embedding
-   * in Java strings, the JSON can have double quotes replaced with single quotes.
-   *
-   * Please use this with care: this makes it easy to match complete structures, but doing so
-   * can result in fragile tests if you are matching more than what you want to test.
-   *
-   **/
+  /** 
+   * Validates a query matches some JSON test expressions using the default double delta tollerance.
+   * @see JSONTestUtil#DEFAULT_DELTA
+   * @see #assertJQ(SolrQueryRequest,double,String...)
+   */
   public static void assertJQ(SolrQueryRequest req, String... tests) throws Exception {
+    assertJQ(req, JSONTestUtil.DEFAULT_DELTA, tests);
+  }
+  /** 
+   * Validates a query matches some JSON test expressions and closes the 
+   * query. The text expression is of the form path:JSON.  To facilitate 
+   * easy embedding in Java strings, the JSON can have double quotes 
+   * replaced with single quotes.
+   * <p>
+   * Please use this with care: this makes it easy to match complete 
+   * structures, but doing so can result in fragile tests if you are 
+   * matching more than what you want to test.
+   * </p>
+   * @param req Solr request to execute
+   * @param delta tollerance allowed in comparing float/double values
+   * @param tests JSON path expression + '==' + expected value
+   */
+  public static void assertJQ(SolrQueryRequest req, double delta, String... tests) throws Exception {
     SolrParams params =  null;
     try {
       params = req.getParams();
@@ -409,7 +434,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
         try {
           failed = true;
-          String err = JSONTestUtil.match(response, testJSON);
+          String err = JSONTestUtil.match(response, testJSON, delta);
           failed = false;
           if (err != null) {
             log.error("query failed JSON validation. error=" + err +

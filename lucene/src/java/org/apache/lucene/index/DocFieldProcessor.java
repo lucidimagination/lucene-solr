@@ -84,19 +84,44 @@ final class DocFieldProcessor extends DocConsumer {
 
   @Override
   public void abort() {
-    for(int i=0;i<fieldHash.length;i++) {
-      DocFieldProcessorPerField field = fieldHash[i];
-      while(field != null) {
+    Throwable th = null;
+    
+    for (DocFieldProcessorPerField field : fieldHash) {
+      while (field != null) {
         final DocFieldProcessorPerField next = field.next;
-        field.abort();
+        try {
+          field.abort();
+        } catch (Throwable t) {
+          if (th == null) {
+            th = t;
+          }
+        }
         field = next;
       }
     }
-
+    
     try {
       fieldsWriter.abort();
-    } finally {
+    } catch (Throwable t) {
+      if (th == null) {
+        th = t;
+      }
+    }
+    
+    try {
       consumer.abort();
+    } catch (Throwable t) {
+      if (th == null) {
+        th = t;
+      }
+    }
+    
+    // If any errors occured, throw it.
+    if (th != null) {
+      if (th instanceof RuntimeException) throw (RuntimeException) th;
+      if (th instanceof Error) throw (Error) th;
+      // defensive code - we should not hit unchecked exceptions
+      throw new RuntimeException(th);
     }
   }
 
@@ -235,9 +260,10 @@ final class DocFieldProcessor extends DocConsumer {
     // enabled; we could save [small amount of] CPU
     // here.
     ArrayUtil.quickSort(fields, 0, fieldCount, fieldsComp);
-
-    for(int i=0;i<fieldCount;i++)
-      fields[i].consumer.processFields(fields[i].fields, fields[i].fieldCount);
+    for(int i=0;i<fieldCount;i++) {
+      final DocFieldProcessorPerField perField = fields[i];
+      perField.consumer.processFields(perField.fields, perField.fieldCount);
+    }
 
     if (docState.maxTermPrefix != null && docState.infoStream != null) {
       docState.infoStream.println("WARNING: document contains at least one immense term (whose UTF8 encoding is longer than the max length " + DocumentsWriterPerThread.MAX_TERM_LENGTH_UTF8 + "), all of which were skipped.  Please correct the analyzer to not produce such terms.  The prefix of the first immense term is: '" + docState.maxTermPrefix + "...'");

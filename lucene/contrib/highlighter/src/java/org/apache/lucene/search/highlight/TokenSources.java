@@ -165,7 +165,7 @@ public class TokenSources {
         this.tokens = tokens;
         termAtt = addAttribute(CharTermAttribute.class);
         offsetAtt = addAttribute(OffsetAttribute.class);
-        posincAtt = (PositionIncrementAttribute) addAttribute(PositionIncrementAttribute.class);
+        posincAtt = addAttribute(PositionIncrementAttribute.class);
       }
 
       @Override
@@ -286,7 +286,11 @@ public class TokenSources {
   // convenience method
   public static TokenStream getTokenStream(String field, String contents,
       Analyzer analyzer) {
-    return analyzer.tokenStream(field, new StringReader(contents));
+    try {
+      return analyzer.reusableTokenStream(field, new StringReader(contents));
+    } catch (IOException ex) {
+      throw new RuntimeException(ex);
+    }
   }
 
 }

@@ -22,6 +22,8 @@ import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Similarity;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.NamedList;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.Ignore;
@@ -191,7 +193,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
   }
 
   @Test
-  public void testExternalField() {
+  public void testExternalField() throws Exception {
     String field = "foo_extf";
 
     float[] ids = {100,-4,0,10,25,5,77,23,55,-78,-45,-24,63,78,94,22,34,54321,261,-627};
@@ -210,8 +212,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertTrue(orig == FileFloatSource.onlyForTesting);
 
     makeExternalFile(field, "0=1","UTF-8");
-    assertU(adoc("id", "10000")); // will get same reader if no index change
-    assertU(commit());   
+    assertU(h.query("/reloadCache",lrf.makeRequest("","")));
     singleTest(field, "sqrt(\0)");
     assertTrue(orig != FileFloatSource.onlyForTesting);
 
@@ -247,8 +248,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
       makeExternalFile(field, sb.toString(),"UTF-8");
 
       // make it visible
-      assertU(adoc("id", "10001")); // will get same reader if no index change
-      assertU(commit());
+      assertU(h.query("/reloadCache",lrf.makeRequest("","")));
 
       // test it
       float[] answers = new float[ids.length*2];
@@ -579,6 +579,58 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     singleTest(fieldAsFunc, "log(\0)",  1,0);
 
     purgeFieldCache(FieldCache.DEFAULT);   // avoid FC insanity    
+  }
+
+    @Test
+  public void testBooleanFunctions() throws Exception {
+    assertU(adoc("id", "1", "text", "hello", "foo_s","A", "foo_ti", "0", "foo_tl","0"));
+    assertU(adoc("id", "2"                              , "foo_ti","10", "foo_tl","11"));
+    assertU(commit());
+
+    // true and false functions and constants
+    assertJQ(req("q", "id:1", "fl", "t:true(),f:false(),tt:{!func}true,ff:{!func}false")
+        , "/response/docs/[0]=={'t':true,'f':false,'tt':true,'ff':false}");
+
+    // test that exists(query) depends on the query matching the document
+    assertJQ(req("q", "id:1", "fl", "t:exists(query($q1)),f:exists(query($q2))", "q1","text:hello", "q2","text:there")
+        , "/response/docs/[0]=={'t':true,'f':false}");
+
+    // test if()
+    assertJQ(req("q", "id:1", "fl", "a1:if(true,'A','B')", "fl","b1:if(false,'A','B')")
+        , "/response/docs/[0]=={'a1':'A', 'b1':'B'}");
+
+    // test boolean operators
+    assertJQ(req("q", "id:1", "fl", "t1:and(true,true)", "fl","f1:and(true,false)", "fl","f2:and(false,true)", "fl","f3:and(false,false)")
+        , "/response/docs/[0]=={'t1':true, 'f1':false, 'f2':false, 'f3':false}");
+    assertJQ(req("q", "id:1", "fl", "t1:or(true,true)", "fl","t2:or(true,false)", "fl","t3:or(false,true)", "fl","f1:or(false,false)")
+        , "/response/docs/[0]=={'t1':true, 't2':true, 't3':true, 'f1':false}");
+    assertJQ(req("q", "id:1", "fl", "f1:xor(true,true)", "fl","t1:xor(true,false)", "fl","t2:xor(false,true)", "fl","f2:xor(false,false)")
+        , "/response/docs/[0]=={'t1':true, 't2':true, 'f1':false, 'f2':false}");
+    assertJQ(req("q", "id:1", "fl", "t:not(false),f:not(true)")
+        , "/response/docs/[0]=={'t':true, 'f':false}");
+
+
+    // def(), the default function that returns the first value that exists
+    assertJQ(req("q", "id:1", "fl", "x:def(id,123.0), y:def(foo_f,234.0)")
+        , "/response/docs/[0]=={'x':1.0, 'y':234.0}");
+    assertJQ(req("q", "id:1", "fl", "x:def(foo_s,'Q'), y:def(missing_s,'W')")
+        , "/response/docs/[0]=={'x':'A', 'y':'W'}");
+
+    // test constant conversion to boolean
+    assertJQ(req("q", "id:1", "fl", "a:not(0), b:not(1), c:not(0.0), d:not(1.1), e:not('A')")
+        , "/response/docs/[0]=={'a':true, 'b':false, 'c':true, 'd':false, 'e':false}");
+
+  }
+
+
+  @Test
+  public void testPseudoFieldFunctions() throws Exception {
+    assertU(adoc("id", "1", "text", "hello", "foo_s","A"));
+    assertU(adoc("id", "2"));
+    assertU(commit());
+
+    assertJQ(req("q", "id:1", "fl", "a:1,b:2.0,c:'X',d:{!func}foo_s,e:{!func}bar_s")  // if exists() is false, no pseudo-field should be added
+        , "/response/docs/[0]=={'a':1, 'b':2.0,'c':'X','d':'A'}");
   }
 
 }

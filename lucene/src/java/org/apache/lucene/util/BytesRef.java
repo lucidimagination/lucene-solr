@@ -18,10 +18,6 @@ package org.apache.lucene.util;
  */
 
 import java.util.Comparator;
-import java.io.UnsupportedEncodingException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
-import java.io.IOException;
 
 /** Represents byte[], as a slice (offset + length) into an
  *  existing byte[].
@@ -125,6 +121,7 @@ public final class BytesRef implements Comparable<BytesRef> {
   public void copy(char text[], int offset, int length) {
     UnicodeUtil.UTF16toUTF8(text, offset, length, this);
   }
+  
   public boolean bytesEquals(BytesRef other) {
     if (length == other.length) {
       int otherUpto = other.offset;
@@ -192,19 +189,24 @@ public final class BytesRef implements Comparable<BytesRef> {
 
   @Override
   public boolean equals(Object other) {
+    if (other == null) {
+      return false;
+    }
     return this.bytesEquals((BytesRef) other);
   }
 
   /** Interprets stored bytes as UTF8 bytes, returning the
    *  resulting string */
   public String utf8ToString() {
-    try {
-      return new String(bytes, offset, length, "UTF-8");
-    } catch (UnsupportedEncodingException uee) {
-      // should not happen -- UTF8 is presumably supported
-      // by all JREs
-      throw new RuntimeException(uee);
-    }
+    final CharsRef ref = new CharsRef(length);
+    UnicodeUtil.UTF8toUTF16(bytes, offset, length, ref);
+    return ref.toString(); 
+  }
+  
+  /** Interprets stored bytes as UTF8 bytes into the given {@link CharsRef} */
+  public CharsRef utf8ToChars(CharsRef ref) {
+    UnicodeUtil.UTF8toUTF16(bytes, offset, length, ref);
+    return ref;
   }
 
   /** Returns hex encoded bytes, eg [0x6c 0x75 0x63 0x65 0x6e 0x65] */

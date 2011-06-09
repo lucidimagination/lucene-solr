@@ -24,6 +24,7 @@
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
     <version>8</version>
+    <relativePath/>
   </parent>
   <groupId>org.apache.lucene</groupId>
   <artifactId>lucene-solr-grandparent</artifactId>
@@ -106,14 +107,6 @@
   </licenses>
   <repositories>
     <repository>
-      <id>carrot2.org</id>
-      <name>Carrot2 Maven2 repository</name>
-      <url>http://download.carrot2.org/maven2/</url>
-      <snapshots>
-        <updatePolicy>never</updatePolicy>
-      </snapshots>
-    </repository>
-    <repository>
       <id>apache.snapshots</id>
       <name>Apache Snapshot Repository</name>
       <url>http://repository.apache.org/snapshots</url>
@@ -128,24 +121,14 @@
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>org.apache.lucene</groupId>
-        <artifactId>lucene-icu4j</artifactId>
-        <version>${project.version}</version>
+        <groupId>com.ibm.icu</groupId>
+        <artifactId>icu4j</artifactId>
+        <version>4.8</version>
       </dependency>
       <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
         <version>r05</version>
-      </dependency>
-      <dependency>
-        <groupId>com.sleepycat</groupId>
-        <artifactId>berkeleydb</artifactId>
-        <version>4.7.25</version>
-      </dependency>
-      <dependency>
-        <groupId>com.sleepycat</groupId>
-        <artifactId>berkeleydb-je</artifactId>
-        <version>3.3.93</version>
       </dependency>
       <dependency>
         <groupId>commons-beanutils</groupId>
@@ -213,11 +196,6 @@
         <version>0.9.1</version>
       </dependency>
       <dependency>
-        <groupId>jtidy</groupId>
-        <artifactId>jtidy</artifactId>
-        <version>4aug2000r7-dev</version>
-      </dependency>
-      <dependency>
         <groupId>junit</groupId>
         <artifactId>junit</artifactId>
         <version>4.7</version>
@@ -236,11 +214,6 @@
         <groupId>org.apache.commons</groupId>
         <artifactId>commons-compress</artifactId>
         <version>1.1</version>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.geronimo.specs</groupId>
-        <artifactId>geronimo-stax-api_1.0_spec</artifactId>
-        <version>1.0.1</version>
       </dependency>
       <dependency>
         <groupId>org.apache.solr</groupId>
@@ -305,7 +278,7 @@
       <dependency>
         <groupId>org.carrot2</groupId>
         <artifactId>carrot2-core</artifactId>
-        <version>3.4.2</version>
+        <version>3.5.0</version>
       </dependency>
       <dependency>
         <groupId>org.codehaus.woodstox</groupId>
@@ -588,6 +561,36 @@
           </execution>
         </executions>
       </plugin>
+      
+      <!-- Adding OSGI metadata to the JAR without changing the packaging type. -->
+      <plugin>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
+          </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.felix</groupId>
+        <artifactId>maven-bundle-plugin</artifactId>
+        <version>2.3.4</version>
+        <configuration>
+          <instructions>
+            <Export-Package>*;-split-package:=merge-first</Export-Package>
+          </instructions>
+        </configuration>
+        <executions>
+          <execution>
+            <id>bundle-manifest</id>
+            <phase>process-classes</phase>
+            <goals>
+              <goal>manifest</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      
     </plugins>
   </build>
   <profiles>
@@ -597,41 +600,8 @@
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-antrun-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>get-jars-and-poms</id>
-                <phase>install</phase>
-                <goals>
-                  <goal>run</goal>
-                </goals>
-                <configuration>
-                  <target>
-                    <ant dir="lucene/contrib/db/bdb"    target="get-db-jar"/>
-                    <ant dir="lucene/contrib/db/bdb-je" target="get-je-jar"/>
-                  </target>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-install-plugin</artifactId>
             <executions>
-              <execution>
-                <id>install-icu4j</id>
-                <phase>install</phase>
-                <goals>
-                  <goal>install-file</goal>
-                </goals>
-                <configuration>
-                  <groupId>org.apache.lucene</groupId>
-                  <artifactId>lucene-icu4j</artifactId>
-                  <version>${project.version}</version>
-                  <packaging>jar</packaging>
-                  <file>modules/analysis/icu/lib/icu4j-4_6.jar</file>
-                </configuration>
-              </execution>
               <execution>
                 <id>install-xercesImpl</id>
                 <phase>install</phase>
@@ -644,34 +614,6 @@
                   <version>${project.version}</version>
                   <packaging>jar</packaging>
                   <file>modules/benchmark/lib/xercesImpl-2.9.1-patched-XERCESJ-1257.jar</file>
-                </configuration>  
-              </execution>
-              <execution>
-                <id>install-berkeleydb</id>
-                <phase>install</phase>
-                <goals>
-                  <goal>install-file</goal>
-                </goals>
-                <configuration>
-                  <groupId>com.sleepycat</groupId>
-                  <artifactId>berkeleydb</artifactId>
-                  <version>4.7.25</version>
-                  <packaging>jar</packaging>
-                  <file>lucene/contrib/db/bdb/lib/db-4.7.25.jar</file>
-                </configuration>  
-              </execution>
-              <execution>
-                <id>install-berkeleydb-je</id>
-                <phase>install</phase>
-                <goals>
-                  <goal>install-file</goal>
-                </goals>
-                <configuration>
-                  <groupId>com.sleepycat</groupId>
-                  <artifactId>berkeleydb-je</artifactId>
-                  <version>3.3.93</version>
-                  <packaging>jar</packaging>
-                  <file>lucene/contrib/db/bdb-je/lib/je-3.3.93.jar</file>
                 </configuration>  
               </execution>
               <execution>

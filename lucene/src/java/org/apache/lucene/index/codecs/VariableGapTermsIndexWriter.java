@@ -28,9 +28,10 @@ import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CodecUtil;
-import org.apache.lucene.util.automaton.fst.Builder;
-import org.apache.lucene.util.automaton.fst.FST;
-import org.apache.lucene.util.automaton.fst.PositiveIntOutputs;
+import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.fst.Builder;
+import org.apache.lucene.util.fst.FST;
+import org.apache.lucene.util.fst.PositiveIntOutputs;
 
 /**
  * Selects index terms according to provided pluggable
@@ -159,9 +160,17 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
   public VariableGapTermsIndexWriter(SegmentWriteState state, IndexTermSelector policy) throws IOException {
     final String indexFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, TERMS_INDEX_EXTENSION);
     out = state.directory.createOutput(indexFileName);
-    fieldInfos = state.fieldInfos;
-    this.policy = policy;
-    writeHeader(out);
+    boolean success = false;
+    try {
+      fieldInfos = state.fieldInfos;
+      this.policy = policy;
+      writeHeader(out);
+      success = true;
+    } finally {
+      if (!success) {
+        IOUtils.closeSafely(true, out);
+      }
+    }
   }
   
   protected void writeHeader(IndexOutput out) throws IOException {
@@ -200,6 +209,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
   private class FSTFieldWriter extends FieldWriter {
     private final Builder<Long> fstBuilder;
     private final PositiveIntOutputs fstOutputs;
+    private final long startTermsFilePointer;
 
     final FieldInfo fieldInfo;
     int numIndexTerms;
@@ -220,6 +230,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
 
       // Always put empty string in
       fstBuilder.add(new BytesRef(), fstOutputs.get(termsFilePointer));
+      startTermsFilePointer = termsFilePointer;
     }
 
     @Override
@@ -239,6 +250,11 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
 
     @Override
     public void add(BytesRef text, TermStats stats, long termsFilePointer) throws IOException {
+      if (text.length == 0) {
+        // We already added empty string in ctor
+        assert termsFilePointer == startTermsFilePointer;
+        return;
+      }
       final int lengthSave = text.length;
       text.length = indexedTermPrefixLength(lastTerm, text);
       try {
@@ -258,8 +274,8 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
     }
   }
 
-  @Override
   public void close() throws IOException {
+    try {
     final long dirStart = out.getFilePointer();
     final int fieldCount = fields.size();
 
@@ -280,7 +296,9 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
       }
     }
     writeTrailer(dirStart);
+    } finally {
     out.close();
+  }
   }
 
   protected void writeTrailer(long dirStart) throws IOException {

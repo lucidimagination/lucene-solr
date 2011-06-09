@@ -136,8 +136,11 @@ public class MockRandomCodec extends Codec {
 
     final String seedFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, SEED_EXT);
     final IndexOutput out = state.directory.createOutput(seedFileName);
-    out.writeLong(seed);
-    out.close();
+    try {
+      out.writeLong(seed);
+    } finally {
+      out.close();
+    }
 
     final Random random = new Random(seed);
     
@@ -196,7 +199,7 @@ public class MockRandomCodec extends Codec {
 
               @Override
               public boolean isIndexTerm(BytesRef term, TermStats stats) {
-                return rand.nextInt(gap) == 17;
+                return rand.nextInt(gap) == gap/2;
               }
 
               @Override

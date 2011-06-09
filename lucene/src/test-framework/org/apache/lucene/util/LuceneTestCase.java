@@ -28,6 +28,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -59,6 +60,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.util.FieldCacheSanityChecker.Insanity;
 import org.junit.*;
 import org.junit.rules.TestWatchman;
@@ -66,6 +68,8 @@ import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runner.manipulation.Filter;
 import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunListener;
 import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
@@ -130,7 +134,7 @@ public abstract class LuceneTestCase extends Assert {
   }
   
   /** set of directories we created, in afterclass we try to clean these up */
-  static final Set<String> tempDirs = Collections.synchronizedSet(new HashSet<String>());
+  private static final Map<File, StackTraceElement[]> tempDirs = Collections.synchronizedMap(new HashMap<File, StackTraceElement[]>());
 
   // by default we randomly pick a different codec for
   // each test case (non-J4 tests) and each test class (J4
@@ -157,6 +161,8 @@ public abstract class LuceneTestCase extends Assert {
   public static final String TEST_LINE_DOCS_FILE = System.getProperty("tests.linedocsfile", "europarl.lines.txt.gz");
   /** whether or not to clean threads between test invocations: "false", "perMethod", "perClass" */
   public static final String TEST_CLEAN_THREADS = System.getProperty("tests.cleanthreads", "perClass");
+  /** whether or not to clean threads between test invocations: "false", "perMethod", "perClass" */
+  public static final Throttling TEST_THROTTLING = TEST_NIGHTLY ? Throttling.SOMETIMES : Throttling.NEVER;
 
   private static final Pattern codecWithParam = Pattern.compile("(.*)\\(\\s*(\\d+)\\s*\\)");
 
@@ -171,8 +177,15 @@ public abstract class LuceneTestCase extends Assert {
   private volatile Thread.UncaughtExceptionHandler savedUncaughtExceptionHandler = null;
 
   /** Used to track if setUp and tearDown are called correctly from subclasses */
-  private boolean setup;
+  private static State state = State.INITIAL;
 
+  private static enum State {
+    INITIAL, // no tests ran yet
+    SETUP,   // test has called setUp()
+    RANTEST, // test is running
+    TEARDOWN // test has called tearDown()
+  }
+  
   /**
    * Some tests expect the directory to contain a single segment, and want to do tests on that segment's reader.
    * This is an utility method to help them.
@@ -211,7 +224,7 @@ public abstract class LuceneTestCase extends Assert {
   private static TimeZone timeZone;
   private static TimeZone savedTimeZone;
 
-  private static Map<MockDirectoryWrapper,StackTraceElement[]> stores;
+  protected static Map<MockDirectoryWrapper,StackTraceElement[]> stores;
 
   private static final String[] TEST_CODECS = new String[] {"MockSep", "MockFixedIntBlock", "MockVariableIntBlock", "MockRandom"};
 
@@ -326,10 +339,19 @@ public abstract class LuceneTestCase extends Assert {
 
   @BeforeClass
   public static void beforeClassLuceneTestCaseJ4() {
+    state = State.INITIAL;
     staticSeed = "random".equals(TEST_SEED) ? seedRand.nextLong() : TwoLongs.fromString(TEST_SEED).l1;
     random.setSeed(staticSeed);
     tempDirs.clear();
     stores = Collections.synchronizedMap(new IdentityHashMap<MockDirectoryWrapper,StackTraceElement[]>());
+    
+    // enable this by default, for IDE consistency with ant tests (as its the default from ant)
+    // TODO: really should be in solr base classes, but some extend LTC directly.
+    // we do this in beforeClass, because some tests currently disable it
+    if (System.getProperty("solr.directoryFactory") == null) {
+      System.setProperty("solr.directoryFactory", "org.apache.solr.core.MockDirectoryFactory");
+    }
+    
     savedCodecProvider = CodecProvider.getDefault();
     if ("random".equals(TEST_CODECPROVIDER)) {
       if ("randomPerField".equals(TEST_CODEC)) {
@@ -375,6 +397,11 @@ public abstract class LuceneTestCase extends Assert {
 
   @AfterClass
   public static void afterClassLuceneTestCaseJ4() {
+    if (!testsFailed) {
+      assertTrue("ensure your setUp() calls super.setUp() and your tearDown() calls super.tearDown()!!!", 
+          state == State.INITIAL || state == State.TEARDOWN);
+    }
+    state = State.INITIAL;
     if (! "false".equals(TEST_CLEAN_THREADS)) {
       int rogueThreads = threadCleanup("test class");
       if (rogueThreads > 0) {
@@ -439,11 +466,21 @@ public abstract class LuceneTestCase extends Assert {
     }
     // clear out any temp directories if we can
     if (!testsFailed) {
-      for (String path : tempDirs) {
+      for (Entry<File, StackTraceElement[]> entry : tempDirs.entrySet()) {
         try {
-          _TestUtil.rmDir(new File(path));
+          _TestUtil.rmDir(entry.getKey());
         } catch (IOException e) {
           e.printStackTrace();
+          System.err.println("path " + entry.getKey() + " allocated from");
+          // first two STE's are Java's
+          StackTraceElement[] elements = entry.getValue();
+          for (int i = 2; i < elements.length; i++) {
+            StackTraceElement ste = elements[i];            
+            // print only our code's stack information
+            if (ste.getClassName().indexOf("org.apache.lucene") == -1) break; 
+            System.err.println("\t" + ste);
+          }
+          fail("could not remove temp dir: " + entry.getKey());
         }
       }
     }
@@ -483,17 +520,22 @@ public abstract class LuceneTestCase extends Assert {
     public void starting(FrameworkMethod method) {
       // set current method name for logging
       LuceneTestCase.this.name = method.getName();
+      if (!testsFailed) {
+        assertTrue("ensure your setUp() calls super.setUp()!!!", state == State.SETUP);
+      }
+      state = State.RANTEST;
       super.starting(method);
     }
-
   };
 
   @Before
   public void setUp() throws Exception {
     seed = "random".equals(TEST_SEED) ? seedRand.nextLong() : TwoLongs.fromString(TEST_SEED).l2;
     random.setSeed(seed);
-    assertFalse("ensure your tearDown() calls super.tearDown()!!!", setup);
-    setup = true;
+    if (!testsFailed) {
+      assertTrue("ensure your tearDown() calls super.tearDown()!!!", (state == State.INITIAL || state == State.TEARDOWN));
+    }
+    state = State.SETUP;
     savedUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
     Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
       public void uncaughtException(Thread t, Throwable e) {
@@ -529,8 +571,12 @@ public abstract class LuceneTestCase extends Assert {
 
   @After
   public void tearDown() throws Exception {
-    assertTrue("ensure your setUp() calls super.setUp()!!!", setup);
-    setup = false;
+    if (!testsFailed) {
+      // Note: we allow a test to go straight from SETUP -> TEARDOWN (without ever entering the RANTEST state)
+      // because if you assume() inside setUp(), it skips the test and the TestWatchman has no way to know...
+      assertTrue("ensure your setUp() calls super.setUp()!!!", state == State.RANTEST || state == State.SETUP);
+    }
+    state = State.TEARDOWN;
     BooleanQuery.setMaxClauseCount(savedBoolMaxClauseCount);
     if ("perMethod".equals(TEST_CLEAN_THREADS)) {
       int rogueThreads = threadCleanup("test method: '" + getName() + "'");
@@ -678,6 +724,47 @@ public abstract class LuceneTestCase extends Assert {
 
     }
   }
+  
+  /**
+   * Returns a number of at least <code>i</code>
+   * <p>
+   * The actual number returned will be influenced by whether {@link #TEST_NIGHTLY}
+   * is active and {@link #RANDOM_MULTIPLIER}, but also with some random fudge.
+   */
+  public static int atLeast(Random random, int i) {
+    int min = (TEST_NIGHTLY ? 5*i : i) * RANDOM_MULTIPLIER;
+    int max = min+(min/2);
+    return _TestUtil.nextInt(random, min, max);
+  }
+  
+  public static int atLeast(int i) {
+    return atLeast(random, i);
+  }
+  
+  /**
+   * Returns true if something should happen rarely,
+   * <p>
+   * The actual number returned will be influenced by whether {@link #TEST_NIGHTLY}
+   * is active and {@link #RANDOM_MULTIPLIER}.
+   */
+  public static boolean rarely(Random random) {
+    int p = TEST_NIGHTLY ? 25 : 5;
+    p += (p * Math.log(RANDOM_MULTIPLIER));
+    int min = 100 - Math.min(p, 90); // never more than 90
+    return random.nextInt(100) >= min;
+  }
+  
+  public static boolean rarely() {
+    return rarely(random);
+  }
+  
+  public static boolean usually(Random random) {
+    return !rarely(random);
+  }
+  
+  public static boolean usually() {
+    return usually(random);
+  }
 
   // @deprecated (4.0) These deprecated methods should be removed soon, when all tests using no Epsilon are fixed:
   @Deprecated
@@ -790,14 +877,22 @@ public abstract class LuceneTestCase extends Assert {
       c.setMergeScheduler(new SerialMergeScheduler());
     }
     if (r.nextBoolean()) {
-      if (r.nextInt(20) == 17) {
-        c.setMaxBufferedDocs(2);
+      if (rarely(r)) {
+        // crazy value
+        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 2, 7));
       } else {
-        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 2, 1000));
+        // reasonable value
+        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 8, 1000));
       }
     }
     if (r.nextBoolean()) {
-      c.setTermIndexInterval(_TestUtil.nextInt(r, 1, 1000));
+      if (rarely(r)) {
+        // crazy value
+        c.setTermIndexInterval(random.nextBoolean() ? _TestUtil.nextInt(r, 1, 31) : _TestUtil.nextInt(r, 129, 1000));
+      } else {
+        // reasonable value
+        c.setTermIndexInterval(_TestUtil.nextInt(r, 32, 128));
+      }
     }
     if (r.nextBoolean()) {
       c.setIndexerThreadPool(new ThreadAffinityDocumentsWriterThreadPool(_TestUtil.nextInt(r, 1, 20)));
@@ -828,22 +923,22 @@ public abstract class LuceneTestCase extends Assert {
     LogMergePolicy logmp = r.nextBoolean() ? new LogDocMergePolicy() : new LogByteSizeMergePolicy();
     logmp.setUseCompoundFile(r.nextBoolean());
     logmp.setCalibrateSizeByDeletes(r.nextBoolean());
-    if (r.nextInt(3) == 2) {
-      logmp.setMergeFactor(2);
+    if (rarely(r)) {
+      logmp.setMergeFactor(_TestUtil.nextInt(r, 2, 4));
     } else {
-      logmp.setMergeFactor(_TestUtil.nextInt(r, 2, 20));
+      logmp.setMergeFactor(_TestUtil.nextInt(r, 5, 50));
     }
     return logmp;
   }
 
   public static TieredMergePolicy newTieredMergePolicy(Random r) {
     TieredMergePolicy tmp = new TieredMergePolicy();
-    if (r.nextInt(3) == 2) {
-      tmp.setMaxMergeAtOnce(2);
-      tmp.setMaxMergeAtOnceExplicit(2);
+    if (rarely(r)) {
+      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 2, 4));
+      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 2, 4));
     } else {
-      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 2, 20));
-      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 2, 30));
+      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 5, 50));
+      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 5, 50));
     }
     tmp.setMaxMergedSegmentMB(0.2 + r.nextDouble() * 2.0);
     tmp.setFloorSegmentMB(0.2 + r.nextDouble() * 2.0);
@@ -895,8 +990,9 @@ public abstract class LuceneTestCase extends Assert {
     Directory impl = newDirectoryImpl(r, TEST_DIRECTORY);
     MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
     stores.put(dir, Thread.currentThread().getStackTrace());
+    dir.setThrottling(TEST_THROTTLING);
     return dir;
-  }
+   }
 
   /**
    * Returns a new Directory instance, with contents copied from the
@@ -937,8 +1033,12 @@ public abstract class LuceneTestCase extends Assert {
 
         clazz = Class.forName(fsdirClass).asSubclass(FSDirectory.class);
       }
-      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, newFSDirectoryImpl(clazz, f, lf));
+      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, newFSDirectoryImpl(clazz, f));
+      if (lf != null) {
+        dir.setLockFactory(lf);
+      }
       stores.put(dir, Thread.currentThread().getStackTrace());
+      dir.setThrottling(TEST_THROTTLING);
       return dir;
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -957,6 +1057,7 @@ public abstract class LuceneTestCase extends Assert {
     }
     MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
     stores.put(dir, Thread.currentThread().getStackTrace());
+    dir.setThrottling(TEST_THROTTLING);
     return dir;
   }
   
@@ -1000,8 +1101,13 @@ public abstract class LuceneTestCase extends Assert {
   /** Returns a new field instance, using the specified random. 
    * See {@link #newField(String, String, Field.Store, Field.Index, Field.TermVector)} for more information */
   public static Field newField(Random random, String name, String value, Store store, Index index, TermVector tv) {
+    if (usually(random)) {
+      // most of the time, don't modify the params
+      return new Field(name, value, store, index, tv);
+    }
+
     if (!index.isIndexed())
-      return new Field(name, value, store, index);
+      return new Field(name, value, store, index, tv);
 
     if (!store.isStored() && random.nextBoolean())
       store = Store.YES; // randomly store it
@@ -1063,7 +1169,7 @@ public abstract class LuceneTestCase extends Assert {
   };
 
   public static String randomDirectory(Random random) {
-    if (random.nextInt(10) == 0) {
+    if (rarely(random)) {
       return CORE_DIRECTORIES[random.nextInt(CORE_DIRECTORIES.length)];
     } else {
       return "RAMDirectory";
@@ -1071,7 +1177,7 @@ public abstract class LuceneTestCase extends Assert {
   }
 
   private static Directory newFSDirectoryImpl(
-      Class<? extends FSDirectory> clazz, File file, LockFactory lockFactory)
+      Class<? extends FSDirectory> clazz, File file)
       throws IOException {
     FSDirectory d = null;
     try {
@@ -1082,12 +1188,14 @@ public abstract class LuceneTestCase extends Assert {
     } catch (Exception e) {
       d = FSDirectory.open(file);
     }
-    if (lockFactory != null) {
-      d.setLockFactory(lockFactory);
-    }
     return d;
   }
 
+  /** Registers a temp file that will be deleted when tests are done. */
+  public static void registerTempFile(File tmpFile) {
+    tempDirs.put(tmpFile.getAbsoluteFile(), Thread.currentThread().getStackTrace());
+  }
+  
   static Directory newDirectoryImpl(Random random, String clazzName) {
     if (clazzName.equals("random"))
       clazzName = randomDirectory(random);
@@ -1097,11 +1205,11 @@ public abstract class LuceneTestCase extends Assert {
       final Class<? extends Directory> clazz = Class.forName(clazzName).asSubclass(Directory.class);
       // If it is a FSDirectory type, try its ctor(File)
       if (FSDirectory.class.isAssignableFrom(clazz)) {
-        final File tmpFile = File.createTempFile("test", "tmp", TEMP_DIR);
+        final File tmpFile = _TestUtil.createTempFile("test", "tmp", TEMP_DIR);
         tmpFile.delete();
         tmpFile.mkdir();
-        tempDirs.add(tmpFile.getAbsolutePath());
-        return newFSDirectoryImpl(clazz.asSubclass(FSDirectory.class), tmpFile, null);
+        registerTempFile(tmpFile);
+        return newFSDirectoryImpl(clazz.asSubclass(FSDirectory.class), tmpFile);
       }
 
       // try empty ctor
@@ -1123,8 +1231,9 @@ public abstract class LuceneTestCase extends Assert {
    * with one that returns null for getSequentialSubReaders.
    */
   public static IndexSearcher newSearcher(IndexReader r, boolean maybeWrap) throws IOException {
+
     if (random.nextBoolean()) {
-      if (maybeWrap && random.nextBoolean()) {
+      if (maybeWrap && rarely()) {
         return new IndexSearcher(new SlowMultiReaderWrapper(r));
       } else {
         return new IndexSearcher(r);
@@ -1186,6 +1295,7 @@ public abstract class LuceneTestCase extends Assert {
     if (!TEST_TIMEZONE.equals("random")) sb.append(" -Dtests.timezone=").append(TEST_TIMEZONE);
     if (!TEST_DIRECTORY.equals("random")) sb.append(" -Dtests.directory=").append(TEST_DIRECTORY);
     if (RANDOM_MULTIPLIER > 1) sb.append(" -Dtests.multiplier=").append(RANDOM_MULTIPLIER);
+    if (TEST_NIGHTLY) sb.append(" -Dtests.nightly=true");
     return sb.toString();
   }
 
@@ -1274,17 +1384,25 @@ public abstract class LuceneTestCase extends Assert {
       }
       
       // only print iteration info if the user requested more than one iterations
-      boolean verbose = VERBOSE && TEST_ITER > 1;
+      final boolean verbose = VERBOSE && TEST_ITER > 1;
+      
+      final int currentIter[] = new int[1];
+      arg1.addListener(new RunListener() {
+        @Override
+        public void testFailure(Failure failure) throws Exception {
+          if (verbose) {
+            System.out.println("\nNOTE: iteration " + currentIter[0] + " failed! ");
+          }
+        }
+      });
       for (int i = 0; i < TEST_ITER; i++) {
+        currentIter[0] = i;
         if (verbose) {
           System.out.println("\nNOTE: running iter=" + (1+i) + " of " + TEST_ITER);
         }
         super.runChild(arg0, arg1);
         if (testsFailed) {
-          if (i >= TEST_ITER_MIN - 1) {
-            if (verbose) {
-              System.out.println("\nNOTE: iteration " + i + " failed !");
-            }
+          if (i >= TEST_ITER_MIN - 1) { // XXX is this still off-by-one?
             break;
           }
         }
@@ -1344,9 +1462,18 @@ public abstract class LuceneTestCase extends Assert {
       Codec codec = previousMappings.get(name);
       if (codec == null) {
         codec = knownCodecs.get(Math.abs(perFieldSeed ^ name.hashCode()) % knownCodecs.size());
+        if (codec instanceof SimpleTextCodec && perFieldSeed % 5 != 0) {
+          // make simpletext rarer, choose again
+          codec = knownCodecs.get(Math.abs(perFieldSeed ^ name.toUpperCase(Locale.ENGLISH).hashCode()) % knownCodecs.size());
+        }
         previousMappings.put(name, codec);
       }
       return codec.name;
+    }
+
+    @Override
+    public synchronized boolean hasFieldCodec(String name) {
+      return true; // we have a codec for every field
     }
 
     @Override

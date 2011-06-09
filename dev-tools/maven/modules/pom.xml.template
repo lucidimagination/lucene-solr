@@ -33,6 +33,8 @@
   <modules>
     <module>analysis</module>
     <module>benchmark</module>
+    <module>grouping</module>
+    <module>suggest</module>
   </modules>
   <build>
     <directory>build/lucene-modules-aggregator</directory>

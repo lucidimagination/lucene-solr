@@ -19,7 +19,15 @@ WhitespaceTokenizer v2.3.1-SNAPSHOT rev. 1076132
 
 $Id$
 
-==================  3.2.0-dev ==================
+==================  4.0.0-dev ==============
+
+(No Changes)
+
+==================  3.3.0-dev ==============
+
+(No Changes)
+
+==================  3.2.0 ==================
 
 Upgrading from Solr 3.1
 ----------------------
@@ -32,6 +40,9 @@ New Features
 ----------------------
 
 * SOLR-2503: extend mapping function to map feature value to dynamicField. (koji)
+
+* SOLR-2512: add ignoreErrors flag so that users can ignore exceptions in AE.
+  (Tommaso Teofili, koji)
 
 Test Cases:
 ----------------------
