@@ -292,17 +292,18 @@
   <target name="package-zip" depends="package"
     description="--> Generates the Lucene distribution as .zip">
 
-    <delete file="${dist.dir}/lucene-${version}.zip"/>
-    <zip destfile="${dist.dir}/lucene-${version}.zip">
-      <zipfileset prefix="lucene-${version}" dir=".">
+    <delete file="${dist.dir}/${pname}-${version}.zip"/>
+    <zip destfile="${dist.dir}/${pname}-${version}.zip">
+      <zipfileset prefix="${pname}-${version}" dir=".">
         <patternset refid="binary.root.dist.patterns"/>
       </zipfileset>
-      <zipfileset dir="${build.dir}" includes="build-demo.xml" fullpath="lucene-${version}/build.xml"/>
-      <zipfileset prefix="lucene-${version}" dir="${build.dir}">
+      <zipfileset dir="${build.dir}" includes="build-demo.xml" fullpath="${pname}-${version}/build.xml"/>
+      <zipfileset prefix="${pname}-${version}" dir="${build.dir}">
         <patternset refid="binary.build.dist.patterns"/>
       </zipfileset>
+      <zipfileset dir=".." prefix="${pname}-${version}" includes="LUCIDWORKS.txt" />
     </zip>
-	<lucene-checksum file="${dist.dir}/lucene-${version}.zip"/>
+	<lucene-checksum file="${dist.dir}/${pname}-${version}.zip"/>
   </target>
 
   <!-- ================================================================== -->
@@ -313,21 +314,22 @@
   <target name="package-tgz" depends="package"
     description="--> Generates the lucene distribution as .tgz">
 
-    <delete file="${build.dir}/lucene-${version}.tar"/>
-    <delete file="${dist.dir}/lucene-${version}.tgz"/>
-    <tar tarfile="${build.dir}/lucene-${version}.tar" longfile="gnu">
-      <tarfileset prefix="lucene-${version}" dir=".">
+    <delete file="${build.dir}/${pname}-${version}.tar"/>
+    <delete file="${dist.dir}/${pname}-${version}.tgz"/>
+    <tar tarfile="${build.dir}/${pname}-${version}.tar" longfile="gnu">
+      <tarfileset prefix="${pname}-${version}" dir=".">
         <patternset refid="binary.root.dist.patterns"/>
       </tarfileset>
-      <tarfileset prefix="lucene-${version}" dir="${build.dir}">
+      <tarfileset prefix="${pname}-${version}" dir="${build.dir}">
         <patternset refid="binary.build.dist.patterns"/>
       </tarfileset>
+      <tarfileset dir=".." prefix="${pname}-${version}" includes="LUCIDWORKS.txt" />
     </tar>
 
-    <gzip zipfile="${dist.dir}/lucene-${version}.tgz"
-      src="${build.dir}/lucene-${version}.tar"
+    <gzip zipfile="${dist.dir}/${pname}-${version}.tgz"
+      src="${build.dir}/${pname}-${version}.tar"
       />
-	<lucene-checksum file="${dist.dir}/lucene-${version}.tgz"/>
+	<lucene-checksum file="${dist.dir}/${pname}-${version}.tgz"/>
   </target>
 
   <!-- ================================================================== -->
@@ -365,10 +367,10 @@
   <target name="package-tgz-src" depends="init, init-dist, svn-export-source"
     description="--> Generates the Lucene distribution as .tgz">
     <property name="source.package.file"
-              value="${dist.dir}/lucene-${version}-src.tgz"/>
+              value="${dist.dir}/${pname}-${version}-src.tgz"/>
     <delete file="${source.package.file}"/>
     <tar tarfile="${source.package.file}" compression="gzip" longfile="gnu">
-      <tarfileset prefix="lucene-${version}" dir="${svn.export.dir}"/>
+      <tarfileset prefix="${pname}-${version}" dir="${svn.export.dir}"/>
     </tar>
   	<lucene-checksum file="${source.package.file}"/>
   </target>

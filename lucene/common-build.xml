@@ -23,6 +23,8 @@
     for standalone use.
   </description>
 
+  <property name="pname" value="lucidworks-lucene"/>
+
   <dirname file="${ant.file.common}" property="common.dir"/>
   <property name="dev-tools.dir" value="${common.dir}/../dev-tools"/>
   <property name="prettify.dir" value="${common.dir}/src/tools/prettify"/>
