@@ -17,6 +17,11 @@ to Apache Lucene/Solr 3.2.0
 * SOLR-2579: UIMAUpdateRequestProcessor ignore error fails if text.length() < 100.
   (Elmer Garduno via koji)
 
+* SOLR-2462: Fix extremely high memory usage problems with spellcheck.collate.
+  Separately, an additional spellcheck.maxCollationEvaluations (default=10000)
+  parameter is added to avoid excessive CPU time in extreme cases (e.g. long
+  queries with many misspelled words).  (James Dyer via rmuir)
+
 * LUCENE-3147,LUCENE-3152: Fixed open file handles leaks in many places in the
   code. Now MockDirectoryWrapper (in test-framework) tracks all open files,
   including locks, and fails if the test fails to release all of them.
@@ -33,4 +38,9 @@ to Apache Lucene/Solr 3.2.0
 * LUCENE-3185: Fix bug in NRTCachingDirectory.deleteFile that would
   always throw exception and sometimes fail to actually delete the
   file.  (Mike McCandless)
+
+* LUCENE-3182: fix corruption case, when one thread is calling 
+  IW.addIndices(IR...) and another thread calls IW.rollback()
+ (Mike McCandless)
+
 
