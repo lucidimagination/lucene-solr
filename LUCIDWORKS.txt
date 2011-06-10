@@ -14,6 +14,9 @@ Lucene and Solr are trademarks of the Apache Software Foundation.
 LucidWorks for Lucene/Solr 3.2.0_01 has the following changes compared
 to Apache Lucene/Solr 3.2.0
 
+* SOLR-2579: UIMAUpdateRequestProcessor ignore error fails if text.length() < 100.
+  (Elmer Garduno via koji)
+
 * LUCENE-3147,LUCENE-3152: Fixed open file handles leaks in many places in the
   code. Now MockDirectoryWrapper (in test-framework) tracks all open files,
   including locks, and fails if the test fails to release all of them.
