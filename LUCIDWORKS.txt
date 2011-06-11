@@ -14,8 +14,9 @@ Lucene and Solr are trademarks of the Apache Software Foundation.
 LucidWorks for Lucene/Solr 3.2.0_01 has the following changes compared
 to Apache Lucene/Solr 3.2.0
 
-* LUCENE-152: Add KStem (light stemmer for English).
-   (Yonik Seeley via Robert Muir)
+* LUCENE-152: Add KStem (light stemmer for English).  See the commented
+  out "text_en" fieldType in the example schema.
+  (Yonik Seeley via Robert Muir)
 
 * SOLR-2567: Solr now defaults to TieredMergePolicy. 
   See http://s.apache.org/merging for more information.  (rmuir)
