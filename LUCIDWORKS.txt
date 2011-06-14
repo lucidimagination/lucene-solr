@@ -29,6 +29,8 @@ to Apache Lucene/Solr 3.2.0
   parameter is added to avoid excessive CPU time in extreme cases (e.g. long
   queries with many misspelled words).  (James Dyer via rmuir)
 
+* SOLR-2554: RandomSortField didn't work when used in a function query. (yonik)
+
 * LUCENE-3147,LUCENE-3152: Fixed open file handles leaks in many places in the
   code. Now MockDirectoryWrapper (in test-framework) tracks all open files,
   including locks, and fails if the test fails to release all of them.
