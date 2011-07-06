@@ -966,23 +966,23 @@ var sammy = $.sammy
                                         var state = threadDumpData[i].state;
                                         var name = '<a><span>' + threadDumpData[i].name + '</span></a>';
 
-                                        var class = [state];
+                                        var clazz = [state];
                                         var details = '';
 
                                         if( 0 !== c % 2 )
                                         {
-                                            class.push( 'odd' );
+                                        	clazz.push( 'odd' );
                                         }
 
                                         if( threadDumpData[i].lock )
                                         {
-                                            class.push( 'lock' );
+                                        	clazz.push( 'lock' );
                                             name += "\n" + '<p title="Waiting on">' + threadDumpData[i].lock + '</p>';
                                         }
 
                                         if( threadDumpData[i].stackTrace && 0 !== threadDumpData[i].stackTrace.length )
                                         {
-                                            class.push( 'stacktrace' );
+                                        	clazz.push( 'stacktrace' );
 
                                             var stack_trace = threadDumpData[i].stackTrace
                                                                 .join( '</li><li>' )
@@ -995,7 +995,7 @@ var sammy = $.sammy
                                                     + '</div>';
                                         }
 
-                                        var item = '<tr class="' + class.join( ' ' ) +'">' + "\n"
+                                        var item = '<tr class="' + clazz.join( ' ' ) +'">' + "\n"
 
                                                  + '<td class="ico" title="' + state +'"><span>' + state +'</span></td>' + "\n"
                                                  + '<td class="id">' + threadDumpData[i].id + '</td>' + "\n"

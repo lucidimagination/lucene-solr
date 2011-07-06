@@ -18,7 +18,8 @@
     
     var app_config = {};
     
-    app_config.solr_path = '<%= request.getContextPath() %>';
+    <!-- Lucid: we change the path to /solr -->
+    app_config.solr_path = '/solr';
     app_config.core_admin_path = '<%= cores.getAdminPath() %>';
     app_config.zookeeper_path = 'zookeeper.jsp';
     
