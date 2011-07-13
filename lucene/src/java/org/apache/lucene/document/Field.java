@@ -20,8 +20,8 @@ package org.apache.lucene.document;
 import java.io.Reader;
 
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.util.StringHelper;
 
 /**
   A field is a section of a Document.  Each field has two parts, a name and a
@@ -367,28 +367,6 @@ public final class Field extends AbstractField implements Fieldable {
    * </ul> 
    */ 
   public Field(String name, String value, Store store, Index index, TermVector termVector) {
-    this(name, true, value, store, index, termVector);
-  }
-  
-  /**
-   * Create a field by specifying its name, value and how it will
-   * be saved in the index.
-   * 
-   * @param name The name of the field
-   * @param internName Whether to .intern() name or not
-   * @param value The string to process
-   * @param store Whether <code>value</code> should be stored in the index
-   * @param index Whether the field should be indexed, and if so, if it should
-   *  be tokenized before indexing 
-   * @param termVector Whether term vector should be stored
-   * @throws NullPointerException if name or value is <code>null</code>
-   * @throws IllegalArgumentException in any of the following situations:
-   * <ul> 
-   *  <li>the field is neither stored nor indexed</li> 
-   *  <li>the field is not indexed but termVector is <code>TermVector.YES</code></li>
-   * </ul> 
-   */ 
-  public Field(String name, boolean internName, String value, Store store, Index index, TermVector termVector) {
     if (name == null)
       throw new NullPointerException("name cannot be null");
     if (value == null)
@@ -402,9 +380,6 @@ public final class Field extends AbstractField implements Fieldable {
       throw new IllegalArgumentException("cannot store term vector information "
          + "for a field that is not indexed");
           
-    if (internName) // field names are optionally interned
-      name = StringHelper.intern(name);
-    
     this.name = name; 
     
     this.fieldsData = value;
@@ -415,14 +390,15 @@ public final class Field extends AbstractField implements Fieldable {
     this.isTokenized = index.isAnalyzed();
     this.omitNorms = index.omitNorms();
     if (index == Index.NO) {
-      this.omitTermFreqAndPositions = false;
+      // note: now this reads even wierder than before
+      this.indexOptions = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
     }    
 
     this.isBinary = false;
 
     setStoreTermVector(termVector);
   }
-
+  
   /**
    * Create a tokenized and indexed field that is not stored. Term vectors will
    * not be stored.  The Reader is read only when the Document is added to the index,
@@ -454,7 +430,7 @@ public final class Field extends AbstractField implements Fieldable {
     if (reader == null)
       throw new NullPointerException("reader cannot be null");
     
-    this.name = StringHelper.intern(name);        // field names are interned
+    this.name = name;
     this.fieldsData = reader;
     
     this.isStored = false;
@@ -500,7 +476,7 @@ public final class Field extends AbstractField implements Fieldable {
     if (tokenStream == null)
       throw new NullPointerException("tokenStream cannot be null");
     
-    this.name = StringHelper.intern(name);        // field names are interned
+    this.name = name;
     this.fieldsData = null;
     this.tokenStream = tokenStream;
 
@@ -540,13 +516,13 @@ public final class Field extends AbstractField implements Fieldable {
     if (value == null)
       throw new IllegalArgumentException("value cannot be null");
     
-    this.name = StringHelper.intern(name);        // field names are interned
+    this.name = name;
     fieldsData = value;
     
     isStored = true;
     isIndexed   = false;
     isTokenized = false;
-    omitTermFreqAndPositions = false;
+    indexOptions = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
     omitNorms = true;
     
     isBinary    = true;

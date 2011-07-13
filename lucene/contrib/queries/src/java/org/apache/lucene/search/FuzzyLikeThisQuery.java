@@ -51,7 +51,11 @@ import org.apache.lucene.util.PriorityQueue;
  */
 public class FuzzyLikeThisQuery extends Query
 {
-    static Similarity sim=new DefaultSimilarity();
+    // TODO: generalize this query (at least it should not reuse this static sim!
+    // a better way might be to convert this into multitermquery rewrite methods.
+    // the rewrite method can 'average' the TermContext's term statistics (docfreq,totalTermFreq) 
+    // provided to TermQuery, so that the general idea is agnostic to any scoring system...
+    static TFIDFSimilarity sim=new DefaultSimilarity();
     Query rewrittenQuery=null;
     ArrayList<FieldVals> fieldVals=new ArrayList<FieldVals>();
     Analyzer analyzer;
@@ -190,7 +194,6 @@ public class FuzzyLikeThisQuery extends Query
         CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
         
         int corpusNumDocs=reader.numDocs();
-        Term internSavingTemplateTerm =new Term(f.fieldName); //optimization to avoid constructing new Term() objects
         HashSet<String> processedTerms=new HashSet<String>();
         ts.reset();
         while (ts.incrementToken()) 
@@ -201,7 +204,7 @@ public class FuzzyLikeThisQuery extends Query
                   processedTerms.add(term);
                   ScoreTermQueue variantsQ=new ScoreTermQueue(MAX_VARIANTS_PER_TERM); //maxNum variants considered for any one term
                   float minScore=0;
-                  Term startTerm=internSavingTemplateTerm.createTerm(term);
+                  Term startTerm=new Term(f.fieldName, term);
                   AttributeSource atts = new AttributeSource();
                   MaxNonCompetitiveBoostAttribute maxBoostAtt =
                     atts.addAttribute(MaxNonCompetitiveBoostAttribute.class);

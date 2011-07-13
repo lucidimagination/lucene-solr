@@ -28,11 +28,15 @@ import org.apache.lucene.document.NumericField;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.BufferedIndexInput;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.CloseableThreadLocal;
+import org.apache.lucene.util.IOUtils;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.ArrayList;
 
 /**
  * Class responsible for access to stored document fields.
@@ -41,7 +45,7 @@ import java.io.Reader;
  * 
  * @lucene.internal
  */
-public final class FieldsReader implements Cloneable {
+public final class FieldsReader implements Cloneable, Closeable {
   private final static int FORMAT_SIZE = 4;
 
   private final FieldInfos fieldInfos;
@@ -81,7 +85,7 @@ public final class FieldsReader implements Cloneable {
   /** Verifies that the code version which wrote the segment is supported. */
   public static void checkCodeVersion(Directory dir, String segment) throws IOException {
     final String indexStreamFN = IndexFileNames.segmentFileName(segment, "", IndexFileNames.FIELDS_INDEX_EXTENSION);
-    IndexInput idxStream = dir.openInput(indexStreamFN, 1024);
+    IndexInput idxStream = dir.openInput(indexStreamFN, IOContext.DEFAULT);
     
     try {
       int format = idxStream.readInt();
@@ -110,18 +114,18 @@ public final class FieldsReader implements Cloneable {
   }
   
   public FieldsReader(Directory d, String segment, FieldInfos fn) throws IOException {
-    this(d, segment, fn, BufferedIndexInput.BUFFER_SIZE, -1, 0);
+    this(d, segment, fn, IOContext.DEFAULT, -1, 0);
   }
 
-  public FieldsReader(Directory d, String segment, FieldInfos fn, int readBufferSize, int docStoreOffset, int size) throws IOException {
+  public FieldsReader(Directory d, String segment, FieldInfos fn, IOContext context, int docStoreOffset, int size) throws IOException {
     boolean success = false;
     isOriginal = true;
     try {
       fieldInfos = fn;
 
-      cloneableFieldsStream = d.openInput(IndexFileNames.segmentFileName(segment, "", IndexFileNames.FIELDS_EXTENSION), readBufferSize);
+      cloneableFieldsStream = d.openInput(IndexFileNames.segmentFileName(segment, "", IndexFileNames.FIELDS_EXTENSION), context);
       final String indexStreamFN = IndexFileNames.segmentFileName(segment, "", IndexFileNames.FIELDS_INDEX_EXTENSION);
-      cloneableIndexStream = d.openInput(indexStreamFN, readBufferSize);
+      cloneableIndexStream = d.openInput(indexStreamFN, context);
       
       format = cloneableIndexStream.readInt();
 
@@ -179,21 +183,11 @@ public final class FieldsReader implements Cloneable {
    */
   public final void close() throws IOException {
     if (!closed) {
-      if (fieldsStream != null) {
-        fieldsStream.close();
-      }
       if (isOriginal) {
-        if (cloneableFieldsStream != null) {
-          cloneableFieldsStream.close();
-        }
-        if (cloneableIndexStream != null) {
-          cloneableIndexStream.close();
-        }
+        IOUtils.closeSafely(false, fieldsStream, indexStream, fieldsStreamTL, cloneableFieldsStream, cloneableIndexStream);
+      } else {
+        IOUtils.closeSafely(false, fieldsStream, indexStream, fieldsStreamTL);
       }
-      if (indexStream != null) {
-        indexStream.close();
-      }
-      fieldsStreamTL.close();
       closed = true;
     }
   }
@@ -346,7 +340,7 @@ public final class FieldsReader implements Cloneable {
     }
     
     f.setOmitNorms(fi.omitNorms);
-    f.setOmitTermFreqAndPositions(fi.omitTermFreqAndPositions);
+    f.setIndexOptions(fi.indexOptions);
     doc.add(f);
   }
 
@@ -364,14 +358,13 @@ public final class FieldsReader implements Cloneable {
       Field.Index index = Field.Index.toIndex(fi.isIndexed, tokenize);
       Field.TermVector termVector = Field.TermVector.toTermVector(fi.storeTermVector, fi.storeOffsetWithTermVector, fi.storePositionWithTermVector);
       f = new Field(fi.name,     // name
-        false,
         fieldsStream.readString(), // read value
         Field.Store.YES,
         index,
         termVector);
     }
     
-    f.setOmitTermFreqAndPositions(fi.omitTermFreqAndPositions);
+    f.setIndexOptions(fi.indexOptions);
     f.setOmitNorms(fi.omitNorms);
     doc.add(f);
   }

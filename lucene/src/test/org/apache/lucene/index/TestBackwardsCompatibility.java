@@ -31,6 +31,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.document.NumericField;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -38,9 +39,8 @@ import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.Similarity;
-import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Bits;
@@ -96,6 +96,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
                              "31.nocfs",
                              "32.cfs",
                              "32.nocfs",
+                             "34.cfs",
+                             "34.nocfs",
   };
   
   final String[] unsupportedNames = {"19.cfs",
@@ -281,10 +283,10 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
     _TestUtil.checkIndex(dir);
 
-    final Bits delDocs = MultiFields.getDeletedDocs(reader);
+    final Bits liveDocs = MultiFields.getLiveDocs(reader);
 
     for(int i=0;i<35;i++) {
-      if (!delDocs.get(i)) {
+      if (liveDocs.get(i)) {
         Document d = reader.document(i);
         List<Fieldable> fields = d.getFields();
         if (d.getField("content3") == null) {
@@ -375,7 +377,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     Term searchTerm = new Term("id", "6");
     int delCount = reader.deleteDocuments(searchTerm);
     assertEquals("wrong delete count", 1, delCount);
-    reader.setNorm(searcher.search(new TermQuery(new Term("id", "22")), 10).scoreDocs[0].doc, "content", searcher.getSimilarityProvider().get("content").encodeNormValue(2.0f));
+    DefaultSimilarity sim = new DefaultSimilarity();
+    reader.setNorm(searcher.search(new TermQuery(new Term("id", "22")), 10).scoreDocs[0].doc, "content", sim.encodeNormValue(2.0f));
     reader.close();
     searcher.close();
 
@@ -421,7 +424,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     Term searchTerm = new Term("id", "6");
     int delCount = reader.deleteDocuments(searchTerm);
     assertEquals("wrong delete count", 1, delCount);
-    reader.setNorm(22, "content", searcher.getSimilarityProvider().get("content").encodeNormValue(2.0f));
+    DefaultSimilarity sim = new DefaultSimilarity();
+    reader.setNorm(22, "content", sim.encodeNormValue(2.0f));
     reader.close();
 
     // make sure they "took":
@@ -454,9 +458,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     File indexDir = new File(LuceneTestCase.TEMP_DIR, dirName);
     _TestUtil.rmDir(indexDir);
     Directory dir = newFSDirectory(indexDir);
-    
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(10);
-    ((LogMergePolicy) conf.getMergePolicy()).setUseCompoundFile(doCFS);
+    LogByteSizeMergePolicy mp = new LogByteSizeMergePolicy();
+    mp.setUseCompoundFile(doCFS);
+    mp.setNoCFSRatio(1.0);
+    // TODO: remove randomness
+    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random))
+      .setMaxBufferedDocs(10).setMergePolicy(mp);
     IndexWriter writer = new IndexWriter(dir, conf);
     
     for(int i=0;i<35;i++) {
@@ -470,8 +477,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
     if (!optimized) {
       // open fresh writer so we get no prx file in the added segment
-      conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(10);
-      ((LogMergePolicy) conf.getMergePolicy()).setUseCompoundFile(doCFS);
+      mp = new LogByteSizeMergePolicy();
+      mp.setUseCompoundFile(doCFS);
+      mp.setNoCFSRatio(1.0);
+      // TODO: remove randomness
+      conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random))
+        .setMaxBufferedDocs(10).setMergePolicy(mp);
       writer = new IndexWriter(dir, conf);
       addNoProxDoc(writer);
       writer.close();
@@ -483,7 +494,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals("didn't delete the right number of documents", 1, delCount);
 
       // Set one norm so we get a .s0 file:
-      reader.setNorm(21, "content", conf.getSimilarityProvider().get("content").encodeNormValue(1.5f));
+      DefaultSimilarity sim = new DefaultSimilarity();
+      reader.setNorm(21, "content", sim.encodeNormValue(1.5f));
       reader.close();
     }
     
@@ -526,7 +538,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals("didn't delete the right number of documents", 1, delCount);
 
       // Set one norm so we get a .s0 file:
-      Similarity sim = new DefaultSimilarity();
+      DefaultSimilarity sim = new DefaultSimilarity();
       reader.setNorm(21, "content", sim.encodeNormValue(1.5f));
       reader.close();
 
@@ -536,7 +548,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       // figure out which field number corresponds to
       // "content", and then set our expected file names below
       // accordingly:
-      CompoundFileReader cfsReader = new CompoundFileReader(dir, "_0.cfs");
+      CompoundFileDirectory cfsReader = dir.openCompoundInput("_0.cfs", newIOContext(random));
       FieldInfos fieldInfos = new FieldInfos(cfsReader, "_0.fnm");
       int contentFieldIndex = -1;
       for (FieldInfo fi : fieldInfos) {
@@ -549,7 +561,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertTrue("could not locate the 'content' field number in the _2.cfs segment", contentFieldIndex != -1);
 
       // Now verify file names:
-      String[] expected = new String[] {"_0.cfs",
+      String[] expected = new String[] {"_0.cfs", "_0.cfe",
                                "_0_1.del",
                                "_0_1.s" + contentFieldIndex,
                                "segments_2",
@@ -597,10 +609,10 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   private void addNoProxDoc(IndexWriter writer) throws IOException {
     Document doc = new Document();
     Field f = new Field("content3", "aaa", Field.Store.YES, Field.Index.ANALYZED);
-    f.setOmitTermFreqAndPositions(true);
+    f.setIndexOptions(IndexOptions.DOCS_ONLY);
     doc.add(f);
     f = new Field("content4", "aaa", Field.Store.YES, Field.Index.NO);
-    f.setOmitTermFreqAndPositions(true);
+    f.setIndexOptions(IndexOptions.DOCS_ONLY);
     doc.add(f);
     writer.addDocument(doc);
   }
@@ -632,24 +644,24 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
       // should be found exactly
       assertEquals(TermsEnum.SeekStatus.FOUND,
-                   terms.seek(aaaTerm));
+                   terms.seekCeil(aaaTerm));
       assertEquals(35, countDocs(terms.docs(null, null)));
       assertNull(terms.next());
 
       // should hit end of field
       assertEquals(TermsEnum.SeekStatus.END,
-                   terms.seek(new BytesRef("bbb")));
+                   terms.seekCeil(new BytesRef("bbb")));
       assertNull(terms.next());
 
       // should seek to aaa
       assertEquals(TermsEnum.SeekStatus.NOT_FOUND,
-                   terms.seek(new BytesRef("a")));
+                   terms.seekCeil(new BytesRef("a")));
       assertTrue(terms.term().bytesEquals(aaaTerm));
       assertEquals(35, countDocs(terms.docs(null, null)));
       assertNull(terms.next());
 
       assertEquals(TermsEnum.SeekStatus.FOUND,
-                   terms.seek(aaaTerm));
+                   terms.seekCeil(aaaTerm));
       assertEquals(35, countDocs(terms.docs(null, null)));
       assertNull(terms.next());
 

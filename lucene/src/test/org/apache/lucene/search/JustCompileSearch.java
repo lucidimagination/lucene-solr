@@ -20,7 +20,11 @@ package org.apache.lucene.search;
 import java.io.IOException;
 
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.search.Similarity.ExactDocScorer;
+import org.apache.lucene.search.Similarity.SloppyDocScorer;
+import org.apache.lucene.search.Similarity.Stats;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.TermContext;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.util.PriorityQueue;
 
@@ -103,7 +107,7 @@ final class JustCompileSearch {
     
   }
 
-  static final class JustCompileFieldComparator extends FieldComparator {
+  static final class JustCompileFieldComparator extends FieldComparator<Object> {
 
     @Override
     public int compare(int slot1, int slot2) {
@@ -132,10 +136,10 @@ final class JustCompileSearch {
     }
 
     @Override
-    public Comparable<?> value(int slot) {
+    public Object value(int slot) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-    
+
   }
 
   static final class JustCompileFieldComparatorSource extends FieldComparatorSource {
@@ -187,8 +191,8 @@ final class JustCompileSearch {
   static final class JustCompilePhraseScorer extends PhraseScorer {
 
     JustCompilePhraseScorer(Weight weight, PhraseQuery.PostingsAndFreq[] postings,
-        Similarity similarity, byte[] norms) {
-      super(weight, postings, similarity, norms);
+        Similarity.SloppyDocScorer docScorer) throws IOException {
+      super(weight, postings, docScorer);
     }
 
     @Override
@@ -243,24 +247,24 @@ final class JustCompileSearch {
   static final class JustCompileSimilarity extends Similarity {
 
     @Override
-    public float idf(int docFreq, int numDocs) {
+    public Stats computeStats(IndexSearcher searcher, String fieldName, float queryBoost, TermContext... termContexts) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
     @Override
-    public float computeNorm(FieldInvertState state) {
+    public ExactDocScorer exactDocScorer(Stats stats, String fieldName, AtomicReaderContext context) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
     @Override
-    public float sloppyFreq(int distance) {
+    public SloppyDocScorer sloppyDocScorer(Stats stats, String fieldName, AtomicReaderContext context) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
     @Override
-    public float tf(float freq) {
+    public byte computeNorm(FieldInvertState state) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }  
+    }
   }
   
   static final class JustCompileSimilarityProvider implements SimilarityProvider {
@@ -348,17 +352,12 @@ final class JustCompileSearch {
     }
 
     @Override
-    public float getValue() {
+    public void normalize(float norm, float topLevelBoost) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
     @Override
-    public void normalize(float norm) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public float sumOfSquaredWeights() throws IOException {
+    public float getValueForNormalization() throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 

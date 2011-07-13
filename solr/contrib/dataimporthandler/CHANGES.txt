@@ -12,9 +12,17 @@ $Id$
 
 (No Changes)
 
-==================  3.3.0-dev ==============
+==================  3.4.0-dev ==============
 
-(No Changes)
+Bug Fixes
+----------------------
+* SOLR-2644: When using threads=2 the default logging is set too high (Bill Bell via shalin)
+* SOLR-2492: DIH does not commit if only deletes are processed (James Dyer via shalin)
+
+==================  3.3.0 ==================
+
+* SOLR-2551: Check dataimport.properties for write access (if delta-import is supported
+  in DIH configuration) before starting an import (C S, shalin)
 
 ==================  3.2.0 ==================
 

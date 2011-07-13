@@ -28,6 +28,8 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.IOContext.Context;
 
 public class TestSegmentReader extends LuceneTestCase {
   private Directory dir;
@@ -41,7 +43,7 @@ public class TestSegmentReader extends LuceneTestCase {
     dir = newDirectory();
     DocHelper.setupDoc(testDoc);
     SegmentInfo info = DocHelper.writeDoc(random, dir, testDoc);
-    reader = SegmentReader.get(true, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR);
+    reader = SegmentReader.get(true, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.READ);
   }
   
   @Override
@@ -77,11 +79,11 @@ public class TestSegmentReader extends LuceneTestCase {
     Document docToDelete = new Document();
     DocHelper.setupDoc(docToDelete);
     SegmentInfo info = DocHelper.writeDoc(random, dir, docToDelete);
-    SegmentReader deleteReader = SegmentReader.get(false, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR);
+    SegmentReader deleteReader = SegmentReader.get(false, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random));
     assertTrue(deleteReader != null);
     assertTrue(deleteReader.numDocs() == 1);
     deleteReader.deleteDocument(0);
-    assertTrue(deleteReader.getDeletedDocs().get(0));
+    assertFalse(deleteReader.getLiveDocs().get(0));
     assertTrue(deleteReader.hasDeletions() == true);
     assertTrue(deleteReader.numDocs() == 0);
     deleteReader.close();
@@ -131,13 +133,13 @@ public class TestSegmentReader extends LuceneTestCase {
     }
     
     DocsEnum termDocs = MultiFields.getTermDocsEnum(reader,
-                                                    MultiFields.getDeletedDocs(reader),
+                                                    MultiFields.getLiveDocs(reader),
                                                     DocHelper.TEXT_FIELD_1_KEY,
                                                     new BytesRef("field"));
     assertTrue(termDocs.nextDoc() != DocsEnum.NO_MORE_DOCS);
 
     termDocs = MultiFields.getTermDocsEnum(reader,
-                                           MultiFields.getDeletedDocs(reader),
+                                           MultiFields.getLiveDocs(reader),
                                            DocHelper.NO_NORMS_KEY,
                                            new BytesRef(DocHelper.NO_NORMS_TEXT));
 
@@ -145,7 +147,7 @@ public class TestSegmentReader extends LuceneTestCase {
 
     
     DocsAndPositionsEnum positions = MultiFields.getTermPositionsEnum(reader,
-                                                                      MultiFields.getDeletedDocs(reader),
+                                                                      MultiFields.getLiveDocs(reader),
                                                                       DocHelper.TEXT_FIELD_1_KEY,
                                                                       new BytesRef("field"));
     // NOTE: prior rev of this test was failing to first

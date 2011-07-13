@@ -27,6 +27,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -611,6 +612,9 @@ public class TestDeletionPolicy extends LuceneTestCase {
     final int N = 10;
 
     for(int pass=0;pass<2;pass++) {
+      if (VERBOSE) {
+        System.out.println("TEST: pass=" + pass);
+      }
 
       boolean useCompoundFile = (pass % 2) != 0;
 
@@ -631,7 +635,7 @@ public class TestDeletionPolicy extends LuceneTestCase {
 
       for(int i=0;i<N+1;i++) {
         if (VERBOSE) {
-          System.out.println("\nTEST: cycle i=" + i);
+          System.out.println("\nTEST: write i=" + i);
         }
         conf = newIndexWriterConfig(
             TEST_VERSION_CURRENT, new MockAnalyzer(random))
@@ -652,7 +656,8 @@ public class TestDeletionPolicy extends LuceneTestCase {
         writer.close();
         IndexReader reader = IndexReader.open(dir, policy, false);
         reader.deleteDocument(3*i+1);
-        reader.setNorm(4*i+1, "content", conf.getSimilarityProvider().get("content").encodeNormValue(2.0F));
+        DefaultSimilarity sim = new DefaultSimilarity();
+        reader.setNorm(4*i+1, "content", sim.encodeNormValue(2.0F));
         IndexSearcher searcher = newSearcher(reader);
         ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
         assertEquals(16*(1+i), hits.length);
@@ -692,8 +697,14 @@ public class TestDeletionPolicy extends LuceneTestCase {
       int expectedCount = 176;
       searcher.close();
       for(int i=0;i<N+1;i++) {
+        if (VERBOSE) {
+          System.out.println("TEST: i=" + i);
+        }
         try {
           IndexReader reader = IndexReader.open(dir, true);
+          if (VERBOSE) {
+            System.out.println("  got reader=" + reader);
+          }
 
           // Work backwards in commits on what the expected
           // count should be.
@@ -706,7 +717,7 @@ public class TestDeletionPolicy extends LuceneTestCase {
               expectedCount -= 17;
             }
           }
-          assertEquals(expectedCount, hits.length);
+          assertEquals("maxDoc=" + searcher.maxDoc() + " numDocs=" + searcher.getIndexReader().numDocs(), expectedCount, hits.length);
           searcher.close();
           reader.close();
           if (i == N) {
@@ -772,7 +783,8 @@ public class TestDeletionPolicy extends LuceneTestCase {
         writer.close();
         IndexReader reader = IndexReader.open(dir, policy, false);
         reader.deleteDocument(3);
-        reader.setNorm(5, "content", conf.getSimilarityProvider().get("content").encodeNormValue(2.0F));
+        DefaultSimilarity sim = new DefaultSimilarity();
+        reader.setNorm(5, "content", sim.encodeNormValue(2.0F));
         IndexSearcher searcher = newSearcher(reader);
         ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
         assertEquals(16, hits.length);

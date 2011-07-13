@@ -43,7 +43,8 @@ abstract public class AbstractFirstPassGroupingCollector<GROUP_VALUE_TYPE> exten
   private final int compIDXEnd;
 
   // Set once we reach topNGroups unique groups:
-  private TreeSet<CollectedSearchGroup<GROUP_VALUE_TYPE>> orderedGroups;
+  /** @lucene.internal */
+  protected TreeSet<CollectedSearchGroup<GROUP_VALUE_TYPE>> orderedGroups;
   private int docBase;
   private int spareSlot;
 
@@ -122,7 +123,7 @@ abstract public class AbstractFirstPassGroupingCollector<GROUP_VALUE_TYPE> exten
       SearchGroup<GROUP_VALUE_TYPE> searchGroup = new SearchGroup<GROUP_VALUE_TYPE>();
       searchGroup.groupValue = group.groupValue;
       if (fillFields) {
-        searchGroup.sortValues = new Comparable[sortFieldCount];
+        searchGroup.sortValues = new Object[sortFieldCount];
         for(int sortFieldIDX=0;sortFieldIDX<sortFieldCount;sortFieldIDX++) {
           searchGroup.sortValues[sortFieldIDX] = comparators[sortFieldIDX].value(group.comparatorSlot);
         }
@@ -214,8 +215,7 @@ abstract public class AbstractFirstPassGroupingCollector<GROUP_VALUE_TYPE> exten
       // the bottom group with this new group.
 
       // java 6-only: final CollectedSearchGroup bottomGroup = orderedGroups.pollLast();
-      final CollectedSearchGroup<GROUP_VALUE_TYPE> bottomGroup = orderedGroups.last();
-      orderedGroups.remove(bottomGroup);
+      final CollectedSearchGroup<GROUP_VALUE_TYPE> bottomGroup = pollLast();
       assert orderedGroups.size() == topNGroups -1;
 
       groupMap.remove(bottomGroup.groupValue);
@@ -350,9 +350,14 @@ abstract public class AbstractFirstPassGroupingCollector<GROUP_VALUE_TYPE> exten
    * @return a copy of the specified group value
    */
   protected abstract GROUP_VALUE_TYPE copyDocGroupValue(GROUP_VALUE_TYPE groupValue, GROUP_VALUE_TYPE reuse);
+
+
+
+  protected CollectedSearchGroup<GROUP_VALUE_TYPE> pollLast() {
+    // java 6-only: final CollectedSearchGroup bottomGroup = orderedGroups.pollLast();
+    final CollectedSearchGroup<GROUP_VALUE_TYPE> bottomGroup = orderedGroups.last();
+    orderedGroups.remove(bottomGroup);
+    return bottomGroup;
+  }
 }
 
-class CollectedSearchGroup<T> extends SearchGroup<T> {
-  int topDoc;
-  int comparatorSlot;
-}

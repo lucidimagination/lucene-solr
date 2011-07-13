@@ -40,6 +40,7 @@ import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.SegmentInfosReader;
 import org.apache.lucene.index.codecs.SegmentInfosWriter;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
@@ -124,8 +125,8 @@ public class TestAppendingCodec extends LuceneTestCase {
     }
 
     @Override
-    public IndexOutput createOutput(String name) throws IOException {
-      return new AppendingIndexOutputWrapper(super.createOutput(name));
+    public IndexOutput createOutput(String name, IOContext context) throws IOException {
+      return new AppendingIndexOutputWrapper(super.createOutput(name, context));
     }
     
   }
@@ -154,14 +155,14 @@ public class TestAppendingCodec extends LuceneTestCase {
     Terms terms = fields.terms("f");
     assertNotNull(terms);
     TermsEnum te = terms.iterator();
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("quick")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("brown")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("fox")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("jumped")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("over")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("lazy")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("dog")));
-    assertEquals(SeekStatus.FOUND, te.seek(new BytesRef("the")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("quick")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("brown")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("fox")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("jumped")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("over")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("lazy")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("dog")));
+    assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("the")));
     DocsEnum de = te.docs(null, null);
     assertTrue(de.advance(0) != DocsEnum.NO_MORE_DOCS);
     assertEquals(2, de.freq());

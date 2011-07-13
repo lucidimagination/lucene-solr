@@ -30,8 +30,11 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DocumentsWriterDeleteQueue.DeleteSlice;
 import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FlushInfo;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.BitVector;
 import org.apache.lucene.util.ByteBlockPool.Allocator;
+import org.apache.lucene.util.ByteBlockPool.DirectTrackingAllocator;
 import org.apache.lucene.util.RamUsageEstimator;
 
 public class DocumentsWriterPerThread {
@@ -110,13 +113,13 @@ public class DocumentsWriterPerThread {
   static class FlushedSegment {
     final SegmentInfo segmentInfo;
     final BufferedDeletes segmentDeletes;
-    final BitVector deletedDocuments;
+    final BitVector liveDocs;
 
     private FlushedSegment(SegmentInfo segmentInfo,
-        BufferedDeletes segmentDeletes, BitVector deletedDocuments) {
+        BufferedDeletes segmentDeletes, BitVector liveDocs) {
       this.segmentInfo = segmentInfo;
       this.segmentDeletes = segmentDeletes;
-      this.deletedDocuments = deletedDocuments;
+      this.liveDocs = liveDocs;
     }
   }
 
@@ -169,6 +172,7 @@ public class DocumentsWriterPerThread {
   DocumentsWriterDeleteQueue deleteQueue;
   DeleteSlice deleteSlice;
   private final NumberFormat nf = NumberFormat.getInstance();
+  final Allocator byteBlockAllocator;
 
   
   public DocumentsWriterPerThread(Directory directory, DocumentsWriter parent,
@@ -181,9 +185,9 @@ public class DocumentsWriterPerThread {
     this.docState = new DocState(this);
     this.docState.similarityProvider = parent.indexWriter.getConfig()
         .getSimilarityProvider();
-
-    consumer = indexingChain.getChain(this);
     bytesUsed = new AtomicLong(0);
+    byteBlockAllocator = new DirectTrackingAllocator(bytesUsed);
+    consumer = indexingChain.getChain(this);
     pendingDeletes = new BufferedDeletes(false);
     initialize();
   }
@@ -426,15 +430,16 @@ public class DocumentsWriterPerThread {
     assert deleteSlice == null : "all deletes must be applied in prepareFlush";
     flushState = new SegmentWriteState(infoStream, directory, segment, fieldInfos,
         numDocsInRAM, writer.getConfig().getTermIndexInterval(),
-        fieldInfos.buildSegmentCodecs(true), pendingDeletes);
+        fieldInfos.buildSegmentCodecs(true), pendingDeletes, new IOContext(new FlushInfo(numDocsInRAM, bytesUsed())));
     final double startMBUsed = parent.flushControl.netBytes() / 1024. / 1024.;
     // Apply delete-by-docID now (delete-byDocID only
     // happens when an exception is hit processing that
     // doc, eg if analyzer has some problem w/ the text):
     if (pendingDeletes.docIDs.size() > 0) {
-      flushState.deletedDocs = new BitVector(numDocsInRAM);
+      flushState.liveDocs = new BitVector(numDocsInRAM);
+      flushState.liveDocs.invertAll();
       for(int delDocID : pendingDeletes.docIDs) {
-        flushState.deletedDocs.set(delDocID);
+        flushState.liveDocs.clear(delDocID);
       }
       pendingDeletes.bytesUsed.addAndGet(-pendingDeletes.docIDs.size() * BufferedDeletes.BYTES_PER_DEL_DOCID);
       pendingDeletes.docIDs.clear();
@@ -458,7 +463,7 @@ public class DocumentsWriterPerThread {
       pendingDeletes.terms.clear();
       final SegmentInfo newSegment = new SegmentInfo(segment, flushState.numDocs, directory, false, flushState.segmentCodecs, fieldInfos.asReadOnly());
       if (infoStream != null) {
-        message("new segment has " + (flushState.deletedDocs == null ? 0 : flushState.deletedDocs.count()) + " deleted docs");
+        message("new segment has " + (flushState.liveDocs == null ? 0 : (flushState.numDocs - flushState.liveDocs.count())) + " deleted docs");
         message("new segment has " + (newSegment.getHasVectors() ? "vectors" : "no vectors"));
         message("flushedFiles=" + newSegment.files());
         message("flushed codecs=" + newSegment.getSegmentCodecs());
@@ -487,7 +492,7 @@ public class DocumentsWriterPerThread {
       doAfterFlush();
       success = true;
 
-      return new FlushedSegment(newSegment, segmentDeletes, flushState.deletedDocs);
+      return new FlushedSegment(newSegment, segmentDeletes, flushState.liveDocs);
     } finally {
       if (!success) {
         if (segment != null) {
@@ -538,36 +543,13 @@ public class DocumentsWriterPerThread {
     bytesUsed.addAndGet(-(length *(INT_BLOCK_SIZE*RamUsageEstimator.NUM_BYTES_INT)));
   }
 
-  final Allocator byteBlockAllocator = new DirectTrackingAllocator();
-    
-    
- private class DirectTrackingAllocator extends Allocator {
-    public DirectTrackingAllocator() {
-      this(BYTE_BLOCK_SIZE);
-    }
-
-    public DirectTrackingAllocator(int blockSize) {
-      super(blockSize);
-    }
-
-    @Override
-    public byte[] getByteBlock() {
-      bytesUsed.addAndGet(blockSize);
-      return new byte[blockSize];
-    }
-    @Override
-    public void recycleByteBlocks(byte[][] blocks, int start, int end) {
-      bytesUsed.addAndGet(-((end-start)* blockSize));
-      for (int i = start; i < end; i++) {
-        blocks[i] = null;
-      }
-    }
-    
+  PerDocWriteState newPerDocWriteState(int codecId) {
+    assert segment != null;
+    return new PerDocWriteState(infoStream, directory, segment, fieldInfos, bytesUsed, codecId, IOContext.DEFAULT);
   }
   
   void setInfoStream(PrintStream infoStream) {
     this.infoStream = infoStream;
     docState.infoStream = infoStream;
   }
-  
 }

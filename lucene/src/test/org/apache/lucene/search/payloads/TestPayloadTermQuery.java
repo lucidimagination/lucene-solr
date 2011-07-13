@@ -16,6 +16,7 @@ package org.apache.lucene.search.payloads;
  * limitations under the License.
  */
 
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.English;
 import org.apache.lucene.search.DefaultSimilarityProvider;
@@ -45,6 +46,8 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 
 import java.io.Reader;
 import java.io.IOException;
@@ -55,15 +58,15 @@ import java.io.IOException;
  *
  **/
 public class TestPayloadTermQuery extends LuceneTestCase {
-  private IndexSearcher searcher;
-  private IndexReader reader;
-  private SimilarityProvider similarityProvider = new BoostingSimilarityProvider();
-  private byte[] payloadField = new byte[]{1};
-  private byte[] payloadMultiField1 = new byte[]{2};
-  private byte[] payloadMultiField2 = new byte[]{4};
-  protected Directory directory;
+  private static IndexSearcher searcher;
+  private static IndexReader reader;
+  private static SimilarityProvider similarityProvider = new BoostingSimilarityProvider();
+  private static final byte[] payloadField = new byte[]{1};
+  private static final byte[] payloadMultiField1 = new byte[]{2};
+  private static final byte[] payloadMultiField2 = new byte[]{4};
+  protected static Directory directory;
 
-  private class PayloadAnalyzer extends Analyzer {
+  private static class PayloadAnalyzer extends Analyzer {
 
 
     @Override
@@ -74,7 +77,7 @@ public class TestPayloadTermQuery extends LuceneTestCase {
     }
   }
 
-  private class PayloadFilter extends TokenFilter {
+  private static class PayloadFilter extends TokenFilter {
     String fieldName;
     int numSeen = 0;
     
@@ -107,9 +110,8 @@ public class TestPayloadTermQuery extends LuceneTestCase {
     }
   }
 
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
+  @BeforeClass
+  public static void beforeClass() throws Exception {
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, directory, 
         newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer())
@@ -131,12 +133,14 @@ public class TestPayloadTermQuery extends LuceneTestCase {
     searcher.setSimilarityProvider(similarityProvider);
   }
 
-  @Override
-  public void tearDown() throws Exception {
+  @AfterClass
+  public static void afterClass() throws Exception {
     searcher.close();
+    searcher = null;
     reader.close();
+    reader = null;
     directory.close();
-    super.tearDown();
+    directory = null;
   }
 
   public void test() throws IOException {
@@ -306,17 +310,17 @@ public class TestPayloadTermQuery extends LuceneTestCase {
     
         // TODO: Remove warning after API has been finalized
         @Override
-        public float scorePayload(int docId, int start, int end, byte[] payload, int offset, int length) {
+        public float scorePayload(int docId, int start, int end, BytesRef payload) {
           //we know it is size 4 here, so ignore the offset/length
-          return payload[offset];
+          return payload.bytes[payload.offset];
         }
 
         //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         //Make everything else 1 so we see the effect of the payload
         //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         @Override
-        public float computeNorm(FieldInvertState state) {
-          return state.getBoost();
+        public byte computeNorm(FieldInvertState state) {
+          return encodeNormValue(state.getBoost());
         }
 
         @Override

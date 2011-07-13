@@ -88,7 +88,6 @@ public class BlockGroupingCollector extends Collector {
   private int totalGroupCount;
   private int docBase;
   private int groupEndDocID;
-  //private OpenBitSet lastDocPerGroupBits;
   private DocIdSetIterator lastDocPerGroupBits;
   private Scorer scorer;
   private final GroupQueue groupQueue;
@@ -348,7 +347,7 @@ public class BlockGroupingCollector extends Collector {
       }
       totalGroupedHitCount += og.count;
 
-      final Comparable[] groupSortValues;
+      final Object[] groupSortValues;
 
       if (fillSortFields) {
         groupSortValues = new Comparable[comparators.length];

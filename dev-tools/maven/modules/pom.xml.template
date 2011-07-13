@@ -33,7 +33,11 @@
   <modules>
     <module>analysis</module>
     <module>benchmark</module>
+    <module>facet</module>
     <module>grouping</module>
+    <module>join</module>
+    <module>queries</module>
+    <module>queryparser</module>
     <module>suggest</module>
   </modules>
   <build>

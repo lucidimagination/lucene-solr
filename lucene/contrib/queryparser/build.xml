@@ -17,20 +17,27 @@
     limitations under the License.
  -->
 
-<project name="queryparser" default="default">
+<project name="queryparser-contrib" default="default">
 
   <description>
     Flexible Query Parser
   </description>
 
   <import file="../contrib-build.xml"/>
- 
-  <target name="compile-core" depends="javacc-notice, common.compile-core"/>
+
+  <module-uptodate name="queryparser" property="queryparser.uptodate" classpath.property="queryparser.jar"/>
+
+  <path id="classpath">
+    <pathelement path="${queryparser.jar}"/>
+    <path refid="base.classpath"/>
+  </path>
+
+  <target name="compile-core" depends="javacc-notice,build-queryparser,common.compile-core"/>
 
   <!--
     NOTE: see the README.javacc for details on how to fully regenerate the parser
   -->
-  <target name="javacc" depends="javacc-flexible,javacc-surround"/>
+  <target name="javacc" depends="javacc-flexible"/>
 
   <target name="javacc-flexible" depends="javacc-check">
     <delete>
@@ -95,9 +102,10 @@ import org.apache.lucene.queryParser.core.messages.*;"
                              byline="true"/>
   </target>
 
-  <target name="javacc-surround" depends="javacc-check" description="generate surround query parser from jj (requires javacc 4.1">
-  	<invoke-javacc target="src/java/org/apache/lucene/queryParser/surround/parser/QueryParser.jj"
-                   outputDir="src/java/org/apache/lucene/queryParser/surround/parser"
-    />
+  <target name="build-queryparser" unless="queryparser.uptodate">
+    <echo>QueryParser Contrib building dependency modules/queryparser</echo>
+    <subant target="default">
+      <fileset dir="${common.dir}/../modules/queryparser" includes="build.xml"/>
+    </subant>
   </target>
 </project>

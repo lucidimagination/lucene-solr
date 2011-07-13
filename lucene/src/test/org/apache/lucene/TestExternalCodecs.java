@@ -24,8 +24,6 @@ import org.apache.lucene.document.*;
 import org.apache.lucene.search.*;
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.index.codecs.*;
-import org.apache.lucene.index.codecs.standard.*;
-import org.apache.lucene.index.codecs.pulsing.*;
 import org.apache.lucene.store.*;
 import java.util.*;
 import java.io.*;
@@ -75,7 +73,7 @@ public class TestExternalCodecs extends LuceneTestCase {
   public static class RAMOnlyCodec extends Codec {
     
     public RAMOnlyCodec() {
-      name = "RamOnly";
+      super("RamOnly");
     }
     // Postings state:
     static class RAMPostings extends FieldsProducer {
@@ -104,6 +102,7 @@ public class TestExternalCodecs extends LuceneTestCase {
       final String field;
       final SortedMap<String,RAMTerm> termToDocs = new TreeMap<String,RAMTerm>();
       long sumTotalTermFreq;
+      long sumDocFreq;
 
       RAMField(String field) {
         this.field = field;
@@ -117,6 +116,11 @@ public class TestExternalCodecs extends LuceneTestCase {
       @Override
       public long getSumTotalTermFreq() {
         return sumTotalTermFreq;
+      }
+      
+      @Override
+      public long getSumDocFreq() throws IOException {
+        return sumDocFreq;
       }
 
       @Override
@@ -206,8 +210,9 @@ public class TestExternalCodecs extends LuceneTestCase {
       }
 
       @Override
-      public void finish(long sumTotalTermFreq) {
+      public void finish(long sumTotalTermFreq, long sumDocFreq) {
         field.sumTotalTermFreq = sumTotalTermFreq;
+        field.sumDocFreq = sumDocFreq;
       }
     }
 
@@ -305,7 +310,7 @@ public class TestExternalCodecs extends LuceneTestCase {
       }
 
       @Override
-      public SeekStatus seek(BytesRef term, boolean useCache) {
+      public SeekStatus seekCeil(BytesRef term, boolean useCache) {
         current = term.utf8ToString();
         it = null;
         if (ramField.termToDocs.containsKey(current)) {
@@ -320,7 +325,7 @@ public class TestExternalCodecs extends LuceneTestCase {
       }
 
       @Override
-      public SeekStatus seek(long ord) {
+      public void seekExact(long ord) {
         throw new UnsupportedOperationException();
       }
 
@@ -346,26 +351,26 @@ public class TestExternalCodecs extends LuceneTestCase {
       }
 
       @Override
-      public DocsEnum docs(Bits skipDocs, DocsEnum reuse) {
-        return new RAMDocsEnum(ramField.termToDocs.get(current), skipDocs);
+      public DocsEnum docs(Bits liveDocs, DocsEnum reuse) {
+        return new RAMDocsEnum(ramField.termToDocs.get(current), liveDocs);
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits skipDocs, DocsAndPositionsEnum reuse) {
-        return new RAMDocsAndPositionsEnum(ramField.termToDocs.get(current), skipDocs);
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse) {
+        return new RAMDocsAndPositionsEnum(ramField.termToDocs.get(current), liveDocs);
       }
     }
 
     private static class RAMDocsEnum extends DocsEnum {
       private final RAMTerm ramTerm;
-      private final Bits skipDocs;
+      private final Bits liveDocs;
       private RAMDoc current;
       int upto = -1;
       int posUpto = 0;
 
-      public RAMDocsEnum(RAMTerm ramTerm, Bits skipDocs) {
+      public RAMDocsEnum(RAMTerm ramTerm, Bits liveDocs) {
         this.ramTerm = ramTerm;
-        this.skipDocs = skipDocs;
+        this.liveDocs = liveDocs;
       }
 
       @Override
@@ -383,7 +388,7 @@ public class TestExternalCodecs extends LuceneTestCase {
           upto++;
           if (upto < ramTerm.docs.size()) {
             current = ramTerm.docs.get(upto);
-            if (skipDocs == null || !skipDocs.get(current.docID)) {
+            if (liveDocs == null || liveDocs.get(current.docID)) {
               posUpto = 0;
               return current.docID;
             }
@@ -406,14 +411,14 @@ public class TestExternalCodecs extends LuceneTestCase {
 
     private static class RAMDocsAndPositionsEnum extends DocsAndPositionsEnum {
       private final RAMTerm ramTerm;
-      private final Bits skipDocs;
+      private final Bits liveDocs;
       private RAMDoc current;
       int upto = -1;
       int posUpto = 0;
 
-      public RAMDocsAndPositionsEnum(RAMTerm ramTerm, Bits skipDocs) {
+      public RAMDocsAndPositionsEnum(RAMTerm ramTerm, Bits liveDocs) {
         this.ramTerm = ramTerm;
-        this.skipDocs = skipDocs;
+        this.liveDocs = liveDocs;
       }
 
       @Override
@@ -431,7 +436,7 @@ public class TestExternalCodecs extends LuceneTestCase {
           upto++;
           if (upto < ramTerm.docs.size()) {
             current = ramTerm.docs.get(upto);
-            if (skipDocs == null || !skipDocs.get(current.docID)) {
+            if (liveDocs == null || liveDocs.get(current.docID)) {
               posUpto = 0;
               return current.docID;
             }
@@ -490,11 +495,21 @@ public class TestExternalCodecs extends LuceneTestCase {
     }
 
     @Override
+    public PerDocConsumer docsConsumer(PerDocWriteState state) throws IOException {
+      return null;
+    }
+
+    @Override
+    public PerDocValues docsProducer(SegmentReadState state) throws IOException {
+      return null;
+    }
+
+    @Override
     public void getExtensions(Set<String> extensions) {
     }
 
     @Override
-    public void files(Directory dir, SegmentInfo segmentInfo, String codecId, Set<String> files) {
+    public void files(Directory dir, SegmentInfo segmentInfo, int codecId, Set<String> files) {
     }
   }
 
@@ -550,6 +565,9 @@ public class TestExternalCodecs extends LuceneTestCase {
     r.close();
     s.close();
 
+    if (VERBOSE) {
+      System.out.println("\nTEST: now delete 2nd doc");
+    }
     w.deleteDocuments(new Term("id", "44"));
     w.optimize();
     r = IndexReader.open(w, true);

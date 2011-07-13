@@ -18,8 +18,10 @@ package org.apache.lucene.document;
 import org.apache.lucene.search.PhraseQuery; // for javadocs
 import org.apache.lucene.search.spans.SpanQuery; // for javadocs
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.index.FieldInvertState;
-import org.apache.lucene.util.StringHelper; // for javadocs
+import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.FieldInvertState;  // for javadocs
+import org.apache.lucene.index.values.PerDocFieldValues;
+import org.apache.lucene.index.values.ValueType;
 
 
 /**
@@ -38,7 +40,7 @@ public abstract class AbstractField implements Fieldable {
   protected boolean isTokenized = true;
   protected boolean isBinary = false;
   protected boolean lazy = false;
-  protected boolean omitTermFreqAndPositions = false;
+  protected IndexOptions indexOptions = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
   protected float boost = 1.0f;
   // the data object for all different kind of field values
   protected Object fieldsData = null;
@@ -47,6 +49,7 @@ public abstract class AbstractField implements Fieldable {
   // length/offset for all primitive types
   protected int binaryLength;
   protected int binaryOffset;
+  protected PerDocFieldValues docValues;
 
   protected AbstractField()
   {
@@ -55,7 +58,7 @@ public abstract class AbstractField implements Fieldable {
   protected AbstractField(String name, Field.Store store, Field.Index index, Field.TermVector termVector) {
     if (name == null)
       throw new NullPointerException("name cannot be null");
-    this.name = StringHelper.intern(name);        // field names are interned
+    this.name = name;
 
     this.isStored = store.isStored();
     this.isIndexed = index.isIndexed();
@@ -78,13 +81,13 @@ public abstract class AbstractField implements Fieldable {
    * default, in the {@link
    * org.apache.lucene.search.Similarity#computeNorm(FieldInvertState)} method, the boost value is multiplied
    * by the length normalization factor and then
-   * rounded by {@link org.apache.lucene.search.Similarity#encodeNormValue(float)} before it is stored in the
+   * rounded by {@link org.apache.lucene.search.DefaultSimilarity#encodeNormValue(float)} before it is stored in the
    * index.  One should attempt to ensure that this product does not overflow
    * the range of that encoding.
    *
    * @see org.apache.lucene.document.Document#setBoost(float)
    * @see org.apache.lucene.search.Similarity#computeNorm(FieldInvertState)
-   * @see org.apache.lucene.search.Similarity#encodeNormValue(float)
+   * @see org.apache.lucene.search.DefaultSimilarity#encodeNormValue(float)
    */
   public void setBoost(float boost) {
     this.boost = boost;
@@ -105,7 +108,7 @@ public abstract class AbstractField implements Fieldable {
     return boost;
   }
 
-  /** Returns the name of the field as an interned string.
+  /** Returns the name of the field.
    * For example "date", "title", "body", ...
    */
   public String name()    { return name; }
@@ -205,8 +208,8 @@ public abstract class AbstractField implements Fieldable {
   /** True if norms are omitted for this indexed field */
   public boolean getOmitNorms() { return omitNorms; }
 
-  /** @see #setOmitTermFreqAndPositions */
-  public boolean getOmitTermFreqAndPositions() { return omitTermFreqAndPositions; }
+  /** @see #setIndexOptions */
+  public IndexOptions getIndexOptions() { return indexOptions; }
   
   /** Expert:
    *
@@ -217,7 +220,7 @@ public abstract class AbstractField implements Fieldable {
 
   /** Expert:
    *
-   * If set, omit term freq, positions and payloads from
+   * If set, omit term freq, and optionally also positions and payloads from
    * postings for this field.
    *
    * <p><b>NOTE</b>: While this option reduces storage space
@@ -226,7 +229,7 @@ public abstract class AbstractField implements Fieldable {
    * PhraseQuery} or {@link SpanQuery} subclasses will
    * silently fail to find results.
    */
-  public void setOmitTermFreqAndPositions(boolean omitTermFreqAndPositions) { this.omitTermFreqAndPositions=omitTermFreqAndPositions; }
+  public void setIndexOptions(IndexOptions indexOptions) { this.indexOptions=indexOptions; }
  
   public boolean isLazy() {
     return lazy;
@@ -272,8 +275,9 @@ public abstract class AbstractField implements Fieldable {
     if (omitNorms) {
       result.append(",omitNorms");
     }
-    if (omitTermFreqAndPositions) {
-      result.append(",omitTermFreqAndPositions");
+    if (indexOptions != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
+      result.append(",indexOptions=");
+      result.append(indexOptions);
     }
     if (lazy){
       result.append(",lazy");
@@ -288,5 +292,21 @@ public abstract class AbstractField implements Fieldable {
 
     result.append('>');
     return result.toString();
+  }
+
+  public PerDocFieldValues getDocValues() {
+    return docValues;
+  }
+  
+  public void setDocValues(PerDocFieldValues docValues) {
+    this.docValues = docValues;
+  }
+  
+  public boolean hasDocValues() {
+    return docValues != null && docValues.type() != null;
+  }
+  
+  public ValueType docValuesType() {
+    return docValues == null? null : docValues.type();
   }
 }

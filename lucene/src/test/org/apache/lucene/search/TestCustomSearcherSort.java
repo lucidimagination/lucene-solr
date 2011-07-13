@@ -39,7 +39,7 @@ public class TestCustomSearcherSort extends LuceneTestCase {
   private IndexReader reader;
   private Query query = null;
   // reduced from 20000 to 2000 to speed up test...
-  private final static int INDEX_SIZE = atLeast(2000);
+  private int INDEX_SIZE;
   
   /**
    * Create index and query for test cases.
@@ -47,6 +47,7 @@ public class TestCustomSearcherSort extends LuceneTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
+    INDEX_SIZE = atLeast(2000);
     index = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, index);
     RandomGen random = new RandomGen(this.random);
@@ -86,7 +87,7 @@ public class TestCustomSearcherSort extends LuceneTestCase {
     // log("Run testFieldSortCustomSearcher");
     // define the sort criteria
     Sort custSort = new Sort(
-        new SortField("publicationDate_", SortField.STRING),
+        new SortField("publicationDate_", SortField.Type.STRING),
         SortField.FIELD_SCORE);
     IndexSearcher searcher = new CustomSearcher(reader, 2);
     // search and check hits
@@ -100,7 +101,7 @@ public class TestCustomSearcherSort extends LuceneTestCase {
     // log("Run testFieldSortSingleSearcher");
     // define the sort criteria
     Sort custSort = new Sort(
-        new SortField("publicationDate_", SortField.STRING),
+        new SortField("publicationDate_", SortField.Type.STRING),
         SortField.FIELD_SCORE);
     IndexSearcher searcher = new CustomSearcher(reader, 2);
     // search and check hits

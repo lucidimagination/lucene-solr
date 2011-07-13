@@ -60,6 +60,7 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockFactory;
@@ -73,6 +74,7 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ThreadInterruptedException;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.index.codecs.preflexrw.PreFlexRWCodec;
 
 public class TestIndexWriter extends LuceneTestCase {
 
@@ -535,7 +537,7 @@ public class TestIndexWriter extends LuceneTestCase {
       Term t = new Term("field", "a");
       assertEquals(1, reader.docFreq(t));
       DocsEnum td = MultiFields.getTermDocsEnum(reader,
-                                                MultiFields.getDeletedDocs(reader),
+                                                MultiFields.getLiveDocs(reader),
                                                 "field",
                                                 new BytesRef("a"));
       td.nextDoc();
@@ -946,7 +948,7 @@ public class TestIndexWriter extends LuceneTestCase {
     assertEquals(1, hits.length);
 
     DocsAndPositionsEnum tps = MultiFields.getTermPositionsEnum(s.getIndexReader(),
-                                                                MultiFields.getDeletedDocs(s.getIndexReader()),
+                                                                MultiFields.getLiveDocs(s.getIndexReader()),
                                                                 "field",
                                                                 new BytesRef("a"));
 
@@ -1028,7 +1030,7 @@ public class TestIndexWriter extends LuceneTestCase {
     Directory dir = newDirectory();
     try {
       // Create my own random file:
-      IndexOutput out = dir.createOutput("myrandomfile");
+      IndexOutput out = dir.createOutput("myrandomfile", newIOContext(random));
       out.writeByte((byte) 42);
       out.close();
 
@@ -1374,6 +1376,11 @@ public class TestIndexWriter extends LuceneTestCase {
       IndexReader r2 = r.reopen();
       assertTrue(r != r2);
       files = Arrays.asList(dir.listAll());
+
+      // NOTE: here we rely on "Windows" behavior, ie, even
+      // though IW wanted to delete _0.cfs since it was
+      // optimized away, because we have a reader open
+      // against this file, it should still be here:
       assertTrue(files.contains("_0.cfs"));
       // optimize created this
       //assertTrue(files.contains("_2.cfs"));
@@ -1761,6 +1768,20 @@ public class TestIndexWriter extends LuceneTestCase {
     assertEquals(4, dti.size());
     assertEquals(bigTermBytesRef, dti.lookup(3, new BytesRef()));
     reader.close();
+    dir.close();
+  }
+
+  // LUCENE-3183
+  public void testEmptyFieldNameTIIOne() throws IOException {
+    Directory dir = newDirectory();
+    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
+    iwc.setTermIndexInterval(1);
+    iwc.setReaderTermsIndexDivisor(1);
+    IndexWriter writer = new IndexWriter(dir, iwc);
+    Document doc = new Document();
+    doc.add(newField("", "a b c", Field.Store.NO, Field.Index.ANALYZED));
+    writer.addDocument(doc);
+    writer.close();
     dir.close();
   }
 }

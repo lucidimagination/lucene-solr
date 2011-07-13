@@ -17,6 +17,7 @@ package org.apache.lucene.index.codecs;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.codecs.memory.MemoryCodec;
 import org.apache.lucene.index.codecs.preflex.PreFlexCodec;
 import org.apache.lucene.index.codecs.pulsing.PulsingCodec;
 import org.apache.lucene.index.codecs.simpletext.SimpleTextCodec;
@@ -43,7 +44,8 @@ public class CoreCodecProvider extends CodecProvider {
   public CoreCodecProvider() {
     register(new StandardCodec());
     register(new PreFlexCodec());
-    register(new PulsingCodec(1));
+    register(new PulsingCodec());
     register(new SimpleTextCodec());
+    register(new MemoryCodec());
   }
 }

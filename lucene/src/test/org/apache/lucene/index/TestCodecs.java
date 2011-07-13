@@ -25,6 +25,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.FieldsProducer;
@@ -39,10 +40,13 @@ import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.IOContext.Context;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util._TestUtil;
+import org.junit.BeforeClass;
 
 // TODO: test multiple codecs here?
 
@@ -64,12 +68,17 @@ import org.apache.lucene.util._TestUtil;
 public class TestCodecs extends LuceneTestCase {
   private static String[] fieldNames = new String[] {"one", "two", "three", "four"};
 
-  private final static int NUM_TEST_ITER = atLeast(20);
+  private static int NUM_TEST_ITER;
   private final static int NUM_TEST_THREADS = 3;
   private final static int NUM_FIELDS = 4;
   private final static int NUM_TERMS_RAND = 50; // must be > 16 to test skipping
   private final static int DOC_FREQ_RAND = 500; // must be > 16 to test skipping
   private final static int TERM_DOC_FREQ_RAND = 20;
+
+  @BeforeClass
+  public static void beforeClass() throws Exception {
+    NUM_TEST_ITER = atLeast(20);
+  }
 
   class FieldData implements Comparable {
     final FieldInfo fieldInfo;
@@ -82,7 +91,8 @@ public class TestCodecs extends LuceneTestCase {
       this.storePayloads = storePayloads;
       fieldInfos.addOrUpdate(name, true);
       fieldInfo = fieldInfos.fieldInfo(name);
-      fieldInfo.omitTermFreqAndPositions = omitTF;
+      // TODO: change this test to use all three
+      fieldInfo.indexOptions = omitTF ? IndexOptions.DOCS_ONLY : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
       fieldInfo.storePayloads = storePayloads;
       this.terms = terms;
       for(int i=0;i<terms.length;i++)
@@ -99,10 +109,12 @@ public class TestCodecs extends LuceneTestCase {
       Arrays.sort(terms);
       final TermsConsumer termsConsumer = consumer.addField(fieldInfo);
       long sumTotalTermCount = 0;
+      long sumDF = 0;
       for (final TermData term : terms) {
+        sumDF += term.docs.length;
         sumTotalTermCount += term.write(termsConsumer);
       }
-      termsConsumer.finish(sumTotalTermCount);
+      termsConsumer.finish(sumTotalTermCount, sumDF);
     }
   }
 
@@ -242,7 +254,7 @@ public class TestCodecs extends LuceneTestCase {
     this.write(fieldInfos, dir, fields, true);
     final SegmentInfo si = new SegmentInfo(SEGMENT, 10000, dir, false, clonedFieldInfos.buildSegmentCodecs(false), clonedFieldInfos);
 
-    final FieldsProducer reader = si.getSegmentCodecs().codec().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, 64, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR));
+    final FieldsProducer reader = si.getSegmentCodecs().codec().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random), IndexReader.DEFAULT_TERMS_INDEX_DIVISOR));
 
     final FieldsEnum fieldsEnum = reader.iterator();
     assertNotNull(fieldsEnum.next());
@@ -266,7 +278,7 @@ public class TestCodecs extends LuceneTestCase {
     assertNull(termsEnum.next());
 
     for(int i=0;i<NUM_TERMS;i++) {
-      assertEquals(termsEnum.seek(new BytesRef(terms[i].text2)), TermsEnum.SeekStatus.FOUND);
+      assertEquals(termsEnum.seekCeil(new BytesRef(terms[i].text2)), TermsEnum.SeekStatus.FOUND);
     }
 
     assertNull(fieldsEnum.next());
@@ -297,7 +309,7 @@ public class TestCodecs extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("TEST: now read postings");
     }
-    final FieldsProducer terms = si.getSegmentCodecs().codec().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, 1024, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR));
+    final FieldsProducer terms = si.getSegmentCodecs().codec().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random), IndexReader.DEFAULT_TERMS_INDEX_DIVISOR));
 
     final Verify[] threads = new Verify[NUM_TEST_THREADS-1];
     for(int i=0;i<NUM_TEST_THREADS-1;i++) {
@@ -461,7 +473,7 @@ public class TestCodecs extends LuceneTestCase {
 
         // Test random seek:
         TermData term = field.terms[TestCodecs.random.nextInt(field.terms.length)];
-        TermsEnum.SeekStatus status = termsEnum.seek(new BytesRef(term.text2));
+        TermsEnum.SeekStatus status = termsEnum.seekCeil(new BytesRef(term.text2));
         assertEquals(status, TermsEnum.SeekStatus.FOUND);
         assertEquals(term.docs.length, termsEnum.docFreq());
         if (field.omitTF) {
@@ -473,13 +485,14 @@ public class TestCodecs extends LuceneTestCase {
         // Test random seek by ord:
         final int idx = TestCodecs.random.nextInt(field.terms.length);
         term = field.terms[idx];
+        boolean success = false;
         try {
-          status = termsEnum.seek(idx);
+          termsEnum.seekExact(idx);
+          success = true;
         } catch (UnsupportedOperationException uoe) {
           // ok -- skip it
-          status = null;
         }
-        if (status != null) {
+        if (success) {
           assertEquals(status, TermsEnum.SeekStatus.FOUND);
           assertTrue(termsEnum.term().bytesEquals(new BytesRef(term.text2)));
           assertEquals(term.docs.length, termsEnum.docFreq());
@@ -493,21 +506,21 @@ public class TestCodecs extends LuceneTestCase {
         // Test seek to non-existent terms:
         for(int i=0;i<100;i++) {
           final String text2 = _TestUtil.randomUnicodeString(random) + ".";
-          status = termsEnum.seek(new BytesRef(text2));
+          status = termsEnum.seekCeil(new BytesRef(text2));
           assertTrue(status == TermsEnum.SeekStatus.NOT_FOUND ||
                      status == TermsEnum.SeekStatus.END);
         }
 
         // Seek to each term, backwards:
         for(int i=field.terms.length-1;i>=0;i--) {
-          assertEquals(Thread.currentThread().getName() + ": field=" + field.fieldInfo.name + " term=" + field.terms[i].text2, TermsEnum.SeekStatus.FOUND, termsEnum.seek(new BytesRef(field.terms[i].text2)));
+          assertEquals(Thread.currentThread().getName() + ": field=" + field.fieldInfo.name + " term=" + field.terms[i].text2, TermsEnum.SeekStatus.FOUND, termsEnum.seekCeil(new BytesRef(field.terms[i].text2)));
           assertEquals(field.terms[i].docs.length, termsEnum.docFreq());
         }
 
         // Seek to each term by ord, backwards
         for(int i=field.terms.length-1;i>=0;i--) {
           try {
-            assertEquals(Thread.currentThread().getName() + ": field=" + field.fieldInfo.name + " term=" + field.terms[i].text2, TermsEnum.SeekStatus.FOUND, termsEnum.seek(i));
+            termsEnum.seekExact(i);
             assertEquals(field.terms[i].docs.length, termsEnum.docFreq());
             assertTrue(termsEnum.term().bytesEquals(new BytesRef(field.terms[i].text2)));
           } catch (UnsupportedOperationException uoe) {
@@ -515,7 +528,7 @@ public class TestCodecs extends LuceneTestCase {
         }
 
         // Seek to non-existent empty-string term
-        status = termsEnum.seek(new BytesRef(""));
+        status = termsEnum.seekCeil(new BytesRef(""));
         assertNotNull(status);
         //assertEquals(TermsEnum.SeekStatus.NOT_FOUND, status);
 
@@ -523,7 +536,7 @@ public class TestCodecs extends LuceneTestCase {
         assertTrue(termsEnum.term().bytesEquals(new BytesRef(field.terms[0].text2)));
 
         // Test docs enum
-        termsEnum.seek(new BytesRef(""));
+        termsEnum.seekCeil(new BytesRef(""));
         upto = 0;
         do {
           term = field.terms[upto];
@@ -591,7 +604,7 @@ public class TestCodecs extends LuceneTestCase {
 
     final int termIndexInterval = _TestUtil.nextInt(random, 13, 27);
     final SegmentCodecs codecInfo =  fieldInfos.buildSegmentCodecs(false);
-    final SegmentWriteState state = new SegmentWriteState(null, dir, SEGMENT, fieldInfos, 10000, termIndexInterval, codecInfo, null);
+    final SegmentWriteState state = new SegmentWriteState(null, dir, SEGMENT, fieldInfos, 10000, termIndexInterval, codecInfo, null, newIOContext(random));
 
     final FieldsConsumer consumer = state.segmentCodecs.codec().fieldsConsumer(state);
     Arrays.sort(fields);

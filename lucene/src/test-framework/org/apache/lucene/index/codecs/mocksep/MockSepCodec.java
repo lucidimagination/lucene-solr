@@ -20,14 +20,19 @@ package org.apache.lucene.index.codecs.mocksep;
 import java.io.IOException;
 import java.util.Set;
 
+import org.apache.lucene.index.PerDocWriteState;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.DefaultDocValuesProducer;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.FieldsProducer;
 import org.apache.lucene.index.codecs.FixedGapTermsIndexReader;
 import org.apache.lucene.index.codecs.FixedGapTermsIndexWriter;
+import org.apache.lucene.index.codecs.PerDocConsumer;
+import org.apache.lucene.index.codecs.DefaultDocValuesConsumer;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.index.codecs.PostingsReaderBase;
 import org.apache.lucene.index.codecs.PostingsWriterBase;
 import org.apache.lucene.index.codecs.BlockTermsReader;
@@ -49,7 +54,7 @@ import org.apache.lucene.util.BytesRef;
 public class MockSepCodec extends Codec {
 
   public MockSepCodec() {
-    name = "MockSep";
+    super("MockSep");
   }
 
   @Override
@@ -88,7 +93,7 @@ public class MockSepCodec extends Codec {
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
 
     PostingsReaderBase postingsReader = new SepPostingsReaderImpl(state.dir, state.segmentInfo,
-        state.readBufferSize, new MockSingleIntFactory(), state.codecId);
+        state.context, new MockSingleIntFactory(), state.codecId);
 
     TermsIndexReaderBase indexReader;
     boolean success = false;
@@ -98,7 +103,7 @@ public class MockSepCodec extends Codec {
                                                        state.segmentInfo.name,
                                                        state.termsIndexDivisor,
                                                        BytesRef.getUTF8SortedAsUnicodeComparator(),
-                                                       state.codecId);
+                                                       state.codecId, state.context);
       success = true;
     } finally {
       if (!success) {
@@ -113,7 +118,7 @@ public class MockSepCodec extends Codec {
                                                 state.fieldInfos,
                                                 state.segmentInfo.name,
                                                 postingsReader,
-                                                state.readBufferSize,
+                                                state.context,
                                                 StandardCodec.TERMS_CACHE_SIZE,
                                                 state.codecId);
       success = true;
@@ -130,20 +135,32 @@ public class MockSepCodec extends Codec {
   }
 
   @Override
-  public void files(Directory dir, SegmentInfo segmentInfo, String codecId, Set<String> files) throws IOException {
+  public void files(Directory dir, SegmentInfo segmentInfo, int codecId, Set<String> files) throws IOException {
     SepPostingsReaderImpl.files(segmentInfo, codecId, files);
     BlockTermsReader.files(dir, segmentInfo, codecId, files);
     FixedGapTermsIndexReader.files(dir, segmentInfo, codecId, files);
+    DefaultDocValuesConsumer.files(dir, segmentInfo, codecId, files, getDocValuesUseCFS());
   }
 
   @Override
   public void getExtensions(Set<String> extensions) {
     getSepExtensions(extensions);
+    DefaultDocValuesConsumer.getDocValuesExtensions(extensions, getDocValuesUseCFS());
   }
 
   public static void getSepExtensions(Set<String> extensions) {
     SepPostingsWriterImpl.getExtensions(extensions);
     BlockTermsReader.getExtensions(extensions);
     FixedGapTermsIndexReader.getIndexExtensions(extensions);
+  }
+  
+  @Override
+  public PerDocConsumer docsConsumer(PerDocWriteState state) throws IOException {
+    return new DefaultDocValuesConsumer(state, getDocValuesSortComparator(), getDocValuesUseCFS());
+  }
+
+  @Override
+  public PerDocValues docsProducer(SegmentReadState state) throws IOException {
+    return new DefaultDocValuesProducer(state.segmentInfo, state.dir, state.fieldInfos, state.codecId, getDocValuesUseCFS(), getDocValuesSortComparator(), state.context);
   }
 }

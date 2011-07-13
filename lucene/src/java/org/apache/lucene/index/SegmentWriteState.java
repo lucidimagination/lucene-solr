@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import java.io.PrintStream;
 
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.BitVector;
 
 /**
@@ -40,10 +41,10 @@ public class SegmentWriteState {
   public final BufferedDeletes segDeletes;
 
   // Lazily created:
-  public BitVector deletedDocs;
+  public BitVector liveDocs;
 
   final SegmentCodecs segmentCodecs;
-  public final String codecId;
+  public final int codecId;
 
   /** Expert: The fraction of terms in the "dictionary" which should be stored
    * in RAM.  Smaller values use more memory, but make searching slightly
@@ -51,9 +52,11 @@ public class SegmentWriteState {
    * slower.  Searching is typically not dominated by dictionary lookup, so
    * tweaking this is rarely useful.*/
   public int termIndexInterval;                   // TODO: this should be private to the codec, not settable here or in IWC
+  
+  public final IOContext context;
 
   public SegmentWriteState(PrintStream infoStream, Directory directory, String segmentName, FieldInfos fieldInfos,
-                           int numDocs, int termIndexInterval, SegmentCodecs segmentCodecs, BufferedDeletes segDeletes) {
+      int numDocs, int termIndexInterval, SegmentCodecs segmentCodecs, BufferedDeletes segDeletes, IOContext context) {
     this.infoStream = infoStream;
     this.segDeletes = segDeletes;
     this.directory = directory;
@@ -62,13 +65,14 @@ public class SegmentWriteState {
     this.numDocs = numDocs;
     this.termIndexInterval = termIndexInterval;
     this.segmentCodecs = segmentCodecs;
-    codecId = "";
+    codecId = -1;
+    this.context = context;
   }
   
   /**
    * Create a shallow {@link SegmentWriteState} copy final a codec ID
    */
-  SegmentWriteState(SegmentWriteState state, String codecId) {
+  SegmentWriteState(SegmentWriteState state, int codecId) {
     infoStream = state.infoStream;
     directory = state.directory;
     segmentName = state.segmentName;
@@ -76,6 +80,7 @@ public class SegmentWriteState {
     numDocs = state.numDocs;
     termIndexInterval = state.termIndexInterval;
     segmentCodecs = state.segmentCodecs;
+    context = state.context;
     this.codecId = codecId;
     segDeletes = state.segDeletes;
   }

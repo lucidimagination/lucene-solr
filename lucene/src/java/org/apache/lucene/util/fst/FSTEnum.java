@@ -73,6 +73,7 @@ abstract class FSTEnum<T> {
       final int cmp = getCurrentLabel() - getTargetLabel();
       if (cmp < 0) {
         // seek forward
+        //System.out.println("    seek fwd");
         break;
       } else if (cmp > 0) {
         // seek backwards -- reset this arc to the first arc
@@ -83,6 +84,7 @@ abstract class FSTEnum<T> {
       }
       upto++;
     }
+    //System.out.println("  fall through upto=" + upto);
   }
 
   protected void doNext() throws IOException {
@@ -168,7 +170,7 @@ abstract class FSTEnum<T> {
         if (found) {
           // Match
           arc.arcIdx = mid-1;
-          fst.readNextRealArc(arc);
+          fst.readNextRealArc(arc, in);
           assert arc.arcIdx == mid;
           assert arc.label == targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel + " mid=" + mid;
           output[upto] = fst.outputs.add(output[upto-1], arc.output);
@@ -183,7 +185,7 @@ abstract class FSTEnum<T> {
         } else if (low == arc.numArcs) {
           // Dead end
           arc.arcIdx = arc.numArcs-2;
-          fst.readNextRealArc(arc);
+          fst.readNextRealArc(arc, in);
           assert arc.isLast();
           // Dead end (target is after the last arc);
           // rollback to last fork then push
@@ -203,7 +205,7 @@ abstract class FSTEnum<T> {
           }
         } else {
           arc.arcIdx = (low > high ? low : high)-1;
-          fst.readNextRealArc(arc);
+          fst.readNextRealArc(arc, in);
           assert arc.label > targetLabel;
           pushFirst();
           return;
@@ -307,7 +309,7 @@ abstract class FSTEnum<T> {
           // Match -- recurse
           //System.out.println("  match!  arcIdx=" + mid);
           arc.arcIdx = mid-1;
-          fst.readNextRealArc(arc);
+          fst.readNextRealArc(arc, in);
           assert arc.arcIdx == mid;
           assert arc.label == targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel + " mid=" + mid;
           output[upto] = fst.outputs.add(output[upto-1], arc.output);
@@ -350,9 +352,9 @@ abstract class FSTEnum<T> {
           // There is a floor arc:
           arc.arcIdx = (low > high ? high : low)-1;
           //System.out.println(" hasFloor arcIdx=" + (arc.arcIdx+1));
-          fst.readNextRealArc(arc);
+          fst.readNextRealArc(arc, in);
           assert arc.isLast() || fst.readNextArcLabel(arc) > targetLabel;
-          assert arc.label < targetLabel;
+          assert arc.label < targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel;
           pushLast();
           return;
         }        
@@ -407,6 +409,48 @@ abstract class FSTEnum<T> {
           return;
         }
       }
+    }
+  }
+
+  /** Seeks to exactly target term. */
+  protected boolean doSeekExact() throws IOException {
+
+    // TODO: possibly caller could/should provide common
+    // prefix length?  ie this work may be redundant if
+    // caller is in fact intersecting against its own
+    // automaton
+
+    //System.out.println("FE: seek exact upto=" + upto);
+
+    // Save time by starting at the end of the shared prefix
+    // b/w our current term & the target:
+    rewindPrefix();
+
+    //System.out.println("FE: after rewind upto=" + upto);
+    FST.Arc<T> arc = getArc(upto-1);
+    int targetLabel = getTargetLabel();
+
+    while(true) {
+      //System.out.println("  cycle target=" + (targetLabel == -1 ? "-1" : (char) targetLabel));
+      final FST.Arc<T> nextArc = fst.findTargetArc(targetLabel, arc, getArc(upto));
+      if (nextArc == null) {
+        // short circuit
+        //upto--;
+        //upto = 0;
+        fst.readFirstTargetArc(arc, getArc(upto));
+        //System.out.println("  no match upto=" + upto);
+        return false;
+      }
+      // Match -- recurse:
+      output[upto] = fst.outputs.add(output[upto-1], nextArc.output);
+      if (targetLabel == FST.END_LABEL) {
+        //System.out.println("  return found; upto=" + upto + " output=" + output[upto] + " nextArc=" + nextArc.isLast());
+        return true;
+      }
+      setCurrentLabel(targetLabel);
+      incr();
+      targetLabel = getTargetLabel();
+      arc = nextArc;
     }
   }
 

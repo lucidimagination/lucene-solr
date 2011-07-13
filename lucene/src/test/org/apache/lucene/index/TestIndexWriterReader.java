@@ -36,6 +36,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.RAMDirectory;
@@ -48,10 +49,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TestIndexWriterReader extends LuceneTestCase {
   static PrintStream infoStream = VERBOSE ? System.out : null;
   
+  private final int numThreads = TEST_NIGHTLY ? 5 : 3;
+  
   public static int count(Term t, IndexReader r) throws IOException {
     int count = 0;
     DocsEnum td = MultiFields.getTermDocsEnum(r,
-                                              MultiFields.getDeletedDocs(r),
+                                              MultiFields.getLiveDocs(r),
                                               t.field(), new BytesRef(t.text()));
 
     if (td != null) {
@@ -381,7 +384,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     addDirThreads.launchThreads(numDirs);
     addDirThreads.joinThreads();
     
-    //assertEquals(100 + numDirs * (3 * numIter / 4) * addDirThreads.NUM_THREADS
+    //assertEquals(100 + numDirs * (3 * numIter / 4) * addDirThreads.numThreads
     //    * addDirThreads.NUM_INIT_DOCS, addDirThreads.mainWriter.numDocs());
     assertEquals(addDirThreads.count.intValue(), addDirThreads.mainWriter.numDocs());
 
@@ -393,7 +396,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     IndexReader reader = IndexReader.open(mainDir, true);
     assertEquals(addDirThreads.count.intValue(), reader.numDocs());
-    //assertEquals(100 + numDirs * (3 * numIter / 4) * addDirThreads.NUM_THREADS
+    //assertEquals(100 + numDirs * (3 * numIter / 4) * addDirThreads.numThreads
     //    * addDirThreads.NUM_INIT_DOCS, reader.numDocs());
     reader.close();
 
@@ -403,10 +406,9 @@ public class TestIndexWriterReader extends LuceneTestCase {
   
   private class AddDirectoriesThreads {
     Directory addDir;
-    final static int NUM_THREADS = 5;
     final static int NUM_INIT_DOCS = 100;
     int numDirs;
-    final Thread[] threads = new Thread[NUM_THREADS];
+    final Thread[] threads = new Thread[numThreads];
     IndexWriter mainWriter;
     final List<Throwable> failures = new ArrayList<Throwable>();
     IndexReader[] readers;
@@ -432,7 +434,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     }
     
     void joinThreads() {
-      for (int i = 0; i < NUM_THREADS; i++)
+      for (int i = 0; i < numThreads; i++)
         try {
           threads[i].join();
         } catch (InterruptedException ie) {
@@ -462,14 +464,14 @@ public class TestIndexWriterReader extends LuceneTestCase {
     }
     
     void launchThreads(final int numIter) {
-      for (int i = 0; i < NUM_THREADS; i++) {
+      for (int i = 0; i < numThreads; i++) {
         threads[i] = new Thread() {
           @Override
           public void run() {
             try {
               final Directory[] dirs = new Directory[numDirs];
               for (int k = 0; k < numDirs; k++)
-                dirs[k] = new MockDirectoryWrapper(random, new RAMDirectory(addDir));
+                dirs[k] = new MockDirectoryWrapper(random, new RAMDirectory(addDir, newIOContext(random)));
               //int j = 0;
               //while (true) {
                 // System.out.println(Thread.currentThread().getName() + ": iter
@@ -489,7 +491,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
           }
         };
       }
-      for (int i = 0; i < NUM_THREADS; i++)
+      for (int i = 0; i < numThreads; i++)
         threads[i].start();
     }
     
@@ -754,19 +756,18 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     final Directory[] dirs = new Directory[10];
     for (int i=0;i<10;i++) {
-      dirs[i] = new MockDirectoryWrapper(random, new RAMDirectory(dir1));
+      dirs[i] = new MockDirectoryWrapper(random, new RAMDirectory(dir1, newIOContext(random)));
     }
 
     IndexReader r = writer.getReader();
 
-    final int NUM_THREAD = 5;
     final float SECONDS = 0.5f;
 
     final long endTime = (long) (System.currentTimeMillis() + 1000.*SECONDS);
     final List<Throwable> excs = Collections.synchronizedList(new ArrayList<Throwable>());
 
-    final Thread[] threads = new Thread[NUM_THREAD];
-    for(int i=0;i<NUM_THREAD;i++) {
+    final Thread[] threads = new Thread[numThreads];
+    for(int i=0;i<numThreads;i++) {
       threads[i] = new Thread() {
           @Override
           public void run() {
@@ -800,7 +801,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
       lastCount = count;
     }
 
-    for(int i=0;i<NUM_THREAD;i++) {
+    for(int i=0;i<numThreads;i++) {
       threads[i].join();
     }
     // final check
@@ -840,14 +841,13 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     IndexReader r = writer.getReader();
 
-    final int NUM_THREAD = 5;
     final float SECONDS = 0.5f;
 
     final long endTime = (long) (System.currentTimeMillis() + 1000.*SECONDS);
     final List<Throwable> excs = Collections.synchronizedList(new ArrayList<Throwable>());
 
-    final Thread[] threads = new Thread[NUM_THREAD];
-    for(int i=0;i<NUM_THREAD;i++) {
+    final Thread[] threads = new Thread[numThreads];
+    for(int i=0;i<numThreads;i++) {
       threads[i] = new Thread() {
           final Random r = new Random(random.nextLong());
 
@@ -889,7 +889,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
       searcher.close();
     }
 
-    for(int i=0;i<NUM_THREAD;i++) {
+    for(int i=0;i<numThreads;i++) {
       threads[i].join();
     }
     // at least search once
@@ -1013,6 +1013,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     HashSet<String> illegalCodecs = new HashSet<String>();
     illegalCodecs.add("PreFlex");
     illegalCodecs.add("SimpleText");
+    illegalCodecs.add("Memory");
 
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random)).setReaderTermsIndexDivisor(-1);

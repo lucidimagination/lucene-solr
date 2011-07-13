@@ -23,11 +23,9 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.queryParser.ParseException;
-import org.apache.lucene.queryParser.QueryParser;
-import org.apache.lucene.search.Explanation.IDFExplanation;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.TermContext;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
@@ -78,7 +76,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     // this TermEnum gives "piccadilly", "pie" and "pizza".
     String prefix = "pi";
     TermsEnum te = MultiFields.getFields(reader).terms("body").iterator();
-    te.seek(new BytesRef(prefix));
+    te.seekCeil(new BytesRef(prefix));
     do {
       String s = te.term().utf8ToString();
       if (s.startsWith(prefix)) {
@@ -104,7 +102,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     MultiPhraseQuery query3 = new MultiPhraseQuery();
     termsWithPrefix.clear();
     prefix = "blue";
-    te.seek(new BytesRef(prefix));
+    te.seekCeil(new BytesRef(prefix));
     
     do {
       if (te.term().utf8ToString().startsWith(prefix)) {
@@ -313,21 +311,9 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
         return new DefaultSimilarity() {
           
           @Override
-          public IDFExplanation idfExplain(Collection<Term> terms,
+          public Explanation idfExplain(TermContext stats[],
               IndexSearcher searcher) throws IOException {
-            return new IDFExplanation() {
-
-              @Override
-              public float getIdf() {
-                return 10f;
-              }
-
-              @Override
-              public String explain() {
-                return "just a test";
-              }
-              
-            };
+            return new Explanation(10f, "just a test");
           } 
         };
       }
@@ -337,7 +323,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     query.add(new Term[] { new Term("body", "this"), new Term("body", "that") });
     query.add(new Term("body", "is"));
     Weight weight = query.createWeight(searcher);
-    assertEquals(10f * 10f, weight.sumOfSquaredWeights(), 0.001f);
+    assertEquals(10f * 10f, weight.getValueForNormalization(), 0.001f);
 
     writer.close();
     searcher.close();
@@ -478,14 +464,15 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
    * using query parser, MPQ will be created, and will not be strict about having all query terms 
    * in each position - one of each position is sufficient (OR logic)
    */
-  public void testZeroPosIncrSloppyParsedAnd() throws IOException, ParseException {
-    QueryParser qp = new QueryParser(TEST_VERSION_CURRENT, "field", new CannedAnalyzer(INCR_0_QUERY_TOKENS_AND));
-    final Query q = qp.parse("\"this text is acually ignored\"");
-    assertTrue("wrong query type!", q instanceof MultiPhraseQuery);
+  public void testZeroPosIncrSloppyParsedAnd() throws IOException {
+    MultiPhraseQuery q = new MultiPhraseQuery();
+    q.add(new Term[]{ new Term("field", "a"), new Term("field", "1") }, -1);
+    q.add(new Term[]{ new Term("field", "b"), new Term("field", "1") }, 0);
+    q.add(new Term[]{ new Term("field", "c") }, 1);
     doTestZeroPosIncrSloppy(q, 0);
-    ((MultiPhraseQuery) q).setSlop(1);
+    q.setSlop(1);
     doTestZeroPosIncrSloppy(q, 0);
-    ((MultiPhraseQuery) q).setSlop(2);
+    q.setSlop(2);
     doTestZeroPosIncrSloppy(q, 1);
   }
   
@@ -521,7 +508,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
   /**
    * PQ AND Mode - Manually creating a phrase query
    */
-  public void testZeroPosIncrSloppyPqAnd() throws IOException, ParseException {
+  public void testZeroPosIncrSloppyPqAnd() throws IOException {
     final PhraseQuery pq = new PhraseQuery();
     for (TokenAndPos tap : INCR_0_QUERY_TOKENS_AND) {
       pq.add(new Term("field",tap.token), tap.pos);
@@ -536,7 +523,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
   /**
    * MPQ AND Mode - Manually creating a multiple phrase query
    */
-  public void testZeroPosIncrSloppyMpqAnd() throws IOException, ParseException {
+  public void testZeroPosIncrSloppyMpqAnd() throws IOException {
     final MultiPhraseQuery mpq = new MultiPhraseQuery();
     for (TokenAndPos tap : INCR_0_QUERY_TOKENS_AND) {
       mpq.add(new Term[]{new Term("field",tap.token)}, tap.pos); //AND logic
@@ -551,7 +538,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
   /**
    * MPQ Combined AND OR Mode - Manually creating a multiple phrase query
    */
-  public void testZeroPosIncrSloppyMpqAndOrMatch() throws IOException, ParseException {
+  public void testZeroPosIncrSloppyMpqAndOrMatch() throws IOException {
     final MultiPhraseQuery mpq = new MultiPhraseQuery();
     for (TokenAndPos tap[] : INCR_0_QUERY_TOKENS_AND_OR_MATCH) {
       Term[] terms = tapTerms(tap);
@@ -568,7 +555,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
   /**
    * MPQ Combined AND OR Mode - Manually creating a multiple phrase query - with no match
    */
-  public void testZeroPosIncrSloppyMpqAndOrNoMatch() throws IOException, ParseException {
+  public void testZeroPosIncrSloppyMpqAndOrNoMatch() throws IOException {
     final MultiPhraseQuery mpq = new MultiPhraseQuery();
     for (TokenAndPos tap[] : INCR_0_QUERY_TOKENS_AND_OR_NO_MATCHN) {
       Term[] terms = tapTerms(tap);

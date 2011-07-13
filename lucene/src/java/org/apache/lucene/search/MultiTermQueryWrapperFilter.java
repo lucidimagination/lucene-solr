@@ -19,13 +19,13 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
+import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.Bits;
 
 /**
@@ -122,16 +122,16 @@ public class MultiTermQueryWrapperFilter<Q extends MultiTermQuery> extends Filte
     final TermsEnum termsEnum = query.getTermsEnum(terms);
     assert termsEnum != null;
     if (termsEnum.next() != null) {
-      // fill into a OpenBitSet
-      final OpenBitSet bitSet = new OpenBitSet(context.reader.maxDoc());
+      // fill into a FixedBitSet
+      final FixedBitSet bitSet = new FixedBitSet(context.reader.maxDoc());
       int termCount = 0;
-      final Bits delDocs = reader.getDeletedDocs();
+      final Bits liveDocs = reader.getLiveDocs();
       DocsEnum docsEnum = null;
       do {
         termCount++;
         // System.out.println("  iter termCount=" + termCount + " term=" +
         // enumerator.term().toBytesString());
-        docsEnum = termsEnum.docs(delDocs, docsEnum);
+        docsEnum = termsEnum.docs(liveDocs, docsEnum);
         final DocsEnum.BulkReadResult result = docsEnum.getBulkResult();
         while (true) {
           final int count = docsEnum.read();

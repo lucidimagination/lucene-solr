@@ -106,6 +106,7 @@ public class CheckHits {
       Assert.assertEquals("Wrap Reader " + i + ": " +
                           query.toString(defaultFieldName),
                           correct, actual);
+      FieldCache.DEFAULT.purge(s.getIndexReader()); // our wrapping can create insanity otherwise
       s.close();
     }
   }
@@ -328,9 +329,10 @@ public class CheckHits {
     Explanation detail[] = expl.getDetails();
     if (detail!=null) {
       if (detail.length==1) {
-        // simple containment, no matter what the description says, 
+        // simple containment, unless its a freq of: (which lets a query explain how the freq is calculated), 
         // just verify contained expl has same score
-        verifyExplanation(q,doc,score,deep,detail[0]);
+        if (!expl.getDescription().endsWith("with freq of:"))
+          verifyExplanation(q,doc,score,deep,detail[0]);
       } else {
         // explanation must either:
         // - end with one of: "product of:", "sum of:", "max of:", or
@@ -356,6 +358,7 @@ public class CheckHits {
             }
           }
         }
+        // TODO: this is a TERRIBLE assertion!!!!
         Assert.assertTrue(
             q+": multi valued explanation description=\""+descr
             +"\" must be 'max of plus x times others' or end with 'product of'"

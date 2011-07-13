@@ -19,6 +19,7 @@ package org.apache.lucene.search.regex;
 
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.FilteredTermsEnum;
+import org.apache.lucene.search.RegexpQuery; // javadoc
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.util.AttributeSource;
@@ -29,10 +30,14 @@ import java.io.IOException;
 /** Implements the regular expression term search query.
  * The expressions supported depend on the regular expression implementation
  * used by way of the {@link RegexCapabilities} interface.
- *
+ * <p>
+ * NOTE: You may wish to consider using the regex query support 
+ * in {@link RegexpQuery} instead, as it has better performance.
+ * 
  * @see RegexTermsEnum
  */
 public class RegexQuery extends MultiTermQuery implements RegexQueryCapable {
+
   private RegexCapabilities regexImpl = new JavaUtilRegexCapabilities();
   private Term term;
 
@@ -42,7 +47,9 @@ public class RegexQuery extends MultiTermQuery implements RegexQueryCapable {
     this.term = term;
   }
   
-  public Term getTerm() { return term; }
+  public Term getTerm() {
+    return term;
+  }
 
   /**
    * Defines which {@link RegexCapabilities} implementation is used by this instance.
@@ -88,16 +95,33 @@ public class RegexQuery extends MultiTermQuery implements RegexQueryCapable {
 
   @Override
   public boolean equals(Object obj) {
-    if (this == obj) return true;
-    if (!super.equals(obj)) return false;
-    if (getClass() != obj.getClass()) return false;
+    if (this == obj) {
+      return true;
+    }
+    if (!super.equals(obj)) {
+      return false;
+    }
+    if (getClass() != obj.getClass()) {
+      return false;
+    }
+
     RegexQuery other = (RegexQuery) obj;
     if (regexImpl == null) {
-      if (other.regexImpl != null) return false;
-    } else if (!regexImpl.equals(other.regexImpl)) return false;
+      if (other.regexImpl != null) {
+        return false;
+      }
+    } else if (!regexImpl.equals(other.regexImpl)) {
+      return false;
+    }
+
     if (term == null) {
-      if (other.term != null) return false;
-    } else if (!term.equals(other.term)) return false;
+      if (other.term != null) {
+        return false;
+      }
+    } else if (!term.equals(other.term)) {
+      return false;
+    }
+    
     return true;
   }
 }

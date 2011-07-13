@@ -23,6 +23,7 @@ import java.util.Collection;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.TermState;
@@ -30,6 +31,7 @@ import org.apache.lucene.index.codecs.BlockTermState;
 import org.apache.lucene.index.codecs.PostingsReaderBase;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
@@ -51,15 +53,15 @@ public class StandardPostingsReader extends PostingsReaderBase {
 
   //private String segment;
 
-  public StandardPostingsReader(Directory dir, SegmentInfo segmentInfo, int readBufferSize, String codecId) throws IOException {
+  public StandardPostingsReader(Directory dir, SegmentInfo segmentInfo, IOContext context, int codecId) throws IOException {
     freqIn = dir.openInput(IndexFileNames.segmentFileName(segmentInfo.name, codecId, StandardCodec.FREQ_EXTENSION),
-                           readBufferSize);
+                           context);
     //this.segment = segmentInfo.name;
     if (segmentInfo.getHasProx()) {
       boolean success = false;
       try {
         proxIn = dir.openInput(IndexFileNames.segmentFileName(segmentInfo.name, codecId, StandardCodec.PROX_EXTENSION),
-                               readBufferSize);
+                               context);
         success = true;
       } finally {
         if (!success) {
@@ -71,7 +73,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
     }
   }
 
-  public static void files(Directory dir, SegmentInfo segmentInfo, String id, Collection<String> files) throws IOException {
+  public static void files(Directory dir, SegmentInfo segmentInfo, int id, Collection<String> files) throws IOException {
     files.add(IndexFileNames.segmentFileName(segmentInfo.name, id, StandardCodec.FREQ_EXTENSION));
     if (segmentInfo.getHasProx()) {
       files.add(IndexFileNames.segmentFileName(segmentInfo.name, id, StandardCodec.PROX_EXTENSION));
@@ -156,7 +158,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
     //System.out.println("SPR.readTermsBlock termsIn.fp=" + termsIn.getFilePointer());
     if (termState.bytes == null) {
       termState.bytes = new byte[ArrayUtil.oversize(len, 1)];
-      termState.bytesReader = new ByteArrayDataInput(null);
+      termState.bytesReader = new ByteArrayDataInput();
     } else if (termState.bytes.length < len) {
       termState.bytes = new byte[ArrayUtil.oversize(len, 1)];
     }
@@ -189,7 +191,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
       // undefined
     }
 
-    if (!fieldInfo.omitTermFreqAndPositions) {
+    if (fieldInfo.indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
       if (isFirstTerm) {
         termState.proxOffset = termState.bytesReader.readVLong();
       } else {
@@ -200,7 +202,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
   }
     
   @Override
-  public DocsEnum docs(FieldInfo fieldInfo, BlockTermState termState, Bits skipDocs, DocsEnum reuse) throws IOException {
+  public DocsEnum docs(FieldInfo fieldInfo, BlockTermState termState, Bits liveDocs, DocsEnum reuse) throws IOException {
     SegmentDocsEnum docsEnum;
     if (reuse == null || !(reuse instanceof SegmentDocsEnum)) {
       docsEnum = new SegmentDocsEnum(freqIn);
@@ -213,12 +215,12 @@ public class StandardPostingsReader extends PostingsReaderBase {
         docsEnum = new SegmentDocsEnum(freqIn);
       }
     }
-    return docsEnum.reset(fieldInfo, (StandardTermState) termState, skipDocs);
+    return docsEnum.reset(fieldInfo, (StandardTermState) termState, liveDocs);
   }
 
   @Override
-  public DocsAndPositionsEnum docsAndPositions(FieldInfo fieldInfo, BlockTermState termState, Bits skipDocs, DocsAndPositionsEnum reuse) throws IOException {
-    if (fieldInfo.omitTermFreqAndPositions) {
+  public DocsAndPositionsEnum docsAndPositions(FieldInfo fieldInfo, BlockTermState termState, Bits liveDocs, DocsAndPositionsEnum reuse) throws IOException {
+    if (fieldInfo.indexOptions != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
       return null;
     }
     
@@ -236,7 +238,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
           docsEnum = new SegmentDocsAndPositionsAndPayloadsEnum(freqIn, proxIn);
         }
       }
-      return docsEnum.reset(fieldInfo, (StandardTermState) termState, skipDocs);
+      return docsEnum.reset(fieldInfo, (StandardTermState) termState, liveDocs);
     } else {
       SegmentDocsAndPositionsEnum docsEnum;
       if (reuse == null || !(reuse instanceof SegmentDocsAndPositionsEnum)) {
@@ -250,7 +252,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
           docsEnum = new SegmentDocsAndPositionsEnum(freqIn, proxIn);
         }
       }
-      return docsEnum.reset(fieldInfo, (StandardTermState) termState, skipDocs);
+      return docsEnum.reset(fieldInfo, (StandardTermState) termState, liveDocs);
     }
   }
 
@@ -267,7 +269,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
     int doc;                                      // doc we last read
     int freq;                                     // freq we last read
 
-    Bits skipDocs;
+    Bits liveDocs;
 
     long freqOffset;
     int skipOffset;
@@ -280,13 +282,13 @@ public class StandardPostingsReader extends PostingsReaderBase {
       this.freqIn = (IndexInput) freqIn.clone();
     }
 
-    public SegmentDocsEnum reset(FieldInfo fieldInfo, StandardTermState termState, Bits skipDocs) throws IOException {
-      omitTF = fieldInfo.omitTermFreqAndPositions;
+    public SegmentDocsEnum reset(FieldInfo fieldInfo, StandardTermState termState, Bits liveDocs) throws IOException {
+      omitTF = fieldInfo.indexOptions == IndexOptions.DOCS_ONLY;
       if (omitTF) {
         freq = 1;
       }
       storePayloads = fieldInfo.storePayloads;
-      this.skipDocs = skipDocs;
+      this.liveDocs = liveDocs;
       freqOffset = termState.freqOffset;
       skipOffset = termState.skipOffset;
 
@@ -327,7 +329,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
           }
         }
 
-        if (skipDocs == null || !skipDocs.get(doc)) {
+        if (liveDocs == null || liveDocs.get(doc)) {
           break;
         }
       }
@@ -357,7 +359,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
           }
         }
 
-        if (skipDocs == null || !skipDocs.get(doc)) {
+        if (liveDocs == null || liveDocs.get(doc)) {
           docs[i] = doc;
           freqs[i] = freq;
           ++i;
@@ -435,7 +437,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
     int freq;                                     // freq we last read
     int position;
 
-    Bits skipDocs;
+    Bits liveDocs;
 
     long freqOffset;
     int skipOffset;
@@ -453,11 +455,11 @@ public class StandardPostingsReader extends PostingsReaderBase {
       this.proxIn = (IndexInput) proxIn.clone();
     }
 
-    public SegmentDocsAndPositionsEnum reset(FieldInfo fieldInfo, StandardTermState termState, Bits skipDocs) throws IOException {
-      assert !fieldInfo.omitTermFreqAndPositions;
+    public SegmentDocsAndPositionsEnum reset(FieldInfo fieldInfo, StandardTermState termState, Bits liveDocs) throws IOException {
+      assert fieldInfo.indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
       assert !fieldInfo.storePayloads;
 
-      this.skipDocs = skipDocs;
+      this.liveDocs = liveDocs;
 
       // TODO: for full enum case (eg segment merging) this
       // seek is unnecessary; maybe we can avoid in such
@@ -504,7 +506,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
         }
         posPendingCount += freq;
 
-        if (skipDocs == null || !skipDocs.get(doc)) {
+        if (liveDocs == null || liveDocs.get(doc)) {
           break;
         }
       }
@@ -626,7 +628,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
     int freq;                                     // freq we last read
     int position;
 
-    Bits skipDocs;
+    Bits liveDocs;
 
     long freqOffset;
     int skipOffset;
@@ -647,15 +649,15 @@ public class StandardPostingsReader extends PostingsReaderBase {
       this.proxIn = (IndexInput) proxIn.clone();
     }
 
-    public SegmentDocsAndPositionsAndPayloadsEnum reset(FieldInfo fieldInfo, StandardTermState termState, Bits skipDocs) throws IOException {
-      assert !fieldInfo.omitTermFreqAndPositions;
+    public SegmentDocsAndPositionsAndPayloadsEnum reset(FieldInfo fieldInfo, StandardTermState termState, Bits liveDocs) throws IOException {
+      assert fieldInfo.indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
       assert fieldInfo.storePayloads;
       if (payload == null) {
         payload = new BytesRef();
         payload.bytes = new byte[1];
       }
 
-      this.skipDocs = skipDocs;
+      this.liveDocs = liveDocs;
 
       // TODO: for full enum case (eg segment merging) this
       // seek is unnecessary; maybe we can avoid in such
@@ -701,7 +703,7 @@ public class StandardPostingsReader extends PostingsReaderBase {
         }
         posPendingCount += freq;
 
-        if (skipDocs == null || !skipDocs.get(doc)) {
+        if (liveDocs == null || liveDocs.get(doc)) {
           break;
         }
       }

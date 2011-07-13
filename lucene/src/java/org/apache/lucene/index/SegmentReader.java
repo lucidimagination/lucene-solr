@@ -29,8 +29,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.store.BufferedIndexInput;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BitVector;
 import org.apache.lucene.util.Bits;
@@ -45,14 +48,13 @@ public class SegmentReader extends IndexReader implements Cloneable {
   protected boolean readOnly;
 
   private SegmentInfo si;
-  private int readBufferSize;
   private final ReaderContext readerContext = new AtomicReaderContext(this);
   CloseableThreadLocal<FieldsReader> fieldsReaderLocal = new FieldsReaderLocal();
   CloseableThreadLocal<TermVectorsReader> termVectorsLocal = new CloseableThreadLocal<TermVectorsReader>();
 
-  volatile BitVector deletedDocs;
-  AtomicInteger deletedDocsRef = null;
-  private boolean deletedDocsDirty = false;
+  volatile BitVector liveDocs;
+  AtomicInteger liveDocsRef = null;
+  private boolean liveDocsDirty = false;
   private boolean normsDirty = false;
 
   // TODO: we should move this tracking into SegmentInfo;
@@ -87,8 +89,8 @@ public class SegmentReader extends IndexReader implements Cloneable {
    * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
-  public static SegmentReader get(boolean readOnly, SegmentInfo si, int termInfosIndexDivisor) throws CorruptIndexException, IOException {
-    return get(readOnly, si.dir, si, BufferedIndexInput.BUFFER_SIZE, true, termInfosIndexDivisor);
+  public static SegmentReader get(boolean readOnly, SegmentInfo si, int termInfosIndexDivisor, IOContext context) throws CorruptIndexException, IOException {
+    return get(readOnly, si.dir, si, true, termInfosIndexDivisor, context);
   }
 
   /**
@@ -98,25 +100,23 @@ public class SegmentReader extends IndexReader implements Cloneable {
   public static SegmentReader get(boolean readOnly,
                                   Directory dir,
                                   SegmentInfo si,
-                                  int readBufferSize,
                                   boolean doOpenStores,
-                                  int termInfosIndexDivisor)
+                                  int termInfosIndexDivisor,
+                                  IOContext context)
     throws CorruptIndexException, IOException {
     
     SegmentReader instance = new SegmentReader();
     instance.readOnly = readOnly;
     instance.si = si;
-    instance.readBufferSize = readBufferSize;
-
     boolean success = false;
 
     try {
-      instance.core = new SegmentCoreReaders(instance, dir, si, readBufferSize, termInfosIndexDivisor);
+      instance.core = new SegmentCoreReaders(instance, dir, si, context, termInfosIndexDivisor);
       if (doOpenStores) {
         instance.core.openDocStores(si);
       }
-      instance.loadDeletedDocs();
-      instance.openNorms(instance.core.cfsDir, readBufferSize);
+      instance.loadLiveDocs(context);
+      instance.openNorms(instance.core.cfsDir, context);
       success = true;
     } finally {
 
@@ -137,34 +137,37 @@ public class SegmentReader extends IndexReader implements Cloneable {
   }
 
   @Override
-  public Bits getDeletedDocs() {
-    return deletedDocs;
+  public Bits getLiveDocs() {
+    return liveDocs;
   }
 
-  private boolean checkDeletedCounts() throws IOException {
-    final int recomputedCount = deletedDocs.getRecomputedCount();
-     
-    assert deletedDocs.count() == recomputedCount : "deleted count=" + deletedDocs.count() + " vs recomputed count=" + recomputedCount;
+  private boolean checkLiveCounts() throws IOException {
+    final int recomputedCount = liveDocs.getRecomputedCount();
+    // First verify BitVector is self consistent:
+    assert liveDocs.count() == recomputedCount : "live count=" + liveDocs.count() + " vs recomputed count=" + recomputedCount;
 
-    assert si.getDelCount() == recomputedCount : 
-    "delete count mismatch: info=" + si.getDelCount() + " vs BitVector=" + recomputedCount;
+    assert si.getDelCount() == si.docCount - recomputedCount :
+      "delete count mismatch: info=" + si.getDelCount() + " vs BitVector=" + (si.docCount-recomputedCount);
 
     // Verify # deletes does not exceed maxDoc for this
     // segment:
     assert si.getDelCount() <= maxDoc() : 
-    "delete count mismatch: " + recomputedCount + ") exceeds max doc (" + maxDoc() + ") for segment " + si.name;
+      "delete count mismatch: " + recomputedCount + ") exceeds max doc (" + maxDoc() + ") for segment " + si.name;
 
     return true;
   }
 
-  private void loadDeletedDocs() throws IOException {
+  private void loadLiveDocs(IOContext context) throws IOException {
     // NOTE: the bitvector is stored using the regular directory, not cfs
     if (hasDeletions(si)) {
-      deletedDocs = new BitVector(directory(), si.getDelFileName());
-      deletedDocsRef = new AtomicInteger(1);
-      assert checkDeletedCounts();
-      if (deletedDocs.size() != si.docCount) {
-        throw new CorruptIndexException("document count mismatch: deleted docs count " + deletedDocs.size() + " vs segment doc count " + si.docCount + " segment=" + si.name);
+      liveDocs = new BitVector(directory(), si.getDelFileName(), new IOContext(context, true));
+      if (liveDocs.getVersion() < BitVector.VERSION_DGAPS_CLEARED) {
+        liveDocs.invertAll();
+      }
+      liveDocsRef = new AtomicInteger(1);
+      assert checkLiveCounts();
+      if (liveDocs.size() != si.docCount) {
+        throw new CorruptIndexException("document count mismatch: deleted docs count " + liveDocs.size() + " vs segment doc count " + si.docCount + " segment=" + si.name);
       }
     } else
       assert si.getDelCount() == 0;
@@ -249,33 +252,32 @@ public class SegmentReader extends IndexReader implements Cloneable {
       clone.core = core;
       clone.readOnly = openReadOnly;
       clone.si = si;
-      clone.readBufferSize = readBufferSize;
       clone.pendingDeleteCount = pendingDeleteCount;
       clone.readerFinishedListeners = readerFinishedListeners;
 
       if (!openReadOnly && hasChanges) {
         // My pending changes transfer to the new reader
-        clone.deletedDocsDirty = deletedDocsDirty;
+        clone.liveDocsDirty = liveDocsDirty;
         clone.normsDirty = normsDirty;
         clone.hasChanges = hasChanges;
         hasChanges = false;
       }
       
       if (doClone) {
-        if (deletedDocs != null) {
-          deletedDocsRef.incrementAndGet();
-          clone.deletedDocs = deletedDocs;
-          clone.deletedDocsRef = deletedDocsRef;
+        if (liveDocs != null) {
+          liveDocsRef.incrementAndGet();
+          clone.liveDocs = liveDocs;
+          clone.liveDocsRef = liveDocsRef;
         }
       } else {
         if (!deletionsUpToDate) {
           // load deleted docs
-          assert clone.deletedDocs == null;
-          clone.loadDeletedDocs();
-        } else if (deletedDocs != null) {
-          deletedDocsRef.incrementAndGet();
-          clone.deletedDocs = deletedDocs;
-          clone.deletedDocsRef = deletedDocsRef;
+          assert clone.liveDocs == null;
+          clone.loadLiveDocs(IOContext.READ);
+        } else if (liveDocs != null) {
+          liveDocsRef.incrementAndGet();
+          clone.liveDocs = liveDocs;
+          clone.liveDocsRef = liveDocsRef;
         }
       }
 
@@ -294,7 +296,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
 
       // If we are not cloning, then this will open anew
       // any norms that have changed:
-      clone.openNorms(si.getUseCompoundFile() ? core.getCFSReader() : directory(), readBufferSize);
+      clone.openNorms(si.getUseCompoundFile() ? core.getCFSReader() : directory(), IOContext.DEFAULT);
 
       success = true;
     } finally {
@@ -325,10 +327,10 @@ public class SegmentReader extends IndexReader implements Cloneable {
   }
 
   private synchronized void commitChanges(Map<String,String> commitUserData) throws IOException {
-    if (deletedDocsDirty) {               // re-write deleted
+    if (liveDocsDirty) {               // re-write deleted
       si.advanceDelGen();
 
-      assert deletedDocs.length() == si.docCount;
+      assert liveDocs.length() == si.docCount;
 
       // We can write directly to the actual name (vs to a
       // .tmp & renaming it) because the file is not live
@@ -336,7 +338,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
       final String delFileName = si.getDelFileName();
       boolean success = false;
       try {
-        deletedDocs.write(directory(), delFileName);
+        liveDocs.write(directory(), delFileName, IOContext.DEFAULT);
         success = true;
       } finally {
         if (!success) {
@@ -348,10 +350,9 @@ public class SegmentReader extends IndexReader implements Cloneable {
           }
         }
       }
-
       si.setDelCount(si.getDelCount()+pendingDeleteCount);
       pendingDeleteCount = 0;
-      assert deletedDocs.count() == si.getDelCount(): "delete count mismatch during commit: info=" + si.getDelCount() + " vs BitVector=" + deletedDocs.count();
+      assert (maxDoc()-liveDocs.count()) == si.getDelCount(): "delete count mismatch during commit: info=" + si.getDelCount() + " vs BitVector=" + (maxDoc()-liveDocs.count());
     } else {
       assert pendingDeleteCount == 0;
     }
@@ -364,7 +365,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
         }
       }
     }
-    deletedDocsDirty = false;
+    liveDocsDirty = false;
     normsDirty = false;
     hasChanges = false;
   }
@@ -378,10 +379,10 @@ public class SegmentReader extends IndexReader implements Cloneable {
     termVectorsLocal.close();
     fieldsReaderLocal.close();
     
-    if (deletedDocs != null) {
-      deletedDocsRef.decrementAndGet();
+    if (liveDocs != null) {
+      liveDocsRef.decrementAndGet();
       // null so if an app hangs on to us we still free most ram
-      deletedDocs = null;
+      liveDocs = null;
     }
 
     for (final SegmentNorms norm : norms.values()) {
@@ -400,7 +401,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
   @Override
   public boolean hasDeletions() {
     // Don't call ensureOpen() here (it could affect performance)
-    return deletedDocs != null;
+    return liveDocs != null;
   }
 
   static boolean usesCompoundFile(SegmentInfo si) throws IOException {
@@ -413,38 +414,39 @@ public class SegmentReader extends IndexReader implements Cloneable {
 
   @Override
   protected void doDelete(int docNum) {
-    if (deletedDocs == null) {
-      deletedDocs = new BitVector(maxDoc());
-      deletedDocsRef = new AtomicInteger(1);
+    if (liveDocs == null) {
+      liveDocs = new BitVector(maxDoc());
+      liveDocs.setAll();
+      liveDocsRef = new AtomicInteger(1);
     }
     // there is more than 1 SegmentReader with a reference to this
-    // deletedDocs BitVector so decRef the current deletedDocsRef,
-    // clone the BitVector, create a new deletedDocsRef
-    if (deletedDocsRef.get() > 1) {
-      AtomicInteger oldRef = deletedDocsRef;
-      deletedDocs = cloneDeletedDocs(deletedDocs);
-      deletedDocsRef = new AtomicInteger(1);
+    // liveDocs BitVector so decRef the current liveDocsRef,
+    // clone the BitVector, create a new liveDocsRef
+    if (liveDocsRef.get() > 1) {
+      AtomicInteger oldRef = liveDocsRef;
+      liveDocs = cloneDeletedDocs(liveDocs);
+      liveDocsRef = new AtomicInteger(1);
       oldRef.decrementAndGet();
     }
-    deletedDocsDirty = true;
-    if (!deletedDocs.getAndSet(docNum)) {
+    liveDocsDirty = true;
+    if (liveDocs.getAndClear(docNum)) {
       pendingDeleteCount++;
     }
   }
 
   @Override
   protected void doUndeleteAll() {
-    deletedDocsDirty = false;
-    if (deletedDocs != null) {
-      assert deletedDocsRef != null;
-      deletedDocsRef.decrementAndGet();
-      deletedDocs = null;
-      deletedDocsRef = null;
+    liveDocsDirty = false;
+    if (liveDocs != null) {
+      assert liveDocsRef != null;
+      liveDocsRef.decrementAndGet();
+      liveDocs = null;
+      liveDocsRef = null;
       pendingDeleteCount = 0;
       si.clearDelGen();
       si.setDelCount(0);
     } else {
-      assert deletedDocsRef == null;
+      assert liveDocsRef == null;
       assert pendingDeleteCount == 0;
     }
   }
@@ -483,10 +485,11 @@ public class SegmentReader extends IndexReader implements Cloneable {
   @Override
   public int numDocs() {
     // Don't call ensureOpen() here (it could affect performance)
-    int n = maxDoc();
-    if (deletedDocs != null)
-      n -= deletedDocs.count();
-    return n;
+    if (liveDocs != null) {
+      return liveDocs.count();
+    } else {
+      return maxDoc();
+    }
   }
 
   @Override
@@ -510,7 +513,10 @@ public class SegmentReader extends IndexReader implements Cloneable {
       else if (!fi.isIndexed && fieldOption == IndexReader.FieldOption.UNINDEXED) {
         fieldSet.add(fi.name);
       }
-      else if (fi.omitTermFreqAndPositions && fieldOption == IndexReader.FieldOption.OMIT_TERM_FREQ_AND_POSITIONS) {
+      else if (fi.indexOptions == IndexOptions.DOCS_ONLY && fieldOption == IndexReader.FieldOption.OMIT_TERM_FREQ_AND_POSITIONS) {
+        fieldSet.add(fi.name);
+      }
+      else if (fi.indexOptions == IndexOptions.DOCS_AND_FREQS && fieldOption == IndexReader.FieldOption.OMIT_POSITIONS) {
         fieldSet.add(fi.name);
       }
       else if (fi.storePayloads && fieldOption == IndexReader.FieldOption.STORES_PAYLOADS) {
@@ -575,7 +581,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
     norm.copyOnWrite()[doc] = value;                    // set the value
   }
 
-  private void openNorms(Directory cfsDir, int readBufferSize) throws IOException {
+  private void openNorms(Directory cfsDir, IOContext context) throws IOException {
     long nextNormSeek = SegmentNorms.NORMS_HEADER.length; //skip header (header unused for now)
     int maxDoc = maxDoc();
     for (FieldInfo fi : core.fieldInfos) {
@@ -599,7 +605,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
         if (singleNormFile) {
           normSeek = nextNormSeek;
           if (singleNormStream == null) {
-            singleNormStream = d.openInput(fileName, readBufferSize);
+            singleNormStream = d.openInput(fileName, context);
             singleNormRef = new AtomicInteger(1);
           } else {
             singleNormRef.incrementAndGet();
@@ -609,7 +615,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
           // If this were to change in the future, a clone could be done here.
           normInput = singleNormStream;
         } else {
-          normInput = d.openInput(fileName);
+          normInput = d.openInput(fileName, context);
           // if the segment was created in 3.2 or after, we wrote the header for sure,
           // and don't need to do the sketchy file size check. otherwise, we check 
           // if the size is exactly equal to maxDoc to detect a headerless file.
@@ -789,7 +795,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
   void startCommit() {
     rollbackSegmentInfo = (SegmentInfo) si.clone();
     rollbackHasChanges = hasChanges;
-    rollbackDeletedDocsDirty = deletedDocsDirty;
+    rollbackDeletedDocsDirty = liveDocsDirty;
     rollbackNormsDirty = normsDirty;
     rollbackPendingDeleteCount = pendingDeleteCount;
     for (SegmentNorms norm : norms.values()) {
@@ -800,7 +806,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
   void rollbackCommit() {
     si.reset(rollbackSegmentInfo);
     hasChanges = rollbackHasChanges;
-    deletedDocsDirty = rollbackDeletedDocsDirty;
+    liveDocsDirty = rollbackDeletedDocsDirty;
     normsDirty = rollbackNormsDirty;
     pendingDeleteCount = rollbackPendingDeleteCount;
     for (SegmentNorms norm : norms.values()) {
@@ -838,5 +844,10 @@ public class SegmentReader extends IndexReader implements Cloneable {
     // SegmentReaders.  We only notify once that core is no
     // longer used (all SegmentReaders sharing it have been
     // closed).
+  }
+  
+  @Override
+  public PerDocValues perDocValues() throws IOException {
+    return core.perDocProducer;
   }
 }

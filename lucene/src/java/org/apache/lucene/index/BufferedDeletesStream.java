@@ -28,10 +28,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.store.IOContext;
 
 /* Tracks the stream of {@link BufferedDeletes}.
  * When DocumentsWriterPerThread flushes, its buffered
@@ -143,7 +144,7 @@ class BufferedDeletesStream {
 
   // Sorts SegmentInfos from smallest to biggest bufferedDelGen:
   private static final Comparator<SegmentInfo> sortSegInfoByDelGen = new Comparator<SegmentInfo>() {
-    // @Override -- not until Java 1.6
+    @Override
     public int compare(SegmentInfo si1, SegmentInfo si2) {
       final long cmp = si1.getBufferedDeletesGen() - si2.getBufferedDeletesGen();
       if (cmp > 0) {
@@ -162,7 +163,7 @@ class BufferedDeletesStream {
   };
   
   /** Resolves the buffered deleted Term/Query/docIDs, into
-   *  actual deleted docIDs in the deletedDocs BitVector for
+   *  actual deleted docIDs in the liveDocs BitVector for
    *  each SegmentReader. */
   public synchronized ApplyDeletesResult applyDeletes(IndexWriter.ReaderPool readerPool, List<SegmentInfo> infos) throws IOException {
     final long t0 = System.currentTimeMillis();
@@ -224,7 +225,7 @@ class BufferedDeletesStream {
 
         // Lock order: IW -> BD -> RP
         assert readerPool.infoIsLive(info);
-        final SegmentReader reader = readerPool.get(info, false);
+        final SegmentReader reader = readerPool.get(info, false, IOContext.READ);
         int delCount = 0;
         final boolean segAllDeletes;
         try {
@@ -273,7 +274,7 @@ class BufferedDeletesStream {
         if (coalescedDeletes != null) {
           // Lock order: IW -> BD -> RP
           assert readerPool.infoIsLive(info);
-          SegmentReader reader = readerPool.get(info, false);
+          SegmentReader reader = readerPool.get(info, false, IOContext.READ);
           int delCount = 0;
           final boolean segAllDeletes;
           try {
@@ -380,7 +381,7 @@ class BufferedDeletesStream {
       // Since we visit terms sorted, we gain performance
       // by re-using the same TermsEnum and seeking only
       // forwards
-      if (term.field() != currentField) {
+      if (!term.field().equals(currentField)) {
         assert currentField == null || currentField.compareTo(term.field()) < 0;
         currentField = term.field();
         Terms terms = fields.terms(currentField);
@@ -398,8 +399,8 @@ class BufferedDeletesStream {
 
       // System.out.println("  term=" + term);
 
-      if (termsEnum.seek(term.bytes(), false) == TermsEnum.SeekStatus.FOUND) {
-        DocsEnum docsEnum = termsEnum.docs(reader.getDeletedDocs(), docs);
+      if (termsEnum.seekExact(term.bytes(), false)) {
+        DocsEnum docsEnum = termsEnum.docs(reader.getLiveDocs(), docs);
 
         if (docsEnum != null) {
           while (true) {
@@ -434,18 +435,16 @@ class BufferedDeletesStream {
   // Delete by query
   private synchronized long applyQueryDeletes(Iterable<QueryAndLimit> queriesIter, SegmentReader reader) throws IOException {
     long delCount = 0;
-    IndexSearcher searcher = new IndexSearcher(reader);
-    assert searcher.getTopReaderContext().isAtomic;
-    final AtomicReaderContext readerContext = (AtomicReaderContext) searcher.getTopReaderContext();
-    try {
-      for (QueryAndLimit ent : queriesIter) {
-        Query query = ent.query;
-        int limit = ent.limit;
-        Weight weight = query.weight(searcher);
-        Scorer scorer = weight.scorer(readerContext, Weight.ScorerContext.def());
-        if (scorer != null) {
+    final AtomicReaderContext readerContext = (AtomicReaderContext) reader.getTopReaderContext();
+    for (QueryAndLimit ent : queriesIter) {
+      Query query = ent.query;
+      int limit = ent.limit;
+      final DocIdSet docs = new QueryWrapperFilter(query).getDocIdSet(readerContext);
+      if (docs != null) {
+        final DocIdSetIterator it = docs.iterator();
+        if (it != null) {
           while(true)  {
-            int doc = scorer.nextDoc();
+            int doc = it.nextDoc();
             if (doc >= limit)
               break;
 
@@ -459,8 +458,6 @@ class BufferedDeletesStream {
           }
         }
       }
-    } finally {
-      searcher.close();
     }
 
     return delCount;

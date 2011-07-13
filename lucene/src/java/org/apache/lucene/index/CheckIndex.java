@@ -22,23 +22,28 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.lucene.document.AbstractField;  // for javadocs
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.DefaultSegmentInfosWriter;
+import org.apache.lucene.index.codecs.PerDocValues;
+import org.apache.lucene.index.values.IndexDocValues;
+import org.apache.lucene.index.values.ValuesEnum;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-
-import java.text.NumberFormat;
-import java.io.PrintStream;
-import java.io.IOException;
-import java.io.File;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
+import org.apache.lucene.util.StringHelper;
 
 /**
  * Basic tool and API to check the health of an index and
@@ -116,6 +121,12 @@ public class CheckIndex {
      * argument). */
     public boolean partial;
 
+    /** The greatest segment name. */
+    public int maxSegmentName;
+
+    /** Whether the SegmentInfos.counter is greater than any of the segments' names. */
+    public boolean validCounter; 
+
     /** Holds the userData of the last commit in the index */
     public Map<String, String> userData;
 
@@ -175,8 +186,8 @@ public class CheckIndex {
       int numFields;
 
       /** True if at least one of the fields in this segment
-       *  does not omitTermFreqAndPositions.
-       *  @see AbstractField#setOmitTermFreqAndPositions */
+       *  has position data
+       *  @see AbstractField#setIndexOptions(org.apache.lucene.index.FieldInfo.IndexOptions) */
       public boolean hasProx;
 
       /** Map that includes certain
@@ -195,6 +206,9 @@ public class CheckIndex {
 
       /** Status for testing of term vectors (null if term vectors could not be tested). */
       public TermVectorStatus termVectorStatus;
+      
+      /** Status for testing of DocValues (null if DocValues could not be tested). */
+      public DocValuesStatus docValuesStatus;
     }
 
     /**
@@ -252,6 +266,15 @@ public class CheckIndex {
       public long totVectors = 0;
       
       /** Exception thrown during term vector test (null on success) */
+      public Throwable error = null;
+    }
+    
+    public static final class DocValuesStatus {
+      /** Number of documents tested. */
+      public int docCount;
+      /** Total number of docValues tested. */
+      public long totalValueFields;
+      /** Exception thrown during doc values test (null on success) */
       public Throwable error = null;
     }
   }
@@ -317,11 +340,32 @@ public class CheckIndex {
       return result;
     }
 
+    // find the oldest and newest segment versions
+    String oldest = Integer.toString(Integer.MAX_VALUE), newest = Integer.toString(Integer.MIN_VALUE);
+    String oldSegs = null;
+    boolean foundNonNullVersion = false;
+    Comparator<String> versionComparator = StringHelper.getVersionComparator();
+    for (SegmentInfo si : sis) {
+      String version = si.getVersion();
+      if (version == null) {
+        // pre-3.1 segment
+        oldSegs = "pre-3.1";
+      } else {
+        foundNonNullVersion = true;
+        if (versionComparator.compare(version, oldest) < 0) {
+          oldest = version;
+        }
+        if (versionComparator.compare(version, newest) > 0) {
+          newest = version;
+        }
+      }
+    }
+
     final int numSegments = sis.size();
     final String segmentsFileName = sis.getCurrentSegmentFileName();
     IndexInput input = null;
     try {
-      input = dir.openInput(segmentsFileName);
+      input = dir.openInput(segmentsFileName, IOContext.DEFAULT);
     } catch (Throwable t) {
       msg("ERROR: could not open segments file in directory");
       if (infoStream != null)
@@ -351,7 +395,7 @@ public class CheckIndex {
     } else if (format == DefaultSegmentInfosWriter.FORMAT_HAS_VECTORS) {
       sFormat = "FORMAT_HAS_VECTORS [Lucene 3.1]";
     } else if (format == DefaultSegmentInfosWriter.FORMAT_3_1) {
-      sFormat = "FORMAT_3_1 [Lucene 3.1]";
+      sFormat = "FORMAT_3_1 [Lucene 3.1+]";
     } else if (format == DefaultSegmentInfosWriter.FORMAT_4_0) {
       sFormat = "FORMAT_4_0 [Lucene 4.0]";
     } else if (format == DefaultSegmentInfosWriter.FORMAT_CURRENT) {
@@ -375,7 +419,19 @@ public class CheckIndex {
       userDataString = "";
     }
 
-    msg("Segments file=" + segmentsFileName + " numSegments=" + numSegments + " version=" + sFormat + userDataString);
+    String versionString = null;
+    if (oldSegs != null) {
+      if (foundNonNullVersion) {
+        versionString = "versions=[" + oldSegs + " .. " + newest + "]";
+      } else {
+        versionString = "version=" + oldSegs;
+      }
+    } else {
+      versionString = oldest.equals(newest) ? ( "version=" + oldest ) : ("versions=[" + oldest + " .. " + newest + "]");
+    }
+
+    msg("Segments file=" + segmentsFileName + " numSegments=" + numSegments
+        + " " + versionString + " format=" + sFormat + userDataString);
 
     if (onlySegments != null) {
       result.partial = true;
@@ -398,9 +454,14 @@ public class CheckIndex {
 
     result.newSegments = (SegmentInfos) sis.clone();
     result.newSegments.clear();
+    result.maxSegmentName = -1;
 
     for(int i=0;i<numSegments;i++) {
       final SegmentInfo info = sis.info(i);
+      int segmentName = Integer.parseInt(info.name.substring(1), Character.MAX_RADIX);
+      if (segmentName > result.maxSegmentName) {
+        result.maxSegmentName = segmentName;
+      }
       if (onlySegments != null && !onlySegments.contains(info.name))
         continue;
       Status.SegmentInfoStatus segInfoStat = new Status.SegmentInfoStatus();
@@ -453,20 +514,20 @@ public class CheckIndex {
         }
         if (infoStream != null)
           infoStream.print("    test: open reader.........");
-        reader = SegmentReader.get(true, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR);
+        reader = SegmentReader.get(true, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.DEFAULT);
 
         segInfoStat.openReaderPassed = true;
 
         final int numDocs = reader.numDocs();
         toLoseDocCount = numDocs;
         if (reader.hasDeletions()) {
-          if (reader.deletedDocs.count() != info.getDelCount()) {
-            throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs deletedDocs.count()=" + reader.deletedDocs.count());
+          if (reader.liveDocs.count() != info.docCount - info.getDelCount()) {
+            throw new RuntimeException("delete count mismatch: info=" + (info.docCount - info.getDelCount()) + " vs reader=" + reader.liveDocs.count());
           }
-          if (reader.deletedDocs.count() > reader.maxDoc()) {
-            throw new RuntimeException("too many deleted docs: maxDoc()=" + reader.maxDoc() + " vs deletedDocs.count()=" + reader.deletedDocs.count());
+          if ((info.docCount-reader.liveDocs.count()) > reader.maxDoc()) {
+            throw new RuntimeException("too many deleted docs: maxDoc()=" + reader.maxDoc() + " vs del count=" + (info.docCount-reader.liveDocs.count()));
           }
-          if (info.docCount - numDocs != info.getDelCount()){
+          if (info.docCount - numDocs != info.getDelCount()) {
             throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs reader=" + (info.docCount - numDocs));
           }
           segInfoStat.numDeleted = info.docCount - numDocs;
@@ -499,6 +560,8 @@ public class CheckIndex {
 
         // Test Term Vectors
         segInfoStat.termVectorStatus = testTermVectors(info, reader, nf);
+        
+        segInfoStat.docValuesStatus = testDocValues(info, reader);
 
         // Rethrow the first exception we encountered
         //  This will cause stats for failed segments to be incremented properly
@@ -510,6 +573,8 @@ public class CheckIndex {
           throw new RuntimeException("Stored Field test failed");
         } else if (segInfoStat.termVectorStatus.error != null) {
           throw new RuntimeException("Term Vector test failed");
+        }  else if (segInfoStat.docValuesStatus.error != null) {
+          throw new RuntimeException("DocValues test failed");
         }
 
         msg("");
@@ -536,9 +601,18 @@ public class CheckIndex {
 
     if (0 == result.numBadSegments) {
       result.clean = true;
-      msg("No problems were detected with this index.\n");
     } else
       msg("WARNING: " + result.numBadSegments + " broken segments (containing " + result.totLoseDocCount + " documents) detected");
+
+    if ( ! (result.validCounter = (result.maxSegmentName < sis.counter))) {
+      result.clean = false;
+      result.newSegments.counter = result.maxSegmentName + 1; 
+      msg("ERROR: Next segment name counter " + sis.counter + " is not greater than max segment name " + result.maxSegmentName);
+    }
+    
+    if (result.clean) {
+      msg("No problems were detected with this index.\n");
+    }
 
     return result;
   }
@@ -581,7 +655,7 @@ public class CheckIndex {
     final Status.TermIndexStatus status = new Status.TermIndexStatus();
 
     final int maxDoc = reader.maxDoc();
-    final Bits delDocs = reader.getDeletedDocs();
+    final Bits liveDocs = reader.getLiveDocs();
 
     final IndexSearcher is = new IndexSearcher(reader);
 
@@ -617,7 +691,7 @@ public class CheckIndex {
         Comparator<BytesRef> termComp = terms.getComparator();
 
         long sumTotalTermFreq = 0;
-
+        long sumDocFreq = 0;
         while(true) {
 
           final BytesRef term = terms.next();
@@ -638,9 +712,10 @@ public class CheckIndex {
 
           final int docFreq = terms.docFreq();
           status.totFreq += docFreq;
+          sumDocFreq += docFreq;
 
-          docs = terms.docs(delDocs, docs);
-          postings = terms.docsAndPositions(delDocs, postings);
+          docs = terms.docs(liveDocs, docs);
+          postings = terms.docsAndPositions(liveDocs, postings);
 
           if (hasOrd) {
             long ord = -1;
@@ -742,7 +817,7 @@ public class CheckIndex {
             if (hasPositions) {
               for(int idx=0;idx<7;idx++) {
                 final int skipDocID = (int) (((idx+1)*(long) maxDoc)/8);
-                postings = terms.docsAndPositions(delDocs, postings);
+                postings = terms.docsAndPositions(liveDocs, postings);
                 final int docID = postings.advance(skipDocID);
                 if (docID == DocsEnum.NO_MORE_DOCS) {
                   break;
@@ -778,7 +853,7 @@ public class CheckIndex {
             } else {
               for(int idx=0;idx<7;idx++) {
                 final int skipDocID = (int) (((idx+1)*(long) maxDoc)/8);
-                docs = terms.docs(delDocs, docs);
+                docs = terms.docs(liveDocs, docs);
                 final int docID = docs.advance(skipDocID);
                 if (docID == DocsEnum.NO_MORE_DOCS) {
                   break;
@@ -805,10 +880,17 @@ public class CheckIndex {
             throw new RuntimeException("sumTotalTermFreq for field " + field + "=" + v + " != recomputed sumTotalTermFreq=" + sumTotalTermFreq);
           }
         }
+        
+        if (sumDocFreq != 0) {
+          final long v = fields.terms(field).getSumDocFreq();
+          if (v != -1 && sumDocFreq != v) {
+            throw new RuntimeException("sumDocFreq for field " + field + "=" + v + " != recomputed sumDocFreq=" + sumDocFreq);
+          }
+        }
 
         // Test seek to last term:
         if (lastTerm != null) {
-          if (terms.seek(lastTerm) != TermsEnum.SeekStatus.FOUND) {
+          if (terms.seekCeil(lastTerm) != TermsEnum.SeekStatus.FOUND) {
             throw new RuntimeException("seek to last term " + lastTerm + " failed");
           }
 
@@ -835,18 +917,18 @@ public class CheckIndex {
             // Seek by ord
             for(int i=seekCount-1;i>=0;i--) {
               long ord = i*(termCount/seekCount);
-              terms.seek(ord);
+              terms.seekExact(ord);
               seekTerms[i] = new BytesRef(terms.term());
             }
 
             // Seek by term
             long totDocCount = 0;
             for(int i=seekCount-1;i>=0;i--) {
-              if (terms.seek(seekTerms[i]) != TermsEnum.SeekStatus.FOUND) {
+              if (terms.seekCeil(seekTerms[i]) != TermsEnum.SeekStatus.FOUND) {
                 throw new RuntimeException("seek to existing term " + seekTerms[i] + " failed");
               }
               
-              docs = terms.docs(delDocs, docs);
+              docs = terms.docs(liveDocs, docs);
               if (docs == null) {
                 throw new RuntimeException("null DocsEnum from to existing term " + seekTerms[i]);
               }
@@ -894,9 +976,9 @@ public class CheckIndex {
       }
 
       // Scan stored fields for all documents
-      final Bits delDocs = reader.getDeletedDocs();
+      final Bits liveDocs = reader.getLiveDocs();
       for (int j = 0; j < info.docCount; ++j) {
-        if (delDocs == null || !delDocs.get(j)) {
+        if (liveDocs == null || liveDocs.get(j)) {
           status.docCount++;
           Document doc = reader.document(j);
           status.totFields += doc.getFields().size();
@@ -920,6 +1002,64 @@ public class CheckIndex {
 
     return status;
   }
+  
+  private Status.DocValuesStatus testDocValues(SegmentInfo info,
+      SegmentReader reader) {
+    final Status.DocValuesStatus status = new Status.DocValuesStatus();
+    try {
+      if (infoStream != null) {
+        infoStream.print("    test: DocValues........");
+      }
+      final FieldInfos fieldInfos = info.getFieldInfos();
+      for (FieldInfo fieldInfo : fieldInfos) {
+        if (fieldInfo.hasDocValues()) {
+          status.totalValueFields++;
+          final PerDocValues perDocValues = reader.perDocValues();
+          final IndexDocValues docValues = perDocValues.docValues(fieldInfo.name);
+          if (docValues == null) {
+            continue;
+          }
+          final ValuesEnum values = docValues.getEnum();
+          while (values.nextDoc() != ValuesEnum.NO_MORE_DOCS) {
+            switch (fieldInfo.docValues) {
+            case BYTES_FIXED_DEREF:
+            case BYTES_FIXED_SORTED:
+            case BYTES_FIXED_STRAIGHT:
+            case BYTES_VAR_DEREF:
+            case BYTES_VAR_SORTED:
+            case BYTES_VAR_STRAIGHT:
+              values.bytes();
+              break;
+            case FLOAT_32:
+            case FLOAT_64:
+              values.getFloat();
+              break;
+            case VAR_INTS:
+            case FIXED_INTS_16:
+            case FIXED_INTS_32:
+            case FIXED_INTS_64:
+            case FIXED_INTS_8:
+              values.getInt();
+              break;
+            default:
+              throw new IllegalArgumentException("Field: " + fieldInfo.name
+                  + " - no such DocValues type: " + fieldInfo.docValues);
+            }
+          }
+        }
+      }
+
+      msg("OK [" + status.docCount + " total doc Count; Num DocValues Fields "
+          + status.totalValueFields);
+    } catch (Throwable e) {
+      msg("ERROR [" + String.valueOf(e.getMessage()) + "]");
+      status.error = e;
+      if (infoStream != null) {
+        e.printStackTrace(infoStream);
+      }
+    }
+    return status;
+  }
 
   /**
    * Test term vectors for a segment.
@@ -932,9 +1072,9 @@ public class CheckIndex {
         infoStream.print("    test: term vectors........");
       }
 
-      final Bits delDocs = reader.getDeletedDocs();
+      final Bits liveDocs = reader.getLiveDocs();
       for (int j = 0; j < info.docCount; ++j) {
-        if (delDocs == null || !delDocs.get(j)) {
+        if (liveDocs == null || liveDocs.get(j)) {
           status.docCount++;
           TermFreqVector[] tfv = reader.getTermFreqVectors(j);
           if (tfv != null) {

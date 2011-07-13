@@ -32,7 +32,7 @@ import java.util.Comparator;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.IndexReader.ReaderContext;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BitVector;
 import org.apache.lucene.util.BytesRef;
@@ -107,11 +107,11 @@ public class InstantiatedIndexReader extends IndexReader {
   }
 
   @Override
-  public Bits getDeletedDocs() {
+  public Bits getLiveDocs() {
     return new Bits() {
       public boolean get(int n) {
-        return (index.getDeletedDocuments() != null && index.getDeletedDocuments().get(n))
-          || (uncommittedDeletedDocuments != null && uncommittedDeletedDocuments.get(n));
+        return !(index.getDeletedDocuments() != null && index.getDeletedDocuments().get(n))
+                   && !(uncommittedDeletedDocuments != null && uncommittedDeletedDocuments.get(n));
       }
 
       public int length() {
@@ -124,7 +124,7 @@ public class InstantiatedIndexReader extends IndexReader {
 
   private Map<String,List<NormUpdate>> uncommittedNormsByFieldNameAndDocumentNumber = null;
 
-  private class NormUpdate {
+  private static class NormUpdate {
     private int doc;
     private byte value;
 
@@ -380,7 +380,7 @@ public class InstantiatedIndexReader extends IndexReader {
               if (upto >= orderedTerms.length) {
                 return null;
               }
-            } while(orderedTerms[upto].field() == currentField);
+            } while(orderedTerms[upto].field().equals(currentField));
             
             currentField = orderedTerms[upto].field();
             return currentField;
@@ -400,7 +400,7 @@ public class InstantiatedIndexReader extends IndexReader {
         if (i < 0) {
           i = -i - 1;
         }
-        if (i >= orderedTerms.length || orderedTerms[i].field() != field) {
+        if (i >= orderedTerms.length || !orderedTerms[i].field().equals(field)) {
           // field does not exist
           return null;
         }
@@ -410,7 +410,7 @@ public class InstantiatedIndexReader extends IndexReader {
         // do it up front & cache
         long sum = 0;
         int upto = i;
-        while(upto < orderedTerms.length && orderedTerms[i].field() == field) {
+        while(upto < orderedTerms.length && orderedTerms[i].field().equals(field)) {
           sum += orderedTerms[i].getTotalTermFreq();
           upto++;
         }
@@ -425,6 +425,12 @@ public class InstantiatedIndexReader extends IndexReader {
           @Override
           public long getSumTotalTermFreq() {
             return sumTotalTermFreq;
+          }
+          
+          // TODO: support this?
+          @Override
+          public long getSumDocFreq() {
+            return -1;
           }
 
           @Override
@@ -486,5 +492,10 @@ public class InstantiatedIndexReader extends IndexReader {
         mapper.map(tdi.getTerm().getTerm().bytes(), tdi.getTermPositions().length, tdi.getTermOffsets(), tdi.getTermPositions());
       }
     }
+  }
+
+  @Override
+  public PerDocValues perDocValues() throws IOException {
+    return null;
   }
 }

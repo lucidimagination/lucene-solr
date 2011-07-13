@@ -18,13 +18,14 @@ package org.apache.lucene.index;
  */
 
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.MergeInfo;
 import org.apache.lucene.util.SetOnce;
 import org.apache.lucene.util.SetOnce.AlreadySetException;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Set;
+import java.util.Map;
 
 /**
  * <p>Expert: a MergePolicy determines the sequence of
@@ -51,7 +52,7 @@ import java.util.Set;
  * ConcurrentMergeScheduler} they will be run concurrently.</p>
  * 
  * <p>The default MergePolicy is {@link
- * LogByteSizeMergePolicy}.</p>
+ * TieredMergePolicy}.</p>
  *
  * @lucene.experimental
  */
@@ -189,6 +190,10 @@ public abstract class MergePolicy implements java.io.Closeable {
       }
       return total;
     }
+    
+    public MergeInfo getMergeInfo() {
+      return new MergeInfo(totalDocCount, estimatedMergeBytes, isExternal, optimize);
+    }    
   }
 
   /**
@@ -297,10 +302,15 @@ public abstract class MergePolicy implements java.io.Closeable {
    *          is always 1)
    * @param segmentsToOptimize
    *          contains the specific SegmentInfo instances that must be merged
-   *          away. This may be a subset of all SegmentInfos.
+   *          away. This may be a subset of all
+   *          SegmentInfos.  If the value is True for a
+   *          given SegmentInfo, that means this segment was
+   *          an original segment present in the
+   *          to-be-optimized index; else, it was a segment
+   *          produced by a cascaded merge.
    */
   public abstract MergeSpecification findMergesForOptimize(
-      SegmentInfos segmentInfos, int maxSegmentCount, Set<SegmentInfo> segmentsToOptimize)
+          SegmentInfos segmentInfos, int maxSegmentCount, Map<SegmentInfo,Boolean> segmentsToOptimize)
       throws CorruptIndexException, IOException;
 
   /**

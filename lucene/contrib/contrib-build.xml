@@ -55,7 +55,9 @@
   </path>
 
   <target name="build-lucene" unless="core.compiled">
-    <ant dir="${common.dir}" target="compile-test" inheritAll="false"/>
+    <ant dir="${common.dir}" target="compile-test" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
     <!-- set the property for this ant execution to speed up later tasks depending on this -->
     <property name="core.compiled" value="true"/>
   </target>
@@ -74,8 +76,11 @@
     file="pom.xml" 
     property="pom.xml.present">
   </available>
-			
-  <target name="dist-maven" if="pom.xml.present" depends="compile-core, jar-src">
+
+  <target name="dist-maven" if="pom.xml.present" depends="jar-core, jar-src, javadocs">
+    <taskdef resource="org/apache/maven/artifact/ant/antlib.xml" 
+             uri="antlib:org.apache.maven.artifact.ant" 
+             classpathref="maven-ant-tasks.classpath"/>
     <sequential>
       <m2-deploy>
         <artifact-attachments>
@@ -113,6 +118,7 @@
   <macrodef name="contrib-uptodate">
     <attribute name="name"/>
     <attribute name="property" default="@{name}.uptodate"/>
+    <attribute name="contrib-src-name" default="@{name}"/>
     <attribute name="classpath.property" default="@{name}.jar"/>
     <!-- set jarfile only, if the target jar file has no generic name, applies to analyzers with its common and smartcn subdir -->
     <attribute name="jarfile" default="${common.dir}/build/contrib/@{name}/lucene-@{name}-${version}.jar"/>
@@ -120,7 +126,7 @@
       <!--<echo message="Checking '@{jarfile}' against source folder '${common.dir}/contrib/@{name}/src/java'"/>-->
       <property name="@{classpath.property}" location="@{jarfile}"/>
       <uptodate property="@{property}" targetfile="@{jarfile}">
-        <srcfiles dir="${common.dir}/contrib/@{name}/src/java" includes="**/*.java"/>
+        <srcfiles dir="${common.dir}/contrib/@{contrib-src-name}/src/java" includes="**/*.java"/>
       </uptodate>
     </sequential>
   </macrodef>
@@ -128,13 +134,14 @@
   <macrodef name="module-uptodate">
     <attribute name="name"/>
     <attribute name="property" default="@{name}.uptodate"/>
+    <attribute name="module-src-name" default="@{name}"/>
     <attribute name="classpath.property" default="@{name}.jar"/>
     <!-- set jarfile only, if the target jar file has no generic name, applies to analyzers with its common and smartcn subdir -->
-    <attribute name="jarfile" default="${common.dir}/../modules/@{name}/build/lucene-@{name}-${version}.jar"/>
+    <attribute name="jarfile" default="${common.dir}/../modules/@{module-src-name}/build/lucene-@{name}-${version}.jar"/>
     <sequential>
       <property name="@{classpath.property}" location="@{jarfile}"/>
       <uptodate property="@{property}" targetfile="@{jarfile}">
-      	<srcfiles dir="${common.dir}/../modules/@{name}/src/java" includes="**/*.java"/>
+      	<srcfiles dir="${common.dir}/../modules/@{module-src-name}/src/java" includes="**/*.java"/>
       </uptodate>
     </sequential>
   </macrodef>

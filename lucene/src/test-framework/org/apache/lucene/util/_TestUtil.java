@@ -27,14 +27,15 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.util.Enumeration;
-import java.util.List;
-import java.util.Random;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.index.CheckIndex;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
@@ -46,6 +47,9 @@ import org.apache.lucene.index.MergeScheduler;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.search.FieldDoc;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.junit.Assert;
 
@@ -291,6 +295,48 @@ public class _TestUtil {
       sb.appendCodePoint(nextInt(r, blockStarts[block], blockEnds[block]));
     return sb.toString();
   }
+  
+  /** Returns random string, with a given UTF-8 byte length*/
+  public static String randomFixedByteLengthUnicodeString(Random r, int length) {
+    
+    final char[] buffer = new char[length*3];
+    int bytes = length;
+    int i = 0;
+    for (; i < buffer.length && bytes != 0; i++) {
+      int t;
+      if (bytes >= 4) {
+        t = r.nextInt(5);
+      } else if (bytes >= 3) {
+        t = r.nextInt(4);
+      } else if (bytes >= 2) {
+        t = r.nextInt(2);
+      } else {
+        t = 0;
+      }
+      if (t == 0) {
+        buffer[i] = (char) r.nextInt(0x80);
+        bytes--;
+      } else if (1 == t) {
+        buffer[i] = (char) nextInt(r, 0x80, 0x7ff);
+        bytes -= 2;
+      } else if (2 == t) {
+        buffer[i] = (char) nextInt(r, 0x800, 0xd7ff);
+        bytes -= 3;
+      } else if (3 == t) {
+        buffer[i] = (char) nextInt(r, 0xe000, 0xffff);
+        bytes -= 3;
+      } else if (4 == t) {
+        // Make a surrogate pair
+        // High surrogate
+        buffer[i++] = (char) nextInt(r, 0xd800, 0xdbff);
+        // Low surrogate
+        buffer[i] = (char) nextInt(r, 0xdc00, 0xdfff);
+        bytes -= 4;
+      }
+
+    }
+    return new String(buffer, 0, i);
+  }
 
   public static CodecProvider alwaysCodec(final Codec c) {
     CodecProvider p = new CodecProvider() {
@@ -336,6 +382,7 @@ public class _TestUtil {
     } else if (mp instanceof TieredMergePolicy) {
       TieredMergePolicy tmp = (TieredMergePolicy) mp;
       tmp.setMaxMergeAtOnce(Math.min(5, tmp.getMaxMergeAtOnce()));
+      tmp.setSegmentsPerTier(Math.min(5, tmp.getSegmentsPerTier()));
     }
     MergeScheduler ms = w.getConfig().getMergeScheduler();
     if (ms instanceof ConcurrentMergeScheduler) {
@@ -375,7 +422,7 @@ public class _TestUtil {
     List<Fieldable> fields = doc.getFields();
     for (Fieldable field : fields) {
       fieldInfos.addOrUpdate(field.name(), field.isIndexed(), field.isTermVectorStored(), field.isStorePositionWithTermVector(),
-              field.isStoreOffsetWithTermVector(), field.getOmitNorms(), false, field.getOmitTermFreqAndPositions());
+              field.isStoreOffsetWithTermVector(), field.getOmitNorms(), false, field.getIndexOptions(), field.docValuesType());
     }
   }
   
@@ -424,5 +471,46 @@ public class _TestUtil {
     newName.append(identify);
     newName.append(suffix);
     return new File(directory, newName.toString());
+  }
+
+  public static void assertEquals(TopDocs expected, TopDocs actual) {
+    Assert.assertEquals("wrong total hits", expected.totalHits, actual.totalHits);
+    Assert.assertEquals("wrong maxScore", expected.getMaxScore(), actual.getMaxScore(), 0.0);
+    Assert.assertEquals("wrong hit count", expected.scoreDocs.length, actual.scoreDocs.length);
+    for(int hitIDX=0;hitIDX<expected.scoreDocs.length;hitIDX++) {
+      final ScoreDoc expectedSD = expected.scoreDocs[hitIDX];
+      final ScoreDoc actualSD = actual.scoreDocs[hitIDX];
+      Assert.assertEquals("wrong hit docID", expectedSD.doc, actualSD.doc);
+      Assert.assertEquals("wrong hit score", expectedSD.score, actualSD.score, 0.0);
+      if (expectedSD instanceof FieldDoc) {
+        Assert.assertTrue(actualSD instanceof FieldDoc);
+        Assert.assertEquals("wrong sort field values",
+                            ((FieldDoc) expectedSD).fields,
+                            ((FieldDoc) actualSD).fields);
+      } else {
+        Assert.assertFalse(actualSD instanceof FieldDoc);
+      }
+    }
+  }
+
+  // NOTE: this is likely buggy, and cannot clone fields
+  // with tokenStreamValues, etc.  Use at your own risk!!
+
+  // TODO: is there a pre-existing way to do this!!!
+  public static Document cloneDocument(Document doc1) {
+    final Document doc2 = new Document();
+    for(Fieldable f : doc1.getFields()) {
+      Field field1 = (Field) f;
+      
+      Field field2 = new Field(field1.name(),
+                               field1.stringValue(),
+                               field1.isStored() ? Field.Store.YES : Field.Store.NO,
+                               field1.isIndexed() ? (field1.isTokenized() ? Field.Index.ANALYZED : Field.Index.NOT_ANALYZED) : Field.Index.NO);
+      field2.setOmitNorms(field1.getOmitNorms());
+      field2.setIndexOptions(field1.getIndexOptions());
+      doc2.add(field2);
+    }
+
+    return doc2;
   }
 }

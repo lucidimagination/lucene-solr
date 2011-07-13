@@ -38,6 +38,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -395,7 +396,7 @@ public class TestAddIndexes extends LuceneTestCase {
             setMergePolicy(newLogMergePolicy(4))
     );
 
-    writer.addIndexes(aux, new MockDirectoryWrapper(random, new RAMDirectory(aux)));
+    writer.addIndexes(aux, new MockDirectoryWrapper(random, new RAMDirectory(aux, newIOContext(random))));
     assertEquals(1060, writer.maxDoc());
     assertEquals(1000, writer.getDocCount(0));
     writer.close();
@@ -430,7 +431,7 @@ public class TestAddIndexes extends LuceneTestCase {
             setMergePolicy(newLogMergePolicy(4))
     );
 
-    writer.addIndexes(aux, new MockDirectoryWrapper(random, new RAMDirectory(aux)));
+    writer.addIndexes(aux, new MockDirectoryWrapper(random, new RAMDirectory(aux, newIOContext(random))));
     assertEquals(1020, writer.maxDoc());
     assertEquals(1000, writer.getDocCount(0));
     writer.close();
@@ -665,7 +666,7 @@ public class TestAddIndexes extends LuceneTestCase {
 
                 final Directory[] dirs = new Directory[NUM_COPY];
                 for(int k=0;k<NUM_COPY;k++)
-                  dirs[k] = new MockDirectoryWrapper(random, new RAMDirectory(dir));
+                  dirs[k] = new MockDirectoryWrapper(random, new RAMDirectory(dir, newIOContext(random)));
 
                 int j=0;
 
@@ -1075,8 +1076,8 @@ public class TestAddIndexes extends LuceneTestCase {
     IndexWriter w3 = new IndexWriter(dir, conf);
     w3.addIndexes(readers);
     w3.close();
-    // we should now see segments_X, segments.gen,_Y.cfs, _Z.fnx
-    assertEquals("Only one compound segment should exist", 4, dir.listAll().length);
+    // we should now see segments_X, segments.gen,_Y.cfs,_Y.cfe, _Z.fnx
+    assertEquals("Only one compound segment should exist", 5, dir.listAll().length);
   }
   
   // LUCENE-3126: tests that if a non-CFS segment is copied, it is converted to
@@ -1160,7 +1161,7 @@ public class TestAddIndexes extends LuceneTestCase {
       IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT,
           new MockAnalyzer(random));
       CodecProvider provider = new CodecProvider();
-      provider.register(new PulsingCodec(1 + random.nextInt(10)));
+      provider.register(new PulsingCodec(1 + random.nextInt(20)));
       conf.setCodecProvider(provider);
       IndexWriter w = new IndexWriter(dir, conf);
       try {
@@ -1181,7 +1182,7 @@ public class TestAddIndexes extends LuceneTestCase {
       IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT,
           new MockAnalyzer(random));
       CodecProvider provider = new CodecProvider();
-      provider.register(new PulsingCodec(1 + random.nextInt(10)));
+      provider.register(new PulsingCodec(1 + random.nextInt(20)));
       conf.setCodecProvider(provider);
       IndexWriter w = new IndexWriter(dir, conf);
       IndexReader indexReader = IndexReader.open(toAdd);

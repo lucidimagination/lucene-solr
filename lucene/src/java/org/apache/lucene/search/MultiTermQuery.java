@@ -23,9 +23,8 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.PerReaderTermState;
+import org.apache.lucene.util.TermContext;
 
 /**
  * An abstract {@link Query} that matches documents
@@ -56,7 +55,7 @@ import org.apache.lucene.util.PerReaderTermState;
  * a priority queue to only collect competitive terms
  * and not hit this limitation.
  *
- * Note that {@link QueryParser} produces
+ * Note that org.apache.lucene.queryparser.classic.QueryParser produces
  * MultiTermQueries using {@link
  * #CONSTANT_SCORE_AUTO_REWRITE_DEFAULT} by default.
  */
@@ -154,7 +153,7 @@ public abstract class MultiTermQuery extends Query {
     }
     
     @Override
-    protected void addClause(BooleanQuery topLevel, Term term, int docCount, float boost, PerReaderTermState states) {
+    protected void addClause(BooleanQuery topLevel, Term term, int docCount, float boost, TermContext states) {
       final TermQuery tq = new TermQuery(term, states);
       tq.setBoost(boost);
       topLevel.add(tq, BooleanClause.Occur.SHOULD);
@@ -195,7 +194,7 @@ public abstract class MultiTermQuery extends Query {
     }
     
     @Override
-    protected void addClause(BooleanQuery topLevel, Term term, int docFreq, float boost, PerReaderTermState states) {
+    protected void addClause(BooleanQuery topLevel, Term term, int docFreq, float boost, TermContext states) {
       final Query q = new ConstantScoreQuery(new TermQuery(term, states));
       q.setBoost(boost);
       topLevel.add(q, BooleanClause.Occur.SHOULD);
@@ -301,8 +300,13 @@ public abstract class MultiTermQuery extends Query {
     numberOfTerms += inc;
   }
 
+  /**
+   * To rewrite to a simpler form, instead return a simpler
+   * enum from {@link #getTermsEnum(Terms, AttributeSource)}.  For example,
+   * to rewrite to a single term, return a {@link SingleTermsEnum}
+   */
   @Override
-  public Query rewrite(IndexReader reader) throws IOException {
+  public final Query rewrite(IndexReader reader) throws IOException {
     return rewriteMethod.rewrite(reader, this);
   }
 

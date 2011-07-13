@@ -27,6 +27,7 @@ import org.apache.lucene.index.MultiNorms;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestSimilarityProvider extends LuceneTestCase {
@@ -105,10 +106,10 @@ public class TestSimilarityProvider extends LuceneTestCase {
     }
   }
   
-  private class Sim1 extends Similarity {
+  private class Sim1 extends TFIDFSimilarity {
     @Override
-    public float computeNorm(FieldInvertState state) {
-      return 1f;
+    public byte computeNorm(FieldInvertState state) {
+      return encodeNormValue(1f);
     }
 
     @Override
@@ -123,14 +124,19 @@ public class TestSimilarityProvider extends LuceneTestCase {
 
     @Override
     public float idf(int docFreq, int numDocs) {
+      return 1f;
+    }
+
+    @Override
+    public float scorePayload(int doc, int start, int end, BytesRef payload) {
       return 1f;
     }
   }
   
-  private class Sim2 extends Similarity {
+  private class Sim2 extends TFIDFSimilarity {
     @Override
-    public float computeNorm(FieldInvertState state) {
-      return 10f;
+    public byte computeNorm(FieldInvertState state) {
+      return encodeNormValue(10f);
     }
 
     @Override
@@ -146,6 +152,11 @@ public class TestSimilarityProvider extends LuceneTestCase {
     @Override
     public float idf(int docFreq, int numDocs) {
       return 10f;
+    }
+
+    @Override
+    public float scorePayload(int doc, int start, int end, BytesRef payload) {
+      return 1f;
     }
   }
 }

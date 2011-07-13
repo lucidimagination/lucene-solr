@@ -19,7 +19,7 @@ package org.apache.lucene.index;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
-import org.apache.lucene.index.IndexReader.ReaderContext;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -87,13 +87,13 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public DocsEnum docs(Bits skipDocs, BytesRef text, DocsEnum reuse) throws IOException {
-      return in.docs(skipDocs, text, reuse);
+    public DocsEnum docs(Bits liveDocs, BytesRef text, DocsEnum reuse) throws IOException {
+      return in.docs(liveDocs, text, reuse);
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits skipDocs, BytesRef text, DocsAndPositionsEnum reuse) throws IOException {
-      return in.docsAndPositions(skipDocs, text, reuse);
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, BytesRef text, DocsAndPositionsEnum reuse) throws IOException {
+      return in.docsAndPositions(liveDocs, text, reuse);
     }
 
     @Override
@@ -104,6 +104,11 @@ public class FilterIndexReader extends IndexReader {
     @Override
     public long getSumTotalTermFreq() throws IOException {
       return in.getSumTotalTermFreq();
+    }
+
+    @Override
+    public long getSumDocFreq() throws IOException {
+      return in.getSumDocFreq();
     }
   }
 
@@ -132,13 +137,18 @@ public class FilterIndexReader extends IndexReader {
     public FilterTermsEnum(TermsEnum in) { this.in = in; }
 
     @Override
-    public SeekStatus seek(BytesRef text, boolean useCache) throws IOException {
-      return in.seek(text, useCache);
+    public boolean seekExact(BytesRef text, boolean useCache) throws IOException {
+      return in.seekExact(text, useCache);
     }
 
     @Override
-    public SeekStatus seek(long ord) throws IOException {
-      return in.seek(ord);
+    public SeekStatus seekCeil(BytesRef text, boolean useCache) throws IOException {
+      return in.seekCeil(text, useCache);
+    }
+
+    @Override
+    public void seekExact(long ord) throws IOException {
+      in.seekExact(ord);
     }
 
     @Override
@@ -167,13 +177,13 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public DocsEnum docs(Bits skipDocs, DocsEnum reuse) throws IOException {
-      return in.docs(skipDocs, reuse);
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse) throws IOException {
+      return in.docs(liveDocs, reuse);
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits skipDocs, DocsAndPositionsEnum reuse) throws IOException {
-      return in.docsAndPositions(skipDocs, reuse);
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse) throws IOException {
+      return in.docsAndPositions(liveDocs, reuse);
     }
 
     @Override
@@ -182,8 +192,8 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public void seek(BytesRef term, TermState state) throws IOException {
-      in.seek(term, state);
+    public void seekExact(BytesRef term, TermState state) throws IOException {
+      in.seekExact(term, state);
     }
 
     @Override
@@ -296,8 +306,8 @@ public class FilterIndexReader extends IndexReader {
   }
   
   @Override
-  public Bits getDeletedDocs() {
-    return in.getDeletedDocs();
+  public Bits getLiveDocs() {
+    return in.getLiveDocs();
   }
   
   @Override
@@ -462,5 +472,10 @@ public class FilterIndexReader extends IndexReader {
   public void removeReaderFinishedListener(ReaderFinishedListener listener) {
     super.removeReaderFinishedListener(listener);
     in.removeReaderFinishedListener(listener);
+  }
+
+  @Override
+  public PerDocValues perDocValues() throws IOException {
+    return in.perDocValues();
   }
 }

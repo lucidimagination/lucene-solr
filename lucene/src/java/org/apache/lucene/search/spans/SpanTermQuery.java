@@ -83,16 +83,16 @@ public class SpanTermQuery extends SpanQuery {
   @Override
   public Spans getSpans(final AtomicReaderContext context) throws IOException {
     final IndexReader reader = context.reader;
-    final DocsAndPositionsEnum postings = reader.termPositionsEnum(reader.getDeletedDocs(),
+    final DocsAndPositionsEnum postings = reader.termPositionsEnum(reader.getLiveDocs(),
                                                                    term.field(),
                                                                    term.bytes());
 
     if (postings != null) {
       return new TermSpans(postings, term);
     } else {
-      if (reader.termDocsEnum(reader.getDeletedDocs(), term.field(), term.bytes()) != null) {
+      if (reader.termDocsEnum(reader.getLiveDocs(), term.field(), term.bytes()) != null) {
         // term does exist, but has no positions
-        throw new IllegalStateException("field \"" + term.field() + "\" was indexed with Field.omitTermFreqAndPositions=true; cannot run SpanTermQuery (term=" + term.text() + ")");
+        throw new IllegalStateException("field \"" + term.field() + "\" was indexed without position data; cannot run SpanTermQuery (term=" + term.text() + ")");
       } else {
         // term does not exist
         return TermSpans.EMPTY_TERM_SPANS;

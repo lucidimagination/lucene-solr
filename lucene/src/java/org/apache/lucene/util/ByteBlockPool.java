@@ -16,8 +16,13 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.lucene.store.DataOutput;
+
 import static org.apache.lucene.util.RamUsageEstimator.NUM_BYTES_OBJECT_REF;
 
 /** 
@@ -78,6 +83,33 @@ public final class ByteBlockPool {
     }
     
   }
+  
+  public static class DirectTrackingAllocator extends Allocator {
+    private final AtomicLong bytesUsed;
+    
+    public DirectTrackingAllocator(AtomicLong bytesUsed) {
+      this(BYTE_BLOCK_SIZE, bytesUsed);
+    }
+
+    public DirectTrackingAllocator(int blockSize, AtomicLong bytesUsed) {
+      super(blockSize);
+      this.bytesUsed = bytesUsed;
+    }
+
+    public byte[] getByteBlock() {
+      bytesUsed.addAndGet(blockSize);
+      return new byte[blockSize];
+    }
+    @Override
+    public void recycleByteBlocks(byte[][] blocks, int start, int end) {
+      bytesUsed.addAndGet(-((end-start)* blockSize));
+      for (int i = start; i < end; i++) {
+        blocks[i] = null;
+      }
+    }
+    
+  };
+
 
   public byte[][] buffers = new byte[10][];
 
@@ -91,6 +123,20 @@ public final class ByteBlockPool {
 
   public ByteBlockPool(Allocator allocator) {
     this.allocator = allocator;
+  }
+  
+  public void dropBuffersAndReset() {
+    if (bufferUpto != -1) {
+      // Recycle all but the first buffer
+      allocator.recycleByteBlocks(buffers, 0, 1+bufferUpto);
+
+      // Re-use the first buffer
+      bufferUpto = -1;
+      byteUpto = BYTE_BLOCK_SIZE;
+      byteOffset = -BYTE_BLOCK_SIZE;
+      buffers = new byte[10][];
+      buffer = null;
+    }
   }
 
   public void reset() {
@@ -115,7 +161,7 @@ public final class ByteBlockPool {
       buffer = buffers[0];
     }
   }
-
+  
   public void nextBuffer() {
     if (1+bufferUpto == buffers.length) {
       byte[][] newBuffers = new byte[ArrayUtil.oversize(buffers.length+1,
@@ -197,6 +243,43 @@ public final class ByteBlockPool {
     }
     assert term.length >= 0;
     return term;
+  }
+  
+  /**
+   * Copies the given {@link BytesRef} at the current positions (
+   * {@link #byteUpto} across buffer boundaries
+   */
+  public final void copy(final BytesRef bytes) {
+    int length = bytes.length;
+    int offset = bytes.offset;
+    int overflow = (length + byteUpto) - BYTE_BLOCK_SIZE;
+    do {
+      if (overflow <= 0) { 
+        System.arraycopy(bytes.bytes, offset, buffer, byteUpto, length);
+        byteUpto += length;
+        break;
+      } else {
+        final int bytesToCopy = length-overflow;
+        System.arraycopy(bytes.bytes, offset, buffer, byteUpto, bytesToCopy);
+        offset += bytesToCopy;
+        length -= bytesToCopy;
+        nextBuffer();
+        overflow = overflow - BYTE_BLOCK_SIZE;
+      }
+    }  while(true);
+  }
+  
+  /**
+   * Writes the pools content to the given {@link DataOutput}
+   */
+  public final void writePool(final DataOutput out) throws IOException {
+    int bytesOffset = byteOffset;
+    int block = 0;
+    while (bytesOffset > 0) {
+      out.writeBytes(buffers[block++], BYTE_BLOCK_SIZE);
+      bytesOffset -= BYTE_BLOCK_SIZE;
+    }
+    out.writeBytes(buffers[block], byteUpto);
   }
 }
 

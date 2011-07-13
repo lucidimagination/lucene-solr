@@ -22,6 +22,7 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericField;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -38,7 +39,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Date;
 
-/** Index all text files under a directory. See http://lucene.apache.org/java/4_0/demo.html. */
+/** Index all text files under a directory.
+ * <p>
+ * This is a command-line application demonstrating simple Lucene indexing.
+ * Run it with no command-line arguments for usage information.
+ */
 public class IndexFiles {
   
   private IndexFiles() {}
@@ -47,8 +52,8 @@ public class IndexFiles {
   public static void main(String[] args) {
     String usage = "java org.apache.lucene.demo.IndexFiles"
                  + " [-index INDEX_PATH] [-docs DOCS_PATH] [-update]\n\n"
-                   // TODO: Change the link with every release (or: fill in some less error-prone alternative here...)
-                 + "See http://lucene.apache.org/java/4_0/demo.html for details.";
+                 + "This indexes the documents in DOCS_PATH, creating a Lucene index"
+                 + "in INDEX_PATH that can be searched with SearchFiles";
     String indexPath = "index";
     String docsPath = null;
     boolean create = true;
@@ -169,7 +174,7 @@ public class IndexFiles {
           // the field into separate words and don't index term frequency
           // or positional information:
           Field pathField = new Field("path", file.getPath(), Field.Store.YES, Field.Index.NOT_ANALYZED_NO_NORMS);
-          pathField.setOmitTermFreqAndPositions(true);
+          pathField.setIndexOptions(IndexOptions.DOCS_ONLY);
           doc.add(pathField);
 
           // Add the last modified date of the file a field named "modified".

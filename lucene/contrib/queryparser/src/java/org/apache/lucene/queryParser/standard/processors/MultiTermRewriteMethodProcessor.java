@@ -19,10 +19,10 @@ package org.apache.lucene.queryParser.standard.processors;
 
 import java.util.List;
 
-import org.apache.lucene.queryParser.core.nodes.ParametricRangeQueryNode;
 import org.apache.lucene.queryParser.core.nodes.QueryNode;
 import org.apache.lucene.queryParser.core.processors.QueryNodeProcessorImpl;
-import org.apache.lucene.queryParser.standard.config.MultiTermRewriteMethodAttribute;
+import org.apache.lucene.queryParser.standard.config.StandardQueryConfigHandler.ConfigurationKeys;
+import org.apache.lucene.queryParser.standard.nodes.AbstractRangeQueryNode;
 import org.apache.lucene.queryParser.standard.nodes.RegexpQueryNode;
 import org.apache.lucene.queryParser.standard.nodes.WildcardQueryNode;
 import org.apache.lucene.search.MultiTermQuery;
@@ -35,28 +35,27 @@ import org.apache.lucene.search.MultiTermQuery;
  */
 public class MultiTermRewriteMethodProcessor extends QueryNodeProcessorImpl {
 
+  public static final String TAG_ID = "MultiTermRewriteMethodConfiguration";
+
   @Override
   protected QueryNode postProcessNode(QueryNode node) {
 
     // set setMultiTermRewriteMethod for WildcardQueryNode and
     // PrefixWildcardQueryNode
     if (node instanceof WildcardQueryNode
-        || node instanceof ParametricRangeQueryNode || node instanceof RegexpQueryNode) {
+        || node instanceof AbstractRangeQueryNode || node instanceof RegexpQueryNode) {
+      
+      MultiTermQuery.RewriteMethod rewriteMethod = getQueryConfigHandler().get(ConfigurationKeys.MULTI_TERM_REWRITE_METHOD);
 
-      if (!getQueryConfigHandler().hasAttribute(
-          MultiTermRewriteMethodAttribute.class)) {
-        // This should not happen, this attribute is created in the
+      if (rewriteMethod == null) {
+        // This should not happen, this configuration is set in the
         // StandardQueryConfigHandler
         throw new IllegalArgumentException(
-            "MultiTermRewriteMethodAttribute should be set on the QueryConfigHandler");
+            "StandardQueryConfigHandler.ConfigurationKeys.MULTI_TERM_REWRITE_METHOD should be set on the QueryConfigHandler");
       }
 
-      // read the attribute value and use a TAG to take the value to the Builder
-      MultiTermQuery.RewriteMethod rewriteMethod = getQueryConfigHandler()
-          .getAttribute(MultiTermRewriteMethodAttribute.class)
-          .getMultiTermRewriteMethod();
-
-      node.setTag(MultiTermRewriteMethodAttribute.TAG_ID, rewriteMethod);
+      // use a TAG to take the value to the Builder
+      node.setTag(MultiTermRewriteMethodProcessor.TAG_ID, rewriteMethod);
 
     }
 

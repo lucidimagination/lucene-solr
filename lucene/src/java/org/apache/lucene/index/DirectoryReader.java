@@ -32,9 +32,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.MapBackedSet;
@@ -120,7 +122,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
     for (int i = sis.size()-1; i >= 0; i--) {
       boolean success = false;
       try {
-        readers[i] = SegmentReader.get(readOnly, sis.info(i), termInfosIndexDivisor);
+        readers[i] = SegmentReader.get(readOnly, sis.info(i), termInfosIndexDivisor, IOContext.READ);
         readers[i].readerFinishedListeners = readerFinishedListeners;
         success = true;
       } finally {
@@ -169,7 +171,8 @@ class DirectoryReader extends IndexReader implements Cloneable {
       try {
         final SegmentInfo info = infos.info(i);
         assert info.dir == dir;
-        final SegmentReader reader = writer.readerPool.getReadOnlyClone(info, true, termInfosIndexDivisor);
+        final SegmentReader reader = writer.readerPool.getReadOnlyClone(info, true, termInfosIndexDivisor,
+                                                                        IOContext.READ);
         if (reader.numDocs() > 0 || writer.getKeepFullyDeletedSegments()) {
           reader.readerFinishedListeners = readerFinishedListeners;
           readers.add(reader);
@@ -253,7 +256,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
           assert !doClone;
 
           // this is a new reader; in case we hit an exception we can close it safely
-          newReader = SegmentReader.get(readOnly, infos.info(i), termInfosIndexDivisor);
+          newReader = SegmentReader.get(readOnly, infos.info(i), termInfosIndexDivisor, IOContext.READ);
           newReader.readerFinishedListeners = readerFinishedListeners;
         } else {
           newReader = newReaders[i].reopenSegment(infos.info(i), doClone, readOnly);
@@ -349,8 +352,8 @@ class DirectoryReader extends IndexReader implements Cloneable {
   }
 
   @Override
-  public Bits getDeletedDocs() {
-    throw new UnsupportedOperationException("please use MultiFields.getDeletedDocs, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level Bits deletedDocs");
+  public Bits getLiveDocs() {
+    throw new UnsupportedOperationException("please use MultiFields.getLiveDocs, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level Bits liveDocs");
   }
 
   @Override
@@ -951,8 +954,8 @@ class DirectoryReader extends IndexReader implements Cloneable {
     Collections.sort(commits);
 
     return commits;
-  }
-
+  }  
+  
   private static final class ReaderCommit extends IndexCommit {
     private String segmentsFileName;
     Collection<String> files;
@@ -1021,5 +1024,10 @@ class DirectoryReader extends IndexReader implements Cloneable {
     public void delete() {
       throw new UnsupportedOperationException("This IndexCommit does not support deletions");
     }
+  }
+
+  @Override
+  public PerDocValues perDocValues() throws IOException {
+    throw new UnsupportedOperationException("please use MultiPerDocValues#getPerDocs, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level Fields");
   }
 }

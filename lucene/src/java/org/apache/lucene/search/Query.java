@@ -39,10 +39,6 @@ import org.apache.lucene.index.Term;
     <li> {@link NumericRangeQuery}
     <li> {@link org.apache.lucene.search.spans.SpanQuery}
     </ul>
-    <p>A parser for queries is contained in:
-    <ul>
-    <li>{@link org.apache.lucene.queryParser.QueryParser QueryParser}
-    </ul>
 */
 public abstract class Query implements Cloneable {
   private float boost = 1.0f;                     // query boost factor
@@ -61,17 +57,6 @@ public abstract class Query implements Cloneable {
 
   /** Prints a query to a string, with <code>field</code> assumed to be the 
    * default field and omitted.
-   * <p>The representation used is one that is supposed to be readable
-   * by {@link org.apache.lucene.queryParser.QueryParser QueryParser}. However,
-   * there are the following limitations:
-   * <ul>
-   *  <li>If the query was created by the parser, the printed
-   *  representation may not be exactly what was parsed. For example,
-   *  characters that need to be escaped will be represented without
-   *  the required backslash.</li>
-   * <li>Some of the more complicated queries (e.g. span queries)
-   *  don't have a representation that can be parsed by QueryParser.</li>
-   * </ul>
    */
   public abstract String toString(String field);
 
@@ -88,23 +73,8 @@ public abstract class Query implements Cloneable {
    * Only implemented by primitive queries, which re-write to themselves.
    */
   public Weight createWeight(IndexSearcher searcher) throws IOException {
-    throw new UnsupportedOperationException();
+    throw new UnsupportedOperationException("Query " + this + " does not implement createWeight");
   }
-
-  /**
-   * Expert: Constructs and initializes a Weight for a top-level query.
-   */
-  public Weight weight(IndexSearcher searcher) throws IOException {
-    Query query = searcher.rewrite(this);
-    Weight weight = query.createWeight(searcher);
-    float sum = weight.sumOfSquaredWeights();
-    float norm = searcher.getSimilarityProvider().queryNorm(sum);
-    if (Float.isInfinite(norm) || Float.isNaN(norm))
-      norm = 1.0f;
-    weight.normalize(norm);
-    return weight;
-  }
-  
 
   /** Expert: called to re-write queries into primitive queries. For example,
    * a PrefixQuery will be rewritten into a BooleanQuery that consists

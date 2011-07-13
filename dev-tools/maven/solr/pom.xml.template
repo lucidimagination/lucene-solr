@@ -32,14 +32,14 @@
   <name>Apache Solr parent POM</name>
   <description>Apache Solr parent POM</description>
   <modules>
-    <module>src</module>
-    <module>src/solrj</module>
-    <module>src/webapp</module>
-    <module>src/test-framework</module>
+    <module>core</module>
+    <module>solrj</module>
+    <module>webapp</module>
+    <module>test-framework</module>
     <module>contrib</module>
   </modules>
   <properties>
-    <java.compat.version>1.6</java.compat.version>
+    <tests.luceneMatchVersion>LUCENE_CURRENT</tests.luceneMatchVersion>
   </properties>
   <issueManagement>
     <system>JIRA</system>

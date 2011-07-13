@@ -20,13 +20,18 @@ package org.apache.lucene.index.codecs.simpletext;
 import java.io.IOException;
 import java.util.Set;
 
+import org.apache.lucene.index.PerDocWriteState;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.DefaultDocValuesProducer;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.FieldsProducer;
+import org.apache.lucene.index.codecs.PerDocConsumer;
+import org.apache.lucene.index.codecs.DefaultDocValuesConsumer;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.store.Directory;
 
 /** For debugging, curiosity, transparency only!!  Do not
@@ -38,10 +43,11 @@ import org.apache.lucene.store.Directory;
  *
  *  @lucene.experimental */
 public class SimpleTextCodec extends Codec {
-
+  
   public SimpleTextCodec() {
-    name = "SimpleText";
+    super("SimpleText");
   }
+
 
   @Override
   public FieldsConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
@@ -56,17 +62,30 @@ public class SimpleTextCodec extends Codec {
   /** Extension of freq postings file */
   static final String POSTINGS_EXTENSION = "pst";
 
-  static String getPostingsFileName(String segment, String id) {
+  static String getPostingsFileName(String segment, int id) {
     return IndexFileNames.segmentFileName(segment, id, POSTINGS_EXTENSION);
   }
 
   @Override
-  public void files(Directory dir, SegmentInfo segmentInfo, String id, Set<String> files) throws IOException {
+  public void files(Directory dir, SegmentInfo segmentInfo, int id, Set<String> files) throws IOException {
     files.add(getPostingsFileName(segmentInfo.name, id));
+    DefaultDocValuesConsumer.files(dir, segmentInfo, id, files, getDocValuesUseCFS());
   }
 
   @Override
   public void getExtensions(Set<String> extensions) {
     extensions.add(POSTINGS_EXTENSION);
+    DefaultDocValuesConsumer.getDocValuesExtensions(extensions, getDocValuesUseCFS());
+  }
+  
+  // TODO: would be great if these used a plain text impl
+  @Override
+  public PerDocConsumer docsConsumer(PerDocWriteState state) throws IOException {
+    return new DefaultDocValuesConsumer(state, getDocValuesSortComparator(), getDocValuesUseCFS());
+  }
+
+  @Override
+  public PerDocValues docsProducer(SegmentReadState state) throws IOException {
+    return new DefaultDocValuesProducer(state.segmentInfo, state.dir, state.fieldInfos, state.codecId, getDocValuesUseCFS(), getDocValuesSortComparator(), state.context);
   }
 }

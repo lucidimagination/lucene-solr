@@ -31,6 +31,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
@@ -56,8 +57,8 @@ public class TestLazyProxSkipping extends LuceneTestCase {
       }
 
       @Override
-      public IndexInput openInput(String name) throws IOException {
-        IndexInput ii = super.openInput(name);
+      public IndexInput openInput(String name, IOContext context) throws IOException {
+        IndexInput ii = super.openInput(name, context);
         if (name.endsWith(".prx") || name.endsWith(".pos") ) {
           // we decorate the proxStream with a wrapper class that allows to count the number of calls of seek()
           ii = new SeeksCountingStream(ii);
@@ -133,6 +134,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
  
     public void testLazySkipping() throws IOException {
         assumeFalse("This test cannot run with SimpleText codec", CodecProvider.getDefault().getFieldCodec(this.field).equals("SimpleText"));
+        assumeFalse("This test cannot run with Memory codec", CodecProvider.getDefault().getFieldCodec(this.field).equals("Memory"));
         // test whether only the minimum amount of seeks()
         // are performed
         performTest(5);
@@ -154,7 +156,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         IndexReader reader = IndexReader.open(directory, true);
 
         DocsAndPositionsEnum tp = MultiFields.getTermPositionsEnum(reader,
-                                                                   MultiFields.getDeletedDocs(reader),
+                                                                   MultiFields.getLiveDocs(reader),
                                                                    this.field,
                                                                    new BytesRef("b"));
 
@@ -165,7 +167,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         }
 
         tp = MultiFields.getTermPositionsEnum(reader,
-                                              MultiFields.getDeletedDocs(reader),
+                                              MultiFields.getLiveDocs(reader),
                                               this.field,
                                               new BytesRef("a"));
 

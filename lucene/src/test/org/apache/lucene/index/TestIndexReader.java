@@ -310,7 +310,7 @@ public class TestIndexReader extends LuceneTestCase
                                      int expected)
     throws IOException {
         DocsEnum tdocs = MultiFields.getTermDocsEnum(reader,
-                                                     MultiFields.getDeletedDocs(reader),
+                                                     MultiFields.getLiveDocs(reader),
                                                      term.field(),
                                                      new BytesRef(term.text()));
         int count = 0;
@@ -421,7 +421,7 @@ public class TestIndexReader extends LuceneTestCase
           // expected
         }
 
-        Similarity sim = new DefaultSimilarity();
+        DefaultSimilarity sim = new DefaultSimilarity();
         try {
           reader.setNorm(5, "aaa", sim.encodeNormValue(2.0f));
           fail("setNorm after close failed to throw IOException");
@@ -462,7 +462,7 @@ public class TestIndexReader extends LuceneTestCase
           // expected
         }
 
-        Similarity sim = new DefaultSimilarity();
+        DefaultSimilarity sim = new DefaultSimilarity();
         try {
           reader.setNorm(5, "aaa", sim.encodeNormValue(2.0f));
           fail("setNorm should have hit LockObtainFailedException");
@@ -494,7 +494,7 @@ public class TestIndexReader extends LuceneTestCase
 
         //  now open reader & set norm for doc 0
         IndexReader reader = IndexReader.open(dir, false);
-        Similarity sim = new DefaultSimilarity();
+        DefaultSimilarity sim = new DefaultSimilarity();
         reader.setNorm(0, "content", sim.encodeNormValue(2.0f));
 
         // we should be holding the write lock now:
@@ -539,7 +539,7 @@ public class TestIndexReader extends LuceneTestCase
         addDoc(writer, searchTerm.text());
         writer.close();
 
-        Similarity sim = new DefaultSimilarity();
+        DefaultSimilarity sim = new DefaultSimilarity();
         //  now open reader & set norm for doc 0 (writes to
         //  _0_1.s0)
         reader = IndexReader.open(dir, false);
@@ -738,7 +738,7 @@ public class TestIndexReader extends LuceneTestCase
       }
 
       reader = IndexReader.open(dir, false);
-      Similarity sim = new DefaultSimilarity();
+      DefaultSimilarity sim = new DefaultSimilarity();
       try {
         reader.setNorm(1, "content", sim.encodeNormValue(2.0f));
         fail("did not hit exception when calling setNorm on an invalid doc number");
@@ -849,17 +849,17 @@ public class TestIndexReader extends LuceneTestCase
       }
       
       // check deletions
-      final Bits delDocs1 = MultiFields.getDeletedDocs(index1);
-      final Bits delDocs2 = MultiFields.getDeletedDocs(index2);
+      final Bits liveDocs1 = MultiFields.getLiveDocs(index1);
+      final Bits liveDocs2 = MultiFields.getLiveDocs(index2);
       for (int i = 0; i < index1.maxDoc(); i++) {
         assertEquals("Doc " + i + " only deleted in one index.",
-                     delDocs1 == null || delDocs1.get(i),
-                     delDocs2 == null || delDocs2.get(i));
+                     liveDocs1 == null || !liveDocs1.get(i),
+                     liveDocs2 == null || !liveDocs2.get(i));
       }
       
       // check stored fields
       for (int i = 0; i < index1.maxDoc(); i++) {
-        if (delDocs1 == null || !delDocs1.get(i)) {
+        if (liveDocs1 == null || liveDocs1.get(i)) {
           Document doc1 = index1.document(i);
           Document doc2 = index2.document(i);
           List<Fieldable> fieldable1 = doc1.getFields();
@@ -880,15 +880,15 @@ public class TestIndexReader extends LuceneTestCase
       FieldsEnum fenum1 = MultiFields.getFields(index1).iterator();
       FieldsEnum fenum2 = MultiFields.getFields(index1).iterator();
       String field1 = null;
-      Bits delDocs = MultiFields.getDeletedDocs(index1);
+      Bits liveDocs = MultiFields.getLiveDocs(index1);
       while((field1=fenum1.next()) != null) {
         assertEquals("Different fields", field1, fenum2.next());
         TermsEnum enum1 = fenum1.terms();
         TermsEnum enum2 = fenum2.terms();
         while(enum1.next() != null) {
           assertEquals("Different terms", enum1.term(), enum2.next());
-          DocsAndPositionsEnum tp1 = enum1.docsAndPositions(delDocs, null);
-          DocsAndPositionsEnum tp2 = enum2.docsAndPositions(delDocs, null);
+          DocsAndPositionsEnum tp1 = enum1.docsAndPositions(liveDocs, null);
+          DocsAndPositionsEnum tp2 = enum2.docsAndPositions(liveDocs, null);
 
           while(tp1.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             assertTrue(tp2.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);

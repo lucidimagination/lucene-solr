@@ -84,7 +84,7 @@ public class TestIndexReaderOnDiskFull extends LuceneTestCase {
 
     // Iterate w/ ever increasing free disk space:
     while(!done) {
-      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory(startDir));
+      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory(startDir, newIOContext(random)));
 
       // If IndexReader hits disk full, it can write to
       // the same files again.
@@ -131,7 +131,7 @@ public class TestIndexReaderOnDiskFull extends LuceneTestCase {
 
         dir.setMaxSizeInBytes(thisDiskFree);
         dir.setRandomIOExceptionRate(rate);
-        Similarity sim = new DefaultSimilarity();
+        DefaultSimilarity sim = new DefaultSimilarity();
         try {
           if (0 == x) {
             int docId = 12;

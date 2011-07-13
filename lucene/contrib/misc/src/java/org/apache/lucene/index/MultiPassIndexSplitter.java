@@ -21,12 +21,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.index.IndexWriter; // javadoc
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.Version;
 
@@ -58,7 +57,7 @@ public class MultiPassIndexSplitter {
    * assigned in a deterministic round-robin fashion to one of the output splits.
    * @throws IOException
    */
-  public void split(IndexReader input, Directory[] outputs, boolean seq) throws IOException {
+  public void split(Version version, IndexReader input, Directory[] outputs, boolean seq) throws IOException {
     if (outputs == null || outputs.length < 2) {
       throw new IOException("Invalid number of outputs.");
     }
@@ -97,8 +96,8 @@ public class MultiPassIndexSplitter {
         }
       }
       IndexWriter w = new IndexWriter(outputs[i], new IndexWriterConfig(
-          Version.LUCENE_CURRENT,
-          new WhitespaceAnalyzer(Version.LUCENE_CURRENT))
+          version,
+          null)
           .setOpenMode(OpenMode.CREATE));
       System.err.println("Writing part " + (i + 1) + " ...");
       w.addIndexes(input);
@@ -107,6 +106,7 @@ public class MultiPassIndexSplitter {
     System.err.println("Done.");
   }
   
+  @SuppressWarnings("deprecation")
   public static void main(String[] args) throws Exception {
     if (args.length < 5) {
       System.err.println("Usage: MultiPassIndexSplitter -out <outputDir> -num <numParts> [-seq] <inputIndex1> [<inputIndex2 ...]");
@@ -170,7 +170,7 @@ public class MultiPassIndexSplitter {
     } else {
       input = new MultiReader(indexes.toArray(new IndexReader[indexes.size()]));
     }
-    splitter.split(input, dirs, seq);
+    splitter.split(Version.LUCENE_CURRENT, input, dirs, seq);
   }
   
   /**
@@ -178,27 +178,17 @@ public class MultiPassIndexSplitter {
    * Instead, deletions are buffered in a bitset and overlaid with the original
    * list of deletions.
    */
-  public static class FakeDeleteIndexReader extends FilterIndexReader {
-    OpenBitSet dels;
-    OpenBitSet oldDels = null;
+  public static final class FakeDeleteIndexReader extends FilterIndexReader {
+    FixedBitSet liveDocs;
 
     public FakeDeleteIndexReader(IndexReader in) {
       super(new SlowMultiReaderWrapper(in));
-      dels = new OpenBitSet(in.maxDoc());
-      if (in.hasDeletions()) {
-        oldDels = new OpenBitSet(in.maxDoc());
-        final Bits oldDelBits = MultiFields.getDeletedDocs(in);
-        assert oldDelBits != null;
-        for (int i = 0; i < in.maxDoc(); i++) {
-          if (oldDelBits.get(i)) oldDels.set(i);
-        }
-        dels.or(oldDels);
-      }
+      doUndeleteAll(); // initialize main bitset
     }
 
     @Override
     public int numDocs() {
-      return in.maxDoc() - (int)dels.cardinality();
+      return (int) liveDocs.cardinality();
     }
 
     /**
@@ -206,26 +196,35 @@ public class MultiPassIndexSplitter {
      * deletions.
      */
     @Override
-    protected void doUndeleteAll() throws CorruptIndexException, IOException {
-      dels = new OpenBitSet(in.maxDoc());
-      if (oldDels != null) {
-        dels.or(oldDels);
+    protected void doUndeleteAll()  {
+      final int maxDoc = in.maxDoc();
+      liveDocs = new FixedBitSet(in.maxDoc());
+      if (in.hasDeletions()) {
+        final Bits oldLiveDocs = in.getLiveDocs();
+        assert oldLiveDocs != null;
+        // this loop is a little bit ineffective, as Bits has no nextSetBit():
+        for (int i = 0; i < maxDoc; i++) {
+          if (oldLiveDocs.get(i)) liveDocs.set(i);
+        }
+      } else {
+        // mark all docs as valid
+        liveDocs.set(0, maxDoc);
       }
     }
 
     @Override
-    protected void doDelete(int n) throws CorruptIndexException, IOException {
-      dels.set(n);
+    protected void doDelete(int n) {
+      liveDocs.clear(n);
     }
 
     @Override
     public boolean hasDeletions() {
-      return !dels.isEmpty();
+      return (in.maxDoc() != this.numDocs());
     }
 
     @Override
-    public Bits getDeletedDocs() {
-      return dels;
+    public Bits getLiveDocs() {
+      return liveDocs;
     }
   }
 }

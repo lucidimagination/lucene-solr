@@ -4,7 +4,7 @@ For more information on past and future Lucene versions, please see:
 http://s.apache.org/luceneversions
 
 ======================= Trunk (not yet released) =======================
-  
+
 Build
 
  * LUCENE-2845: Moved contrib/benchmark to modules.
@@ -47,6 +47,9 @@ API Changes
    Instead, use SimilarityProvider to return different SweetSpotSimilaritys
    for different fields, this way all parameters (such as TF factors) can be 
    customized on a per-field basis.  (Robert Muir)
+
+ * LUCENE-3308: DuplicateFilter keepMode and processingMode have been converted to
+   enums DuplicateFilter.KeepMode and DuplicateFilter.ProcessingMode repsectively.
    
 Bug Fixes
 
@@ -54,6 +57,44 @@ Bug Fixes
    not lowercasing the key before checking for the tag (Adriano Crestani)
 
 ======================= Lucene 3.x (not yet released) ================
+
+New Features
+
+ * LUCENE-3234: provide a limit on phrase analysis in FastVectorHighlighter for
+   highlighting speed up. Use FastVectorHighlighter.setPhraseLimit() to set limit
+   (e.g. 5000). (Mike Sokolov via Koji Sekiguchi)
+
+ * LUCENE-3079: a new facet module which provides faceted indexing & search
+   capabilities. It allows managing a taxonomy of categories, and index them
+   with documents. It also provides search API for aggregating (e.g. count)
+   the weights of the categories that are relevant to the search results. 
+   (Shai Erera)
+   
+ * LUCENE-3171: Added BlockJoinQuery and BlockJoinCollector, under the
+   new contrib/join module, to enable searches that require joining
+   between parent and child documents.  Joined (children + parent)
+   documents must be indexed as a document block, using
+   IndexWriter.add/UpdateDocuments (Mark Harwood, Mike McCandless)
+
+ * LUCENE-3233: Added SynonymFilter for applying multi-word synonyms
+   during indexing or querying (with parsers for wordnet and solr formats).
+   Removed contrib/wordnet.  (Robert Muir, Mike McCandless)
+
+API Changes
+ * LUCENE-3296: PKIndexSplitter & MultiPassIndexSplitter now have version
+   constructors. PKIndexSplitter accepts a IndexWriterConfig for each of 
+   the target indexes. (Simon Willnauer, Jason Rutherglen)
+
+Optimizations
+
+ * LUCENE-3306: Disabled indexing of positions for spellchecker n-gram
+   fields: they are not needed because the spellchecker does not
+   use positional queries.  (Robert Muir)
+      
+Bug Fixes
+
+
+======================= Lucene 3.3.0 =======================
 
 New Features
 
@@ -70,6 +111,19 @@ New Features
    document sharing the same group was indexed as a doc block
    (IndexWriter.add/updateDocuments).  (Mike McCandless)
 
+ * LUCENE-2955: Added NRTManager and NRTManagerReopenThread, to
+   simplify handling NRT reopen with multiple search threads, and to
+   allow an app to control which indexing changes must be visible to
+   which search requests.  (Mike McCandless)
+
+ * LUCENE-3191: Added SearchGroup.merge and TopGroups.merge, to
+   facilitate doing grouping in a distributed environment (Uwe
+   Schindler, Mike McCandless)
+
+ * LUCENE-2919: Added PKIndexSplitter, that splits an index according
+   to a middle term in a specified field.  (Jason Rutherglen via Mike
+   McCandless, Uwe Schindler)
+
 API Changes
 
  * LUCENE-3141: add getter method to access fragInfos in FieldFragList.
@@ -81,9 +135,13 @@ API Changes
 
 Bug Fixes
 
-  * LUCENE-3185: Fix bug in NRTCachingDirectory.deleteFile that would
-    always throw exception and sometimes fail to actually delete the
-    file.  (Mike McCandless)
+ * LUCENE-3185: Fix bug in NRTCachingDirectory.deleteFile that would
+   always throw exception and sometimes fail to actually delete the
+   file.  (Mike McCandless)
+
+ * LUCENE-3188: contrib/misc IndexSplitter creates indexes with incorrect
+   SegmentInfos.counter; added CheckIndex check & fix for this problem.
+   (Ivan Dimitrov Vasilev via Steve Rowe)
 
 Build
 

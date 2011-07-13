@@ -17,7 +17,11 @@ package org.apache.lucene.document;
  */
 
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInvertState; // for javadocs
+import org.apache.lucene.index.values.IndexDocValues;
+import org.apache.lucene.index.values.PerDocFieldValues;
+import org.apache.lucene.index.values.ValueType;
 import org.apache.lucene.search.PhraseQuery; // for javadocs
 import org.apache.lucene.search.spans.SpanQuery; // for javadocs
 
@@ -45,13 +49,13 @@ public interface Fieldable {
    * default, in the {@link
    * org.apache.lucene.search.Similarity#computeNorm(FieldInvertState)} method, the boost value is multiplied
    * by the length normalization factor
-   * and then rounded by {@link org.apache.lucene.search.Similarity#encodeNormValue(float)} before it is stored in the
+   * and then rounded by {@link org.apache.lucene.search.DefaultSimilarity#encodeNormValue(float)} before it is stored in the
    * index.  One should attempt to ensure that this product does not overflow
    * the range of that encoding.
    *
    * @see org.apache.lucene.document.Document#setBoost(float)
    * @see org.apache.lucene.search.Similarity#computeNorm(FieldInvertState)
-   * @see org.apache.lucene.search.Similarity#encodeNormValue(float)
+   * @see org.apache.lucene.search.DefaultSimilarity#encodeNormValue(float)
    */
   void setBoost(float boost);
 
@@ -68,7 +72,7 @@ public interface Fieldable {
    */
   float getBoost();
 
-  /** Returns the name of the field as an interned string.
+  /** Returns the name of the field.
    * For example "date", "title", "body", ...
    */
   String name();
@@ -191,12 +195,12 @@ public interface Fieldable {
    */
   abstract byte[] getBinaryValue(byte[] result);
   
-  /** @see #setOmitTermFreqAndPositions */
-  boolean getOmitTermFreqAndPositions();
+  /** @see #setIndexOptions */
+  IndexOptions getIndexOptions();
   
   /** Expert:
   *
-  * If set, omit term freq, positions and payloads from
+  * If set, omit term freq, and optionally positions and payloads from
   * postings for this field.
   *
   * <p><b>NOTE</b>: While this option reduces storage space
@@ -205,5 +209,30 @@ public interface Fieldable {
   * PhraseQuery} or {@link SpanQuery} subclasses will
   * fail with an exception.
   */
-  void setOmitTermFreqAndPositions(boolean omitTermFreqAndPositions);
+  void setIndexOptions(IndexOptions indexOptions);
+  
+  /**
+   * Returns the {@link PerDocFieldValues}
+   */
+  public PerDocFieldValues getDocValues();
+
+  /**
+   * Sets the {@link PerDocFieldValues} for this field. If
+   * {@link PerDocFieldValues} is set this field will store per-document values
+   * 
+   * @see IndexDocValues
+   */
+  public void setDocValues(PerDocFieldValues docValues);
+
+  /**
+   * Returns <code>true</code> iff {@link PerDocFieldValues} are set on this
+   * field.
+   */
+  public boolean hasDocValues();
+
+  /**
+   * Returns the {@link ValueType} of the set {@link PerDocFieldValues} or
+   * <code>null</code> if not set.
+   */
+  public ValueType docValuesType();
 }

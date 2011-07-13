@@ -23,6 +23,8 @@ import org.apache.lucene.search.FieldCache; // javadocs
 import org.apache.lucene.search.Similarity;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.PerDocValues;
+import org.apache.lucene.index.values.IndexDocValues;
 import org.apache.lucene.store.*;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
@@ -142,38 +144,33 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * Constants describing field properties, for example used for
    * {@link IndexReader#getFieldNames(FieldOption)}.
    */
-  public static final class FieldOption {
-    private String option;
-    private FieldOption() { }
-    private FieldOption(String option) {
-      this.option = option;
-    }
-    @Override
-    public String toString() {
-      return this.option;
-    }
+  public static enum FieldOption {
     /** All fields */
-    public static final FieldOption ALL = new FieldOption ("ALL");
+    ALL,
     /** All indexed fields */
-    public static final FieldOption INDEXED = new FieldOption ("INDEXED");
+    INDEXED,
     /** All fields that store payloads */
-    public static final FieldOption STORES_PAYLOADS = new FieldOption ("STORES_PAYLOADS");
+    STORES_PAYLOADS,
     /** All fields that omit tf */
-    public static final FieldOption OMIT_TERM_FREQ_AND_POSITIONS = new FieldOption ("OMIT_TERM_FREQ_AND_POSITIONS");
+    OMIT_TERM_FREQ_AND_POSITIONS,
+    /** All fields that omit positions */
+    OMIT_POSITIONS,
     /** All fields which are not indexed */
-    public static final FieldOption UNINDEXED = new FieldOption ("UNINDEXED");
+    UNINDEXED,
     /** All fields which are indexed with termvectors enabled */
-    public static final FieldOption INDEXED_WITH_TERMVECTOR = new FieldOption ("INDEXED_WITH_TERMVECTOR");
+    INDEXED_WITH_TERMVECTOR,
     /** All fields which are indexed but don't have termvectors enabled */
-    public static final FieldOption INDEXED_NO_TERMVECTOR = new FieldOption ("INDEXED_NO_TERMVECTOR");
+    INDEXED_NO_TERMVECTOR,
     /** All fields with termvectors enabled. Please note that only standard termvector fields are returned */
-    public static final FieldOption TERMVECTOR = new FieldOption ("TERMVECTOR");
+    TERMVECTOR,
     /** All fields with termvectors with position values enabled */
-    public static final FieldOption TERMVECTOR_WITH_POSITION = new FieldOption ("TERMVECTOR_WITH_POSITION");
+    TERMVECTOR_WITH_POSITION,
     /** All fields with termvectors with offset values enabled */
-    public static final FieldOption TERMVECTOR_WITH_OFFSET = new FieldOption ("TERMVECTOR_WITH_OFFSET");
+    TERMVECTOR_WITH_OFFSET,
     /** All fields with termvectors with offset values and position values enabled */
-    public static final FieldOption TERMVECTOR_WITH_POSITION_OFFSET = new FieldOption ("TERMVECTOR_WITH_POSITION_OFFSET");
+    TERMVECTOR_WITH_POSITION_OFFSET,
+    /** All fields holding doc values */
+    DOC_VALUES
   }
 
   private boolean closed;
@@ -957,7 +954,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * requested document is deleted, and therefore asking for a deleted document
    * may yield unspecified results. Usually this is not required, however you
    * can test if the doc is deleted by checking the {@link
-   * Bits} returned from {@link MultiFields#getDeletedDocs}.
+   * Bits} returned from {@link MultiFields#getLiveDocs}.
    * 
    * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
@@ -982,7 +979,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * requested document is deleted, and therefore asking for a deleted document
    * may yield unspecified results. Usually this is not required, however you
    * can test if the doc is deleted by checking the {@link
-   * Bits} returned from {@link MultiFields#getDeletedDocs}.
+   * Bits} returned from {@link MultiFields#getLiveDocs}.
    * 
    * @param n Get the document at the <code>n</code><sup>th</sup> position
    * @param fieldSelector The {@link FieldSelector} to use to determine what
@@ -1020,7 +1017,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
   public abstract byte[] norms(String field) throws IOException;
 
   /** Expert: Resets the normalization factor for the named field of the named
-   * document.  The norm represents the product of the field's {@link
+   * document.  By default, The norm represents the product of the field's {@link
    * org.apache.lucene.document.Fieldable#setBoost(float) boost} and its
    * length normalization}.  Thus, to preserve the length normalization
    * values when resetting this, one should base the new value upon the old.
@@ -1029,7 +1026,8 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * this method throws {@link IllegalStateException}.
    *
    * @see #norms(String)
-   * @see Similarity#decodeNormValue(byte)
+   * @see Similarity#computeNorm(FieldInvertState)
+   * @see org.apache.lucene.search.DefaultSimilarity#decodeNormValue(byte)
    * @throws StaleReaderException if the index has changed
    *  since this reader was opened
    * @throws CorruptIndexException if the index is corrupt
@@ -1051,9 +1049,10 @@ public abstract class IndexReader implements Cloneable,Closeable {
   protected abstract void doSetNorm(int doc, String field, byte value)
           throws CorruptIndexException, IOException;
 
-  /** Flex API: returns {@link Fields} for this reader.
-   *  This method may return null if the reader has no
-   *  postings.
+  /**
+   * Returns {@link Fields} for this reader.
+   * This method may return null if the reader has no
+   * postings.
    *
    * <p><b>NOTE</b>: if this is a multi reader ({@link
    * #getSequentialSubReaders} is not null) then this
@@ -1064,6 +1063,21 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * using {@link ReaderUtil#gatherSubReaders} and iterate
    * through them yourself. */
   public abstract Fields fields() throws IOException;
+  
+  /**
+   * Returns {@link PerDocValues} for this reader.
+   * This method may return null if the reader has no per-document
+   * values stored.
+   *
+   * <p><b>NOTE</b>: if this is a multi reader ({@link
+   * #getSequentialSubReaders} is not null) then this
+   * method will throw UnsupportedOperationException.  If
+   * you really need {@link PerDocValues} for such a reader,
+   * use {@link MultiPerDocValues#getPerDocs(IndexReader)}.  However, for
+   * performance reasons, it's best to get all sub-readers
+   * using {@link ReaderUtil#gatherSubReaders} and iterate
+   * through them yourself. */
+  public abstract PerDocValues perDocValues() throws IOException;
 
   public int docFreq(Term term) throws IOException {
     return docFreq(term.field(), term.bytes());
@@ -1115,7 +1129,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
   /** Returns {@link DocsEnum} for the specified field &
    *  term.  This may return null, if either the field or
    *  term does not exist. */
-  public DocsEnum termDocsEnum(Bits skipDocs, String field, BytesRef term) throws IOException {
+  public DocsEnum termDocsEnum(Bits liveDocs, String field, BytesRef term) throws IOException {
     assert field != null;
     assert term != null;
     final Fields fields = fields();
@@ -1124,7 +1138,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
     }
     final Terms terms = fields.terms(field);
     if (terms != null) {
-      return terms.docs(skipDocs, term, null);
+      return terms.docs(liveDocs, term, null);
     } else {
       return null;
     }
@@ -1134,7 +1148,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
    *  field & term.  This may return null, if either the
    *  field or term does not exist, or, positions were not
    *  stored for this term. */
-  public DocsAndPositionsEnum termPositionsEnum(Bits skipDocs, String field, BytesRef term) throws IOException {
+  public DocsAndPositionsEnum termPositionsEnum(Bits liveDocs, String field, BytesRef term) throws IOException {
     assert field != null;
     assert term != null;
     final Fields fields = fields();
@@ -1143,7 +1157,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
     }
     final Terms terms = fields.terms(field);
     if (terms != null) {
-      return terms.docsAndPositions(skipDocs, term, null);
+      return terms.docsAndPositions(liveDocs, term, null);
     } else {
       return null;
     }
@@ -1154,7 +1168,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * {@link TermState}. This may return null, if either the field or the term
    * does not exists or the {@link TermState} is invalid for the underlying
    * implementation.*/
-  public DocsEnum termDocsEnum(Bits skipDocs, String field, BytesRef term, TermState state) throws IOException {
+  public DocsEnum termDocsEnum(Bits liveDocs, String field, BytesRef term, TermState state) throws IOException {
     assert state != null;
     assert field != null;
     final Fields fields = fields();
@@ -1163,7 +1177,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
     }
     final Terms terms = fields.terms(field);
     if (terms != null) {
-      return terms.docs(skipDocs, term, state, null);
+      return terms.docs(liveDocs, term, state, null);
     } else {
       return null;
     }
@@ -1174,7 +1188,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
    * {@link TermState}. This may return null, if either the field or the term
    * does not exists, the {@link TermState} is invalid for the underlying
    * implementation, or positions were not stored for this term.*/
-  public DocsAndPositionsEnum termPositionsEnum(Bits skipDocs, String field, BytesRef term, TermState state) throws IOException {
+  public DocsAndPositionsEnum termPositionsEnum(Bits liveDocs, String field, BytesRef term, TermState state) throws IOException {
     assert state != null;
     assert field != null;
     final Fields fields = fields();
@@ -1183,7 +1197,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
     }
     final Terms terms = fields.terms(field);
     if (terms != null) {
-      return terms.docsAndPositions(skipDocs, term, state, null);
+      return terms.docsAndPositions(liveDocs, term, state, null);
     } else {
       return null;
     }
@@ -1239,7 +1253,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
   public int deleteDocuments(Term term) throws StaleReaderException, CorruptIndexException, LockObtainFailedException, IOException {
     ensureOpen();
     DocsEnum docs = MultiFields.getTermDocsEnum(this,
-                                                MultiFields.getDeletedDocs(this),
+                                                MultiFields.getLiveDocs(this),
                                                 term.field(),
                                                 term.bytes());
     if (docs == null) return 0;
@@ -1364,15 +1378,17 @@ public abstract class IndexReader implements Cloneable,Closeable {
    */
   public abstract Collection<String> getFieldNames(FieldOption fldOption);
 
-  /** Returns the {@link Bits} representing deleted docs.  A
-   *  set bit indicates the doc ID has been deleted.  This
-   *  method should return null when there are no deleted
-   *  docs.
+  /** Returns the {@link Bits} representing live (not
+   *  deleted) docs.  A set bit indicates the doc ID has not
+   *  been deleted.  If this method returns null it means
+   *  there are no deleted documents (all documents are
+   *  live).
    *
-   *  The returned instance has been safely published for use by
-   *  multiple threads without additional synchronization.
+   *  The returned instance has been safely published for
+   *  use by multiple threads without additional
+   *  synchronization.
    * @lucene.experimental */
-  public abstract Bits getDeletedDocs();
+  public abstract Bits getLiveDocs();
 
   /**
    * Expert: return the IndexCommit that this reader has
@@ -1411,14 +1427,15 @@ public abstract class IndexReader implements Cloneable,Closeable {
     }
 
     Directory dir = null;
-    CompoundFileReader cfr = null;
+    CompoundFileDirectory cfr = null;
+    IOContext context = IOContext.READ;
 
     try {
       File file = new File(filename);
       String dirname = file.getAbsoluteFile().getParent();
       filename = file.getName();
       dir = FSDirectory.open(new File(dirname));
-      cfr = new CompoundFileReader(dir, filename);
+      cfr = dir.openCompoundInput(filename, IOContext.DEFAULT);
 
       String [] files = cfr.listAll();
       ArrayUtil.mergeSort(files);   // sort the array of filename so that the output is more readable
@@ -1428,7 +1445,7 @@ public abstract class IndexReader implements Cloneable,Closeable {
 
         if (extract) {
           System.out.println("extract " + files[i] + " with " + len + " bytes to local directory...");
-          IndexInput ii = cfr.openInput(files[i]);
+          IndexInput ii = cfr.openInput(files[i], context);
 
           FileOutputStream f = new FileOutputStream(files[i]);
 
@@ -1565,7 +1582,14 @@ public abstract class IndexReader implements Cloneable,Closeable {
   public int getTermInfosIndexDivisor() {
     throw new UnsupportedOperationException("This reader does not support this method.");
   }
-
+  
+  public final IndexDocValues docValues(String field) throws IOException {
+    final PerDocValues perDoc = perDocValues();
+    if (perDoc == null) {
+      return null;
+    }
+    return perDoc.docValues(field);
+  }
 
   private volatile Fields fields;
 
@@ -1578,6 +1602,19 @@ public abstract class IndexReader implements Cloneable,Closeable {
   Fields retrieveFields() {
     return fields;
   }
+  
+  private volatile PerDocValues perDocValues;
+  
+  /** @lucene.internal */
+  void storePerDoc(PerDocValues perDocValues) {
+    this.perDocValues = perDocValues;
+  }
+
+  /** @lucene.internal */
+  PerDocValues retrievePerDoc() {
+    return perDocValues;
+  }  
+  
 
   /**
    * A struct like class that represents a hierarchical relationship between

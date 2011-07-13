@@ -31,7 +31,6 @@ import org.apache.lucene.store.Directory;
 /** Document boost unit test.
  *
  *
- * @version $Revision$
  */
 public class TestSetNorm extends LuceneTestCase {
 
@@ -51,7 +50,7 @@ public class TestSetNorm extends LuceneTestCase {
 
     // reset the boost of each instance of this document
     IndexReader reader = IndexReader.open(store, false);
-    Similarity similarity = new DefaultSimilarity();
+    DefaultSimilarity similarity = new DefaultSimilarity();
     reader.setNorm(0, "field", similarity.encodeNormValue(1.0f));
     reader.setNorm(1, "field", similarity.encodeNormValue(2.0f));
     reader.setNorm(2, "field", similarity.encodeNormValue(4.0f));

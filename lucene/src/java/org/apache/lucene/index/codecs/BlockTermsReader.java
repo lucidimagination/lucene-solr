@@ -27,6 +27,7 @@ import java.util.TreeMap;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexFileNames;
@@ -34,9 +35,9 @@ import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.codecs.standard.StandardPostingsReader; // javadocs
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
@@ -91,7 +92,7 @@ public class BlockTermsReader extends FieldsProducer {
     @Override
     public boolean equals(Object _other) {
       FieldAndTerm other = (FieldAndTerm) _other;
-      return other.field == field && term.bytesEquals(other.term);
+      return other.field.equals(field) && term.bytesEquals(other.term);
     }
 
     @Override
@@ -107,8 +108,8 @@ public class BlockTermsReader extends FieldsProducer {
   
   //private String segment;
   
-  public BlockTermsReader(TermsIndexReaderBase indexReader, Directory dir, FieldInfos fieldInfos, String segment, PostingsReaderBase postingsReader, int readBufferSize,
-                          int termsCacheSize, String codecId)
+  public BlockTermsReader(TermsIndexReaderBase indexReader, Directory dir, FieldInfos fieldInfos, String segment, PostingsReaderBase postingsReader, IOContext context,
+                          int termsCacheSize, int codecId)
     throws IOException {
     
     this.postingsReader = postingsReader;
@@ -116,7 +117,7 @@ public class BlockTermsReader extends FieldsProducer {
 
     //this.segment = segment;
     in = dir.openInput(IndexFileNames.segmentFileName(segment, codecId, BlockTermsWriter.TERMS_EXTENSION),
-                       readBufferSize);
+                       context);
 
     boolean success = false;
     try {
@@ -136,9 +137,10 @@ public class BlockTermsReader extends FieldsProducer {
         assert numTerms >= 0;
         final long termsStartPointer = in.readVLong();
         final FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
-        final long sumTotalTermFreq = fieldInfo.omitTermFreqAndPositions ? -1 : in.readVLong();
+        final long sumTotalTermFreq = fieldInfo.indexOptions == IndexOptions.DOCS_ONLY ? -1 : in.readVLong();
+        final long sumDocFreq = in.readVLong();
         assert !fields.containsKey(fieldInfo.name);
-        fields.put(fieldInfo.name, new FieldReader(fieldInfo, numTerms, termsStartPointer, sumTotalTermFreq));
+        fields.put(fieldInfo.name, new FieldReader(fieldInfo, numTerms, termsStartPointer, sumTotalTermFreq, sumDocFreq));
       }
       success = true;
     } finally {
@@ -196,7 +198,7 @@ public class BlockTermsReader extends FieldsProducer {
     }
   }
 
-  public static void files(Directory dir, SegmentInfo segmentInfo, String id, Collection<String> files) {
+  public static void files(Directory dir, SegmentInfo segmentInfo, int id, Collection<String> files) {
     files.add(IndexFileNames.segmentFileName(segmentInfo.name, id, BlockTermsWriter.TERMS_EXTENSION));
   }
 
@@ -245,13 +247,15 @@ public class BlockTermsReader extends FieldsProducer {
     final FieldInfo fieldInfo;
     final long termsStartPointer;
     final long sumTotalTermFreq;
+    final long sumDocFreq;
 
-    FieldReader(FieldInfo fieldInfo, long numTerms, long termsStartPointer, long sumTotalTermFreq) {
+    FieldReader(FieldInfo fieldInfo, long numTerms, long termsStartPointer, long sumTotalTermFreq, long sumDocFreq) {
       assert numTerms > 0;
       this.fieldInfo = fieldInfo;
       this.numTerms = numTerms;
       this.termsStartPointer = termsStartPointer;
       this.sumTotalTermFreq = sumTotalTermFreq;
+      this.sumDocFreq = sumDocFreq;
     }
 
     @Override
@@ -279,6 +283,11 @@ public class BlockTermsReader extends FieldsProducer {
       return sumTotalTermFreq;
     }
 
+    @Override
+    public long getSumDocFreq() throws IOException {
+      return sumDocFreq;
+    }
+
     // Iterates through terms in this field
     private final class SegmentTermsEnum extends TermsEnum {
       private final IndexInput in;
@@ -302,7 +311,7 @@ public class BlockTermsReader extends FieldsProducer {
          only valid if didIndexNext is true: */
       private BytesRef nextIndexTerm;
 
-      /* True after seek(TermState), do defer seeking.  If the app then
+      /* True after seekExact(TermState), do defer seeking.  If the app then
          calls next() (which is not "typical"), then we'll do the real seek */
       private boolean seekPending;
 
@@ -312,13 +321,13 @@ public class BlockTermsReader extends FieldsProducer {
       private int blocksSinceSeek;
 
       private byte[] termSuffixes;
-      private ByteArrayDataInput termSuffixesReader = new ByteArrayDataInput(null);
+      private ByteArrayDataInput termSuffixesReader = new ByteArrayDataInput();
 
       /* Common prefix used for all terms in this block. */
       private int termBlockPrefix;
 
       private byte[] docFreqBytes;
-      private final ByteArrayDataInput freqReader = new ByteArrayDataInput(null);
+      private final ByteArrayDataInput freqReader = new ByteArrayDataInput();
       private int metaDataUpto;
 
       public SegmentTermsEnum() throws IOException {
@@ -348,7 +357,7 @@ public class BlockTermsReader extends FieldsProducer {
       // return NOT_FOUND so it's a waste for us to fill in
       // the term that was actually NOT_FOUND
       @Override
-      public SeekStatus seek(final BytesRef target, final boolean useCache) throws IOException {
+      public SeekStatus seekCeil(final BytesRef target, final boolean useCache) throws IOException {
 
         if (indexEnum == null) {
           throw new IllegalStateException("terms index was not loaded");
@@ -376,7 +385,7 @@ public class BlockTermsReader extends FieldsProducer {
           if (cachedState != null) {
             seekPending = true;
             //System.out.println("  cached!");
-            seek(target, cachedState);
+            seekExact(target, cachedState);
             //System.out.println("  term=" + term.utf8ToString());
             return SeekStatus.FOUND;
           }
@@ -688,30 +697,30 @@ public class BlockTermsReader extends FieldsProducer {
       }
 
       @Override
-      public DocsEnum docs(Bits skipDocs, DocsEnum reuse) throws IOException {
+      public DocsEnum docs(Bits liveDocs, DocsEnum reuse) throws IOException {
         //System.out.println("BTR.docs this=" + this);
         decodeMetaData();
         //System.out.println("  state.docFreq=" + state.docFreq);
-        final DocsEnum docsEnum = postingsReader.docs(fieldInfo, state, skipDocs, reuse);
+        final DocsEnum docsEnum = postingsReader.docs(fieldInfo, state, liveDocs, reuse);
         assert docsEnum != null;
         return docsEnum;
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits skipDocs, DocsAndPositionsEnum reuse) throws IOException {
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse) throws IOException {
         //System.out.println("BTR.d&p this=" + this);
         decodeMetaData();
-        if (fieldInfo.omitTermFreqAndPositions) {
+        if (fieldInfo.indexOptions != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
           return null;
         } else {
-          DocsAndPositionsEnum dpe = postingsReader.docsAndPositions(fieldInfo, state, skipDocs, reuse);
+          DocsAndPositionsEnum dpe = postingsReader.docsAndPositions(fieldInfo, state, liveDocs, reuse);
           //System.out.println("  return d&pe=" + dpe);
           return dpe;
         }
       }
 
       @Override
-      public void seek(BytesRef target, TermState otherState) throws IOException {
+      public void seekExact(BytesRef target, TermState otherState) throws IOException {
         //System.out.println("BTR.seek termState target=" + target.utf8ToString() + " " + target + " this=" + this);
         assert otherState != null && otherState instanceof BlockTermState;
         assert !doOrd || ((BlockTermState) otherState).ord < numTerms;
@@ -731,16 +740,13 @@ public class BlockTermsReader extends FieldsProducer {
       }
 
       @Override
-      public SeekStatus seek(long ord) throws IOException {
+      public void seekExact(long ord) throws IOException {
         //System.out.println("BTR.seek by ord ord=" + ord);
         if (indexEnum == null) {
           throw new IllegalStateException("terms index was not loaded");
         }
 
-        if (ord >= numTerms) {
-          state.ord = numTerms-1;
-          return SeekStatus.END;
-        }
+        assert ord < numTerms;
 
         // TODO: if ord is in same terms block and
         // after current ord, we should avoid this seek just
@@ -768,9 +774,6 @@ public class BlockTermsReader extends FieldsProducer {
           left--;
           assert indexIsCurrent;
         }
-
-        // always found
-        return SeekStatus.FOUND;
       }
 
       @Override
@@ -833,12 +836,12 @@ public class BlockTermsReader extends FieldsProducer {
         postingsReader.readTermsBlock(in, fieldInfo, state);
 
         blocksSinceSeek++;
-        indexIsCurrent &= (blocksSinceSeek < indexReader.getDivisor());
+        indexIsCurrent = indexIsCurrent && (blocksSinceSeek < indexReader.getDivisor());
         //System.out.println("  indexIsCurrent=" + indexIsCurrent);
 
         return true;
       }
-
+     
       private void decodeMetaData() throws IOException {
         //System.out.println("BTR.decodeMetadata mdUpto=" + metaDataUpto + " vs termCount=" + state.termCount + " state=" + state);
         if (!seekPending) {
@@ -865,7 +868,7 @@ public class BlockTermsReader extends FieldsProducer {
             // just skipN here:
             state.docFreq = freqReader.readVInt();
             //System.out.println("    dF=" + state.docFreq);
-            if (!fieldInfo.omitTermFreqAndPositions) {
+            if (fieldInfo.indexOptions != IndexOptions.DOCS_ONLY) {
               state.totalTermFreq = state.docFreq + freqReader.readVLong();
               //System.out.println("    totTF=" + state.totalTermFreq);
             }

@@ -49,7 +49,12 @@
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-queries</artifactId>
+      <artifactId>lucene-queries-contrib</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>lucene-queryparser</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

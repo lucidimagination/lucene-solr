@@ -23,7 +23,7 @@ import java.util.WeakHashMap;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.util.OpenBitSetDISI;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.Bits;
 
 /**
@@ -103,13 +103,13 @@ public class CachingWrapperFilter extends Filter {
         value = cache.get(delCoreKey);
 
         if (value == null) {
-          // now for core match, but dynamically AND NOT
-          // deletions
+          // now for core match, but dynamically AND
+          // live docs
           value = cache.get(coreKey);
           if (value != null) {
-            final Bits delDocs = reader.getDeletedDocs();
-            if (delDocs != null) {
-              value = mergeDeletes(delDocs, value);
+            final Bits liveDocs = reader.getLiveDocs();
+            if (liveDocs != null) {
+              value = mergeLiveDocs(liveDocs, value);
             }
           }
         }
@@ -118,7 +118,7 @@ public class CachingWrapperFilter extends Filter {
       return value;
     }
 
-    protected abstract T mergeDeletes(Bits delDocs, T value);
+    protected abstract T mergeLiveDocs(Bits liveDocs, T value);
 
     public synchronized void put(Object coreKey, Object delCoreKey, T value) {
       if (deletesMode == DeletesMode.IGNORE) {
@@ -158,11 +158,11 @@ public class CachingWrapperFilter extends Filter {
     this.filter = filter;
     cache = new FilterCache<DocIdSet>(deletesMode) {
       @Override
-      public DocIdSet mergeDeletes(final Bits delDocs, final DocIdSet docIdSet) {
+      public DocIdSet mergeLiveDocs(final Bits liveDocs, final DocIdSet docIdSet) {
         return new FilteredDocIdSet(docIdSet) {
           @Override
-            protected boolean match(int docID) {
-            return !delDocs.get(docID);
+          protected boolean match(int docID) {
+            return liveDocs.get(docID);
           }
         };
       }
@@ -173,7 +173,7 @@ public class CachingWrapperFilter extends Filter {
    *  by the wrapped Filter.
    *  <p>This implementation returns the given {@link DocIdSet}, if {@link DocIdSet#isCacheable}
    *  returns <code>true</code>, else it copies the {@link DocIdSetIterator} into
-   *  an {@link OpenBitSetDISI}.
+   *  an {@link FixedBitSet}.
    */
   protected DocIdSet docIdSetToCache(DocIdSet docIdSet, IndexReader reader) throws IOException {
     if (docIdSet == null) {
@@ -186,7 +186,13 @@ public class CachingWrapperFilter extends Filter {
       // null is allowed to be returned by iterator(),
       // in this case we wrap with the empty set,
       // which is cacheable.
-      return (it == null) ? DocIdSet.EMPTY_DOCIDSET : new OpenBitSetDISI(it, reader.maxDoc());
+      if (it == null) {
+        return DocIdSet.EMPTY_DOCIDSET;
+      } else {
+        final FixedBitSet bits = new FixedBitSet(reader.maxDoc());
+        bits.or(it);
+        return bits;
+      }
     }
   }
 
@@ -197,7 +203,7 @@ public class CachingWrapperFilter extends Filter {
   public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
     final IndexReader reader = context.reader;
     final Object coreKey = reader.getCoreCacheKey();
-    final Object delCoreKey = reader.hasDeletions() ? reader.getDeletedDocs() : coreKey;
+    final Object delCoreKey = reader.hasDeletions() ? reader.getLiveDocs() : coreKey;
 
     DocIdSet docIdSet = cache.get(reader, coreKey, delCoreKey);
     if (docIdSet != null) {

@@ -52,13 +52,18 @@ import org.apache.lucene.index.codecs.preflexrw.PreFlexRWCodec;
 import org.apache.lucene.index.codecs.pulsing.PulsingCodec;
 import org.apache.lucene.index.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.index.codecs.standard.StandardCodec;
+import org.apache.lucene.index.codecs.memory.MemoryCodec;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.FieldCache.CacheEntry;
+import org.apache.lucene.search.AssertingIndexSearcher;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.FlushInfo;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.LockFactory;
+import org.apache.lucene.store.MergeInfo;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.util.FieldCacheSanityChecker.Insanity;
@@ -237,7 +242,7 @@ public abstract class LuceneTestCase extends Assert {
     if (prior != null) {
       cp.unregister(prior);
     }
-    cp.register(c);
+    cp.register(randomizCodec(random, c));
   }
 
   // returns current default codec
@@ -275,13 +280,18 @@ public abstract class LuceneTestCase extends Assert {
     }
 
     swapCodec(new MockSepCodec(), cp);
-    swapCodec(new PulsingCodec(codecHasParam && "Pulsing".equals(codec) ? codecParam : _TestUtil.nextInt(random, 1, 20)), cp);
+    swapCodec(new PulsingCodec(codecHasParam && "Pulsing".equals(codec) ? codecParam : 1 + random.nextInt(20)), cp);
     swapCodec(new MockFixedIntBlockCodec(codecHasParam && "MockFixedIntBlock".equals(codec) ? codecParam : _TestUtil.nextInt(random, 1, 2000)), cp);
     // baseBlockSize cannot be over 127:
     swapCodec(new MockVariableIntBlockCodec(codecHasParam && "MockVariableIntBlock".equals(codec) ? codecParam : _TestUtil.nextInt(random, 1, 127)), cp);
     swapCodec(new MockRandomCodec(random), cp);
 
     return cp.lookup(codec);
+  }
+  
+  public static Codec randomizCodec(Random random, Codec codec) {
+    codec.setDocValuesUseCFS(random.nextBoolean());
+    return codec;
   }
 
   // returns current PreFlex codec
@@ -342,6 +352,7 @@ public abstract class LuceneTestCase extends Assert {
     state = State.INITIAL;
     staticSeed = "random".equals(TEST_SEED) ? seedRand.nextLong() : TwoLongs.fromString(TEST_SEED).l1;
     random.setSeed(staticSeed);
+    random.initialized = true;
     tempDirs.clear();
     stores = Collections.synchronizedMap(new IdentityHashMap<MockDirectoryWrapper,StackTraceElement[]>());
     
@@ -484,6 +495,8 @@ public abstract class LuceneTestCase extends Assert {
         }
       }
     }
+    random.setSeed(0L);
+    random.initialized = false;
   }
 
   private static boolean testsFailed; /* true if any tests failed */
@@ -631,6 +644,11 @@ public abstract class LuceneTestCase extends Assert {
     for (Thread t : Thread.getAllStackTraces().keySet()) {
       rogueThreads.put(t, true);
     }
+    
+    if (TEST_ITER > 1) {
+      System.out.println("WARNING: you are using -Dtests.iter=n where n > 1, not all tests support this option.");
+      System.out.println("Some may crash or fail: this is not a bug.");
+    }
   }
 
   /**
@@ -711,8 +729,12 @@ public abstract class LuceneTestCase extends Assert {
         throw e;
       }
 
+      if (insanity.length != 0) {
+        reportAdditionalFailureInfo();
+      }
+
       assertEquals(msg + ": Insane FieldCache usage(s) found",
-              0, insanity.length);
+                   0, insanity.length);
       insanity = null;
     } finally {
 
@@ -946,6 +968,7 @@ public abstract class LuceneTestCase extends Assert {
     tmp.setSegmentsPerTier(_TestUtil.nextInt(r, 2, 20));
     tmp.setUseCompoundFile(r.nextBoolean());
     tmp.setNoCFSRatio(0.1 + r.nextDouble()*0.8);
+    tmp.setReclaimDeletesWeight(r.nextDouble()*4);
     return tmp;
   }
 
@@ -1053,7 +1076,7 @@ public abstract class LuceneTestCase extends Assert {
   public static MockDirectoryWrapper newDirectory(Random r, Directory d) throws IOException {
     Directory impl = newDirectoryImpl(r, TEST_DIRECTORY);
     for (String file : d.listAll()) {
-     d.copy(impl, file, file);
+     d.copy(impl, file, file, newIOContext(r));
     }
     MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
     stores.put(dir, Thread.currentThread().getStackTrace());
@@ -1101,9 +1124,15 @@ public abstract class LuceneTestCase extends Assert {
   /** Returns a new field instance, using the specified random. 
    * See {@link #newField(String, String, Field.Store, Field.Index, Field.TermVector)} for more information */
   public static Field newField(Random random, String name, String value, Store store, Index index, TermVector tv) {
+    
     if (usually(random)) {
       // most of the time, don't modify the params
       return new Field(name, value, store, index, tv);
+    }
+
+    if (random.nextBoolean()) {
+      // tickle any code still relying on field names being interned:
+      name = new String(name);
     }
 
     if (!index.isIndexed())
@@ -1231,13 +1260,11 @@ public abstract class LuceneTestCase extends Assert {
    * with one that returns null for getSequentialSubReaders.
    */
   public static IndexSearcher newSearcher(IndexReader r, boolean maybeWrap) throws IOException {
-
     if (random.nextBoolean()) {
       if (maybeWrap && rarely()) {
-        return new IndexSearcher(new SlowMultiReaderWrapper(r));
-      } else {
-        return new IndexSearcher(r);
+        r = new SlowMultiReaderWrapper(r);
       }
+      return random.nextBoolean() ? new AssertingIndexSearcher(r) : new AssertingIndexSearcher(r.getTopReaderContext());
     } else {
       int threads = 0;
       final ExecutorService ex = (random.nextBoolean()) ? null
@@ -1246,20 +1273,31 @@ public abstract class LuceneTestCase extends Assert {
       if (ex != null && VERBOSE) {
         System.out.println("NOTE: newSearcher using ExecutorService with " + threads + " threads");
       }
-      return new IndexSearcher(r.getTopReaderContext(), ex) {
-        @Override
-        public void close() throws IOException {
-          super.close();
-          if (ex != null) {
-            ex.shutdown();
-            try {
-              ex.awaitTermination(1000, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-              e.printStackTrace();
-            }
+      return random.nextBoolean() ? 
+        new AssertingIndexSearcher(r, ex) {
+          @Override
+          public void close() throws IOException {
+            super.close();
+            shutdownExecutorService(ex);
           }
-        }
-      };
+        } : new AssertingIndexSearcher(r.getTopReaderContext(), ex) {
+          @Override
+          public void close() throws IOException {
+            super.close();
+            shutdownExecutorService(ex);
+          }
+        };
+    }
+  }
+  
+  static void shutdownExecutorService(ExecutorService ex) {
+    if (ex != null) {
+      ex.shutdown();
+      try {
+        ex.awaitTermination(1000, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
     }
   }
 
@@ -1299,13 +1337,58 @@ public abstract class LuceneTestCase extends Assert {
     return sb.toString();
   }
 
+  public static IOContext newIOContext(Random random) {
+    final int randomNumDocs = random.nextInt(4192);
+    final int size = random.nextInt(512) * randomNumDocs;
+    final IOContext context;
+    switch (random.nextInt(5)) {
+    case 0:
+      context = IOContext.DEFAULT;
+      break;
+    case 1:
+      context = IOContext.READ;
+      break;
+    case 2:
+      context = IOContext.READONCE;
+      break;
+    case 3:
+      context = new IOContext(new MergeInfo(randomNumDocs, size, true, false));
+      break;
+    case 4:
+      context = new IOContext(new FlushInfo(randomNumDocs, size));
+      break;
+     default:
+       context = IOContext.DEFAULT;
+    }
+    return context;
+  }
+  
   // recorded seed: for beforeClass
   private static long staticSeed;
   // seed for individual test methods, changed in @before
   private long seed;
 
   private static final Random seedRand = new Random();
-  protected static final Random random = new Random(0);
+  protected static final SmartRandom random = new SmartRandom(0);
+  
+  public static class SmartRandom extends Random {
+    boolean initialized;
+    
+    SmartRandom(long seed) {
+      super(seed);
+    }
+    
+    @Override
+    protected int next(int bits) {
+      if (!initialized) {
+        System.err.println("!!! WARNING: test is using random from static initializer !!!");
+        Thread.dumpStack();
+        // I wish, but it causes JRE crashes
+        // throw new IllegalStateException("you cannot use this random from a static initializer in your test");
+      }
+      return super.next(bits);
+    }
+  }
 
   private String name = "<unknown>";
 
@@ -1437,10 +1520,11 @@ public abstract class LuceneTestCase extends Assert {
 
     RandomCodecProvider(Random random) {
       this.perFieldSeed = random.nextInt();
-      register(new StandardCodec());
-      register(new PreFlexCodec());
-      register(new PulsingCodec(1));
-      register(new SimpleTextCodec());
+      register(randomizCodec(random, new StandardCodec()));
+      register(randomizCodec(random, new PreFlexCodec()));
+      register(randomizCodec(random, new PulsingCodec( 1 + random.nextInt(20))));
+      register(randomizCodec(random, new SimpleTextCodec()));
+      register(randomizCodec(random, new MemoryCodec()));
       Collections.shuffle(knownCodecs, random);
     }
 

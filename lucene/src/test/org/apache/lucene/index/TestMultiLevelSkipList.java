@@ -30,6 +30,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
@@ -54,8 +55,8 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     }
 
     @Override
-    public IndexInput openInput(String fileName) throws IOException {
-      IndexInput in = super.openInput(fileName);
+    public IndexInput openInput(String fileName, IOContext context) throws IOException {
+      IndexInput in = super.openInput(fileName, context);
       if (fileName.endsWith(".frq"))
         in = new CountingStream(in);
       return in;
@@ -86,7 +87,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     
     for (int i = 0; i < 2; i++) {
       counter = 0;
-      DocsAndPositionsEnum tp = reader.termPositionsEnum(reader.getDeletedDocs(),
+      DocsAndPositionsEnum tp = reader.termPositionsEnum(reader.getLiveDocs(),
                                                          term.field(),
                                                          new BytesRef(term.text()));
 

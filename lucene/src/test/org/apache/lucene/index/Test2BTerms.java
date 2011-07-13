@@ -23,6 +23,7 @@ import org.apache.lucene.search.*;
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.*;
 import org.apache.lucene.document.*;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.codecs.CodecProvider;
 import java.io.File;
 import java.io.IOException;
@@ -177,7 +178,7 @@ public class Test2BTerms extends LuceneTestCase {
       Document doc = new Document();
       final MyTokenStream ts = new MyTokenStream(random, TERMS_PER_DOC);
       Field field = new Field("field", ts);
-      field.setOmitTermFreqAndPositions(true);
+      field.setIndexOptions(IndexOptions.DOCS_ONLY);
       field.setOmitNorms(true);
       doc.add(field);
       //w.setInfoStream(System.out);
@@ -255,7 +256,7 @@ public class Test2BTerms extends LuceneTestCase {
       final long t1 = System.currentTimeMillis();
       System.out.println("  took " + (t1-t0) + " millis");
 
-      TermsEnum.SeekStatus result = termsEnum.seek(term);
+      TermsEnum.SeekStatus result = termsEnum.seekCeil(term);
       if (result != TermsEnum.SeekStatus.FOUND) {
         if (result == TermsEnum.SeekStatus.END) {
           System.out.println("  FAILED: got END");

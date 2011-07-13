@@ -44,7 +44,6 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermVectorOffsetInfo;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.SimilarityProvider;
-import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.CollectionUtil;
 import org.apache.lucene.util.AttributeImpl;
@@ -241,8 +240,7 @@ public class InstantiatedIndexWriter implements Closeable {
           final FieldInvertState invertState = new FieldInvertState();
           invertState.setBoost(eFieldTermDocInfoFactoriesByTermText.getKey().boost * document.getDocument().getBoost());
           invertState.setLength(eFieldTermDocInfoFactoriesByTermText.getKey().fieldLength);
-          final float norm = similarityProvider.get(fieldName).computeNorm(invertState);
-          normsByFieldNameAndDocumentNumber.get(fieldName)[document.getDocumentNumber()] = similarityProvider.get(fieldName).encodeNormValue(norm);
+          normsByFieldNameAndDocumentNumber.get(fieldName)[document.getDocumentNumber()] = similarityProvider.get(fieldName).computeNorm(invertState);
         } else {
           System.currentTimeMillis();
         }
@@ -475,7 +473,7 @@ public class InstantiatedIndexWriter implements Closeable {
       FieldSetting fieldSetting = fieldSettingsByFieldName.get(field.name());
       if (fieldSetting == null) {
         fieldSetting = new FieldSetting();
-        fieldSetting.fieldName = StringHelper.intern(field.name());
+        fieldSetting.fieldName = field.name();
         fieldSettingsByFieldName.put(fieldSetting.fieldName, fieldSetting);
         fieldNameBuffer.add(fieldSetting.fieldName);
       }

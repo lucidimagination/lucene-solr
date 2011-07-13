@@ -17,6 +17,7 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,9 +31,11 @@ import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.DefaultSegmentInfosWriter;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.StringHelper;
 
 /**
  * Information about a segment such as it's name, directory, and files related
@@ -88,7 +91,7 @@ public final class SegmentInfo implements Cloneable {
   //TODO: remove when we don't have to support old indexes anymore that had this field
   private int hasVectors = CHECK_FIELDINFO;
   //TODO: remove when we don't have to support old indexes anymore that had this field
-  private int hasProx = CHECK_FIELDINFO;     // True if this segment has any fields with omitTermFreqAndPositions==false
+  private int hasProx = CHECK_FIELDINFO;     // True if this segment has any fields with positional information
 
   
   private FieldInfos fieldInfos;
@@ -244,7 +247,7 @@ public final class SegmentInfo implements Cloneable {
       }
       final Directory dirToTest;
       if (isCompoundFile) {
-        dirToTest = new CompoundFileReader(dir, IndexFileNames.segmentFileName(storesSegment, "", ext));
+        dirToTest = dir.openCompoundInput(IndexFileNames.segmentFileName(storesSegment, "", ext), IOContext.READONCE);
       } else {
         dirToTest = dir;
       }
@@ -262,8 +265,8 @@ public final class SegmentInfo implements Cloneable {
     if (fieldInfos == null) {
       Directory dir0 = dir;
       if (isCompoundFile && checkCompoundFile) {
-        dir0 = new CompoundFileReader(dir, IndexFileNames.segmentFileName(name,
-            "", IndexFileNames.COMPOUND_FILE_EXTENSION));
+        dir0 = dir.openCompoundInput(IndexFileNames.segmentFileName(name,
+            "", IndexFileNames.COMPOUND_FILE_EXTENSION), IOContext.READONCE);
       }
       try {
         fieldInfos = new FieldInfos(dir0, IndexFileNames.segmentFileName(name,
@@ -453,7 +456,7 @@ public final class SegmentInfo implements Cloneable {
     this.isCompoundFile = isCompoundFile;
     clearFilesCache();
   }
-
+  
   /**
    * Returns true if this segment is stored as a compound
    * file; else, false.
@@ -616,6 +619,10 @@ public final class SegmentInfo implements Cloneable {
 
     if (useCompoundFile) {
       fileSet.add(IndexFileNames.segmentFileName(name, "", IndexFileNames.COMPOUND_FILE_EXTENSION));
+      if (version != null && StringHelper.getVersionComparator().compare("3.4", version) <= 0) {
+        fileSet.add(IndexFileNames.segmentFileName(name, "",
+            IndexFileNames.COMPOUND_FILE_ENTRIES_EXTENSION));
+      }
     } else {
       for(String ext : IndexFileNames.NON_STORE_INDEX_EXTENSIONS) {
         addIfExists(fileSet, IndexFileNames.segmentFileName(name, "", ext));
@@ -652,7 +659,7 @@ public final class SegmentInfo implements Cloneable {
     if (delFileName != null && (delGen >= YES || dir.fileExists(delFileName))) {
       fileSet.add(delFileName);
     }
-
+   
     if (normGen != null) {
       for (Entry<Integer,Long> entry : normGen.entrySet()) {
         long gen = entry.getValue();

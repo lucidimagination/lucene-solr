@@ -33,10 +33,14 @@ import org.apache.lucene.index.codecs.BlockTermsReader;
 import org.apache.lucene.index.codecs.BlockTermsWriter;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CoreCodecProvider;
+import org.apache.lucene.index.codecs.DefaultDocValuesProducer;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.FieldsProducer;
 import org.apache.lucene.index.codecs.FixedGapTermsIndexReader;
 import org.apache.lucene.index.codecs.FixedGapTermsIndexWriter;
+import org.apache.lucene.index.codecs.PerDocConsumer;
+import org.apache.lucene.index.codecs.DefaultDocValuesConsumer;
+import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.index.codecs.PostingsReaderBase;
 import org.apache.lucene.index.codecs.PostingsWriterBase;
 import org.apache.lucene.index.codecs.TermsIndexReaderBase;
@@ -101,8 +105,9 @@ public class TestDocTermOrds extends LuceneTestCase {
   }
 
   private static class StandardCodecWithOrds extends Codec {
+    
     public StandardCodecWithOrds() {
-      name = "StandardOrds";
+      super("StandardOrds");
     }
 
     @Override
@@ -144,7 +149,7 @@ public class TestDocTermOrds extends LuceneTestCase {
 
     @Override
     public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
-      PostingsReaderBase postings = new StandardPostingsReader(state.dir, state.segmentInfo, state.readBufferSize, state.codecId);
+      PostingsReaderBase postings = new StandardPostingsReader(state.dir, state.segmentInfo, state.context, state.codecId);
       TermsIndexReaderBase indexReader;
 
       boolean success = false;
@@ -154,7 +159,7 @@ public class TestDocTermOrds extends LuceneTestCase {
                                                    state.segmentInfo.name,
                                                    state.termsIndexDivisor,
                                                    BytesRef.getUTF8SortedAsUnicodeComparator(),
-                                                   state.codecId);
+                                                   state.codecId, state.context);
         success = true;
       } finally {
         if (!success) {
@@ -169,7 +174,7 @@ public class TestDocTermOrds extends LuceneTestCase {
                                                   state.fieldInfos,
                                                   state.segmentInfo.name,
                                                   postings,
-                                                  state.readBufferSize,
+                                                  state.context,
                                                   TERMS_CACHE_SIZE,
                                                   state.codecId);
         success = true;
@@ -192,15 +197,17 @@ public class TestDocTermOrds extends LuceneTestCase {
     static final String PROX_EXTENSION = "prx";
 
     @Override
-    public void files(Directory dir, SegmentInfo segmentInfo, String id, Set<String> files) throws IOException {
+    public void files(Directory dir, SegmentInfo segmentInfo, int id, Set<String> files) throws IOException {
       StandardPostingsReader.files(dir, segmentInfo, id, files);
       BlockTermsReader.files(dir, segmentInfo, id, files);
       FixedGapTermsIndexReader.files(dir, segmentInfo, id, files);
+      DefaultDocValuesConsumer.files(dir, segmentInfo, id, files, getDocValuesUseCFS());
     }
 
     @Override
     public void getExtensions(Set<String> extensions) {
       getStandardExtensions(extensions);
+      DefaultDocValuesConsumer.getDocValuesExtensions(extensions, getDocValuesUseCFS());
     }
 
     public static void getStandardExtensions(Set<String> extensions) {
@@ -208,6 +215,16 @@ public class TestDocTermOrds extends LuceneTestCase {
       extensions.add(PROX_EXTENSION);
       BlockTermsReader.getExtensions(extensions);
       FixedGapTermsIndexReader.getIndexExtensions(extensions);
+    }
+    
+    @Override
+    public PerDocConsumer docsConsumer(PerDocWriteState state) throws IOException {
+      return new DefaultDocValuesConsumer(state, getDocValuesSortComparator(), getDocValuesUseCFS());
+    }
+
+    @Override
+    public PerDocValues docsProducer(SegmentReadState state) throws IOException {
+      return new DefaultDocValuesProducer(state.segmentInfo, state.dir, state.fieldInfos, state.codecId, getDocValuesUseCFS(), getDocValuesSortComparator(), state.context);
     }
   }
 
@@ -463,7 +480,7 @@ public class TestDocTermOrds extends LuceneTestCase {
         Terms terms = MultiFields.getTerms(r, "field");
         if (terms != null) {
           TermsEnum termsEnum = terms.iterator();
-          TermsEnum.SeekStatus result = termsEnum.seek(prefixRef, false);
+          TermsEnum.SeekStatus result = termsEnum.seekCeil(prefixRef, false);
           if (result != TermsEnum.SeekStatus.END) {
             assertFalse("term=" + termsEnum.term().utf8ToString() + " matches prefix=" + prefixRef.utf8ToString(), termsEnum.term().startsWith(prefixRef));
           } else {
@@ -478,7 +495,7 @@ public class TestDocTermOrds extends LuceneTestCase {
 
     if (VERBOSE) {
       System.out.println("TEST: TERMS:");
-      te.seek(0);
+      te.seekExact(0);
       while(true) {
         System.out.println("  ord=" + te.ord() + " term=" + te.term().utf8ToString());
         if (te.next() == null) {
@@ -499,7 +516,7 @@ public class TestDocTermOrds extends LuceneTestCase {
       while(true) {
         final int chunk = iter.read(buffer);
         for(int idx=0;idx<chunk;idx++) {
-          assertEquals(TermsEnum.SeekStatus.FOUND, te.seek((long) buffer[idx]));
+          te.seekExact((long) buffer[idx]);
           final BytesRef expected = termsArray[answers[upto++]];
           if (VERBOSE) {
             System.out.println("  exp=" + expected.utf8ToString() + " actual=" + te.term().utf8ToString());

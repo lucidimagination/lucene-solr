@@ -39,6 +39,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MockDirectoryWrapper;
@@ -59,23 +60,23 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       this.doc = doc;
     }
 
-    // @Override -- not until Java 1.6
+    @Override
     public Iterator<Document> iterator() {
       return new Iterator<Document>() {
         int upto;
 
-        // @Override -- not until Java 1.6
+        @Override
         public boolean hasNext() {
           return upto < count;
         }
 
-        // @Override -- not until Java 1.6
+        @Override
         public Document next() {
           upto++;
           return doc;
         }
 
-        // @Override -- not until Java 1.6
+        @Override
         public void remove() {
           throw new UnsupportedOperationException();
         }
@@ -484,7 +485,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     // Make sure the doc that hit the exception was marked
     // as deleted:
     DocsEnum tdocs = MultiFields.getTermDocsEnum(reader,
-                                              MultiFields.getDeletedDocs(reader),
+                                              MultiFields.getLiveDocs(reader),
                                               t.field(),
                                               new BytesRef(t.text()));
 
@@ -624,10 +625,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         assertEquals(expected, reader.docFreq(new Term("contents", "here")));
         assertEquals(expected, reader.maxDoc());
         int numDel = 0;
-        final Bits delDocs = MultiFields.getDeletedDocs(reader);
-        assertNotNull(delDocs);
+        final Bits liveDocs = MultiFields.getLiveDocs(reader);
+        assertNotNull(liveDocs);
         for(int j=0;j<reader.maxDoc();j++) {
-          if (delDocs.get(j))
+          if (!liveDocs.get(j))
             numDel++;
           else {
             reader.document(j);
@@ -653,7 +654,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       assertEquals(expected, reader.docFreq(new Term("contents", "here")));
       assertEquals(expected, reader.maxDoc());
       int numDel = 0;
-      assertNull(MultiFields.getDeletedDocs(reader));
+      assertNull(MultiFields.getLiveDocs(reader));
       for(int j=0;j<reader.maxDoc();j++) {
         reader.document(j);
         reader.getTermFreqVectors(j);
@@ -743,10 +744,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       assertEquals("i=" + i, expected, reader.docFreq(new Term("contents", "here")));
       assertEquals(expected, reader.maxDoc());
       int numDel = 0;
-      final Bits delDocs = MultiFields.getDeletedDocs(reader);
-      assertNotNull(delDocs);
+      final Bits liveDocs = MultiFields.getLiveDocs(reader);
+      assertNotNull(liveDocs);
       for(int j=0;j<reader.maxDoc();j++) {
-        if (delDocs.get(j))
+        if (!liveDocs.get(j))
           numDel++;
         else {
           reader.document(j);
@@ -771,7 +772,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       expected += 17-NUM_THREAD*NUM_ITER;
       assertEquals(expected, reader.docFreq(new Term("contents", "here")));
       assertEquals(expected, reader.maxDoc());
-      assertNull(MultiFields.getDeletedDocs(reader));
+      assertNull(MultiFields.getLiveDocs(reader));
       for(int j=0;j<reader.maxDoc();j++) {
         reader.document(j);
         reader.getTermFreqVectors(j);
@@ -935,7 +936,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("TEST: iter " + i);
       }
-      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory(startDir));
+      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory(startDir, newIOContext(random)));
       conf = newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergeScheduler(new ConcurrentMergeScheduler());
       ((ConcurrentMergeScheduler) conf.getMergeScheduler()).setSuppressExceptions();
       w = new IndexWriter(dir, conf);
@@ -1039,8 +1040,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     assertTrue("segment generation should be > 0 but got " + gen, gen > 0);
 
     final String segmentsFileName = SegmentInfos.getCurrentSegmentFileName(dir);
-    IndexInput in = dir.openInput(segmentsFileName);
-    IndexOutput out = dir.createOutput(IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS, "", 1+gen));
+    IndexInput in = dir.openInput(segmentsFileName, newIOContext(random));
+    IndexOutput out = dir.createOutput(IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS, "", 1+gen), newIOContext(random));
     out.copyBytes(in, in.length()-1);
     byte b = in.readByte();
     out.writeByte((byte) (1+b));
@@ -1084,8 +1085,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       String fileNameOut = IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS,
                                                                  "",
                                                                  1+gen);
-      IndexInput in = dir.openInput(fileNameIn);
-      IndexOutput out = dir.createOutput(fileNameOut);
+      IndexInput in = dir.openInput(fileNameIn, newIOContext(random));
+      IndexOutput out = dir.createOutput(fileNameOut, newIOContext(random));
       long length = in.length();
       for(int i=0;i<length-1;i++) {
         out.writeByte(in.readByte());
@@ -1185,8 +1186,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       String fileNameOut = IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS,
                                                                  "",
                                                                  1+gen);
-      IndexInput in = dir.openInput(fileNameIn);
-      IndexOutput out = dir.createOutput(fileNameOut);
+      IndexInput in = dir.openInput(fileNameIn, newIOContext(random));
+      IndexOutput out = dir.createOutput(fileNameOut, newIOContext(random));
       long length = in.length();
       for(int i=0;i<length-1;i++) {
         out.writeByte(in.readByte());
