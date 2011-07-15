@@ -206,8 +206,11 @@ Bug Fixes
 * SOLR-2275: fix DisMax 'mm' parsing to be tolerant of whitespace
   (Erick Erickson via hossman)
   
-* SOLR-2193, SOLR-2565:  SolrCores now properly share IndexWriters across SolrCore reloads.
+* SOLR-2193, SOLR-2565, SOLR-2651: SolrCores now properly share IndexWriters across SolrCore reloads.
   (Mark Miller, Robert Muir)
+  
+* SOLR-2535: REGRESSION: in Solr 3.x and trunk the admin/file handler 
+  fails to show directory listings (David Smiley, Peter Wolanin via Erick Erickson)
   
 Other Changes
 ----------------------
@@ -364,7 +367,15 @@ Bug Fixes
 
 * SOLR-2623: Solr JMX MBeans do not survive core reloads (Alexey Serba, shalin)
 
-Other Changes
+* Fixed grouping bug when start is bigger than rows and format is simple that zero documents are returned even
+  if there are documents to display. (Martijn van Groningen, Nikhil Chhaochharia)
+
+* SOLR-2564: Fixed ArrayIndexOutOfBoundsException when using simple format and
+  start > 0 (Martijn van Groningen, Matteo Melli)
+
+* SOLR-2642: Fixed sorting by function when using grouping. (Thomas Heigl, Martijn van Groningen)
+
+ Other Changes
 ----------------------
 
 Build
