@@ -347,12 +347,19 @@ public abstract class LuceneTestCase extends Assert {
   @Deprecated
   private static List<String> testClassesRun = new ArrayList<String>();
 
-  @BeforeClass
-  public static void beforeClassLuceneTestCaseJ4() {
-    state = State.INITIAL;
+  private static void initRandom() {
+    assert !random.initialized;
     staticSeed = "random".equals(TEST_SEED) ? seedRand.nextLong() : TwoLongs.fromString(TEST_SEED).l1;
     random.setSeed(staticSeed);
     random.initialized = true;
+  }
+  
+  @Deprecated
+  private static boolean icuTested = false;
+
+  @BeforeClass
+  public static void beforeClassLuceneTestCaseJ4() {
+    state = State.INITIAL;
     tempDirs.clear();
     stores = Collections.synchronizedMap(new IdentityHashMap<MockDirectoryWrapper,StackTraceElement[]>());
     
@@ -397,7 +404,23 @@ public abstract class LuceneTestCase extends Assert {
         throw new RuntimeException(e);
       }
     }
+    
     savedLocale = Locale.getDefault();
+    
+    // START hack to init ICU safely before we randomize locales.
+    // ICU fails during classloading when a special Java7-only locale is the default
+    // see: http://bugs.icu-project.org/trac/ticket/8734
+    if (!icuTested) {
+      icuTested = true;
+      try {
+        Locale.setDefault(Locale.US);
+        Class.forName("com.ibm.icu.util.ULocale");
+      } catch (ClassNotFoundException cnfe) {
+        // ignore if no ICU is in classpath
+      }
+    }
+    // END hack
+    
     locale = TEST_LOCALE.equals("random") ? randomLocale(random) : localeForName(TEST_LOCALE);
     Locale.setDefault(locale);
     savedTimeZone = TimeZone.getDefault();
@@ -754,7 +777,7 @@ public abstract class LuceneTestCase extends Assert {
    * is active and {@link #RANDOM_MULTIPLIER}, but also with some random fudge.
    */
   public static int atLeast(Random random, int i) {
-    int min = (TEST_NIGHTLY ? 5*i : i) * RANDOM_MULTIPLIER;
+    int min = (TEST_NIGHTLY ? 3*i : i) * RANDOM_MULTIPLIER;
     int max = min+(min/2);
     return _TestUtil.nextInt(random, min, max);
   }
@@ -770,9 +793,9 @@ public abstract class LuceneTestCase extends Assert {
    * is active and {@link #RANDOM_MULTIPLIER}.
    */
   public static boolean rarely(Random random) {
-    int p = TEST_NIGHTLY ? 25 : 5;
+    int p = TEST_NIGHTLY ? 10 : 5;
     p += (p * Math.log(RANDOM_MULTIPLIER));
-    int min = 100 - Math.min(p, 90); // never more than 90
+    int min = 100 - Math.min(p, 50); // never more than 50
     return random.nextInt(100) >= min;
   }
   
@@ -1408,6 +1431,10 @@ public abstract class LuceneTestCase extends Assert {
     protected List<FrameworkMethod> computeTestMethods() {
       if (testMethods != null)
         return testMethods;
+      
+      initRandom();
+      Random r = new Random(random.nextLong());
+
       testClassesRun.add(getTestClass().getJavaClass().getSimpleName());
       testMethods = new ArrayList<FrameworkMethod>();
       for (Method m : getTestClass().getJavaClass().getMethods()) {
@@ -1457,6 +1484,15 @@ public abstract class LuceneTestCase extends Assert {
           } catch (Exception e) { throw new RuntimeException(e); }
         }
       }
+      // sort the test methods first before shuffling them, so that the shuffle is consistent
+      // across different implementations that might order the methods different originally.
+      Collections.sort(testMethods, new Comparator<FrameworkMethod>() {
+        @Override
+        public int compare(FrameworkMethod f1, FrameworkMethod f2) {
+          return f1.getName().compareTo(f2.getName());
+        }
+      });
+      Collections.shuffle(testMethods, r);
       return testMethods;
     }
 
@@ -1494,6 +1530,7 @@ public abstract class LuceneTestCase extends Assert {
 
     public LuceneTestCaseRunner(Class<?> clazz) throws InitializationError {
       super(clazz);
+      // evil we cannot init our random here, because super() calls computeTestMethods!!!!;
       Filter f = new Filter() {
 
         @Override
