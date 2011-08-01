@@ -954,9 +954,10 @@ public class TestIndexWriterDelete extends LuceneTestCase {
     Directory dir = newDirectory();
     // Cannot use RandomIndexWriter because we don't want to
     // ever call commit() for this test:
+    // note: tiny rambuffer used, as with a 1MB buffer the test is too slow (flush @ 128,999)
     IndexWriter w = new IndexWriter(dir,
                                     newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random))
-                                    .setRAMBufferSizeMB(1.0f).setMaxBufferedDocs(1000).setMergePolicy(NoMergePolicy.NO_COMPOUND_FILES).setReaderPooling(false));
+                                    .setRAMBufferSizeMB(0.2f).setMaxBufferedDocs(1000).setMergePolicy(NoMergePolicy.NO_COMPOUND_FILES).setReaderPooling(false));
     w.setInfoStream(VERBOSE ? System.out : null);
     int count = 0;
     while(true) {
@@ -981,7 +982,7 @@ public class TestIndexWriterDelete extends LuceneTestCase {
       }
       count++;
 
-      // Today we applyDelets @ count=7199; even if we make
+      // Today we applyDeletes @ count=21553; even if we make
       // sizable improvements to RAM efficiency of buffered
       // del term we're unlikely to go over 100K:
       if (count > 100000) {
@@ -1045,7 +1046,7 @@ public class TestIndexWriterDelete extends LuceneTestCase {
                                     setRAMBufferSizeMB(0.5).setMaxBufferedDocs(-1).setMergePolicy(NoMergePolicy.NO_COMPOUND_FILES).setReaderPooling(false)) {
         @Override
         public void doAfterFlush() {
-          assertTrue("only " + docsInSegment.get() + " in segment", closing.get() || docsInSegment.get() >= 10);
+          assertTrue("only " + docsInSegment.get() + " in segment", closing.get() || docsInSegment.get() >= 7);
           docsInSegment.set(0);
           sawAfterFlush.set(true);
         }

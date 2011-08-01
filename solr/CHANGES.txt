@@ -52,7 +52,9 @@ Upgrading from Solr 3.3-dev
   If q.op is effectively "OR" then mm=0%.  Users who wish to force the
   legacy behavior should set a default value for the 'mm' param in
   their solrconfig.xml file.
-
+  
+* FacetComponent no longer catches and embeds exceptions occurred during facet
+  processing, it throws HTTP 400 or 500 exceptions instead.
 
 Detailed Change List
 ----------------------
@@ -212,6 +214,9 @@ Bug Fixes
   
 * SOLR-2193, SOLR-2565, SOLR-2651: SolrCores now properly share IndexWriters across SolrCore reloads.
   (Mark Miller, Robert Muir)
+
+* SOLR-2682: Remove addException() in SimpleFacet. FacetComponent no longer catches and embeds
+  exceptions occurred during facet processing, it throws HTTP 400 or 500 exceptions instead. (koji)
   
 Other Changes
 ----------------------
@@ -337,8 +342,11 @@ New Features
 
 * SOLR-2523: Added support in SolrJ to easily interact with range facets.
   The range facet response can be parsed and is retrievable from the
-  QueryResponse class. The SolrQuery has convenient methods for using
+  QueryResponse class. The SolrQuery class has convenient methods for using
   range facets. (Martijn van Groningen)
+
+* SOLR-2637: Added support for group result parsing in SolrJ.
+  (Tao Cheng, Martijn van Groningen)
 
 Optimizations
 ----------------------
@@ -394,9 +402,19 @@ Bug Fixes
 * SOLR-2669: Fix backwards validation of field properties in 
   SchemaField.calcProps (hossman)
 
+* SOLR-2676: Add "welcome-file-list" to solr.war so admin UI works correctly 
+  in servlet containers such as WebSphere that do not use a default list
+  (Jay R. Jaeger, hossman)
+
+* SOLR-2606: Fixed sort parsing of fields containing punctuation that 
+  failed due to sort by function changes introduced in SOLR-1297
+  (Mitsu Hadeishi, hossman)
 
  Other Changes
 ----------------------
+
+* SOLR-2629: Eliminate deprecation warnings in some JSPs.
+  (Bernd Fehling, hossman)
 
 Build
 ----------------------

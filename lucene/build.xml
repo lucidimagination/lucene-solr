@@ -32,7 +32,6 @@
   <path id="test.classpath">
   	<path refid="classpath"/>
     <path refid="junit-path"/>
-    <path refid="ant-path"/>
     <pathelement location="${build.dir}/classes/test-framework"/>
     <pathelement location="${build.dir}/classes/test"/>
   </path>
@@ -561,4 +560,8 @@
             title="Lucene Search Engine: Test Framework" />
   </target>
 
+  <!-- Override common-build.xml definition to check for the jar already being up-to-date -->
+  <target name="jar-core" depends="check-lucene-core-uptodate,compile-core" unless="lucene-core.uptodate">
+    <jarify/>
+  </target>
 </project>
