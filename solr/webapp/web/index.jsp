@@ -18,7 +18,10 @@
     
     var app_config = {};
     
-    app_config.solr_path = '<%= request.getContextPath() %>';
+   <!-- our solr path must be set to /solr since we don't run in the solr context, 
+        but map /solr requests to the solr dispatch filter -->
+   
+    app_config.solr_path = '/solr';
     app_config.core_admin_path = '<%= cores.getAdminPath() %>';
     app_config.zookeeper_path = 'zookeeper.jsp';
     app_config.schema_path = '/admin/file?file=schema.xml&contentType=text/xml;charset=utf-8';
