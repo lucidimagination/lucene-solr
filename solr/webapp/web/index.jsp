@@ -18,8 +18,8 @@
     
     var app_config = {};
     
-   <!-- our solr path must be set to /solr since we don't run in the solr context, 
-        but map /solr requests to the solr dispatch filter -->
+   <!-- our solr path must be set to /solr since we don't run in the solr context, -->
+   <!-- but map /solr requests to the solr dispatch filter -->
    
     app_config.solr_path = '/solr';
     app_config.core_admin_path = '<%= cores.getAdminPath() %>';
