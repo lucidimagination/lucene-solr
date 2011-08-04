@@ -7,3 +7,7 @@ je-*.jar
 target
 lucene-libs
 dist
+.classpath
+.project
+.settings/
+bin/
