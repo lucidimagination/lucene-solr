@@ -98,7 +98,9 @@ New Features
 
 * SOLR-1566: Transforming documents in the ResponseWriters.  This will allow
   for more complex results in responses and open the door for function queries
-  as results. (ryan with patches from grant, noble, cmale, yonik, Jan Høydahl)
+  as results. 
+  (ryan with patches from grant, noble, cmale, yonik, Jan Høydahl, 
+  Arul Kalaipandian, hossman)
 
 * SOLR-2396: Add CollationField, which is much more efficient than 
   the Solr 3.x CollationKeyFilterFactory, and also supports 
@@ -159,6 +161,9 @@ New Features
 * SOLR-2399: Updated Solr Admin interface.  New look and feel with per core administration
   and many new options.  (Stefan Matheis via ryan)
 
+* SOLR-1032: CSV handler now supports "literal.field_name=value" parameters.
+  (Simon Rosenthal, ehatcher)
+
 
 Optimizations
 ----------------------
@@ -186,6 +191,10 @@ Optimizations
   on each commit (ie commits no longer wait for background merges to complete), 
   works with SolrCore to provide faster 'soft' commits, and has an improved API 
   that requires less instanceof special casing. (Mark Miller, Robert Muir)
+  Additional Work:
+  SOLR-2697: commit and autocommit operations don't reset 
+  DirectUpdateHandler2.numDocsPending stats attribute.
+  (Alexey Serba, Mark Miller)
 
 Bug Fixes
 ----------------------
@@ -276,6 +285,12 @@ Other Changes
 * SOLR-2663: FieldTypePluginLoader has been refactored out of IndexSchema 
   and made public. (hossman)
 
+* SOLR-2331,SOLR-2691: Refactor CoreContainer's SolrXML serialization code and improve testing
+  (Yury Kats, hossman, Mark Miller)
+  
+* SOLR-2698: Enhance CoreAdmin STATUS command to return index size.
+  (Yury Kats, hossman, Mark Miller)
+
 Documentation
 ----------------------
 
@@ -347,6 +362,10 @@ New Features
 
 * SOLR-2637: Added support for group result parsing in SolrJ.
   (Tao Cheng, Martijn van Groningen)
+
+* SOLR-2665: Added post group faceting. Facet counts are based on the most
+  relevant document of each group matching the query. This feature has the
+  same impact on the StatsComponent. (Martijn van Groningen)
 
 Optimizations
 ----------------------
