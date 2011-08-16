@@ -28,6 +28,7 @@
     <property name="maven.dist.dir" location="../dist/maven" />
 
     <import file="../../lucene/contrib/contrib-build.xml"/>
+    <import file="../../solr/common-build.xml"/>
     <property name="working.dir" location="work"/>
 
     <!-- the tests have some parallel problems -->
@@ -152,6 +153,10 @@
       <pathelement path="${memory.jar}"/>
       <pathelement path="${highlighter.jar}"/>
       <pathelement path="${analyzers-common.jar}"/>
+      <pathelement path="../../solr/dist/apache-solr-solrj-4.0-SNAPSHOT.jar"/>
+    	<fileset dir="../../solr/dist/solrj-lib">
+    		<include name="**/*.jar"/>
+    	</fileset>
       <pathelement path="${queryparser.jar}"/>
       <path refid="base.classpath"/>
     	<fileset dir="lib">

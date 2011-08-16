@@ -17,8 +17,15 @@ package org.apache.lucene.benchmark.byTask;
  * limitations under the License.
  */
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.Locale;
 
@@ -26,17 +33,22 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.benchmark.byTask.feeds.DocMaker;
 import org.apache.lucene.benchmark.byTask.feeds.QueryMaker;
 import org.apache.lucene.benchmark.byTask.stats.Points;
-import org.apache.lucene.benchmark.byTask.tasks.ReadTask;
+import org.apache.lucene.benchmark.byTask.tasks.NewAnalyzerTask;
+import org.apache.lucene.benchmark.byTask.tasks.PerfTask;
 import org.apache.lucene.benchmark.byTask.tasks.SearchTask;
 import org.apache.lucene.benchmark.byTask.utils.Config;
 import org.apache.lucene.benchmark.byTask.utils.FileUtils;
-import org.apache.lucene.benchmark.byTask.tasks.NewAnalyzerTask;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.StreamingUpdateSolrServer;
+import org.apache.solr.client.solrj.request.CoreAdminRequest;
+import org.apache.solr.client.solrj.response.CoreAdminResponse;
 
 /**
  * Data maintained by a performance test run.
@@ -61,11 +73,12 @@ public class PerfRunData {
   // reader, writer, searcher - maintained by basic tasks. 
   private Directory directory;
   private Analyzer analyzer;
+  private SolrServer solrServer;
   private DocMaker docMaker;
   private Locale locale;
   
   // we use separate (identical) instances for each "read" task type, so each can iterate the quries separately.
-  private HashMap<Class<? extends ReadTask>,QueryMaker> readTaskQueryMaker;
+  private HashMap<Class<? extends PerfTask>,QueryMaker> readTaskQueryMaker;
   private Class<? extends QueryMaker> qmkrClass;
 
   private IndexReader indexReader;
@@ -78,14 +91,19 @@ public class PerfRunData {
   public PerfRunData (Config config) throws Exception {
     this.config = config;
     // analyzer (default is standard analyzer)
-    analyzer = NewAnalyzerTask.createAnalyzer(config.get("analyzer",
-        "org.apache.lucene.analysis.standard.StandardAnalyzer"));
+    String analyzerClass = config.get("analyzer", "org.apache.lucene.analysis.standard.StandardAnalyzer");
+    if (analyzerClass != null) {
+      analyzer = NewAnalyzerTask.createAnalyzer(analyzerClass);
+    }
+
+    initSolrStuff();
+    
     // doc maker
     docMaker = Class.forName(config.get("doc.maker",
         "org.apache.lucene.benchmark.byTask.feeds.DocMaker")).asSubclass(DocMaker.class).newInstance();
     docMaker.setConfig(config);
     // query makers
-    readTaskQueryMaker = new HashMap<Class<? extends ReadTask>,QueryMaker>();
+    readTaskQueryMaker = new HashMap<Class<? extends PerfTask>,QueryMaker>();
     qmkrClass = Class.forName(config.get("query.maker","org.apache.lucene.benchmark.byTask.feeds.SimpleQueryMaker")).asSubclass(QueryMaker.class);
 
     // index stuff
@@ -97,6 +115,112 @@ public class PerfRunData {
     if (Boolean.valueOf(config.get("log.queries","false")).booleanValue()) {
       System.out.println("------------> queries:");
       System.out.println(getQueryMaker(new SearchTask(this)).printQueries());
+    }
+  }
+
+  private void initSolrStuff() throws Exception {
+    String solrServerUrl = config.get("solr.url", null);
+    boolean internalSolrServer = false;
+    if (solrServerUrl == null) {
+      internalSolrServer = true;
+      solrServerUrl = "http://localhost:8983/solr";
+    }
+    
+
+    
+    String solrCollection = config.get("solr.collection", "collection1");
+    String solrServerClass = config.get("solr.server", null);
+    
+    if (!internalSolrServer) {
+      if (solrServerUrl == null || solrServerClass == null) {
+        throw new RuntimeException("You must set solr.url and solr.server to run a remote benchmark algorithm");
+      }
+    }
+    
+    if (solrServerClass != null) {
+      System.out.println("------------> new SolrServer with URL:" + solrServerUrl + "/" + solrCollection);
+      Class<?> clazz = this.getClass().getClassLoader()
+          .loadClass(solrServerClass);
+      
+      Constructor[] cons = clazz.getConstructors();
+      for (Constructor con : cons) {
+        Class[] types = con.getParameterTypes();
+        if (types.length == 1 && types[0] == String.class) {
+          solrServer = (SolrServer) con.newInstance(solrServerUrl + "/" + solrCollection);
+        } else if (types.length == 3
+            && clazz == StreamingUpdateSolrServer.class) {
+          int queueSize = config.get("solr.streaming.server.queue.size", 100);
+          int threadCount = config.get("solr.streaming.server.threadcount", 2);
+          solrServer = (SolrServer) con.newInstance(solrServerUrl + "/" + solrCollection, queueSize,
+              threadCount);
+        } 
+      }
+      if (solrServer == null) {
+        throw new RuntimeException("Could not understand solr.server config:"
+            + solrServerClass);
+        
+      }
+    }
+    
+    String configDir = config.get("solr.config.dir", null);
+    
+    if (configDir == null && internalSolrServer) {
+      configDir = "../../solr/example/solr/conf";
+    }
+    
+    String configsHome = config.get("solr.configs.home", null);
+   
+    if (configDir != null && configsHome != null) {
+      System.out.println("------------> solr.configs.home: " + new File(configsHome).getAbsolutePath());
+      String solrConfig = config.get("solr.config", null);
+      String schema = config.get("solr.schema", null);
+      
+      boolean copied = false;
+      
+      if (solrConfig != null) {
+        File solrConfigFile = new File(configsHome, solrConfig);
+        if (solrConfigFile.exists() && solrConfigFile.canRead()) {
+          copy(solrConfigFile, new File(configDir, "solrconfig.xml"));
+          copied = true;
+        } else {
+          throw new RuntimeException("Could not find or read:" + solrConfigFile);
+        }
+      }
+      if (schema != null) {
+
+        File schemaFile = new File(configsHome, schema);
+        if (schemaFile.exists() && schemaFile.canRead()) {
+          System.out.println("------------> using schema: " + schema);
+          copy(schemaFile, new File(configDir, "schema.xml"));
+          copied = true;
+        } else {
+          throw new RuntimeException("Could not find or read:" + schemaFile);
+        }
+      }
+      
+      if (copied && solrServer != null && !internalSolrServer) {
+        // nocommit: hard coded collection1 and check response
+        CoreAdminResponse result = CoreAdminRequest.reloadCore(solrCollection, new CommonsHttpSolrServer(solrServerUrl));
+      }
+    }
+   
+  }
+  
+  // closes streams for you
+  private static void copy(File in, File out) throws IOException {
+    System.out.println("------------> copying: " + in + " to " + out);
+    FileOutputStream os = new FileOutputStream(out);
+    FileInputStream is = new FileInputStream(in);
+    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
+    BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+    try {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        writer.write(line + System.getProperty("line.separator"));
+      }
+    } finally {
+      reader.close();
+      writer.close();
     }
   }
 
@@ -131,6 +255,8 @@ public class PerfRunData {
 
     // inputs
     resetInputs();
+    
+    initSolrStuff();
     
     // release unused stuff
     System.runFinalization();
@@ -240,6 +366,14 @@ public class PerfRunData {
   public void setAnalyzer(Analyzer analyzer) {
     this.analyzer = analyzer;
   }
+  
+  public final SolrServer getSolrServer() {
+    return solrServer;
+  }
+
+  public final void setSolrServer(SolrServer solrServer) {
+    this.solrServer = solrServer;
+  }
 
   /** Returns the docMaker. */
   public DocMaker getDocMaker() {
@@ -277,10 +411,10 @@ public class PerfRunData {
   /**
    * @return Returns the queryMaker by read task type (class)
    */
-  synchronized public QueryMaker getQueryMaker(ReadTask readTask) {
+  synchronized public QueryMaker getQueryMaker(PerfTask task) {
     // mapping the query maker by task class allows extending/adding new search/read tasks
     // without needing to modify this class.
-    Class<? extends ReadTask> readTaskClass = readTask.getClass();
+    Class<? extends PerfTask> readTaskClass = task.getClass();
     QueryMaker qm = readTaskQueryMaker.get(readTaskClass);
     if (qm == null) {
       try {
