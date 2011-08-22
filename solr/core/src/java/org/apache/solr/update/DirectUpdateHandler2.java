@@ -52,7 +52,7 @@ import org.apache.solr.search.SolrIndexSearcher;
  * directly to the main Lucene index as opposed to adding to a separate smaller index.
  */
 public class DirectUpdateHandler2 extends UpdateHandler {
-  protected IndexWriterProvider indexWriterProvider;
+  protected SolrCoreState indexWriterProvider;
 
   // stats
   AtomicLong addCommands = new AtomicLong();
@@ -77,17 +77,17 @@ public class DirectUpdateHandler2 extends UpdateHandler {
   public DirectUpdateHandler2(SolrCore core) throws IOException {
     super(core);
    
-    indexWriterProvider = new DefaultIndexWriterProvider();
+    indexWriterProvider = new DefaultSolrCoreState(core.getDirectoryFactory());
     
     UpdateHandlerInfo updateHandlerInfo = core.getSolrConfig()
         .getUpdateHandlerInfo();
     int docsUpperBound = updateHandlerInfo.autoCommmitMaxDocs; // getInt("updateHandler/autoCommit/maxDocs", -1);
     int timeUpperBound = updateHandlerInfo.autoCommmitMaxTime; // getInt("updateHandler/autoCommit/maxTime", -1);
-    commitTracker = new CommitTracker(core, docsUpperBound, timeUpperBound, true, false);
+    commitTracker = new CommitTracker("Hard", core, docsUpperBound, timeUpperBound, true, false);
     
     int softCommitDocsUpperBound = updateHandlerInfo.autoSoftCommmitMaxDocs; // getInt("updateHandler/autoSoftCommit/maxDocs", -1);
     int softCommitTimeUpperBound = updateHandlerInfo.autoSoftCommmitMaxTime; // getInt("updateHandler/autoSoftCommit/maxTime", -1);
-    softCommitTracker = new CommitTracker(core, softCommitDocsUpperBound, softCommitTimeUpperBound, true, true);
+    softCommitTracker = new CommitTracker("Soft", core, softCommitDocsUpperBound, softCommitTimeUpperBound, true, true);
   }
   
   public DirectUpdateHandler2(SolrCore core, UpdateHandler updateHandler) throws IOException {
@@ -97,18 +97,18 @@ public class DirectUpdateHandler2 extends UpdateHandler {
     } else {
       // the impl has changed, so we cannot use the old state - decref it
       updateHandler.decref();
-      indexWriterProvider = new DefaultIndexWriterProvider();
+      indexWriterProvider = new DefaultSolrCoreState(core.getDirectoryFactory());
     }
     
     UpdateHandlerInfo updateHandlerInfo = core.getSolrConfig()
         .getUpdateHandlerInfo();
     int docsUpperBound = updateHandlerInfo.autoCommmitMaxDocs; // getInt("updateHandler/autoCommit/maxDocs", -1);
     int timeUpperBound = updateHandlerInfo.autoCommmitMaxTime; // getInt("updateHandler/autoCommit/maxTime", -1);
-    commitTracker = new CommitTracker(core, docsUpperBound, timeUpperBound, true, false);
+    commitTracker = new CommitTracker("Hard", core, docsUpperBound, timeUpperBound, true, false);
     
     int softCommitDocsUpperBound = updateHandlerInfo.autoSoftCommmitMaxDocs; // getInt("updateHandler/autoSoftCommit/maxDocs", -1);
     int softCommitTimeUpperBound = updateHandlerInfo.autoSoftCommmitMaxTime; // getInt("updateHandler/autoSoftCommit/maxTime", -1);
-    softCommitTracker = new CommitTracker(core, softCommitDocsUpperBound, softCommitTimeUpperBound, true, true);
+    softCommitTracker = new CommitTracker("Soft", core, softCommitDocsUpperBound, softCommitTimeUpperBound, true, true);
     
   }
 
@@ -137,15 +137,8 @@ public class DirectUpdateHandler2 extends UpdateHandler {
 
 
     try {
-      boolean triggered = commitTracker.addedDocument( cmd.commitWithin );
-    
-      if (!triggered) {
-        // if we hard commit, don't soft commit
-        softCommitTracker.addedDocument( cmd.commitWithin );
-      } else {
-        // still inc softCommit
-        softCommitTracker.docsSinceCommit++;
-      }
+      commitTracker.addedDocument( cmd.commitWithin );
+      softCommitTracker.addedDocument( -1 ); // TODO: support commitWithin with soft update
 
       if (cmd.overwrite) {
         Term updateTerm;
@@ -192,10 +185,10 @@ public class DirectUpdateHandler2 extends UpdateHandler {
 
     indexWriterProvider.getIndexWriter(core).deleteDocuments(new Term(idField.getName(), cmd.getIndexedId()));
 
-    if (commitTracker.timeUpperBound > 0) {
-      commitTracker.scheduleCommitWithin(commitTracker.timeUpperBound);
-    } else if (softCommitTracker.timeUpperBound > 0) {
-      softCommitTracker.scheduleCommitWithin(softCommitTracker.timeUpperBound);
+    if (commitTracker.getTimeUpperBound() > 0) {
+      commitTracker.scheduleCommitWithin(commitTracker.getTimeUpperBound());
+    } else if (softCommitTracker.getTimeUpperBound() > 0) {
+      softCommitTracker.scheduleCommitWithin(softCommitTracker.getTimeUpperBound());
     }
   }
 
@@ -224,10 +217,10 @@ public class DirectUpdateHandler2 extends UpdateHandler {
       
       madeIt = true;
       
-      if (commitTracker.timeUpperBound > 0) {
-        commitTracker.scheduleCommitWithin(commitTracker.timeUpperBound);
-      } else if (softCommitTracker.timeUpperBound > 0) {
-        softCommitTracker.scheduleCommitWithin(softCommitTracker.timeUpperBound);
+      if (commitTracker.getTimeUpperBound() > 0) {
+        commitTracker.scheduleCommitWithin(commitTracker.getTimeUpperBound());
+      } else if (softCommitTracker.getTimeUpperBound()> 0) {
+        softCommitTracker.scheduleCommitWithin(softCommitTracker.getTimeUpperBound());
       }
       
     } finally {
@@ -255,10 +248,10 @@ public class DirectUpdateHandler2 extends UpdateHandler {
     log.info("end_mergeIndexes");
 
     // TODO: consider soft commit issues
-    if (rc == 1 && commitTracker.timeUpperBound > 0) {
-      commitTracker.scheduleCommitWithin(commitTracker.timeUpperBound);
-    } else if (rc == 1 && softCommitTracker.timeUpperBound > 0) {
-      softCommitTracker.scheduleCommitWithin(softCommitTracker.timeUpperBound);
+    if (rc == 1 && commitTracker.getTimeUpperBound() > 0) {
+      commitTracker.scheduleCommitWithin(commitTracker.getTimeUpperBound());
+    } else if (rc == 1 && softCommitTracker.getTimeUpperBound() > 0) {
+      softCommitTracker.scheduleCommitWithin(softCommitTracker.getTimeUpperBound());
     }
 
     return rc;
@@ -355,8 +348,8 @@ public class DirectUpdateHandler2 extends UpdateHandler {
     if (newReader == currentReader) {
       currentReader.incRef();
     }
-    
-    return new SolrIndexSearcher(core, schema, "main", newReader, true, true);
+
+    return new SolrIndexSearcher(core, schema, "main", newReader, true, true, true, core.getDirectoryFactory());
   }
   
   @Override
@@ -408,6 +401,7 @@ public class DirectUpdateHandler2 extends UpdateHandler {
     softCommitTracker.close();
 
     numDocsPending.set(0);
+
     indexWriterProvider.decref();
     
     log.info("closed " + this);
@@ -449,20 +443,20 @@ public class DirectUpdateHandler2 extends UpdateHandler {
   public NamedList getStatistics() {
     NamedList lst = new SimpleOrderedMap();
     lst.add("commits", commitCommands.get());
-    if (commitTracker.docsUpperBound > 0) {
-      lst.add("autocommit maxDocs", commitTracker.docsUpperBound);
+    if (commitTracker.getTimeUpperBound() > 0) {
+      lst.add("autocommit maxDocs", commitTracker.getTimeUpperBound());
     }
-    if (commitTracker.timeUpperBound > 0) {
-      lst.add("autocommit maxTime", "" + commitTracker.timeUpperBound + "ms");
+    if (commitTracker.getTimeUpperBound() > 0) {
+      lst.add("autocommit maxTime", "" + commitTracker.getTimeUpperBound() + "ms");
     }
-    lst.add("autocommits", commitTracker.autoCommitCount);
-    if (softCommitTracker.docsUpperBound > 0) {
-      lst.add("soft autocommit maxDocs", softCommitTracker.docsUpperBound);
+    lst.add("autocommits", commitTracker.getCommitCount());
+    if (softCommitTracker.getTimeUpperBound() > 0) {
+      lst.add("soft autocommit maxDocs", softCommitTracker.getTimeUpperBound());
     }
-    if (softCommitTracker.timeUpperBound > 0) {
-      lst.add("soft autocommit maxTime", "" + softCommitTracker.timeUpperBound + "ms");
+    if (softCommitTracker.getTimeUpperBound() > 0) {
+      lst.add("soft autocommit maxTime", "" + softCommitTracker.getTimeUpperBound() + "ms");
     }
-    lst.add("soft autocommits", softCommitTracker.autoCommitCount);
+    lst.add("soft autocommits", softCommitTracker.getCommitCount());
     lst.add("optimizes", optimizeCommands.get());
     lst.add("rollbacks", rollbackCommands.get());
     lst.add("expungeDeletes", expungeDeleteCommands.get());
@@ -485,7 +479,7 @@ public class DirectUpdateHandler2 extends UpdateHandler {
     return "DirectUpdateHandler2" + getStatistics();
   }
   
-  public IndexWriterProvider getIndexWriterProvider() {
+  public SolrCoreState getIndexWriterProvider() {
     return indexWriterProvider;
   }
 
