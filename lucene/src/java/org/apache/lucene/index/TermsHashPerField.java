@@ -19,13 +19,12 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Comparator;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
-import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
+import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.BytesRefHash.BytesStartArray;
 import org.apache.lucene.util.BytesRefHash.MaxBytesLengthExceededException;
 
@@ -55,7 +54,7 @@ final class TermsHashPerField extends InvertedDocConsumerPerField {
   final BytesRefHash bytesHash;
 
   ParallelPostingsArray postingsArray;
-  private final AtomicLong bytesUsed;
+  private final Counter bytesUsed;
 
   public TermsHashPerField(DocInverterPerField docInverterPerField, final TermsHash termsHash, final TermsHash nextTermsHash, final FieldInfo fieldInfo) {
     intPool = termsHash.intPool;
@@ -64,7 +63,7 @@ final class TermsHashPerField extends InvertedDocConsumerPerField {
     docState = termsHash.docState;
     this.termsHash = termsHash;
     bytesUsed = termsHash.trackAllocations ? termsHash.docWriter.bytesUsed
-        : new AtomicLong();
+        : Counter.newCounter();
     fieldState = docInverterPerField.fieldState;
     this.consumer = termsHash.consumer.addField(this, fieldInfo);
     PostingsBytesStartArray byteStarts = new PostingsBytesStartArray(this, bytesUsed);
@@ -116,7 +115,7 @@ final class TermsHashPerField extends InvertedDocConsumerPerField {
   private boolean doNextCall;
 
   @Override
-  void start(Fieldable f) {
+  void start(IndexableField f) {
     termAtt = fieldState.attributeSource.getAttribute(TermToBytesRefAttribute.class);
     termBytesRef = termAtt.getBytesRef();
     consumer.start(f);
@@ -126,11 +125,12 @@ final class TermsHashPerField extends InvertedDocConsumerPerField {
   }
 
   @Override
-  boolean start(Fieldable[] fields, int count) throws IOException {
+  boolean start(IndexableField[] fields, int count) throws IOException {
     doCall = consumer.start(fields, count);
     bytesHash.reinit();
-    if (nextPerField != null)
+    if (nextPerField != null) {
       doNextCall = nextPerField.start(fields, count);
+    }
     return doCall || doNextCall;
   }
 
@@ -283,10 +283,10 @@ final class TermsHashPerField extends InvertedDocConsumerPerField {
   private static final class PostingsBytesStartArray extends BytesStartArray {
 
     private final TermsHashPerField perField;
-    private final AtomicLong bytesUsed;
+    private final Counter bytesUsed;
 
     private PostingsBytesStartArray(
-        TermsHashPerField perField, AtomicLong bytesUsed) {
+        TermsHashPerField perField, Counter bytesUsed) {
       this.perField = perField;
       this.bytesUsed = bytesUsed;
     }
@@ -320,7 +320,7 @@ final class TermsHashPerField extends InvertedDocConsumerPerField {
     }
 
     @Override
-    public AtomicLong bytesUsed() {
+    public Counter bytesUsed() {
       return bytesUsed;
     }
 

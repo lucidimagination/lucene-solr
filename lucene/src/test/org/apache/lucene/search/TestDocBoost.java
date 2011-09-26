@@ -38,33 +38,26 @@ public class TestDocBoost extends LuceneTestCase {
     Directory store = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, store, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
 
-    Fieldable f1 = newField("field", "word", Field.Store.YES, Field.Index.ANALYZED);
-    Fieldable f2 = newField("field", "word", Field.Store.YES, Field.Index.ANALYZED);
+    Field f1 = newField("field", "word", TextField.TYPE_STORED);
+    Field f2 = newField("field", "word", TextField.TYPE_STORED);
     f2.setBoost(2.0f);
 
     Document d1 = new Document();
     Document d2 = new Document();
-    Document d3 = new Document();
-    Document d4 = new Document();
-    d3.setBoost(3.0f);
-    d4.setBoost(2.0f);
 
     d1.add(f1);                                 // boost = 1
     d2.add(f2);                                 // boost = 2
-    d3.add(f1);                                 // boost = 3
-    d4.add(f2);                                 // boost = 4
 
     writer.addDocument(d1);
     writer.addDocument(d2);
-    writer.addDocument(d3);
-    writer.addDocument(d4);
 
     IndexReader reader = writer.getReader();
     writer.close();
 
     final float[] scores = new float[4];
 
-    newSearcher(reader).search
+    IndexSearcher searcher = newSearcher(reader);
+    searcher.search
       (new TermQuery(new Term("field", "word")),
        new Collector() {
          private int base = 0;
@@ -89,8 +82,11 @@ public class TestDocBoost extends LuceneTestCase {
 
     float lastScore = 0.0f;
 
-    for (int i = 0; i < 4; i++) {
-      assertTrue(scores[i] > lastScore);
+    for (int i = 0; i < 2; i++) {
+      if (VERBOSE) {
+        System.out.println(searcher.explain(new TermQuery(new Term("field", "word")), i));
+      }
+      assertTrue("score: " + scores[i] + " should be > lastScore: " + lastScore, scores[i] > lastScore);
       lastScore = scores[i];
     }
     

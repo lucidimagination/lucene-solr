@@ -21,9 +21,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Field.Store;
-import org.apache.lucene.document.Field.Index;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -78,25 +76,25 @@ public class TestWildcard
       wq.setBoost(0.1F);
       Query q = searcher.rewrite(wq);
       assertTrue(q instanceof TermQuery);
-      assertEquals(q.getBoost(), wq.getBoost());
+      assertEquals(q.getBoost(), wq.getBoost(), 0);
       
       wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
       wq.setBoost(0.2F);
       q = searcher.rewrite(wq);
       assertTrue(q instanceof ConstantScoreQuery);
-      assertEquals(q.getBoost(), wq.getBoost());
+      assertEquals(q.getBoost(), wq.getBoost(), 0.1);
       
       wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT);
       wq.setBoost(0.3F);
       q = searcher.rewrite(wq);
       assertTrue(q instanceof ConstantScoreQuery);
-      assertEquals(q.getBoost(), wq.getBoost());
+      assertEquals(q.getBoost(), wq.getBoost(), 0.1);
       
       wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
       wq.setBoost(0.4F);
       q = searcher.rewrite(wq);
       assertTrue(q instanceof ConstantScoreQuery);
-      assertEquals(q.getBoost(), wq.getBoost());
+      assertEquals(q.getBoost(), wq.getBoost(), 0.1);
       searcher.close();
       indexStore.close();
   }
@@ -244,7 +242,7 @@ public class TestWildcard
     RandomIndexWriter writer = new RandomIndexWriter(random, indexStore);
     for (int i = 0; i < contents.length; ++i) {
       Document doc = new Document();
-      doc.add(newField(field, contents[i], Field.Store.YES, Field.Index.ANALYZED));
+      doc.add(newField(field, contents[i], TextField.TYPE_STORED));
       writer.addDocument(doc);
     }
     writer.close();
@@ -344,7 +342,7 @@ public class TestWildcard
         .setMergePolicy(newLogMergePolicy()));
     for (int i = 0; i < docs.length; i++) {
       Document doc = new Document();
-      doc.add(newField(field,docs[i],Store.NO,Index.ANALYZED));
+      doc.add(newField(field,docs[i],TextField.TYPE_UNSTORED));
       iw.addDocument(doc);
     }
     iw.close();

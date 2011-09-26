@@ -26,7 +26,9 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -45,19 +47,29 @@ public class TestLongPostings extends LuceneTestCase {
       if (other != null && s.equals(other)) {
         continue;
       }
-      final TokenStream ts = a.tokenStream("foo", new StringReader(s));
+      final TokenStream ts = a.reusableTokenStream("foo", new StringReader(s));
       final TermToBytesRefAttribute termAtt = ts.getAttribute(TermToBytesRefAttribute.class);
       final BytesRef termBytes = termAtt.getBytesRef();
-      int count = 0;
       ts.reset();
+
+      int count = 0;
+      boolean changed = false;
+
       while(ts.incrementToken()) {
         termAtt.fillBytesRef();
         if (count == 0 && !termBytes.utf8ToString().equals(s)) {
-          break;
+          // The value was changed during analysis.  Keep iterating so the
+          // tokenStream is exhausted.
+          changed = true;
         }
         count++;
       }
-      if (count == 1) {
+
+      ts.end();
+      ts.close();
+
+      // Did we iterate just once and the value was unchanged?
+      if (!changed && count == 1) {
         return s;
       }
     }
@@ -111,7 +123,7 @@ public class TestLongPostings extends LuceneTestCase {
       for(int idx=0;idx<NUM_DOCS;idx++) {
         final Document doc = new Document();
         String s = isS1.get(idx) ? s1 : s2;
-        final Field f = newField("field", s, Field.Index.ANALYZED);
+        final Field f = newField("field", s, TextField.TYPE_UNSTORED);
         final int count = _TestUtil.nextInt(random, 1, 4);
         for(int ct=0;ct<count;ct++) {
           doc.add(f);
@@ -302,11 +314,12 @@ public class TestLongPostings extends LuceneTestCase {
       iwc.setMaxBufferedDocs(-1);
       final RandomIndexWriter riw = new RandomIndexWriter(random, dir, iwc);
 
+      FieldType ft = new FieldType(TextField.TYPE_UNSTORED);
+      ft.setIndexOptions(options);
       for(int idx=0;idx<NUM_DOCS;idx++) {
         final Document doc = new Document();
         String s = isS1.get(idx) ? s1 : s2;
-        final Field f = newField("field", s, Field.Index.ANALYZED);
-        f.setIndexOptions(options);
+        final Field f = newField("field", s, ft);
         final int count = _TestUtil.nextInt(random, 1, 4);
         for(int ct=0;ct<count;ct++) {
           doc.add(f);

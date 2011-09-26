@@ -17,9 +17,8 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.FieldSelector;
 import org.apache.lucene.index.codecs.PerDocValues;
+import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -109,6 +108,11 @@ public class FilterIndexReader extends IndexReader {
     @Override
     public long getSumDocFreq() throws IOException {
       return in.getSumDocFreq();
+    }
+
+    @Override
+    public int getDocCount() throws IOException {
+      return in.getDocCount();
     }
   }
 
@@ -302,11 +306,13 @@ public class FilterIndexReader extends IndexReader {
 
   @Override
   public Directory directory() {
+    ensureOpen();
     return in.directory();
   }
   
   @Override
   public Bits getLiveDocs() {
+    ensureOpen();
     return in.getLiveDocs();
   }
   
@@ -329,7 +335,6 @@ public class FilterIndexReader extends IndexReader {
   public void getTermFreqVector(int docNumber, String field, TermVectorMapper mapper) throws IOException {
     ensureOpen();
     in.getTermFreqVector(docNumber, field, mapper);
-
   }
 
   @Override
@@ -351,14 +356,14 @@ public class FilterIndexReader extends IndexReader {
   }
 
   @Override
-  public Document document(int n, FieldSelector fieldSelector) throws CorruptIndexException, IOException {
+  public void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
     ensureOpen();
-    return in.document(n, fieldSelector);
+    in.document(docID, visitor);
   }
 
   @Override
   public boolean hasDeletions() {
-    // Don't call ensureOpen() here (it could affect performance)
+    ensureOpen();
     return in.hasDeletions();
   }
 
@@ -398,13 +403,14 @@ public class FilterIndexReader extends IndexReader {
   protected void doDelete(int n) throws  CorruptIndexException, IOException { in.deleteDocument(n); }
   
   @Override
-  protected void doCommit(Map<String,String> commitUserData) throws IOException { in.commit(commitUserData); }
+  protected void doCommit(Map<String,String> commitUserData) throws IOException {
+    in.commit(commitUserData);
+  }
   
   @Override
   protected void doClose() throws IOException {
     in.close();
   }
-
 
   @Override
   public Collection<String> getFieldNames(IndexReader.FieldOption fieldNames) {
@@ -437,11 +443,13 @@ public class FilterIndexReader extends IndexReader {
   
   @Override
   public ReaderContext getTopReaderContext() {
+    ensureOpen();
     return in.getTopReaderContext();
   }
 
   @Override
   public Fields fields() throws IOException {
+    ensureOpen();
     return in.fields();
   }
 
@@ -476,6 +484,7 @@ public class FilterIndexReader extends IndexReader {
 
   @Override
   public PerDocValues perDocValues() throws IOException {
+    ensureOpen();
     return in.perDocValues();
   }
 }

@@ -18,26 +18,26 @@ package org.apache.lucene.analysis.miscellaneous;
  */
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.document.Fieldable;
+import org.apache.lucene.analysis.AnalyzerWrapper;
 
-import java.io.Reader;
-import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
-import java.util.HashMap;
 
 /**
  * This analyzer is used to facilitate scenarios where different
- * fields require different analysis techniques.  Use {@link #addAnalyzer}
- * to add a non-default analyzer on a field name basis.
+ * fields require different analysis techniques.  Use the Map
+ * argument in {@link #PerFieldAnalyzerWrapper(Analyzer, java.util.Map)}
+ * to add non-default analyzers for fields.
  * 
  * <p>Example usage:
  * 
  * <pre>
+ *   Map analyzerPerField = new HashMap();
+ *   analyzerPerField.put("firstname", new KeywordAnalyzer());
+ *   analyzerPerField.put("lastname", new KeywordAnalyzer());
+ *
  *   PerFieldAnalyzerWrapper aWrapper =
- *      new PerFieldAnalyzerWrapper(new StandardAnalyzer());
- *   aWrapper.addAnalyzer("firstname", new KeywordAnalyzer());
- *   aWrapper.addAnalyzer("lastname", new KeywordAnalyzer());
+ *      new PerFieldAnalyzerWrapper(new StandardAnalyzer(), analyzerPerField);
  * </pre>
  * 
  * <p>In this example, StandardAnalyzer will be used for all fields except "firstname"
@@ -46,10 +46,9 @@ import java.util.HashMap;
  * <p>A PerFieldAnalyzerWrapper can be used like any other analyzer, for both indexing
  * and query parsing.
  */
-public final class PerFieldAnalyzerWrapper extends Analyzer {
-  private Analyzer defaultAnalyzer;
-  private Map<String,Analyzer> analyzerMap = new HashMap<String,Analyzer>();
-
+public final class PerFieldAnalyzerWrapper extends AnalyzerWrapper {
+  private final Analyzer defaultAnalyzer;
+  private final Map<String, Analyzer> fieldAnalyzers;
 
   /**
    * Constructs with default analyzer.
@@ -70,64 +69,25 @@ public final class PerFieldAnalyzerWrapper extends Analyzer {
    * @param fieldAnalyzers a Map (String field name to the Analyzer) to be 
    * used for those fields 
    */
-  public PerFieldAnalyzerWrapper(Analyzer defaultAnalyzer, 
-      Map<String,Analyzer> fieldAnalyzers) {
+  public PerFieldAnalyzerWrapper(Analyzer defaultAnalyzer,
+      Map<String, Analyzer> fieldAnalyzers) {
     this.defaultAnalyzer = defaultAnalyzer;
-    if (fieldAnalyzers != null) {
-      analyzerMap.putAll(fieldAnalyzers);
-    }
-  }
-  
-
-  /**
-   * Defines an analyzer to use for the specified field.
-   *
-   * @param fieldName field name requiring a non-default analyzer
-   * @param analyzer non-default analyzer to use for field
-   */
-  public void addAnalyzer(String fieldName, Analyzer analyzer) {
-    analyzerMap.put(fieldName, analyzer);
+    this.fieldAnalyzers = (fieldAnalyzers != null) ? fieldAnalyzers : Collections.<String, Analyzer>emptyMap();
   }
 
   @Override
-  public TokenStream tokenStream(String fieldName, Reader reader) {
-    Analyzer analyzer = analyzerMap.get(fieldName);
-    if (analyzer == null) {
-      analyzer = defaultAnalyzer;
-    }
-
-    return analyzer.tokenStream(fieldName, reader);
-  }
-  
-  @Override
-  public TokenStream reusableTokenStream(String fieldName, Reader reader) throws IOException {
-    Analyzer analyzer = analyzerMap.get(fieldName);
-    if (analyzer == null)
-      analyzer = defaultAnalyzer;
-
-    return analyzer.reusableTokenStream(fieldName, reader);
-  }
-  
-  /** Return the positionIncrementGap from the analyzer assigned to fieldName */
-  @Override
-  public int getPositionIncrementGap(String fieldName) {
-    Analyzer analyzer = analyzerMap.get(fieldName);
-    if (analyzer == null)
-      analyzer = defaultAnalyzer;
-    return analyzer.getPositionIncrementGap(fieldName);
+  protected Analyzer getWrappedAnalyzer(String fieldName) {
+    Analyzer analyzer = fieldAnalyzers.get(fieldName);
+    return (analyzer != null) ? analyzer : defaultAnalyzer;
   }
 
-  /** Return the offsetGap from the analyzer assigned to field */
   @Override
-  public int getOffsetGap(Fieldable field) {
-    Analyzer analyzer = analyzerMap.get(field.name());
-    if (analyzer == null)
-      analyzer = defaultAnalyzer;
-    return analyzer.getOffsetGap(field);
+  protected TokenStreamComponents wrapComponents(String fieldName, TokenStreamComponents components) {
+    return components;
   }
   
   @Override
   public String toString() {
-    return "PerFieldAnalyzerWrapper(" + analyzerMap + ", default=" + defaultAnalyzer + ")";
+    return "PerFieldAnalyzerWrapper(" + fieldAnalyzers + ", default=" + defaultAnalyzer + ")";
   }
 }

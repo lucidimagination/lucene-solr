@@ -33,12 +33,11 @@ import java.io.Reader;
 public final class MockPayloadAnalyzer extends Analyzer {
 
   @Override
-  public TokenStream tokenStream(String fieldName, Reader reader) {
-    TokenStream result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
-    return new MockPayloadFilter(result, fieldName);
+  public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+    Tokenizer result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+    return new TokenStreamComponents(result, new MockPayloadFilter(result, fieldName));
   }
 }
-
 
 /**
  *

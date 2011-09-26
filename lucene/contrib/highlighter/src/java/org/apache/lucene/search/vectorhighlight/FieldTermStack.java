@@ -46,8 +46,12 @@ public class FieldTermStack {
   //  Directory dir = new RAMDirectory();
   //  IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(Version.LUCENE_CURRENT, analyzer));
   //  Document doc = new Document();
-  //  doc.add( new Field( "f", "a a a b b c a b b c d e f", Store.YES, Index.ANALYZED, TermVector.WITH_POSITIONS_OFFSETS ) );
-  //  doc.add( new Field( "f", "b a b a f", Store.YES, Index.ANALYZED, TermVector.WITH_POSITIONS_OFFSETS ) );
+  //  FieldType ft = new FieldType(TextField.TYPE_STORED);
+  //  ft.setStoreTermVectors(true);
+  //  ft.setStoreTermVectorOffsets(true);
+  //  ft.setStoreTermVectorPositions(true);
+  //  doc.add( new Field( "f", ft, "a a a b b c a b b c d e f" ) );
+  //  doc.add( new Field( "f", ft, "b a b a f" ) );
   //  writer.addDocument( doc );
   //  writer.close();
     
@@ -67,6 +71,10 @@ public class FieldTermStack {
    */
   public FieldTermStack( IndexReader reader, int docId, String fieldName, final FieldQuery fieldQuery ) throws IOException {
     this.fieldName = fieldName;
+    
+    Set<String> termSet = fieldQuery.getTermSet( fieldName );
+    // just return to make null snippet if un-matched fieldName specified when fieldMatch == true
+    if( termSet == null ) return;
 
     TermFreqVector tfv = reader.getTermFreqVector( docId, fieldName );
     if( tfv == null ) return; // just return to make null snippets
@@ -78,9 +86,6 @@ public class FieldTermStack {
       return; // just return to make null snippets
     }
     
-    Set<String> termSet = fieldQuery.getTermSet( fieldName );
-    // just return to make null snippet if un-matched fieldName specified when fieldMatch == true
-    if( termSet == null ) return;
     final CharsRef spare = new CharsRef();
     for( BytesRef term : tpv.getTerms() ){
       if( !termSet.contains( term.utf8ToChars(spare).toString() ) ) continue;

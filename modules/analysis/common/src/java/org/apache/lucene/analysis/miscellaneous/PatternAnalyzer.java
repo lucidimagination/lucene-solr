@@ -187,25 +187,21 @@ public final class PatternAnalyzer extends Analyzer {
    *            the string to tokenize
    * @return a new token stream
    */
-  public TokenStream tokenStream(String fieldName, String text) {
+  public TokenStreamComponents createComponents(String fieldName, String text) {
     // Ideally the Analyzer superclass should have a method with the same signature, 
     // with a default impl that simply delegates to the StringReader flavour. 
     if (text == null) 
       throw new IllegalArgumentException("text must not be null");
     
-    TokenStream stream;
     if (pattern == NON_WORD_PATTERN) { // fast path
-      stream = new FastStringTokenizer(text, true, toLowerCase, stopWords);
+      return new TokenStreamComponents(new FastStringTokenizer(text, true, toLowerCase, stopWords));
+    } else if (pattern == WHITESPACE_PATTERN) { // fast path
+      return new TokenStreamComponents(new FastStringTokenizer(text, false, toLowerCase, stopWords));
     }
-    else if (pattern == WHITESPACE_PATTERN) { // fast path
-      stream = new FastStringTokenizer(text, false, toLowerCase, stopWords);
-    }
-    else {
-      stream = new PatternTokenizer(text, pattern, toLowerCase);
-      if (stopWords != null) stream = new StopFilter(matchVersion, stream, stopWords);
-    }
-    
-    return stream;
+
+    Tokenizer tokenizer = new PatternTokenizer(text, pattern, toLowerCase);
+    TokenStream result = (stopWords != null) ? new StopFilter(matchVersion, tokenizer, stopWords) : tokenizer;
+    return new TokenStreamComponents(tokenizer, result);
   }
   
   /**
@@ -220,10 +216,10 @@ public final class PatternAnalyzer extends Analyzer {
    * @return a new token stream
    */
   @Override
-  public TokenStream tokenStream(String fieldName, Reader reader) {
+  public TokenStreamComponents createComponents(String fieldName, Reader reader) {
     try {
       String text = toString(reader);
-      return tokenStream(fieldName, text);
+      return createComponents(fieldName, text);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
@@ -326,7 +322,8 @@ public final class PatternAnalyzer extends Analyzer {
    * as one might think - kudos to the Sun regex developers.
    */
   private static final class PatternTokenizer extends Tokenizer {
-    
+
+    private final Pattern pattern;
     private String str;
     private final boolean toLowerCase;
     private Matcher matcher;
@@ -336,6 +333,7 @@ public final class PatternAnalyzer extends Analyzer {
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
     
     public PatternTokenizer(String str, Pattern pattern, boolean toLowerCase) {
+      this.pattern = pattern;
       this.str = str;
       this.matcher = pattern.matcher(str);
       this.toLowerCase = toLowerCase;
@@ -379,6 +377,7 @@ public final class PatternAnalyzer extends Analyzer {
     public void reset(Reader input) throws IOException {
       super.reset(input);
       this.str = PatternAnalyzer.toString(input);
+      this.matcher = pattern.matcher(this.str);
     }
 
     @Override

@@ -21,13 +21,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NamedThreadFactory;
@@ -68,11 +70,26 @@ public class TestBooleanQuery extends LuceneTestCase {
     Directory dir = newDirectory();
     RandomIndexWriter w = new RandomIndexWriter(random, dir);
     Document doc = new Document();
-    doc.add(newField("field", "a b c d", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("field", "a b c d", TextField.TYPE_UNSTORED));
     w.addDocument(doc);
 
     IndexReader r = w.getReader();
     IndexSearcher s = newSearcher(r);
+    // this test relies upon coord being the default implementation,
+    // otherwise scores are different!
+    final SimilarityProvider delegate = s.getSimilarityProvider();
+    s.setSimilarityProvider(new DefaultSimilarityProvider() {
+      @Override
+      public float queryNorm(float sumOfSquaredWeights) {
+        return delegate.queryNorm(sumOfSquaredWeights);
+      }
+
+      @Override
+      public Similarity get(String field) {
+        return delegate.get(field);
+      }
+    });
+
     BooleanQuery q = new BooleanQuery();
     q.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
 
@@ -82,7 +99,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     subQuery.setBoost(0);
     q.add(subQuery, BooleanClause.Occur.SHOULD);
     float score2 = s.search(q, 10).getMaxScore();
-    assertEquals(score*.5, score2, 1e-6);
+    assertEquals(score*.5F, score2, 1e-6);
 
     // LUCENE-2617: make sure that a clause not in the index still contributes to the score via coord factor
     BooleanQuery qq = (BooleanQuery)q.clone();
@@ -92,14 +109,14 @@ public class TestBooleanQuery extends LuceneTestCase {
     phrase.setBoost(0);
     qq.add(phrase, BooleanClause.Occur.SHOULD);
     score2 = s.search(qq, 10).getMaxScore();
-    assertEquals(score*(1.0/3), score2, 1e-6);
+    assertEquals(score*(1/3F), score2, 1e-6);
 
     // now test BooleanScorer2
     subQuery = new TermQuery(new Term("field", "b"));
     subQuery.setBoost(0);
     q.add(subQuery, BooleanClause.Occur.MUST);
     score2 = s.search(q, 10).getMaxScore();
-    assertEquals(score*(2.0/3), score2, 1e-6);
+    assertEquals(score*(2/3F), score2, 1e-6);
  
     // PhraseQuery w/ no terms added returns a null scorer
     PhraseQuery pq = new PhraseQuery();
@@ -129,7 +146,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     Directory dir1 = newDirectory();
     RandomIndexWriter iw1 = new RandomIndexWriter(random, dir1);
     Document doc1 = new Document();
-    doc1.add(newField("field", "foo bar", Field.Index.ANALYZED));
+    doc1.add(newField("field", "foo bar", TextField.TYPE_UNSTORED));
     iw1.addDocument(doc1);
     IndexReader reader1 = iw1.getReader();
     iw1.close();
@@ -137,7 +154,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     Directory dir2 = newDirectory();
     RandomIndexWriter iw2 = new RandomIndexWriter(random, dir2);
     Document doc2 = new Document();
-    doc2.add(newField("field", "foo baz", Field.Index.ANALYZED));
+    doc2.add(newField("field", "foo baz", TextField.TYPE_UNSTORED));
     iw2.addDocument(doc2);
     IndexReader reader2 = iw2.getReader();
     iw2.close();

@@ -17,6 +17,16 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import org.apache.lucene.document.FieldType; // for javadocs
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.DefaultSegmentInfosWriter;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -28,23 +38,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.document.AbstractField;  // for javadocs
-import org.apache.lucene.document.Document;
 import org.apache.lucene.index.codecs.BlockTreeTermsReader;
-import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.index.codecs.DefaultSegmentInfosWriter;
 import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.index.values.IndexDocValues;
 import org.apache.lucene.index.values.ValuesEnum;
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.StringHelper;
 
 /**
@@ -189,7 +190,7 @@ public class CheckIndex {
 
       /** True if at least one of the fields in this segment
        *  has position data
-       *  @see AbstractField#setIndexOptions(org.apache.lucene.index.FieldInfo.IndexOptions) */
+       *  @see FieldType#setIndexOptions(org.apache.lucene.index.FieldInfo.IndexOptions) */
       public boolean hasProx;
 
       /** Map that includes certain
@@ -705,6 +706,7 @@ public class CheckIndex {
 
         long sumTotalTermFreq = 0;
         long sumDocFreq = 0;
+        FixedBitSet visitedDocs = new FixedBitSet(reader.maxDoc());
         while(true) {
 
           final BytesRef term = terms.next();
@@ -766,6 +768,7 @@ public class CheckIndex {
             if (doc == DocIdSetIterator.NO_MORE_DOCS) {
               break;
             }
+            visitedDocs.set(doc);
             final int freq = docs2.freq();
             status.totPos += freq;
             totalTermFreq += freq;
@@ -810,6 +813,7 @@ public class CheckIndex {
             docCount = 0;
             totalTermFreq = 0;
             while(docsNoDel.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+              visitedDocs.set(docsNoDel.docID());
               docCount++;
               totalTermFreq += docsNoDel.freq();
             }
@@ -886,87 +890,106 @@ public class CheckIndex {
         }
         
         final Terms fieldTerms = fields.terms(field);
-        if (fieldTerms instanceof BlockTreeTermsReader.FieldReader) {
-          final BlockTreeTermsReader.Stats stats = ((BlockTreeTermsReader.FieldReader) fieldTerms).computeStats();
-          assert stats != null;
-          if (status.blockTreeStats == null) {
-            status.blockTreeStats = new HashMap<String,BlockTreeTermsReader.Stats>();
+        if (fieldTerms == null) {
+          // Unusual: the FieldsEnum returned a field but
+          // the Terms for that field is null; this should
+          // only happen if it's a ghost field (field with
+          // no terms, eg there used to be terms but all
+          // docs got deleted and then merged away):
+          // make sure TermsEnum is empty:
+          if (fieldsEnum.terms().next() != null) {
+            throw new RuntimeException("Fields.terms(field=" + field + ") returned null yet the field appears to have terms");
           }
-          status.blockTreeStats.put(field, stats);
-        }
+        } else {
+          if (fieldTerms instanceof BlockTreeTermsReader.FieldReader) {
+            final BlockTreeTermsReader.Stats stats = ((BlockTreeTermsReader.FieldReader) fieldTerms).computeStats();
+            assert stats != null;
+            if (status.blockTreeStats == null) {
+              status.blockTreeStats = new HashMap<String,BlockTreeTermsReader.Stats>();
+            }
+            status.blockTreeStats.put(field, stats);
+          }
 
-        if (sumTotalTermFreq != 0) {
-          final long v = fields.terms(field).getSumTotalTermFreq();
-          if (v != -1 && sumTotalTermFreq != v) {
-            throw new RuntimeException("sumTotalTermFreq for field " + field + "=" + v + " != recomputed sumTotalTermFreq=" + sumTotalTermFreq);
+          if (sumTotalTermFreq != 0) {
+            final long v = fields.terms(field).getSumTotalTermFreq();
+            if (v != -1 && sumTotalTermFreq != v) {
+              throw new RuntimeException("sumTotalTermFreq for field " + field + "=" + v + " != recomputed sumTotalTermFreq=" + sumTotalTermFreq);
+            }
           }
-        }
         
-        if (sumDocFreq != 0) {
-          final long v = fields.terms(field).getSumDocFreq();
-          if (v != -1 && sumDocFreq != v) {
-            throw new RuntimeException("sumDocFreq for field " + field + "=" + v + " != recomputed sumDocFreq=" + sumDocFreq);
+          if (sumDocFreq != 0) {
+            final long v = fields.terms(field).getSumDocFreq();
+            if (v != -1 && sumDocFreq != v) {
+              throw new RuntimeException("sumDocFreq for field " + field + "=" + v + " != recomputed sumDocFreq=" + sumDocFreq);
+            }
+          }
+        
+        if (fieldTerms != null) {
+          final int v = fieldTerms.getDocCount();
+          if (v != -1 && visitedDocs.cardinality() != v) {
+            throw new RuntimeException("docCount for field " + field + "=" + v + " != recomputed docCount=" + visitedDocs.cardinality());
           }
         }
 
-        // Test seek to last term:
-        if (lastTerm != null) {
-          if (terms.seekCeil(lastTerm) != TermsEnum.SeekStatus.FOUND) { 
-            throw new RuntimeException("seek to last term " + lastTerm + " failed");
+          // Test seek to last term:
+          if (lastTerm != null) {
+            if (terms.seekCeil(lastTerm) != TermsEnum.SeekStatus.FOUND) { 
+              throw new RuntimeException("seek to last term " + lastTerm + " failed");
+            }
+
+            is.search(new TermQuery(new Term(field, lastTerm)), 1);
           }
 
-          is.search(new TermQuery(new Term(field, lastTerm)), 1);
-        }
+          // Test seeking by ord
+          if (hasOrd && status.termCount-termCountStart > 0) {
+            long termCount;
+            try {
+              termCount = fields.terms(field).getUniqueTermCount();
+            } catch (UnsupportedOperationException uoe) {
+              termCount = -1;
+            }
 
-        // Test seeking by ord
-        if (hasOrd && status.termCount-termCountStart > 0) {
-          long termCount;
-          try {
-            termCount = fields.terms(field).getUniqueTermCount();
-          } catch (UnsupportedOperationException uoe) {
-            termCount = -1;
-          }
+            if (termCount != -1 && termCount != status.termCount - termCountStart) {
+              throw new RuntimeException("termCount mismatch " + termCount + " vs " + (status.termCount - termCountStart));
+            }
 
-          if (termCount != -1 && termCount != status.termCount - termCountStart) {
-            throw new RuntimeException("termCount mismatch " + termCount + " vs " + (status.termCount - termCountStart));
-          }
-
-          int seekCount = (int) Math.min(10000L, termCount);
-          if (seekCount > 0) {
-            BytesRef[] seekTerms = new BytesRef[seekCount];
+            int seekCount = (int) Math.min(10000L, termCount);
+            if (seekCount > 0) {
+              BytesRef[] seekTerms = new BytesRef[seekCount];
             
-            // Seek by ord
-            for(int i=seekCount-1;i>=0;i--) {
-              long ord = i*(termCount/seekCount);
-              terms.seekExact(ord);
-              seekTerms[i] = new BytesRef(terms.term());
-            }
-
-            // Seek by term
-            long totDocCount = 0;
-            for(int i=seekCount-1;i>=0;i--) {
-              if (terms.seekCeil(seekTerms[i]) != TermsEnum.SeekStatus.FOUND) {
-                throw new RuntimeException("seek to existing term " + seekTerms[i] + " failed");
+              // Seek by ord
+              for(int i=seekCount-1;i>=0;i--) {
+                long ord = i*(termCount/seekCount);
+                terms.seekExact(ord);
+                seekTerms[i] = new BytesRef(terms.term());
               }
+
+              // Seek by term
+              long totDocCount = 0;
+              for(int i=seekCount-1;i>=0;i--) {
+                if (terms.seekCeil(seekTerms[i]) != TermsEnum.SeekStatus.FOUND) {
+                  throw new RuntimeException("seek to existing term " + seekTerms[i] + " failed");
+                }
               
-              docs = terms.docs(liveDocs, docs);
-              if (docs == null) {
-                throw new RuntimeException("null DocsEnum from to existing term " + seekTerms[i]);
+                docs = terms.docs(liveDocs, docs);
+                if (docs == null) {
+                  throw new RuntimeException("null DocsEnum from to existing term " + seekTerms[i]);
+                }
+
+                while(docs.nextDoc() != DocsEnum.NO_MORE_DOCS) {
+                  totDocCount++;
+                }
               }
 
-              while(docs.nextDoc() != DocsEnum.NO_MORE_DOCS) {
-                totDocCount++;
+              // TermQuery
+              long totDocCount2 = 0;
+              for(int i=0;i<seekCount;i++) {
+                totDocCount2 += is.search(new TermQuery(new Term(field, seekTerms[i])), 1).totalHits;
               }
-            }
 
-            // TermQuery
-            long totDocCount2 = 0;
-            for(int i=0;i<seekCount;i++) {
-              totDocCount2 += is.search(new TermQuery(new Term(field, seekTerms[i])), 1).totalHits;
-            }
-
-            if (totDocCount != totDocCount2) {
-              throw new RuntimeException("search to seek terms produced wrong number of hits: " + totDocCount + " vs " + totDocCount2);
+              if (totDocCount != totDocCount2) {
+                throw new RuntimeException("search to seek terms produced wrong number of hits: " + totDocCount + " vs " + totDocCount2);
+              }
             }
           }
         }

@@ -21,7 +21,7 @@ import java.util.BitSet;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -54,23 +54,23 @@ public class TestFilteredQuery extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter (random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
 
     Document doc = new Document();
-    doc.add (newField("field", "one two three four five", Field.Store.YES, Field.Index.ANALYZED));
-    doc.add (newField("sorter", "b", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add (newField("field", "one two three four five", TextField.TYPE_STORED));
+    doc.add (newField("sorter", "b", TextField.TYPE_STORED));
     writer.addDocument (doc);
 
     doc = new Document();
-    doc.add (newField("field", "one two three four", Field.Store.YES, Field.Index.ANALYZED));
-    doc.add (newField("sorter", "d", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add (newField("field", "one two three four", TextField.TYPE_STORED));
+    doc.add (newField("sorter", "d", TextField.TYPE_STORED));
     writer.addDocument (doc);
 
     doc = new Document();
-    doc.add (newField("field", "one two three y", Field.Store.YES, Field.Index.ANALYZED));
-    doc.add (newField("sorter", "a", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add (newField("field", "one two three y", TextField.TYPE_STORED));
+    doc.add (newField("sorter", "a", TextField.TYPE_STORED));
     writer.addDocument (doc);
 
     doc = new Document();
-    doc.add (newField("field", "one two x", Field.Store.YES, Field.Index.ANALYZED));
-    doc.add (newField("sorter", "c", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add (newField("field", "one two x", TextField.TYPE_STORED));
+    doc.add (newField("sorter", "c", TextField.TYPE_STORED));
     writer.addDocument (doc);
 
     // tests here require single segment (eg try seed
@@ -179,7 +179,7 @@ public class TestFilteredQuery extends LuceneTestCase {
     assertEquals(hits1.length, hits2.length);
     
     for (int i = 0; i < hits1.length; i++) {
-      assertEquals(hits1[i].score, hits2[i].score, 0.0000001f);
+      assertEquals(hits1[i].score, hits2[i].score, 0.000001f);
     }
   }
 

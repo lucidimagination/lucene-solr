@@ -21,9 +21,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 
-import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.util.Version;
@@ -68,8 +66,8 @@ public class TestChineseTokenizer extends BaseTokenStreamTestCase
      */
     private class JustChineseTokenizerAnalyzer extends Analyzer {
       @Override
-      public TokenStream tokenStream(String fieldName, Reader reader) {
-        return new ChineseTokenizer(reader);
+      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        return new TokenStreamComponents(new ChineseTokenizer(reader));
       }   
     }
     
@@ -79,8 +77,9 @@ public class TestChineseTokenizer extends BaseTokenStreamTestCase
      */
     private class JustChineseFilterAnalyzer extends Analyzer {
       @Override
-      public TokenStream tokenStream(String fieldName, Reader reader) {
-        return new ChineseFilter(new WhitespaceTokenizer(Version.LUCENE_CURRENT, reader));
+      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer tokenizer = new WhitespaceTokenizer(Version.LUCENE_CURRENT, reader);
+        return new TokenStreamComponents(tokenizer, new ChineseFilter(tokenizer));
       }
     }
     

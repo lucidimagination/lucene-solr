@@ -18,10 +18,8 @@ package org.apache.lucene.index.values;
  */
 import java.io.IOException;
 import java.util.Collection;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.values.IndexDocValuesArray;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.index.values.IndexDocValues.SourceEnum;
 import org.apache.lucene.index.values.IndexDocValuesArray.ByteValues;
@@ -34,6 +32,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.CodecUtil;
+import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LongsRef;
 import org.apache.lucene.util.packed.PackedInts;
@@ -71,7 +70,7 @@ class IntsImpl {
     private final IOContext context;
     
 
-    protected IntsWriter(Directory dir, String id, AtomicLong bytesUsed,
+    protected IntsWriter(Directory dir, String id, Counter bytesUsed,
         ValueType valueType, IOContext context) throws IOException {
       super(bytesUsed);
       this.context = context;
@@ -132,7 +131,7 @@ class IntsImpl {
 
         } finally {
           if (!success) {
-            IOUtils.closeSafely(true, datOut);
+            IOUtils.closeWhileHandlingException(datOut);
           }
         }
       }
@@ -153,7 +152,11 @@ class IntsImpl {
         }
         success = true;
       } finally {
-        IOUtils.closeSafely(!success, datOut);
+        if (success) {
+          IOUtils.close(datOut);
+        } else {
+          IOUtils.closeWhileHandlingException(datOut);
+        }
         array.clear();
       }
     }
@@ -287,7 +290,7 @@ class IntsImpl {
         success = true;
       } finally {
         if (!success) {
-          IOUtils.closeSafely(true, datIn);
+          IOUtils.closeWhileHandlingException(datIn);
         }
       }
     }
@@ -302,7 +305,11 @@ class IntsImpl {
         datOut.copyBytes(indexInput, bytesPerValue(type) * numDocs);
         success = true;
       } finally {
-        IOUtils.closeSafely(!success, indexInput);
+        if (success) {
+          IOUtils.close(indexInput);
+        } else {
+          IOUtils.closeWhileHandlingException(indexInput);
+        }
       }
       return numDocs;
     }
@@ -319,12 +326,12 @@ class IntsImpl {
       try {
         input = (IndexInput) datIn.clone();
         input.seek(CodecUtil.headerLength(CODEC_NAME) + 1);
-        source  = loadFixedSource(type, input, numDocs);
+        source = loadFixedSource(type, input, numDocs);
         success = true;
         return source;
       } finally {
         if (!success) {
-          IOUtils.closeSafely(true, input, datIn);
+          IOUtils.closeWhileHandlingException(input, datIn);
         }
       }
     }
@@ -346,7 +353,7 @@ class IntsImpl {
         return inst;
       } finally {
         if (!success) {
-          IOUtils.closeSafely(true, input);
+          IOUtils.closeWhileHandlingException(input);
         }
       }
     }
@@ -360,13 +367,13 @@ class IntsImpl {
   private static ValuesEnum directEnum(byte ord, AttributeSource attrSource, IndexInput input, int numDocs) throws IOException {
     switch (ord) {
     case FIXED_16:
-      return new ShortValues((AtomicLong)null).getDirectEnum(attrSource, input, numDocs);
+      return new ShortValues((Counter)null).getDirectEnum(attrSource, input, numDocs);
     case FIXED_32:
-      return new IntValues((AtomicLong)null).getDirectEnum(attrSource, input, numDocs);
+      return new IntValues((Counter)null).getDirectEnum(attrSource, input, numDocs);
     case FIXED_64:
-      return new LongValues((AtomicLong)null).getDirectEnum(attrSource, input, numDocs);
+      return new LongValues((Counter)null).getDirectEnum(attrSource, input, numDocs);
     case FIXED_8:
-      return new ByteValues((AtomicLong)null).getDirectEnum(attrSource, input, numDocs);
+      return new ByteValues((Counter)null).getDirectEnum(attrSource, input, numDocs);
     case PACKED:
       return new PackedIntsEnumImpl(attrSource, input);
     default:

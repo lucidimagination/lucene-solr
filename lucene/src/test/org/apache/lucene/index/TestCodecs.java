@@ -23,9 +23,9 @@ import java.util.HashSet;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.FieldsProducer;
@@ -42,6 +42,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.OpenBitSet;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util._TestUtil;
 import org.junit.BeforeClass;
@@ -108,11 +109,15 @@ public class TestCodecs extends LuceneTestCase {
       final TermsConsumer termsConsumer = consumer.addField(fieldInfo);
       long sumTotalTermCount = 0;
       long sumDF = 0;
+      OpenBitSet visitedDocs = new OpenBitSet();
       for (final TermData term : terms) {
+        for (int i = 0; i < term.docs.length; i++) {
+          visitedDocs.set(term.docs[i]);
+        }
         sumDF += term.docs.length;
         sumTotalTermCount += term.write(termsConsumer);
       }
-      termsConsumer.finish(sumTotalTermCount, sumDF);
+      termsConsumer.finish(sumTotalTermCount, sumDF, (int) visitedDocs.cardinality());
     }
   }
 
@@ -340,7 +345,9 @@ public class TestCodecs extends LuceneTestCase {
       pq.add(new Term("content", "ccc"));
 
       final Document doc = new Document();
-      doc.add(newField("content", "aaa bbb ccc ddd", Store.NO, Field.Index.ANALYZED_NO_NORMS));
+      FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+      customType.setOmitNorms(true);
+      doc.add(newField("content", "aaa bbb ccc ddd", customType));
 
       // add document and force commit for creating a first segment
       writer.addDocument(doc);

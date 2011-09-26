@@ -21,10 +21,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
@@ -123,9 +120,9 @@ public class TestAnalyzers extends BaseTokenStreamTestCase {
   private static class LowerCaseWhitespaceAnalyzer extends Analyzer {
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      return new LowerCaseFilter(TEST_VERSION_CURRENT,
-          new WhitespaceTokenizer(TEST_VERSION_CURRENT, reader));
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer tokenizer = new WhitespaceTokenizer(TEST_VERSION_CURRENT, reader);
+      return new TokenStreamComponents(tokenizer, new LowerCaseFilter(TEST_VERSION_CURRENT, tokenizer));
     }
     
   }

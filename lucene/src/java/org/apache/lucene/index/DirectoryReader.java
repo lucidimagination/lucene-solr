@@ -29,8 +29,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.FieldSelector;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.Lock;
@@ -366,6 +364,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
 
   @Override
   public final synchronized IndexReader clone(boolean openReadOnly) throws CorruptIndexException, IOException {
+    // doReopen calls ensureOpen
     DirectoryReader newReader = doReopen((SegmentInfos) segmentInfos.clone(), true, openReadOnly);
 
     if (this != newReader) {
@@ -559,17 +558,16 @@ class DirectoryReader extends IndexReader implements Cloneable {
     return maxDoc;
   }
 
-  // inherit javadoc
   @Override
-  public Document document(int n, FieldSelector fieldSelector) throws CorruptIndexException, IOException {
+  public void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
     ensureOpen();
-    int i = readerIndex(n);                          // find segment num
-    return subReaders[i].document(n - starts[i], fieldSelector);    // dispatch to segment reader
+    int i = readerIndex(docID);                          // find segment num
+    subReaders[i].document(docID - starts[i], visitor);    // dispatch to segment reader
   }
 
   @Override
   public boolean hasDeletions() {
-    // Don't call ensureOpen() here (it could affect performance)
+    ensureOpen();
     return hasDeletions;
   }
 
@@ -726,7 +724,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
       // KeepOnlyLastCommitDeleter:
       IndexFileDeleter deleter = new IndexFileDeleter(directory,
                                                       deletionPolicy == null ? new KeepOnlyLastCommitDeletionPolicy() : deletionPolicy,
-                                                      segmentInfos, null, codecs);
+                                                      segmentInfos, null, codecs, null);
       segmentInfos.updateGeneration(deleter.getLastSegmentInfos());
       segmentInfos.changed();
 
@@ -846,7 +844,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
     if (writer != null) {
       // Since we just closed, writer may now be able to
       // delete unused files:
-      writer.deleteUnusedFiles();
+      writer.deletePendingFiles();
     }
 
     // throw the first exception
@@ -871,6 +869,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
   
   @Override
   public ReaderContext getTopReaderContext() {
+    ensureOpen();
     return topLevelReaderContext;
   }
   
@@ -890,6 +889,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
 
   @Override
   public int getTermInfosIndexDivisor() {
+    ensureOpen();
     return termInfosIndexDivisor;
   }
 
@@ -900,6 +900,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
    */
   @Override
   public IndexCommit getIndexCommit() throws IOException {
+    ensureOpen();
     return new ReaderCommit(segmentInfos, directory);
   }
 

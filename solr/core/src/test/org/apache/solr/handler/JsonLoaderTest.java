@@ -17,11 +17,6 @@
 
 package org.apache.solr.handler;
 
-import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.apache.noggit.JSONParser;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
@@ -31,9 +26,9 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.DeleteUpdateCommand;
-import org.apache.solr.update.RollbackUpdateCommand;
-import org.apache.solr.update.processor.UpdateRequestProcessor;
+import org.apache.solr.update.processor.BufferingRequestProcessor;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
 public class JsonLoaderTest extends SolrTestCaseJ4 {
   @BeforeClass
@@ -64,7 +59,8 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
       "  'boost': 3.45,\n" +
       "  'doc': {\n" +
       "    'f1': 'v1',\n" +
-      "    'f1': 'v2'\n" +
+      "    'f1': 'v2',\n" +
+      "    'f2': null\n" +
       "  }\n" +
       "},\n" +
       "\n" +
@@ -92,7 +88,7 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
     AddUpdateCommand add = p.addCommands.get(0);
     SolrInputDocument d = add.solrDoc;
     SolrInputField f = d.getField( "boosted" );
-    assertEquals(6.7f, f.getBoost());
+    assertEquals(6.7f, f.getBoost(), 0.1);
     assertEquals(2, f.getValues().size());
 
     // 
@@ -100,9 +96,10 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
     d = add.solrDoc;
     f = d.getField( "f1" );
     assertEquals(2, f.getValues().size());
-    assertEquals(3.45f, d.getDocumentBoost());
+    assertEquals(3.45f, d.getDocumentBoost(), 0.001);
     assertEquals(false, add.overwrite);
-    
+
+    assertEquals(0, d.getField("f2").getValueCount());
 
     // parse the commit commands
     assertEquals( 2, p.commitCommands.size() );
@@ -188,43 +185,12 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
     req.close();
   }
 
-}
-
-
-class BufferingRequestProcessor extends UpdateRequestProcessor
-{
-  List<AddUpdateCommand> addCommands = new ArrayList<AddUpdateCommand>();
-  List<DeleteUpdateCommand> deleteCommands = new ArrayList<DeleteUpdateCommand>();
-  List<CommitUpdateCommand> commitCommands = new ArrayList<CommitUpdateCommand>();
-  List<RollbackUpdateCommand> rollbackCommands = new ArrayList<RollbackUpdateCommand>();
-  
-  public BufferingRequestProcessor(UpdateRequestProcessor next) {
-    super(next);
-  }
-  
-  @Override
-  public void processAdd(AddUpdateCommand cmd) throws IOException {
-    addCommands.add( cmd );
+  @Test
+  public void testNullValues() throws Exception {
+    updateJ("[{'id':'10','foo_s':null,'foo2_s':['hi',null,'there']}]".replace('\'', '"'), params("commit","true"));
+    assertJQ(req("q","id:10", "fl","foo_s,foo2_s")
+        ,"/response/docs/[0]=={'foo2_s':['hi','there']}"
+    );
   }
 
-  @Override
-  public void processDelete(DeleteUpdateCommand cmd) throws IOException {
-    deleteCommands.add( cmd );
-  }
-
-  @Override
-  public void processCommit(CommitUpdateCommand cmd) throws IOException {
-    commitCommands.add( cmd );
-  }
-  
-  @Override
-  public void processRollback(RollbackUpdateCommand cmd) throws IOException
-  {
-    rollbackCommands.add( cmd );
-  }
-
-  @Override
-  public void finish() throws IOException {
-    // nothing?    
-  }
 }

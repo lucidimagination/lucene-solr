@@ -20,7 +20,7 @@ package org.apache.lucene.search.spell;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -39,41 +39,47 @@ public class TestDirectSpellChecker extends LuceneTestCase {
 
     for (int i = 0; i < 20; i++) {
       Document doc = new Document();
-      doc.add(newField("numbers", English.intToEnglish(i), Field.Store.NO, Field.Index.ANALYZED));
+      doc.add(newField("numbers", English.intToEnglish(i), TextField.TYPE_UNSTORED));
       writer.addDocument(doc);
     }
 
     IndexReader ir = writer.getReader();
 
-    SuggestWord[] similar = spellChecker.suggestSimilar(new Term("numbers", "fvie"), 2, ir, false);
+    SuggestWord[] similar = spellChecker.suggestSimilar(new Term("numbers",
+        "fvie"), 2, ir, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertTrue(similar.length > 0);
     assertEquals("five", similar[0].string);
 
-    similar = spellChecker.suggestSimilar(new Term("numbers", "five"), 2, ir, false);
+    similar = spellChecker.suggestSimilar(new Term("numbers", "five"), 2, ir,
+        SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     if (similar.length > 0) {
       assertFalse(similar[0].string.equals("five")); // don't suggest a word for itself
     }
 
-    similar = spellChecker.suggestSimilar(new Term("numbers", "fvie"), 2, ir, false);
+    similar = spellChecker.suggestSimilar(new Term("numbers", "fvie"), 2, ir,
+        SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertTrue(similar.length > 0);
     assertEquals("five", similar[0].string);
 
-    similar = spellChecker.suggestSimilar(new Term("numbers", "fiv"), 2, ir, false);
+    similar = spellChecker.suggestSimilar(new Term("numbers", "fiv"), 2, ir,
+        SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertTrue(similar.length > 0);
     assertEquals("five", similar[0].string);
 
-    similar = spellChecker.suggestSimilar(new Term("numbers", "fives"), 2, ir, false);
+    similar = spellChecker.suggestSimilar(new Term("numbers", "fives"), 2, ir,
+        SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertTrue(similar.length > 0);
     assertEquals("five", similar[0].string);
 
     assertTrue(similar.length > 0);
-    similar = spellChecker.suggestSimilar(new Term("numbers", "fie"), 2, ir, false);
+    similar = spellChecker.suggestSimilar(new Term("numbers", "fie"), 2, ir,
+        SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertEquals("five", similar[0].string);
 
     // add some more documents
     for (int i = 1000; i < 1100; i++) {
       Document doc = new Document();
-      doc.add(newField("numbers", English.intToEnglish(i), Field.Store.NO, Field.Index.ANALYZED));
+      doc.add(newField("numbers", English.intToEnglish(i), TextField.TYPE_UNSTORED));
       writer.addDocument(doc);
     }
 
@@ -81,7 +87,8 @@ public class TestDirectSpellChecker extends LuceneTestCase {
     ir = writer.getReader();
 
     // look ma, no spellcheck index rebuild
-    similar = spellChecker.suggestSimilar(new Term("numbers", "tousand"), 10, ir, false);
+    similar = spellChecker.suggestSimilar(new Term("numbers", "tousand"), 10,
+        ir, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertTrue(similar.length > 0); 
     assertEquals("thousand", similar[0].string);
 
@@ -96,47 +103,61 @@ public class TestDirectSpellChecker extends LuceneTestCase {
         new MockAnalyzer(random, MockTokenizer.SIMPLE, true));
 
     Document doc = new Document();
-    doc.add(newField("text", "foobar", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("text", "foobar", TextField.TYPE_UNSTORED));
     writer.addDocument(doc);
-    doc.add(newField("text", "foobar", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("text", "foobar", TextField.TYPE_UNSTORED));
     writer.addDocument(doc);
-    doc.add(newField("text", "foobaz", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("text", "foobaz", TextField.TYPE_UNSTORED));
     writer.addDocument(doc);
-    doc.add(newField("text", "fobar", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("text", "fobar", TextField.TYPE_UNSTORED));
     writer.addDocument(doc);
    
     IndexReader ir = writer.getReader();
     
     DirectSpellChecker spellChecker = new DirectSpellChecker();
     spellChecker.setMaxQueryFrequency(0F);
-    SuggestWord[] similar = spellChecker.suggestSimilar(new Term("text", "fobar"), 1, ir, true);
+    SuggestWord[] similar = spellChecker.suggestSimilar(new Term("text",
+        "fobar"), 1, ir, SuggestMode.SUGGEST_MORE_POPULAR);
     assertEquals(0, similar.length);
     
     spellChecker = new DirectSpellChecker(); // reset defaults
     spellChecker.setMinQueryLength(5);
-    similar = spellChecker.suggestSimilar(new Term("text", "foba"), 1, ir, true);
+    similar = spellChecker.suggestSimilar(new Term("text", "foba"), 1, ir,
+        SuggestMode.SUGGEST_MORE_POPULAR);
     assertEquals(0, similar.length);
     
     spellChecker = new DirectSpellChecker(); // reset defaults
     spellChecker.setMaxEdits(1);
-    similar = spellChecker.suggestSimilar(new Term("text", "foobazzz"), 1, ir, true);
+    similar = spellChecker.suggestSimilar(new Term("text", "foobazzz"), 1, ir,
+        SuggestMode.SUGGEST_MORE_POPULAR);
     assertEquals(0, similar.length);
     
     spellChecker = new DirectSpellChecker(); // reset defaults
     spellChecker.setAccuracy(0.9F);
-    similar = spellChecker.suggestSimilar(new Term("text", "foobazzz"), 1, ir, true);
+    similar = spellChecker.suggestSimilar(new Term("text", "foobazzz"), 1, ir,
+        SuggestMode.SUGGEST_MORE_POPULAR);
     assertEquals(0, similar.length);
     
     spellChecker = new DirectSpellChecker(); // reset defaults
     spellChecker.setMinPrefix(0);
-    similar = spellChecker.suggestSimilar(new Term("text", "roobaz"), 1, ir, true);
+    similar = spellChecker.suggestSimilar(new Term("text", "roobaz"), 1, ir,
+        SuggestMode.SUGGEST_MORE_POPULAR);
     assertEquals(1, similar.length);
-    
+    similar = spellChecker.suggestSimilar(new Term("text", "roobaz"), 1, ir,
+        SuggestMode.SUGGEST_MORE_POPULAR);
+
     spellChecker = new DirectSpellChecker(); // reset defaults
     spellChecker.setMinPrefix(1);
-    similar = spellChecker.suggestSimilar(new Term("text", "roobaz"), 1, ir, true);
+    similar = spellChecker.suggestSimilar(new Term("text", "roobaz"), 1, ir,
+        SuggestMode.SUGGEST_MORE_POPULAR);
     assertEquals(0, similar.length);
     
+    spellChecker = new DirectSpellChecker(); // reset defaults
+    spellChecker.setMaxEdits(2);
+    similar = spellChecker.suggestSimilar(new Term("text", "fobar"), 2, ir,
+        SuggestMode.SUGGEST_ALWAYS);
+    assertEquals(2, similar.length);
+
     ir.close();
     writer.close();
     dir.close();
@@ -150,13 +171,15 @@ public class TestDirectSpellChecker extends LuceneTestCase {
 
     for (int i = 0; i < 20; i++) {
       Document doc = new Document();
-      doc.add(newField("numbers", English.intToEnglish(i), Field.Store.NO, Field.Index.ANALYZED));
+      doc.add(newField("numbers", English.intToEnglish(i), TextField.TYPE_UNSTORED));
       writer.addDocument(doc);
     }
 
     IndexReader ir = writer.getReader();
 
-    SuggestWord[] similar = spellChecker.suggestSimilar(new Term("bogusFieldBogusField", "fvie"), 2, ir, false);
+    SuggestWord[] similar = spellChecker.suggestSimilar(new Term(
+        "bogusFieldBogusField", "fvie"), 2, ir,
+        SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertEquals(0, similar.length);
     ir.close();
     writer.close();

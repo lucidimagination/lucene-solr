@@ -24,15 +24,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Payload;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -71,14 +67,12 @@ public class TestBasics extends LuceneTestCase {
   private static Directory directory;
 
   static final class SimplePayloadFilter extends TokenFilter {
-    String fieldName;
     int pos;
     final PayloadAttribute payloadAttr;
     final CharTermAttribute termAttr;
 
-    public SimplePayloadFilter(TokenStream input, String fieldName) {
+    public SimplePayloadFilter(TokenStream input) {
       super(input);
-      this.fieldName = fieldName;
       pos = 0;
       payloadAttr = input.addAttribute(PayloadAttribute.class);
       termAttr = input.addAttribute(CharTermAttribute.class);
@@ -105,8 +99,9 @@ public class TestBasics extends LuceneTestCase {
   static final Analyzer simplePayloadAnalyzer = new Analyzer() {
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      return new SimplePayloadFilter(new MockTokenizer(reader, MockTokenizer.SIMPLE, true), fieldName);
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      return new TokenStreamComponents(tokenizer, new SimplePayloadFilter(tokenizer));
     }
     
   };
@@ -120,7 +115,7 @@ public class TestBasics extends LuceneTestCase {
     //writer.infoStream = System.out;
     for (int i = 0; i < 2000; i++) {
       Document doc = new Document();
-      doc.add(newField("field", English.intToEnglish(i), Field.Store.YES, Field.Index.ANALYZED));
+      doc.add(newField("field", English.intToEnglish(i), TextField.TYPE_STORED));
       writer.addDocument(doc);
     }
     reader = writer.getReader();

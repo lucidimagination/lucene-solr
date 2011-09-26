@@ -37,13 +37,13 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermVectorOffsetInfo;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.SimilarityProvider;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.CollectionUtil;
 import org.apache.lucene.util.AttributeImpl;
@@ -238,7 +238,7 @@ public class InstantiatedIndexWriter implements Closeable {
         if (eFieldTermDocInfoFactoriesByTermText.getKey().indexed && !eFieldTermDocInfoFactoriesByTermText.getKey().omitNorms) {
           final String fieldName = eFieldTermDocInfoFactoriesByTermText.getKey().fieldName;
           final FieldInvertState invertState = new FieldInvertState();
-          invertState.setBoost(eFieldTermDocInfoFactoriesByTermText.getKey().boost * document.getDocument().getBoost());
+          invertState.setBoost(eFieldTermDocInfoFactoriesByTermText.getKey().boost);
           invertState.setLength(eFieldTermDocInfoFactoriesByTermText.getKey().fieldLength);
           normsByFieldNameAndDocumentNumber.get(fieldName)[document.getDocumentNumber()] = similarityProvider.get(fieldName).computeNorm(invertState);
         } else {
@@ -469,7 +469,7 @@ public class InstantiatedIndexWriter implements Closeable {
     // normalize settings per field name in document
 
     Map<String /* field name */, FieldSetting> fieldSettingsByFieldName = new HashMap<String, FieldSetting>();
-    for (Fieldable field : document.getDocument().getFields()) {
+    for (IndexableField field : document.getDocument()) {
       FieldSetting fieldSetting = fieldSettingsByFieldName.get(field.name());
       if (fieldSetting == null) {
         fieldSetting = new FieldSetting();
@@ -479,60 +479,53 @@ public class InstantiatedIndexWriter implements Closeable {
       }
 
       // todo: fixme: multiple fields with the same name does not mean field boost += more boost.
-      fieldSetting.boost *= field.getBoost();
+      fieldSetting.boost *= field.boost();
       //fieldSettings.dimensions++;
 
 
       // once fieldSettings, always fieldSettings.
-      if (field.getOmitNorms()) {
+      if (field.fieldType().omitNorms()) {
         fieldSetting.omitNorms = true;
       }
-      if (field.isIndexed() ) {
+      if (field.fieldType().indexed() ) {
         fieldSetting.indexed = true;
       }
-      if (field.isTokenized()) {
+      if (field.fieldType().tokenized()) {
         fieldSetting.tokenized = true;
       }
-      if (field.isStored()) {
+      if (field.fieldType().stored()) {
         fieldSetting.stored = true;
       }
-      if (field.isBinary()) {
+      if (field.binaryValue() != null) {
         fieldSetting.isBinary = true;
       }
-      if (field.isTermVectorStored()) {
+      if (field.fieldType().storeTermVectors()) {
         fieldSetting.storeTermVector = true;
       }
-      if (field.isStorePositionWithTermVector()) {
+      if (field.fieldType().storeTermVectorPositions()) {
         fieldSetting.storePositionWithTermVector = true;
       }
-      if (field.isStoreOffsetWithTermVector()) {
+      if (field.fieldType().storeTermVectorOffsets()) {
         fieldSetting.storeOffsetWithTermVector = true;
       }
     }
 
-    Map<Fieldable, LinkedList<Token>> tokensByField = new LinkedHashMap<Fieldable, LinkedList<Token>>(20);
+    Map<IndexableField, LinkedList<Token>> tokensByField = new LinkedHashMap<IndexableField, LinkedList<Token>>(20);
 
     // tokenize indexed fields.
-    for (Iterator<Fieldable> it = document.getDocument().getFields().iterator(); it.hasNext();) {
+    for (Iterator<IndexableField> it = document.getDocument().iterator(); it.hasNext();) {
 
-      Fieldable field = it.next();
+      IndexableField field = it.next();
 
       FieldSetting fieldSetting = fieldSettingsByFieldName.get(field.name());
 
-      if (field.isIndexed()) {
+      if (field.fieldType().indexed()) {
 
         LinkedList<Token> tokens = new LinkedList<Token>();
         tokensByField.put(field, tokens);
 
-        if (field.isTokenized()) {
-          final TokenStream tokenStream;
-          // todo readerValue(), binaryValue()
-          if (field.tokenStreamValue() != null) {
-            tokenStream = field.tokenStreamValue();
-          } else {
-            tokenStream = analyzer.reusableTokenStream(field.name(), new StringReader(field.stringValue()));
-          }
-
+        if (field.fieldType().tokenized()) {
+          final TokenStream tokenStream = field.tokenStream(analyzer);
           // reset the TokenStream to the first token          
           tokenStream.reset();
 
@@ -564,8 +557,8 @@ public class InstantiatedIndexWriter implements Closeable {
         }
       }
 
-      if (!field.isStored()) {
-        it.remove();
+      if (!field.fieldType().stored()) {
+        //it.remove();
       }
     }
 
@@ -574,7 +567,7 @@ public class InstantiatedIndexWriter implements Closeable {
     termDocumentInformationFactoryByDocument.put(document, termDocumentInformationFactoryByTermTextAndFieldSetting);
 
     // build term vector, term positions and term offsets
-    for (Map.Entry<Fieldable, LinkedList<Token>> eField_Tokens : tokensByField.entrySet()) {
+    for (Map.Entry<IndexableField, LinkedList<Token>> eField_Tokens : tokensByField.entrySet()) {
       FieldSetting fieldSetting = fieldSettingsByFieldName.get(eField_Tokens.getKey().name());
 
       Map<String, TermDocumentInformationFactory> termDocumentInformationFactoryByTermText = termDocumentInformationFactoryByTermTextAndFieldSetting.get(fieldSettingsByFieldName.get(eField_Tokens.getKey().name()));
@@ -610,7 +603,7 @@ public class InstantiatedIndexWriter implements Closeable {
           termDocumentInformationFactory.payloads.add(null);
         }
 
-        if (eField_Tokens.getKey().isStoreOffsetWithTermVector()) {
+        if (eField_Tokens.getKey().fieldType().storeTermVectorOffsets()) {
 
           termDocumentInformationFactory.termOffsets.add(new TermVectorOffsetInfo(fieldSetting.offset + token.startOffset(), fieldSetting.offset + token.endOffset()));
           lastOffset = fieldSetting.offset + token.endOffset();
@@ -619,7 +612,7 @@ public class InstantiatedIndexWriter implements Closeable {
 
       }
 
-      if (eField_Tokens.getKey().isStoreOffsetWithTermVector()) {
+      if (eField_Tokens.getKey().fieldType().storeTermVectorOffsets()) {
         fieldSetting.offset = lastOffset + 1;
       }
 

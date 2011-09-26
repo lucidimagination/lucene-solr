@@ -18,6 +18,7 @@ package org.apache.lucene.analysis.miscellaneous;
  */
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 
@@ -123,12 +124,12 @@ public class PatternAnalyzerTest extends BaseTokenStreamTestCase {
     assertAnalyzesTo(analyzer, document, expected);
 
     // analysis with a "FastStringReader"
-    TokenStream ts = analyzer.tokenStream("dummy",
+    TokenStream ts = analyzer.reusableTokenStream("dummy",
         new PatternAnalyzer.FastStringReader(document));
     assertTokenStreamContents(ts, expected);
 
     // analysis of a String, uses PatternAnalyzer.tokenStream(String, String)
-    TokenStream ts2 = analyzer.tokenStream("dummy", document);
+    TokenStream ts2 = analyzer.reusableTokenStream("dummy", new StringReader(document));
     assertTokenStreamContents(ts2, expected);
   }
 }

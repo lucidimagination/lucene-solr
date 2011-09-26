@@ -18,11 +18,12 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -64,7 +65,7 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       
       @Override
       public void collect(int doc) throws IOException {
-        assertEquals("Score differs from expected", expectedScore, this.scorer.score());
+        assertEquals("Score differs from expected", expectedScore, this.scorer.score(), 0);
         count[0]++;
       }
       
@@ -89,7 +90,7 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       RandomIndexWriter writer = new RandomIndexWriter (random, directory);
 
       Document doc = new Document();
-      doc.add(newField("field", "term", Field.Store.NO, Field.Index.NOT_ANALYZED));
+      doc.add(newField("field", "term", StringField.TYPE_UNSTORED));
       writer.addDocument(doc);
 
       reader = writer.getReader();

@@ -5,14 +5,11 @@ import java.io.Reader;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Payload;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -21,8 +18,6 @@ import org.apache.lucene.store.Directory;
 import org.junit.Test;
 
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.facet.search.CategoryListIterator;
-import org.apache.lucene.facet.search.PayloadIntDecodingIterator;
 import org.apache.lucene.util.UnsafeByteArrayOutputStream;
 import org.apache.lucene.util.encoding.DGapIntEncoder;
 import org.apache.lucene.util.encoding.IntEncoder;
@@ -104,7 +99,7 @@ public class CategoryListIteratorTest extends LuceneTestCase {
     for (int i = 0; i < data.length; i++) {
       dts.setIdx(i);
       Document doc = new Document();
-      doc.add(new Field("f", dts));
+      doc.add(new TextField("f", dts));
       writer.addDocument(doc);
     }
     IndexReader reader = writer.getReader();
@@ -144,8 +139,8 @@ public class CategoryListIteratorTest extends LuceneTestCase {
     // this test requires that no payloads ever be randomly present!
     final Analyzer noPayloadsAnalyzer = new Analyzer() {
       @Override
-      public TokenStream tokenStream(String fieldName, Reader reader) {
-        return new MockTokenizer(reader, MockTokenizer.KEYWORD, false);
+      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.KEYWORD, false));
       }
     };
     // NOTE: test is wired to LogMP... because test relies on certain docids having payloads
@@ -155,10 +150,10 @@ public class CategoryListIteratorTest extends LuceneTestCase {
       dts.setIdx(i);
       Document doc = new Document();
       if (i==0 || i == 2) {
-        doc.add(new Field("f", dts)); // only docs 0 & 2 have payloads!
+        doc.add(new TextField("f", dts)); // only docs 0 & 2 have payloads!
       }
       dts2.setIdx(i);
-      doc.add(new Field("f", dts2));
+      doc.add(new TextField("f", dts2));
       writer.addDocument(doc);
       writer.commit();
     }
@@ -168,7 +163,7 @@ public class CategoryListIteratorTest extends LuceneTestCase {
     for (int i = 0; i < 10; ++i) {
       Document d = new Document();
       dts.setIdx(2);
-      d.add(new Field("f", dts2));
+      d.add(new TextField("f", dts2));
       writer.addDocument(d);
       if (i %10 == 0) {
         writer.commit();

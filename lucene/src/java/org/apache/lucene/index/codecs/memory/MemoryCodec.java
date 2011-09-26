@@ -220,7 +220,7 @@ public class MemoryCodec extends Codec {
     }
 
     @Override
-    public void finish(long sumTotalTermFreq, long sumDocFreq) throws IOException {
+    public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount) throws IOException {
       if (termCount > 0) {
         out.writeVInt(termCount);
         out.writeVInt(field.number);
@@ -228,6 +228,7 @@ public class MemoryCodec extends Codec {
           out.writeVLong(sumTotalTermFreq);
         }
         out.writeVLong(sumDocFreq);
+        out.writeVInt(docCount);
         builder.finish().save(out);
         if (VERBOSE) System.out.println("finish field=" + field.name + " fp=" + out.getFilePointer());
       }
@@ -554,7 +555,7 @@ public class MemoryCodec extends Codec {
         if (field.indexOptions != IndexOptions.DOCS_ONLY) {
           totalTermFreq = docFreq + buffer.readVLong();
         } else {
-          totalTermFreq = 0;
+          totalTermFreq = -1;
         }
         current.output.offset = buffer.getPosition();
         if (VERBOSE) System.out.println("  df=" + docFreq + " totTF=" + totalTermFreq + " offset=" + buffer.getPosition() + " len=" + current.output.length);
@@ -682,6 +683,7 @@ public class MemoryCodec extends Codec {
 
     private final long sumTotalTermFreq;
     private final long sumDocFreq;
+    private final int docCount;
     private FST<BytesRef> fst;
     private final ByteSequenceOutputs outputs = ByteSequenceOutputs.getSingleton();
     private final FieldInfo field;
@@ -692,9 +694,10 @@ public class MemoryCodec extends Codec {
       if (field.indexOptions != IndexOptions.DOCS_ONLY) {
         sumTotalTermFreq = in.readVLong();
       } else {
-        sumTotalTermFreq = 0;
+        sumTotalTermFreq = -1;
       }
       sumDocFreq = in.readVLong();
+      docCount = in.readVInt();
       
       fst = new FST<BytesRef>(in, outputs);
     }
@@ -707,6 +710,11 @@ public class MemoryCodec extends Codec {
     @Override
     public long getSumDocFreq() throws IOException {
       return sumDocFreq;
+    }
+
+    @Override
+    public int getDocCount() throws IOException {
+      return docCount;
     }
 
     @Override

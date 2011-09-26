@@ -78,7 +78,7 @@ class PreFlexFieldsWriter extends FieldsConsumer {
 
   @Override
   public void close() throws IOException {
-    IOUtils.closeSafely(false, termsOut, freqOut, proxOut);
+    IOUtils.close(termsOut, freqOut, proxOut);
   }
 
   private class PreFlexTermsWriter extends TermsConsumer {
@@ -196,7 +196,7 @@ class PreFlexFieldsWriter extends FieldsConsumer {
     }
 
     @Override
-    public void finish(long sumTotalTermCount, long sumDocFreq) throws IOException {
+    public void finish(long sumTotalTermCount, long sumDocFreq, int docCount) throws IOException {
     }
 
     @Override

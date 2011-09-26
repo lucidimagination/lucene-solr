@@ -20,20 +20,21 @@ package org.apache.lucene.search;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.text.Collator;
-import java.util.Locale;
 
 import junit.framework.Assert;
 
@@ -44,10 +45,6 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
   static Directory small;
   static IndexReader reader;
-
-  static public void assertEquals(String m, float e, float a) {
-    Assert.assertEquals(m, e, a, SCORE_COMP_THRESH);
-  }
 
   static public void assertEquals(String m, int e, int a) {
     Assert.assertEquals(m, e, a);
@@ -64,16 +61,14 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
         newIndexWriterConfig(TEST_VERSION_CURRENT, 
             new MockAnalyzer(random, MockTokenizer.WHITESPACE, false)).setMergePolicy(newLogMergePolicy()));
 
+    FieldType customType = new FieldType(TextField.TYPE_STORED);
+    customType.setTokenized(false);
     for (int i = 0; i < data.length; i++) {
       Document doc = new Document();
-      doc.add(newField("id", String.valueOf(i), Field.Store.YES,
-          Field.Index.NOT_ANALYZED));// Field.Keyword("id",String.valueOf(i)));
-      doc
-          .add(newField("all", "all", Field.Store.YES,
-              Field.Index.NOT_ANALYZED));// Field.Keyword("all","all"));
+      doc.add(newField("id", String.valueOf(i), customType));// Field.Keyword("id",String.valueOf(i)));
+      doc.add(newField("all", "all", customType));// Field.Keyword("all","all"));
       if (null != data[i]) {
-        doc.add(newField("data", data[i], Field.Store.YES,
-            Field.Index.ANALYZED));// Field.Text("data",data[i]));
+        doc.add(newField("data", data[i], TextField.TYPE_STORED));// Field.Text("data",data[i]));
       }
       writer.addDocument(doc);
     }
@@ -155,7 +150,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     float score = result[0].score;
     for (int i = 1; i < numHits; i++) {
       assertEquals("score for " + i + " was not the same", score,
-          result[i].score);
+          result[i].score, SCORE_COMP_THRESH);
     }
 
     result = search.search(csrq("data", "1", "6", T, T, MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE), null, 1000).scoreDocs;
@@ -163,7 +158,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     assertEquals("wrong number of results", 6, numHits);
     for (int i = 0; i < numHits; i++) {
       assertEquals("score for " + i + " was not the same", score,
-          result[i].score);
+          result[i].score, SCORE_COMP_THRESH);
     }
 
     search.close();
@@ -177,6 +172,19 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
     // test for correct application of query normalization
     // must use a non score normalizing method for this.
+    
+    final SimilarityProvider delegate = search.getSimilarityProvider();
+    search.setSimilarityProvider(new DefaultSimilarityProvider() {
+      @Override
+      public float coord(int overlap, int maxOverlap) {
+        return delegate.coord(overlap, maxOverlap);
+      }
+
+      @Override
+      public Similarity get(String field) {
+        return delegate.get(field);
+      }
+    });
     Query q = csrq("data", "1", "6", T, T);
     q.setBoost(100);
     search.search(q, null, new Collector() {
@@ -188,7 +196,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
       }
       @Override
       public void collect(int doc) throws IOException {
-        assertEquals("score for doc " + (doc + base) + " was not correct", 1.0f, scorer.score());
+        assertEquals("score for doc " + (doc + base) + " was not correct", 1.0f, scorer.score(), SCORE_COMP_THRESH);
       }
       @Override
       public void setNextReader(AtomicReaderContext context) {

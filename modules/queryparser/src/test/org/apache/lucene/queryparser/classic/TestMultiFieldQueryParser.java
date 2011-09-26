@@ -22,11 +22,9 @@ import java.io.Reader;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.IndexSearcher;
@@ -284,7 +282,7 @@ public class TestMultiFieldQueryParser extends LuceneTestCase {
     Directory ramDir = newDirectory();
     IndexWriter iw =  new IndexWriter(ramDir, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
     Document doc = new Document();
-    doc.add(newField("body", "blah the footest blah", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("body", "blah the footest blah", TextField.TYPE_UNSTORED));
     iw.addDocument(doc);
     iw.close();
     
@@ -306,18 +304,19 @@ public class TestMultiFieldQueryParser extends LuceneTestCase {
     MockAnalyzer stdAnalyzer = new MockAnalyzer(random);
 
     public AnalyzerReturningNull() {
+      super(new PerFieldReuseStrategy());
     }
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
       if ("f1".equals(fieldName)) {
-        return new EmptyTokenStream();
+        return new TokenStreamComponents(new EmptyTokenStream());
       } else {
-        return stdAnalyzer.tokenStream(fieldName, reader);
+        return stdAnalyzer.createComponents(fieldName, reader);
       }
     }
 
-    private static class EmptyTokenStream extends TokenStream {
+    private static class EmptyTokenStream extends Tokenizer {
       @Override
       public boolean incrementToken() throws IOException {
         return false;

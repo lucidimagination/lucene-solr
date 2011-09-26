@@ -25,6 +25,7 @@ import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.spell.DirectSpellChecker;
 import org.apache.lucene.search.spell.StringDistance;
+import org.apache.lucene.search.spell.SuggestMode;
 import org.apache.lucene.search.spell.SuggestWord;
 import org.apache.lucene.search.spell.SuggestWordFrequencyComparator;
 import org.apache.lucene.search.spell.SuggestWordQueue;
@@ -66,8 +67,6 @@ public class DirectSolrSpellChecker extends SolrSpellChecker {
   public static final String COMPARATOR_CLASS = AbstractLuceneSpellChecker.COMPARATOR_CLASS;
   public static final String SCORE_COMP = AbstractLuceneSpellChecker.SCORE_COMP;
   public static final String FREQ_COMP = AbstractLuceneSpellChecker.FREQ_COMP;
-  public static final String FIELD = AbstractLuceneSpellChecker.FIELD;
-  public static final String FIELD_TYPE = AbstractLuceneSpellChecker.FIELD_TYPE;
   public static final String STRING_DISTANCE = AbstractLuceneSpellChecker.STRING_DISTANCE;
   public static final String ACCURACY = AbstractLuceneSpellChecker.ACCURACY;
   public static final String THRESHOLD_TOKEN_FREQUENCY = IndexBasedSpellChecker.THRESHOLD_TOKEN_FREQUENCY;
@@ -93,8 +92,6 @@ public class DirectSolrSpellChecker extends SolrSpellChecker {
   public static final float DEFAULT_MAXQUERYFREQUENCY = 0.01f;
   
   private DirectSpellChecker checker = new DirectSpellChecker();
-  private String field;
-  private String fieldTypeName;
   
   @Override
   public String init(NamedList config, SolrCore core) {
@@ -117,21 +114,6 @@ public class DirectSolrSpellChecker extends SolrSpellChecker {
     if (distClass != null && !distClass.equalsIgnoreCase(INTERNAL_DISTANCE))
       sd = (StringDistance) core.getResourceLoader().newInstance(distClass);
 
-    field = (String) config.get(FIELD);
-    // setup analyzer for field
-    if (field != null && core.getSchema().getFieldTypeNoEx(field) != null)  {
-      analyzer = core.getSchema().getFieldType(field).getQueryAnalyzer();
-    }
-    fieldTypeName = (String) config.get(FIELD_TYPE);
-    if (core.getSchema().getFieldTypes().containsKey(fieldTypeName))  {
-      FieldType fieldType = core.getSchema().getFieldTypes().get(fieldTypeName);
-      analyzer = fieldType.getQueryAnalyzer();
-    }
-    if (analyzer == null)   {
-      LOG.info("Using WhitespaceAnalyzer for dictionary: " + name);
-      analyzer = new WhitespaceAnalyzer(core.getSolrConfig().luceneMatchVersion);
-    }
-    
     float minAccuracy = DEFAULT_ACCURACY;
     Float accuracy = (Float) config.get(ACCURACY);
     if (accuracy != null)
@@ -195,11 +177,11 @@ public class DirectSolrSpellChecker extends SolrSpellChecker {
     
     SpellingResult result = new SpellingResult();
     float accuracy = (options.accuracy == Float.MIN_VALUE) ? checker.getAccuracy() : options.accuracy;
-    
+    SuggestMode mode = options.onlyMorePopular ? SuggestMode.SUGGEST_MORE_POPULAR : SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX;
     for (Token token : options.tokens) {
     	Term term = new Term(field, token.toString());
       SuggestWord[] suggestions = checker.suggestSimilar(term, 
-          options.count, options.reader, options.onlyMorePopular, accuracy);
+          options.count, options.reader, mode, accuracy);
       result.addFrequency(token, options.reader.docFreq(term));
       for (SuggestWord suggestion : suggestions) {
         result.add(token, suggestion.string, suggestion.freq);      	

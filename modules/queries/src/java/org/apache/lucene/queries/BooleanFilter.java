@@ -20,6 +20,7 @@ package org.apache.lucene.queries;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Iterator;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
@@ -27,8 +28,7 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.util.OpenBitSet;
-import org.apache.lucene.util.OpenBitSetDISI;
+import org.apache.lucene.util.FixedBitSet;
 
 /**
  * A container Filter that allows Boolean composition of Filters.
@@ -39,12 +39,9 @@ import org.apache.lucene.util.OpenBitSetDISI;
  * The resulting Filter is NOT'd with the NOT Filters
  * The resulting Filter is AND'd with the MUST Filters
  */
+public class BooleanFilter extends Filter implements Iterable<FilterClause> {
 
-public class BooleanFilter extends Filter {
-
-  List<Filter> shouldFilters = null;
-  List<Filter> notFilters = null;
-  List<Filter> mustFilters = null;
+  private final List<FilterClause> clauses = new ArrayList<FilterClause>();
 
   /**
    * Returns the a DocIdSetIterator representing the Boolean composition
@@ -52,53 +49,44 @@ public class BooleanFilter extends Filter {
    */
   @Override
   public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
-    OpenBitSetDISI res = null;
+    FixedBitSet res = null;
     final IndexReader reader = context.reader;
-    if (shouldFilters != null) {
-      for (int i = 0; i < shouldFilters.size(); i++) {
+    
+    for (final FilterClause fc : clauses) {
+      if (fc.getOccur() == Occur.SHOULD) {
+        final DocIdSetIterator disi = getDISI(fc.getFilter(), context);
+        if (disi == null) continue;
         if (res == null) {
-          res = new OpenBitSetDISI(getDISI(shouldFilters, i, context), reader.maxDoc());
-        } else { 
-          DocIdSet dis = shouldFilters.get(i).getDocIdSet(context);
-          if(dis instanceof OpenBitSet) {
-            // optimized case for OpenBitSets
-            res.or((OpenBitSet) dis);
-          } else {
-            res.inPlaceOr(getDISI(shouldFilters, i, context));
-          }
+          res = new FixedBitSet(reader.maxDoc());
+        }
+        res.or(disi);
+      }
+    }
+    
+    for (final FilterClause fc : clauses) {
+      if (fc.getOccur() == Occur.MUST_NOT) {
+        if (res == null) {
+          res = new FixedBitSet(reader.maxDoc());
+          res.set(0, reader.maxDoc()); // NOTE: may set bits on deleted docs
+        }
+        final DocIdSetIterator disi = getDISI(fc.getFilter(), context);
+        if (disi != null) {
+          res.andNot(disi);
         }
       }
     }
     
-    if (notFilters != null) {
-      for (int i = 0; i < notFilters.size(); i++) {
-        if (res == null) {
-          res = new OpenBitSetDISI(getDISI(notFilters, i, context), reader.maxDoc());
-          res.flip(0, reader.maxDoc()); // NOTE: may set bits on deleted docs
-        } else {
-          DocIdSet dis = notFilters.get(i).getDocIdSet(context);
-          if(dis instanceof OpenBitSet) {
-            // optimized case for OpenBitSets
-            res.andNot((OpenBitSet) dis);
-          } else {
-            res.inPlaceNot(getDISI(notFilters, i, context));
-          }
+    for (final FilterClause fc : clauses) {
+      if (fc.getOccur() == Occur.MUST) {
+        final DocIdSetIterator disi = getDISI(fc.getFilter(), context);
+        if (disi == null) {
+          return DocIdSet.EMPTY_DOCIDSET; // no documents can match
         }
-      }
-    }
-    
-    if (mustFilters != null) {
-      for (int i = 0; i < mustFilters.size(); i++) {
         if (res == null) {
-          res = new OpenBitSetDISI(getDISI(mustFilters, i, context), reader.maxDoc());
+          res = new FixedBitSet(reader.maxDoc());
+          res.or(disi);
         } else {
-          DocIdSet dis = mustFilters.get(i).getDocIdSet(context);
-          if(dis instanceof OpenBitSet) {
-            // optimized case for OpenBitSets
-            res.and((OpenBitSet) dis);
-          } else {
-            res.inPlaceAnd(getDISI(mustFilters, i, context));
-          }
+          res.and(disi);
         }
       }
     }
@@ -106,34 +94,39 @@ public class BooleanFilter extends Filter {
     return res != null ? res : DocIdSet.EMPTY_DOCIDSET;
   }
 
+  private static DocIdSetIterator getDISI(Filter filter, AtomicReaderContext context)
+      throws IOException {
+    final DocIdSet set = filter.getDocIdSet(context);
+    return (set == null || set == DocIdSet.EMPTY_DOCIDSET) ? null : set.iterator();
+  }
+
   /**
   * Adds a new FilterClause to the Boolean Filter container
   * @param filterClause A FilterClause object containing a Filter and an Occur parameter
   */
   public void add(FilterClause filterClause) {
-    if (filterClause.getOccur().equals(Occur.MUST)) {
-      if (mustFilters == null) {
-        mustFilters = new ArrayList<Filter>();
-      }
-      mustFilters.add(filterClause.getFilter());
-    } else if (filterClause.getOccur().equals(Occur.SHOULD)) {
-      if (shouldFilters == null) {
-        shouldFilters = new ArrayList<Filter>();
-      }
-      shouldFilters.add(filterClause.getFilter());
-    } else if (filterClause.getOccur().equals(Occur.MUST_NOT)) {
-      if (notFilters == null) {
-        notFilters = new ArrayList<Filter>();
-      }
-      notFilters.add(filterClause.getFilter());
-    }
-  }
-
-  private DocIdSetIterator getDISI(List<Filter> filters, int index, AtomicReaderContext context)
-      throws IOException {
-    return filters.get(index).getDocIdSet(context).iterator();
+    clauses.add(filterClause);
   }
   
+  public final void add(Filter filter, Occur occur) {
+    add(new FilterClause(filter, occur));
+  }
+  
+  /**
+  * Returns the list of clauses
+  */
+  public List<FilterClause> clauses() {
+    return clauses;
+  }
+  
+  /** Returns an iterator on the clauses in this query. It implements the {@link Iterable} interface to
+   * make it possible to do:
+   * <pre>for (FilterClause clause : booleanFilter) {}</pre>
+   */
+  public final Iterator<FilterClause> iterator() {
+    return clauses().iterator();
+  }
+
   @Override
   public boolean equals(Object obj) {
     if (this == obj) {
@@ -144,44 +137,26 @@ public class BooleanFilter extends Filter {
       return false;
     }
 
-    BooleanFilter other = (BooleanFilter)obj;
-    return equalFilters(notFilters, other.notFilters)
-        && equalFilters(mustFilters, other.mustFilters)
-        && equalFilters(shouldFilters, other.shouldFilters);
-  }
-
-  private boolean equalFilters(List<Filter> filters1, List<Filter> filters2) {
-    return (filters1 == filters2) || ((filters1 != null) && filters1.equals(filters2));
+    final BooleanFilter other = (BooleanFilter)obj;
+    return clauses.equals(other.clauses);
   }
 
   @Override
   public int hashCode() {
-    int hash = 7;
-    hash = 31 * hash + (null == mustFilters ? 0 : mustFilters.hashCode());
-    hash = 31 * hash + (null == notFilters ? 0 : notFilters.hashCode());
-    hash = 31 * hash + (null == shouldFilters ? 0 : shouldFilters.hashCode());
-    return hash;
+    return 657153718 ^ clauses.hashCode();
   }
   
-  /** Prints a user-readable version of this query. */
+  /** Prints a user-readable version of this Filter. */
   @Override
   public String toString() {
-    StringBuilder buffer = new StringBuilder();
-    buffer.append("BooleanFilter(");
-    appendFilters(shouldFilters, "", buffer);
-    appendFilters(mustFilters, "+", buffer);
-    appendFilters(notFilters, "-", buffer);
-    buffer.append(")");
-    return buffer.toString();
-  }
-  
-  private void appendFilters(List<Filter> filters, String occurString, StringBuilder buffer) {
-    if (filters != null) {
-      for (Filter filter : filters) {
+    final StringBuilder buffer = new StringBuilder("BooleanFilter(");
+    final int minLen = buffer.length();
+    for (final FilterClause c : clauses) {
+      if (buffer.length() > minLen) {
         buffer.append(' ');
-        buffer.append(occurString);
-        buffer.append(filter.toString());
       }
+      buffer.append(c);
     }
-  }    
+    return buffer.append(')').toString();
+  }
 }

@@ -33,8 +33,10 @@ import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.highlight.*;
+import org.apache.lucene.search.vectorhighlight.BoundaryScanner;
 import org.apache.lucene.search.vectorhighlight.FastVectorHighlighter;
 import org.apache.lucene.search.vectorhighlight.FieldQuery;
 import org.apache.lucene.search.vectorhighlight.FragListBuilder;
@@ -82,6 +84,7 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
     fragmenters.clear();
     fragListBuilders.clear();
     fragmentsBuilders.clear();
+    boundaryScanners.clear();
 
     // Load the fragmenters
     SolrFragmenter frag = solrCore.initPlugins(info.getChildren("fragmenter") , fragmenters,SolrFragmenter.class,null);
@@ -114,9 +117,15 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
     if( fragsBuilder == null ) fragsBuilder = new ScoreOrderFragmentsBuilder();
     fragmentsBuilders.put( "", fragsBuilder );
     fragmentsBuilders.put( null, fragsBuilder );
+
+    // Load the BoundaryScanners
+    SolrBoundaryScanner boundaryScanner = solrCore.initPlugins(info.getChildren("boundaryScanner"),
+        boundaryScanners, SolrBoundaryScanner.class, null);
+    if(boundaryScanner == null) boundaryScanner = new SimpleBoundaryScanner();
+    boundaryScanners.put("", boundaryScanner);
+    boundaryScanners.put(null, boundaryScanner);
     
     initialized = true;
-
   }
   //just for back-compat with the deprecated method
   private boolean initialized = false;
@@ -143,6 +152,10 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
     SolrFragmentsBuilder fragsBuilder = new ScoreOrderFragmentsBuilder();
     fragmentsBuilders.put( "", fragsBuilder );
     fragmentsBuilders.put( null, fragsBuilder );
+    
+    SolrBoundaryScanner boundaryScanner = new SimpleBoundaryScanner();
+    boundaryScanners.put("", boundaryScanner);
+    boundaryScanners.put(null, boundaryScanner);
   }
 
   /**
@@ -310,7 +323,8 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
   }
   
   protected FragmentsBuilder getFragmentsBuilder( String fieldName, SolrParams params ){
-    return getSolrFragmentsBuilder( fieldName, params ).getFragmentsBuilder( params );
+    BoundaryScanner bs = getBoundaryScanner(fieldName, params);
+    return getSolrFragmentsBuilder( fieldName, params ).getFragmentsBuilder( params, bs );
   }
   
   private SolrFragmentsBuilder getSolrFragmentsBuilder( String fieldName, SolrParams params ){
@@ -320,6 +334,15 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
       throw new SolrException( SolrException.ErrorCode.BAD_REQUEST, "Unknown fragmentsBuilder: " + fb );
     }
     return solrFb;
+  }
+  
+  private BoundaryScanner getBoundaryScanner(String fieldName, SolrParams params){
+    String bs = params.getFieldParam(fieldName, HighlightParams.BOUNDARY_SCANNER);
+    SolrBoundaryScanner solrBs = boundaryScanners.get(bs);
+    if(solrBs == null){
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Unknown boundaryScanner: " + bs);
+    }
+    return solrBs.getBoundaryScanner(fieldName, params);
   }
   
   /**
@@ -363,7 +386,7 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
         // FVH cannot process hl.requireFieldMatch parameter per-field basis
         params.getBool( HighlightParams.FIELD_MATCH, false ) );
     fvh.setPhraseLimit(params.getInt(HighlightParams.PHRASE_LIMIT, Integer.MAX_VALUE));
-    FieldQuery fieldQuery = fvh.getFieldQuery( query );
+    FieldQuery fieldQuery = fvh.getFieldQuery( query, searcher.getIndexReader() );
 
     // Highlight each document
     DocIterator iterator = docs.iterator();
@@ -416,7 +439,14 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
     // END: Hack
     
     SolrParams params = req.getParams(); 
-    String[] docTexts = doc.getValues(fieldName);
+    IndexableField[] docFields = doc.getFields(fieldName);
+    List<String> listFields = new ArrayList<String>();
+    for (IndexableField field : docFields) {
+      listFields.add(field.stringValue());
+    }
+
+    String[] docTexts = (String[]) listFields.toArray(new String[listFields.size()]);
+   
     // according to Document javadoc, doc.getValues() never returns null. check empty instead of null
     if (docTexts.length == 0) return;
     
@@ -537,7 +567,15 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
   private void alternateField( NamedList docSummaries, SolrParams params, Document doc, String fieldName ){
     String alternateField = params.getFieldParam(fieldName, HighlightParams.ALTERNATE_FIELD);
     if (alternateField != null && alternateField.length() > 0) {
-      String[] altTexts = doc.getValues(alternateField);
+      IndexableField[] docFields = doc.getFields(alternateField);
+      List<String> listFields = new ArrayList<String>();
+      for (IndexableField field : docFields) {
+        if (field.binaryValue() == null)
+          listFields.add(field.stringValue());
+      }
+
+      String[] altTexts = listFields.toArray(new String[listFields.size()]);
+
       if (altTexts != null && altTexts.length > 0){
         int alternateFieldLen = params.getFieldInt(fieldName, HighlightParams.ALTERNATE_FIELD_LENGTH,0);
         if( alternateFieldLen <= 0 ){

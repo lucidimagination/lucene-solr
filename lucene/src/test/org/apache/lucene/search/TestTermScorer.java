@@ -23,13 +23,14 @@ import java.util.List;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowMultiReaderWrapper;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Weight.ScorerContext;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -47,17 +48,20 @@ public class TestTermScorer extends LuceneTestCase {
     super.setUp();
     directory = newDirectory();
     
-    RandomIndexWriter writer = new RandomIndexWriter(random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter writer = new RandomIndexWriter(random, directory, 
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random))
+        .setMergePolicy(newLogMergePolicy())
+        .setSimilarityProvider(new DefaultSimilarityProvider()));
     for (int i = 0; i < values.length; i++) {
       Document doc = new Document();
       doc
-          .add(newField(FIELD, values[i], Field.Store.YES,
-              Field.Index.ANALYZED));
+          .add(newField(FIELD, values[i], TextField.TYPE_STORED));
       writer.addDocument(doc);
     }
     indexReader = new SlowMultiReaderWrapper(writer.getReader());
     writer.close();
     indexSearcher = newSearcher(indexReader);
+    indexSearcher.setSimilarityProvider(new DefaultSimilarityProvider());
   }
   
   @Override

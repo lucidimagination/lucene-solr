@@ -23,27 +23,24 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Payload;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.DefaultSimilarityProvider;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.payloads.PayloadHelper;
 import org.apache.lucene.search.payloads.PayloadSpanUtil;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.util.LuceneTestCase;
@@ -113,8 +110,7 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer()).setSimilarityProvider(similarity));
 
     Document doc = new Document();
-    doc.add(newField(PayloadHelper.FIELD, "one two three one four three",
-        Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(newField(PayloadHelper.FIELD, "one two three one four three", TextField.TYPE_STORED));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
     writer.close();
@@ -261,7 +257,7 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new TestPayloadAnalyzer()));
 
     Document doc = new Document();
-    doc.add(new Field("content", new StringReader("a b c d e f g h i j a k")));
+    doc.add(new TextField("content", new StringReader("a b c d e f g h i j a k")));
     writer.addDocument(doc);
 
     IndexReader reader = writer.getReader();
@@ -300,7 +296,7 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new TestPayloadAnalyzer()));
 
     Document doc = new Document();
-    doc.add(new Field("content", new StringReader("a b a d k f a h i k a k")));
+    doc.add(new TextField("content", new StringReader("a b a d k f a h i k a k")));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
     IndexSearcher is = newSearcher(reader);
@@ -337,7 +333,7 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new TestPayloadAnalyzer()));
 
     Document doc = new Document();
-    doc.add(new Field("content", new StringReader("j k a l f k k p a t a k l k t a")));
+    doc.add(new TextField("content", new StringReader("j k a l f k k p a t a k l k t a")));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
     IndexSearcher is = newSearcher(reader);
@@ -379,7 +375,7 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer()).setSimilarityProvider(similarity));
 
     Document doc = new Document();
-    doc.add(newField(PayloadHelper.FIELD,"xx rr yy mm  pp", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(newField(PayloadHelper.FIELD,"xx rr yy mm  pp", TextField.TYPE_STORED));
     writer.addDocument(doc);
   
     IndexReader reader = writer.getReader();
@@ -443,7 +439,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     for(int i = 0; i < docs.length; i++) {
       doc = new Document();
       String docText = docs[i];
-      doc.add(newField(PayloadHelper.FIELD,docText, Field.Store.YES, Field.Index.ANALYZED));
+      doc.add(newField(PayloadHelper.FIELD,docText, TextField.TYPE_STORED));
       writer.addDocument(doc);
     }
 
@@ -483,15 +479,13 @@ public class TestPayloadSpans extends LuceneTestCase {
   final class PayloadAnalyzer extends Analyzer {
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      TokenStream result = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
-      result = new PayloadFilter(result, fieldName);
-      return result;
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer result = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      return new TokenStreamComponents(result, new PayloadFilter(result));
     }
   }
 
   final class PayloadFilter extends TokenFilter {
-    String fieldName;
     Set<String> entities = new HashSet<String>();
     Set<String> nopayload = new HashSet<String>();
     int pos;
@@ -499,9 +493,8 @@ public class TestPayloadSpans extends LuceneTestCase {
     CharTermAttribute termAtt;
     PositionIncrementAttribute posIncrAtt;
 
-    public PayloadFilter(TokenStream input, String fieldName) {
+    public PayloadFilter(TokenStream input) {
       super(input);
-      this.fieldName = fieldName;
       pos = 0;
       entities.add("xx");
       entities.add("one");
@@ -540,10 +533,9 @@ public class TestPayloadSpans extends LuceneTestCase {
   public final class TestPayloadAnalyzer extends Analyzer {
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      TokenStream result = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
-      result = new PayloadFilter(result, fieldName);
-      return result;
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer result = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      return new TokenStreamComponents(result, new PayloadFilter(result));
     }
   }
 }

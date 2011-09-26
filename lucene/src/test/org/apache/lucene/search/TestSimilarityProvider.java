@@ -20,12 +20,16 @@ package org.apache.lucene.search;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.MultiNorms;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
+import org.apache.lucene.search.similarities.TFIDFSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
@@ -44,9 +48,9 @@ public class TestSimilarityProvider extends LuceneTestCase {
         new MockAnalyzer(random)).setSimilarityProvider(sim);
     RandomIndexWriter iw = new RandomIndexWriter(random, directory, iwc);
     Document doc = new Document();
-    Field field = newField("foo", "", Field.Store.NO, Field.Index.ANALYZED);
+    Field field = newField("foo", "", TextField.TYPE_UNSTORED);
     doc.add(field);
-    Field field2 = newField("bar", "", Field.Store.NO, Field.Index.ANALYZED);
+    Field field2 = newField("bar", "", TextField.TYPE_UNSTORED);
     doc.add(field2);
     
     field.setValue("quick brown fox");

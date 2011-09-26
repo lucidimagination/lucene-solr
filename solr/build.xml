@@ -29,7 +29,7 @@
     <echo message="Use 'ant javadocs' to build javadocs under build/docs/api" />
     <echo message="Use 'ant generate-maven-artifacts' to generate maven artifacts." />
     <echo message="Use 'ant package' to generate zip, tgz for distribution." />
-    <echo message="Use 'ant luke' to start luke.  see: http://luke.googlecode.com" />
+    <!--<echo message="Use 'ant luke' to start luke.  see: http://luke.googlecode.com" />-->
     <echo message="Use 'ant test' to run unit tests." />
   </target>
 
@@ -87,10 +87,11 @@
   <target name="proxy.setup" if="proxy.specified">
     <setproxy proxyhost="${proxy.host}" proxyport="${proxy.port}" proxyuser="${proxy.user}" proxypassword="${proxy.password}"/>
   </target>
- 
 
+  <!--LUCENE-3286: Luke is incompatible with new XML QP location and target is not flexible
+  when it comes to incompatible changes.  Update when Luke has updated.
   <target name="compile-xml-query-parser">
-  	<ant dir="${common.dir}/contrib/xml-query-parser" target="compile-core" inheritAll="false">
+  	<ant dir="${common.dir}/../modules/queryparser" target="compile-core" inheritAll="false">
       <propertyset refid="uptodate.and.compiled.properties"/>
     </ant>
   </target>
@@ -104,7 +105,7 @@
   </target>
   <path id="luke.classpath">
     <pathelement location="${common.dir}/build/classes/java" />
-    <pathelement location="${common.dir}/build/contrib/xml-query-parser/classes/java" />
+    <pathelement location="${common.dir}/../modules/queryparser/build/classes/java" />
   </path>
   <target name="luke" depends="luke-download">
     <java fork="true"
@@ -120,7 +121,7 @@
         <path refid="test.classpath"/>
       </classpath>
     </java>
-  </target>
+  </target>-->
   
   <!-- ========================================================================= -->
   <!-- ========================== BUILD/TEST TASKS ============================= -->
@@ -134,7 +135,8 @@
           depends="test-solr-core, test-solrj"/>
   <target name="compile-test" description="Compile unit tests."
           depends="compile-solr-test-framework, compile-test-solr-core, compile-test-solrj, compile-test-contrib, test-jsp"/>
-  <target name="javadocs" description="Calls javadocs-all" depends="javadocs-all"/>
+  <target name="javadocs" description="Calls javadocs-all, javadocs-solrj, and javadocs-test-framework"
+          depends="javadocs-all,javadocs-solrj,javadocs-test-framework"/>
   <target name="compile-core" depends="compile-solr-core" unless="solr.core.compiled"/>
   
   <!-- Solr core targets -->
@@ -150,17 +152,22 @@
       <propertyset refid="uptodate.and.compiled.properties"/>
     </ant>
   </target>
-  
+  <target name="javadocs-solrj">
+    <ant dir="solrj" target="javadocs" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
+  </target>
+
   <!-- Solr contrib targets -->
   <target name="test-contrib" description="Run contrib unit tests.">
     <contrib-crawl target="test" failonerror="true"/>
   </target>
   
   <!-- test-framework targets -->
-  <target name="javadocs-test-framework">  <!-- Called from Jenkins build script --> 
+  <target name="javadocs-test-framework">
     <ant dir="test-framework" target="javadocs" inheritAll="false">
       <propertyset refid="uptodate.and.compiled.properties"/>
-  	</ant>
+    </ant>
   </target>
   
   <!-- Webapp targets -->
@@ -304,7 +311,35 @@
     </tar>
     <make-checksums file="${source.package.file}"/>
   </target>
-  
+ 
+  <target name="package-local-src-tgz"
+          description="Packages the Solr and Lucene sources from the local working copy">
+    <mkdir dir="${common-solr.dir}/build"/>
+    <property name="source.package.file"
+              value="${common-solr.dir}/build/${fullnamever}-src.tgz"/>
+    <delete file="${source.package.file}" failonerror="false" />
+
+    <tar destfile="${source.package.file}" compression="gzip" longfile="gnu">
+      <tarfileset dir="../modules" prefix="${fullnamever}/modules" excludes="**/build/" />
+      <tarfileset dir=".." prefix="${fullnamever}" includes="*.txt *.xml dev-tools/" />
+      <tarfileset dir="." prefix="${fullnamever}" includes="LICENSE.txt NOTICE.txt"/>
+      <tarfileset dir="." prefix="${fullnamever}/solr"
+                  excludes="build ${package.dir}/** ${dist}/**
+                            example/webapps/*.war example/exampledocs/post.jar
+                            lib/README.committers.txt **/data/ **/logs/*
+                            **/*.sh **/bin/ scripts/ site-src/build/
+                            .idea/ **/*.iml **/pom.xml" />
+      <tarfileset dir="." prefix="${fullnamever}/solr"
+                  includes="core/src/test-files/solr/lib/classes/empty-file-main-lib.txt" />
+      <tarfileset dir="." filemode="755" prefix="${fullnamever}/solr"
+                  includes="**/*.sh **/bin/ scripts/"
+                  excludes="build/**"/>
+      <tarfileset dir="../lucene" prefix="${fullnamever}/lucene">
+        <patternset refid="lucene.local.src.package.patterns"/>
+      </tarfileset>
+    </tar>
+  </target>
+
   <target name="create-package"
           description="Packages the Solr Binary Distribution"
           depends="init-dist, dist, example, javadocs">

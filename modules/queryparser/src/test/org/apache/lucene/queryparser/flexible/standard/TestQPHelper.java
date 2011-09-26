@@ -34,7 +34,7 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.DateTools;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
@@ -132,8 +132,9 @@ public class TestQPHelper extends LuceneTestCase {
 
     /** Filters MockTokenizer with StopFilter. */
     @Override
-    public final TokenStream tokenStream(String fieldName, Reader reader) {
-      return new QPTestFilter(new MockTokenizer(reader, MockTokenizer.SIMPLE, true));
+    public final TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      return new TokenStreamComponents(tokenizer, new QPTestFilter(tokenizer));
     }
   }
 
@@ -346,8 +347,8 @@ public class TestQPHelper extends LuceneTestCase {
 
   private class SimpleCJKAnalyzer extends Analyzer {
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      return new SimpleCJKTokenizer(reader);
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      return new TokenStreamComponents(new SimpleCJKTokenizer(reader));
     }
   }
   
@@ -1243,8 +1244,8 @@ public class TestQPHelper extends LuceneTestCase {
 
   private class CannedAnalyzer extends Analyzer {
     @Override
-    public TokenStream tokenStream(String ignored, Reader alsoIgnored) {
-      return new CannedTokenStream();
+    public TokenStreamComponents createComponents(String ignored, Reader alsoIgnored) {
+      return new TokenStreamComponents(new CannedTokenStream());
     }
   }
 
@@ -1252,7 +1253,7 @@ public class TestQPHelper extends LuceneTestCase {
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new CannedAnalyzer()));
     Document doc = new Document();
-    doc.add(newField("field", "", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("field", "", TextField.TYPE_UNSTORED));
     w.addDocument(doc);
     IndexReader r = IndexReader.open(w, true);
     IndexSearcher s = newSearcher(r);

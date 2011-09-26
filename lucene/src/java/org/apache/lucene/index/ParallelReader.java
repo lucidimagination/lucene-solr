@@ -17,10 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.FieldSelector;
-import org.apache.lucene.document.FieldSelectorResult;
-import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.index.values.IndexDocValues;
 import org.apache.lucene.util.Bits;
@@ -208,16 +204,19 @@ public class ParallelReader extends IndexReader {
   
   @Override
   public Bits getLiveDocs() {
+    ensureOpen();
     return MultiFields.getLiveDocs(readers.get(0));
   }
 
   @Override
   public Fields fields() {
+    ensureOpen();
     return fields;
   }
   
   @Override
   public synchronized Object clone() {
+    // doReopen calls ensureOpen
     try {
       return doReopen(true);
     } catch (Exception ex) {
@@ -246,6 +245,7 @@ public class ParallelReader extends IndexReader {
    */
   @Override
   public synchronized IndexReader reopen() throws CorruptIndexException, IOException {
+    // doReopen calls ensureOpen
     return doReopen(false);
   }
     
@@ -329,7 +329,7 @@ public class ParallelReader extends IndexReader {
 
   @Override
   public boolean hasDeletions() {
-    // Don't call ensureOpen() here (it could affect performance)
+    ensureOpen();
     return hasDeletions;
   }
 
@@ -351,30 +351,12 @@ public class ParallelReader extends IndexReader {
     hasDeletions = false;
   }
 
-  // append fields from storedFieldReaders
   @Override
-  public Document document(int n, FieldSelector fieldSelector) throws CorruptIndexException, IOException {
+  public void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
     ensureOpen();
-    Document result = new Document();
     for (final IndexReader reader: storedFieldReaders) {
-
-      boolean include = (fieldSelector==null);
-      if (!include) {
-        Collection<String> fields = readerToFields.get(reader);
-        for (final String field : fields)
-          if (fieldSelector.accept(field) != FieldSelectorResult.NO_LOAD) {
-            include = true;
-            break;
-          }
-      }
-      if (include) {
-        List<Fieldable> fields = reader.document(n, fieldSelector).getFields();
-        for (Fieldable field : fields) {
-          result.add(field);
-        }
-      }
+      reader.document(docID, visitor);
     }
-    return result;
   }
 
   // get all vectors
@@ -483,6 +465,7 @@ public class ParallelReader extends IndexReader {
    */
   @Override
   public boolean isCurrent() throws CorruptIndexException, IOException {
+    ensureOpen();
     for (final IndexReader reader : readers) {
       if (!reader.isCurrent()) {
         return false;
@@ -498,6 +481,7 @@ public class ParallelReader extends IndexReader {
    */
   @Override
   public boolean isOptimized() {
+    ensureOpen();
     for (final IndexReader reader : readers) {
       if (!reader.isOptimized()) {
         return false;
@@ -549,8 +533,10 @@ public class ParallelReader extends IndexReader {
     }
     return fieldSet;
   }
+
   @Override
   public ReaderContext getTopReaderContext() {
+    ensureOpen();
     return topLevelReaderContext;
   }
 
@@ -572,6 +558,7 @@ public class ParallelReader extends IndexReader {
 
   @Override
   public PerDocValues perDocValues() throws IOException {
+    ensureOpen();
     return perDocs;
   }
   

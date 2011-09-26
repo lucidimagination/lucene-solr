@@ -28,7 +28,10 @@ import org.apache.solr.handler.extraction.ExtractingDocumentLoader;
 import org.apache.solr.handler.extraction.ExtractingParams;
 import org.apache.solr.handler.extraction.ExtractingRequestHandler;
 import org.apache.solr.request.LocalSolrQueryRequest;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.update.AddUpdateCommand;
+import org.apache.solr.update.processor.BufferingRequestProcessor;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -39,6 +42,7 @@ import org.junit.Test;
  *
  **/
 public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
+
   @BeforeClass
   public static void beforeClass() throws Exception {
     initCore("solrconfig.xml", "schema.xml", getFile("extraction/solr").getAbsolutePath());
@@ -283,6 +287,27 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
     assertQ(req("extractedContent:Apache"), "//*[@numFound='0']");
     assertU(commit());
     assertQ(req("extractedContent:Apache"), "//*[@numFound='1']");
+  }
+
+  @Test
+  public void testCommitWithin() throws Exception {
+    ExtractingRequestHandler handler = (ExtractingRequestHandler) h.getCore().getRequestHandler("/update/extract");
+    assertTrue("handler is null and it shouldn't be", handler != null);
+    
+    SolrQueryRequest req = req("literal.id", "one",
+                               ExtractingParams.RESOURCE_NAME, "extraction/version_control.txt",
+                               "commitWithin", "200"
+                               );
+    SolrQueryResponse rsp = new SolrQueryResponse();
+    BufferingRequestProcessor p = new BufferingRequestProcessor(null);
+
+    ExtractingDocumentLoader loader = (ExtractingDocumentLoader) handler.newLoader(req, p);
+    loader.load(req, rsp, new ContentStreamBase.FileStream(getFile("extraction/version_control.txt")));
+
+    AddUpdateCommand add = p.addCommands.get(0);
+    assertEquals(200, add.commitWithin);
+
+    req.close();
   }
 
   // Note: If you load a plain text file specifying neither MIME type nor filename, extraction will silently fail. This is because Tika's

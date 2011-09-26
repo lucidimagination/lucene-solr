@@ -18,17 +18,16 @@ package org.apache.lucene.search.spell;
  */
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -220,7 +219,7 @@ public class SpellChecker implements java.io.Closeable {
   }
 
   /**
-   * The accuracy (minimum score) to be used, unless overridden in {@link #suggestSimilar(String, int, org.apache.lucene.index.IndexReader, String, boolean, float)}, to
+   * The accuracy (minimum score) to be used, unless overridden in {@link #suggestSimilar(String, int, IndexReader, String, SuggestMode, float)}, to
    * decide whether a suggestion is included or not.
    * @return The current accuracy setting
    */
@@ -245,10 +244,10 @@ public class SpellChecker implements java.io.Closeable {
    * @throws AlreadyClosedException if the Spellchecker is already closed
    * @return String[]
    *
-   * @see #suggestSimilar(String, int, org.apache.lucene.index.IndexReader, String, boolean, float) 
+   * @see #suggestSimilar(String, int, IndexReader, String, SuggestMode, float) 
    */
   public String[] suggestSimilar(String word, int numSug) throws IOException {
-    return this.suggestSimilar(word, numSug, null, null, false);
+    return this.suggestSimilar(word, numSug, null, null, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
   }
 
   /**
@@ -269,46 +268,22 @@ public class SpellChecker implements java.io.Closeable {
    * @throws AlreadyClosedException if the Spellchecker is already closed
    * @return String[]
    *
-   * @see #suggestSimilar(String, int, org.apache.lucene.index.IndexReader, String, boolean, float)
+   * @see #suggestSimilar(String, int, IndexReader, String, SuggestMode, float)
    */
   public String[] suggestSimilar(String word, int numSug, float accuracy) throws IOException {
-    return this.suggestSimilar(word, numSug, null, null, false, accuracy);
+    return this.suggestSimilar(word, numSug, null, null, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX, accuracy);
   }
 
   /**
-   * Suggest similar words (optionally restricted to a field of an index).
+   * Calls {@link #suggestSimilar(String, int, IndexReader, String, SuggestMode, float) 
+   *       suggestSimilar(word, numSug, ir, suggestMode, field, this.accuracy)}
    * 
-   * <p>As the Lucene similarity that is used to fetch the most relevant n-grammed terms
-   * is not the same as the edit distance strategy used to calculate the best
-   * matching spell-checked word from the hits that Lucene found, one usually has
-   * to retrieve a couple of numSug's in order to get the true best match.
-   *
-   * <p>I.e. if numSug == 1, don't count on that suggestion being the best one.
-   * Thus, you should set this value to <b>at least</b> 5 for a good suggestion.
-   *
-   * <p>Uses the {@link #getAccuracy()} value passed into the constructor as the accuracy.
-   *
-   * @param word the word you want a spell check done on
-   * @param numSug the number of suggested words
-   * @param ir the indexReader of the user index (can be null see field param)
-   * @param field the field of the user index: if field is not null, the suggested
-   * words are restricted to the words present in this field.
-   * @param morePopular return only the suggest words that are as frequent or more frequent than the searched word
-   * (only if restricted mode = (indexReader!=null and field!=null)
-   * @throws IOException if the underlying index throws an {@link IOException}
-   * @throws AlreadyClosedException if the Spellchecker is already closed
-   * @return String[] the sorted list of the suggest words with these 2 criteria:
-   * first criteria: the edit distance, second criteria (only if restricted mode): the popularity
-   * of the suggest words in the field of the user index
-   *
-   * @see #suggestSimilar(String, int, org.apache.lucene.index.IndexReader, String, boolean, float)
    */
   public String[] suggestSimilar(String word, int numSug, IndexReader ir,
-      String field, boolean morePopular) throws IOException {
-    return suggestSimilar(word, numSug, ir, field, morePopular, accuracy);
+      String field, SuggestMode suggestMode) throws IOException {
+  	return suggestSimilar(word, numSug, ir, field, suggestMode, this.accuracy);
   }
-
-
+  
   /**
    * Suggest similar words (optionally restricted to a field of an index).
    *
@@ -325,27 +300,35 @@ public class SpellChecker implements java.io.Closeable {
    * @param ir the indexReader of the user index (can be null see field param)
    * @param field the field of the user index: if field is not null, the suggested
    * words are restricted to the words present in this field.
-   * @param morePopular return only the suggest words that are as frequent or more frequent than the searched word
-   * (only if restricted mode = (indexReader!=null and field!=null)
+   * @param suggestMode 
+   * (NOTE: if indexReader==null and/or field==null, then this is overridden with SuggestMode.SUGGEST_ALWAYS)
    * @param accuracy The minimum score a suggestion must have in order to qualify for inclusion in the results
    * @throws IOException if the underlying index throws an {@link IOException}
    * @throws AlreadyClosedException if the Spellchecker is already closed
    * @return String[] the sorted list of the suggest words with these 2 criteria:
    * first criteria: the edit distance, second criteria (only if restricted mode): the popularity
    * of the suggest words in the field of the user index
+   * 
    */
   public String[] suggestSimilar(String word, int numSug, IndexReader ir,
-      String field, boolean morePopular, float accuracy) throws IOException {
+      String field, SuggestMode suggestMode, float accuracy) throws IOException {
     // obtainSearcher calls ensureOpen
     final IndexSearcher indexSearcher = obtainSearcher();
-    try{
+    try {
+      if (ir == null || field == null) {
+        suggestMode = SuggestMode.SUGGEST_ALWAYS;
+      }
+      if (suggestMode == SuggestMode.SUGGEST_ALWAYS) {
+        ir = null;
+        field = null;
+      }
 
       final int lengthWord = word.length();
 
       final int freq = (ir != null && field != null) ? ir.docFreq(new Term(field, word)) : 0;
-      final int goalFreq = (morePopular && ir != null && field != null) ? freq : 0;
+      final int goalFreq = suggestMode==SuggestMode.SUGGEST_MORE_POPULAR ? freq : 0;
       // if the word exists in the real index and we don't care for word frequency, return the word itself
-      if (!morePopular && freq > 0) {
+      if (suggestMode==SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX && freq > 0) {
         return new String[] { word };
       }
 
@@ -404,7 +387,7 @@ public class SpellChecker implements java.io.Closeable {
         if (ir != null && field != null) { // use the user index
           sugWord.freq = ir.docFreq(new Term(field, sugWord.string)); // freq in the index
           // don't suggest a word that is not present in the field
-          if ((morePopular && goalFreq > sugWord.freq) || sugWord.freq < 1) {
+          if ((suggestMode==SuggestMode.SUGGEST_MORE_POPULAR && goalFreq > sugWord.freq) || sugWord.freq < 1) {
             continue;
           }
         }
@@ -607,9 +590,7 @@ public class SpellChecker implements java.io.Closeable {
     Document doc = new Document();
     // the word field is never queried on... its indexed so it can be quickly
     // checked for rebuild (and stored for retrieval). Doesn't need norms or TF/pos
-    Field f = new Field(F_WORD, text, Field.Store.YES, Field.Index.NOT_ANALYZED);
-    f.setIndexOptions(IndexOptions.DOCS_ONLY);
-    f.setOmitNorms(true);
+    Field f = new Field(F_WORD, StringField.TYPE_STORED, text);
     doc.add(f); // orig term
     addGram(text, doc, ng1, ng2);
     return doc;
@@ -622,25 +603,22 @@ public class SpellChecker implements java.io.Closeable {
       String end = null;
       for (int i = 0; i < len - ng + 1; i++) {
         String gram = text.substring(i, i + ng);
-        Field ngramField = new Field(key, gram, Field.Store.NO, Field.Index.NOT_ANALYZED);
+        FieldType ft = new FieldType(StringField.TYPE_UNSTORED);
+        ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS);
+        Field ngramField = new Field(key, ft, gram);
         // spellchecker does not use positional queries, but we want freqs
         // for scoring these multivalued n-gram fields.
-        ngramField.setIndexOptions(IndexOptions.DOCS_AND_FREQS);
         doc.add(ngramField);
         if (i == 0) {
           // only one term possible in the startXXField, TF/pos and norms aren't needed.
-          Field startField = new Field("start" + ng, gram, Field.Store.NO, Field.Index.NOT_ANALYZED);
-          startField.setIndexOptions(IndexOptions.DOCS_ONLY);
-          startField.setOmitNorms(true);
+          Field startField = new StringField("start" + ng, gram);
           doc.add(startField);
         }
         end = gram;
       }
       if (end != null) { // may not be present if len==ng1
         // only one term possible in the endXXField, TF/pos and norms aren't needed.
-        Field endField = new Field("end" + ng, end, Field.Store.NO, Field.Index.NOT_ANALYZED);
-        endField.setIndexOptions(IndexOptions.DOCS_ONLY);
-        endField.setOmitNorms(true);
+        Field endField = new StringField("end" + ng, end);
         doc.add(endField);
       }
     }

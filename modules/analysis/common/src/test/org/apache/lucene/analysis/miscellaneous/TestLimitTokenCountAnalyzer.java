@@ -23,10 +23,11 @@ import java.io.StringReader;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -38,12 +39,11 @@ public class TestLimitTokenCountAnalyzer extends BaseTokenStreamTestCase {
   public void testLimitTokenCountAnalyzer() throws IOException {
     Analyzer a = new LimitTokenCountAnalyzer(new WhitespaceAnalyzer(TEST_VERSION_CURRENT), 2);
     // dont use assertAnalyzesTo here, as the end offset is not the end of the string!
-    assertTokenStreamContents(a.tokenStream("dummy", new StringReader("1  2     3  4  5")), new String[] { "1", "2" }, new int[] { 0, 3 }, new int[] { 1, 4 }, 4);
+    assertTokenStreamContents(a.reusableTokenStream("dummy", new StringReader("1  2     3  4  5")), new String[] { "1", "2" }, new int[] { 0, 3 }, new int[] { 1, 4 }, 4);
     assertTokenStreamContents(a.reusableTokenStream("dummy", new StringReader("1 2 3 4 5")), new String[] { "1", "2" }, new int[] { 0, 2 }, new int[] { 1, 3 }, 3);
     
     a = new LimitTokenCountAnalyzer(new StandardAnalyzer(TEST_VERSION_CURRENT), 2);
     // dont use assertAnalyzesTo here, as the end offset is not the end of the string!
-    assertTokenStreamContents(a.tokenStream("dummy", new StringReader("1 2 3 4 5")), new String[] { "1", "2" }, new int[] { 0, 2 }, new int[] { 1, 3 }, 3);
     assertTokenStreamContents(a.reusableTokenStream("dummy", new StringReader("1 2 3 4 5")), new String[] { "1", "2" }, new int[] { 0, 2 }, new int[] { 1, 3 }, 3);
   }
 
@@ -58,7 +58,7 @@ public class TestLimitTokenCountAnalyzer extends BaseTokenStreamTestCase {
     for(int i=0;i<10000;i++)
       b.append(" a");
     b.append(" x");
-    doc.add(newField("field", b.toString(), Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("field", b.toString(), TextField.TYPE_UNSTORED));
     writer.addDocument(doc);
     writer.close();
 

@@ -21,14 +21,10 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field.Index;
-import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
@@ -76,7 +72,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     Term term = new Term("test", "a");
     for (int i = 0; i < 5000; i++) {
       Document d1 = new Document();
-      d1.add(newField(term.field(), term.text(), Store.NO, Index.ANALYZED));
+      d1.add(newField(term.field(), term.text(), TextField.TYPE_UNSTORED));
       writer.addDocument(d1);
     }
     writer.commit();
@@ -118,8 +114,9 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
   private static class PayloadAnalyzer extends Analyzer {
     private final AtomicInteger payloadCount = new AtomicInteger(-1);
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      return new PayloadFilter(payloadCount, new MockTokenizer(reader, MockTokenizer.WHITESPACE, true));
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+      return new TokenStreamComponents(tokenizer, new PayloadFilter(payloadCount, tokenizer));
     }
 
   }

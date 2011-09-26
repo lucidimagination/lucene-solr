@@ -20,16 +20,16 @@ package org.apache.lucene.search.payloads;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.search.DefaultSimilarity; // javadocs only
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.Similarity;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.ComplexExplanation;
-import org.apache.lucene.search.Similarity.SloppyDocScorer;
 import org.apache.lucene.search.Weight.ScorerContext;
 import org.apache.lucene.search.payloads.PayloadNearQuery.PayloadNearSpanScorer;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.Similarity.SloppyDocScorer;
 import org.apache.lucene.search.spans.TermSpans;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.SpanWeight;
@@ -49,7 +49,7 @@ import java.io.IOException;
  * which returns 1 by default.
  * <p/>
  * Payload scores are aggregated using a pluggable {@link PayloadFunction}.
- * @see org.apache.lucene.search.Similarity.SloppyDocScorer#computePayloadFactor(int, int, int, BytesRef)
+ * @see org.apache.lucene.search.similarities.Similarity.SloppyDocScorer#computePayloadFactor(int, int, int, BytesRef)
  **/
 public class PayloadTermQuery extends SpanTermQuery {
   protected PayloadFunction function;
@@ -194,11 +194,17 @@ public class PayloadTermQuery extends SpanTermQuery {
           payloadExpl.setValue(scorer.getPayloadScore());
           // combined
           ComplexExplanation result = new ComplexExplanation();
-          result.addDetail(expl);
-          result.addDetail(payloadExpl);
-          result.setValue(expl.getValue() * payloadExpl.getValue());
-          result.setDescription("btq, product of:");
-          result.setMatch(expl.getValue() == 0 ? Boolean.FALSE : Boolean.TRUE); // LUCENE-1303
+          if (includeSpanScore) {
+            result.addDetail(expl);
+            result.addDetail(payloadExpl);
+            result.setValue(expl.getValue() * payloadExpl.getValue());
+            result.setDescription("btq, product of:");
+          } else {
+            result.addDetail(payloadExpl);
+            result.setValue(payloadExpl.getValue());
+            result.setDescription("btq(includeSpanScore=false), result of:");
+          }
+          result.setMatch(true); // LUCENE-1303
           return result;
         }
       }

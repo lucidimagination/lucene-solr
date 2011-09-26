@@ -22,9 +22,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
 
-import org.apache.lucene.search.DefaultSimilarity;
-import org.apache.lucene.search.Similarity;
-import org.apache.lucene.search.SimilarityProvider;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Bits;
@@ -35,7 +35,7 @@ import org.apache.lucene.util.ReaderUtil;
  * 
  * If Similarity class is specified, uses its computeNorm method to set norms.
  * If -n command line argument is used, removed field norms, as if 
- * {@link org.apache.lucene.document.Field.Index}.NO_NORMS was used.
+ * {@link org.apache.lucene.document.FieldType#setOmitNorms(boolean)} was used.
  *
  * <p>
  * NOTE: This will overwrite any length normalization or field/document boosts.

@@ -26,6 +26,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 
 /** Document boost unit test.
@@ -39,7 +40,7 @@ public class TestSetNorm extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(store, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
 
     // add the same document four times
-    Fieldable f1 = newField("field", "word", Field.Store.YES, Field.Index.ANALYZED);
+    Field f1 = newField("field", "word", TextField.TYPE_STORED);
     Document d1 = new Document();
     d1.add(f1);
     writer.addDocument(d1);

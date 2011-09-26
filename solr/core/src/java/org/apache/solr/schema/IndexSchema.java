@@ -18,12 +18,11 @@
 package org.apache.solr.schema;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.document.Fieldable;
-import org.apache.lucene.search.DefaultSimilarity;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Similarity;
-import org.apache.lucene.search.SimilarityProvider;
+import org.apache.lucene.analysis.AnalyzerWrapper;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.util.Version;
 import org.apache.solr.common.ResourceLoader;
 import org.apache.solr.common.SolrException;
@@ -34,7 +33,6 @@ import org.apache.solr.common.util.SystemIdResolver;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.Config;
 import org.apache.solr.core.SolrResourceLoader;
-import org.apache.solr.search.SolrQueryParser;
 import org.apache.solr.search.SolrSimilarityProvider;
 import org.apache.solr.util.plugin.SolrCoreAware;
 import org.w3c.dom.*;
@@ -43,10 +41,6 @@ import org.xml.sax.InputSource;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
-import javax.xml.xpath.XPathFactory;
-import java.io.InputStream;
-import java.io.Reader;
-import java.io.IOException;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -258,8 +252,8 @@ public final class IndexSchema {
    * @return null if this schema has no unique key field
    * @see #printableUniqueKey
    */
-  public Fieldable getUniqueKeyField(org.apache.lucene.document.Document doc) {
-    return doc.getFieldable(uniqueKeyFieldName);  // this should return null if name is null
+  public IndexableField getUniqueKeyField(org.apache.lucene.document.Document doc) {
+    return doc.getField(uniqueKeyFieldName);  // this should return null if name is null
   }
 
   /**
@@ -268,8 +262,8 @@ public final class IndexSchema {
    * @return null if this schema has no unique key field
    */
   public String printableUniqueKey(org.apache.lucene.document.Document doc) {
-     Fieldable f = doc.getFieldable(uniqueKeyFieldName);
-     return f==null ? null : uniqueKeyFieldType.toExternal(f);
+    IndexableField f = doc.getField(uniqueKeyFieldName);
+    return f==null ? null : uniqueKeyFieldType.toExternal(f);
   }
 
   private SchemaField getIndexedField(String fname) {
@@ -296,50 +290,38 @@ public final class IndexSchema {
     queryAnalyzer = new SolrQueryAnalyzer();
   }
 
-  private class SolrIndexAnalyzer extends Analyzer {
-    protected final HashMap<String,Analyzer> analyzers;
+  private class SolrIndexAnalyzer extends AnalyzerWrapper {
+    protected final HashMap<String, Analyzer> analyzers;
 
     SolrIndexAnalyzer() {
       analyzers = analyzerCache();
     }
 
-    protected HashMap<String,Analyzer> analyzerCache() {
-      HashMap<String,Analyzer> cache = new HashMap<String,Analyzer>();
-       for (SchemaField f : getFields().values()) {
+    protected HashMap<String, Analyzer> analyzerCache() {
+      HashMap<String, Analyzer> cache = new HashMap<String, Analyzer>();
+      for (SchemaField f : getFields().values()) {
         Analyzer analyzer = f.getType().getAnalyzer();
         cache.put(f.getName(), analyzer);
       }
       return cache;
     }
 
-    protected Analyzer getAnalyzer(String fieldName)
-    {
+    @Override
+    protected Analyzer getWrappedAnalyzer(String fieldName) {
       Analyzer analyzer = analyzers.get(fieldName);
-      return analyzer!=null ? analyzer : getDynamicFieldType(fieldName).getAnalyzer();
+      return analyzer != null ? analyzer : getDynamicFieldType(fieldName).getAnalyzer();
     }
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader)
-    {
-      return getAnalyzer(fieldName).tokenStream(fieldName,reader);
-    }
-
-    @Override
-    public TokenStream reusableTokenStream(String fieldName, Reader reader) throws IOException {
-      return getAnalyzer(fieldName).reusableTokenStream(fieldName,reader);
-    }
-
-    @Override
-    public int getPositionIncrementGap(String fieldName) {
-      return getAnalyzer(fieldName).getPositionIncrementGap(fieldName);
+    protected TokenStreamComponents wrapComponents(String fieldName, TokenStreamComponents components) {
+      return components;
     }
   }
 
-
   private class SolrQueryAnalyzer extends SolrIndexAnalyzer {
     @Override
-    protected HashMap<String,Analyzer> analyzerCache() {
-      HashMap<String,Analyzer> cache = new HashMap<String,Analyzer>();
+    protected HashMap<String, Analyzer> analyzerCache() {
+      HashMap<String, Analyzer> cache = new HashMap<String, Analyzer>();
        for (SchemaField f : getFields().values()) {
         Analyzer analyzer = f.getType().getQueryAnalyzer();
         cache.put(f.getName(), analyzer);
@@ -348,10 +330,9 @@ public final class IndexSchema {
     }
 
     @Override
-    protected Analyzer getAnalyzer(String fieldName)
-    {
+    protected Analyzer getWrappedAnalyzer(String fieldName) {
       Analyzer analyzer = analyzers.get(fieldName);
-      return analyzer!=null ? analyzer : getDynamicFieldType(fieldName).getQueryAnalyzer();
+      return analyzer != null ? analyzer : getDynamicFieldType(fieldName).getQueryAnalyzer();
     }
   }
 
@@ -474,7 +455,7 @@ public final class IndexSchema {
       };
       log.debug("using default similarityProvider");
     } else {
-      final Object obj = loader.newInstance(((Element) node).getAttribute("class"));
+      final Object obj = loader.newInstance(((Element) node).getAttribute("class"), "search.similarities.");
       // just like always, assume it's a SimilarityProviderFactory and get a ClassCastException - reasonable error handling
       // configure a factory, get a similarity back
       NamedList<?> args = DOMUtil.childNodesToNamedList(node);
@@ -718,7 +699,7 @@ public final class IndexSchema {
       return null;
     } else {
       SimilarityFactory similarityFactory;
-      final Object obj = loader.newInstance(((Element) node).getAttribute("class"));
+      final Object obj = loader.newInstance(((Element) node).getAttribute("class"), "search.similarities.");
       if (obj instanceof SimilarityFactory) {
         // configure a factory, get a similarity back
         SolrParams params = SolrParams.toSolrParams(DOMUtil.childNodesToNamedList(node));

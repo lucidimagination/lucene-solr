@@ -27,13 +27,12 @@ import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
 import org.apache.lucene.index.DocumentsWriterPerThread.IndexingChain;
 import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
 import org.apache.lucene.index.FieldInfos.FieldNumberBiMap;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.SimilarityProvider;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 
@@ -320,7 +319,7 @@ final class DocumentsWriter {
     return maybeMerge;
   }
 
-  boolean updateDocuments(final Iterable<Document> docs, final Analyzer analyzer,
+  boolean updateDocuments(final Iterable<? extends Iterable<? extends IndexableField>> docs, final Analyzer analyzer,
                           final Term delTerm) throws CorruptIndexException, IOException {
     boolean maybeMerge = preUpdate();
 
@@ -351,7 +350,7 @@ final class DocumentsWriter {
     return postUpdate(flushingDWPT, maybeMerge);
   }
 
-  boolean updateDocument(final Document doc, final Analyzer analyzer,
+  boolean updateDocument(final Iterable<? extends IndexableField> doc, final Analyzer analyzer,
       final Term delTerm) throws CorruptIndexException, IOException {
 
     boolean maybeMerge = preUpdate();

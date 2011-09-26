@@ -23,13 +23,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.MockFixedLengthPayloadFilter;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.search.IndexSearcher;
@@ -180,8 +177,8 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       // no payloads
      analyzer = new Analyzer() {
         @Override
-        public TokenStream tokenStream(String fieldName, Reader reader) {
-          return new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+        public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+          return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, true));
         }
       };
     } else {
@@ -189,10 +186,9 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       final int length = random.nextInt(200);
       analyzer = new Analyzer() {
         @Override
-        public TokenStream tokenStream(String fieldName, Reader reader) {
-          return new MockFixedLengthPayloadFilter(random,
-              new MockTokenizer(reader, MockTokenizer.WHITESPACE, true),
-              length);
+        public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+          return new TokenStreamComponents(tokenizer, new MockFixedLengthPayloadFilter(random, tokenizer, length));
         }
       };
     }
@@ -342,7 +338,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
             try {
               final Document doc = new Document();
               IndexReader r = IndexReader.open(dir);
-              Field f = newField("f", "", Field.Store.NO, Field.Index.NOT_ANALYZED);
+              Field f = newField("f", "", StringField.TYPE_UNSTORED);
               doc.add(f);
               int count = 0;
               do {

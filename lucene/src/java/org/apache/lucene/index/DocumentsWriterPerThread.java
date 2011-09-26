@@ -23,16 +23,15 @@ import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_SIZE;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.text.NumberFormat;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DocumentsWriterDeleteQueue.DeleteSlice;
-import org.apache.lucene.search.SimilarityProvider;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FlushInfo;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.BitVector;
+import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.ByteBlockPool.Allocator;
 import org.apache.lucene.util.ByteBlockPool.DirectTrackingAllocator;
 import org.apache.lucene.util.RamUsageEstimator;
@@ -90,7 +89,7 @@ public class DocumentsWriterPerThread {
     PrintStream infoStream;
     SimilarityProvider similarityProvider;
     int docID;
-    Document doc;
+    Iterable<? extends IndexableField> doc;
     String maxTermPrefix;
 
     DocState(DocumentsWriterPerThread docWriter) {
@@ -156,7 +155,7 @@ public class DocumentsWriterPerThread {
   final Directory directory;
   final DocState docState;
   final DocConsumer consumer;
-  final AtomicLong bytesUsed;
+  final Counter bytesUsed;
   
   SegmentWriteState flushState;
   //Deletes for our still-in-RAM (to be flushed next) segment
@@ -185,7 +184,7 @@ public class DocumentsWriterPerThread {
     this.docState = new DocState(this);
     this.docState.similarityProvider = parent.indexWriter.getConfig()
         .getSimilarityProvider();
-    bytesUsed = new AtomicLong(0);
+    bytesUsed = Counter.newCounter();
     byteBlockAllocator = new DirectTrackingAllocator(bytesUsed);
     consumer = indexingChain.getChain(this);
     pendingDeletes = new BufferedDeletes();
@@ -213,7 +212,7 @@ public class DocumentsWriterPerThread {
     return retval;
   }
 
-  public void updateDocument(Document doc, Analyzer analyzer, Term delTerm) throws IOException {
+  public void updateDocument(Iterable<? extends IndexableField> doc, Analyzer analyzer, Term delTerm) throws IOException {
     assert writer.testPoint("DocumentsWriterPerThread addDocument start");
     assert deleteQueue != null;
     docState.doc = doc;
@@ -263,7 +262,7 @@ public class DocumentsWriterPerThread {
     finishDocument(delTerm);
   }
   
-  public int updateDocuments(Iterable<Document> docs, Analyzer analyzer, Term delTerm) throws IOException {
+  public int updateDocuments(Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer analyzer, Term delTerm) throws IOException {
     assert writer.testPoint("DocumentsWriterPerThread addDocuments start");
     assert deleteQueue != null;
     docState.analyzer = analyzer;
@@ -280,7 +279,7 @@ public class DocumentsWriterPerThread {
     }
     int docCount = 0;
     try {
-      for(Document doc : docs) {
+      for(Iterable<? extends IndexableField> doc : docs) {
         docState.doc = doc;
         docState.docID = numDocsInRAM;
         docCount++;

@@ -20,13 +20,10 @@ package org.apache.lucene.index;
 import java.io.IOException;
 import java.io.Reader;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.document.Field;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -73,8 +70,8 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         
         final Analyzer analyzer = new Analyzer() {
           @Override
-          public TokenStream tokenStream(String fieldName, Reader reader) {
-            return new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+          public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+            return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, true));
           }
         };
         Directory directory = new SeekCountingDirectory(new RAMDirectory());
@@ -85,6 +82,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
                 setMaxBufferedDocs(10).
                 setMergePolicy(newLogMergePolicy(false))
         );
+        
         for (int i = 0; i < numDocs; i++) {
             Document doc = new Document();
             String content;
@@ -99,7 +97,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
                 content = this.term3 + " " + this.term2;
             }
 
-            doc.add(newField(this.field, content, Field.Store.YES, Field.Index.ANALYZED));
+            doc.add(newField(this.field, content, TextField.TYPE_STORED));
             writer.addDocument(doc);
         }
         
@@ -148,7 +146,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
         for (int i = 0; i < 10; i++) {
             Document doc = new Document();
-            doc.add(newField(this.field, "a b", Field.Store.YES, Field.Index.ANALYZED));
+            doc.add(newField(this.field, "a b", TextField.TYPE_STORED));
             writer.addDocument(doc);
         }
         

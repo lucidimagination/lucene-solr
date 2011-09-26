@@ -26,9 +26,10 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.search.DefaultSimilarity;
-import org.apache.lucene.search.DefaultSimilarityProvider;
-import org.apache.lucene.search.Similarity;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
+import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -56,7 +57,7 @@ public class TestMaxTermFrequency extends LuceneTestCase {
     });
     RandomIndexWriter writer = new RandomIndexWriter(random, dir, config);
     Document doc = new Document();
-    Field foo = newField("foo", "", Field.Store.NO, Field.Index.ANALYZED);
+    Field foo = newField("foo", "", TextField.TYPE_UNSTORED);
     doc.add(foo);
     for (int i = 0; i < 100; i++) {
       foo.setValue(addValue());

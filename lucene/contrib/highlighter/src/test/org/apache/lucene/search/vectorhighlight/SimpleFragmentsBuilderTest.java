@@ -19,9 +19,8 @@ package org.apache.lucene.search.vectorhighlight;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Field.Index;
-import org.apache.lucene.document.Field.Store;
-import org.apache.lucene.document.Field.TermVector;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -51,7 +50,7 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     String[] f = sfb.createFragments( reader, 0, F, ffl, 3 );
     // 3 snippets requested, but should be 2
     assertEquals( 2, f.length );
-    assertEquals( "<b>a</b> b b b b b b b b b ", f[0] );
+    assertEquals( "<b>a</b> b b b b b b b b b b", f[0] );
     assertEquals( "b b <b>a</b> b <b>a</b> b ", f[1] );
   }
   
@@ -64,8 +63,8 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     SimpleFragmentsBuilder sfb = new SimpleFragmentsBuilder();
     String[] f = sfb.createFragments( reader, 0, F, ffl, 3 );
     assertEquals( 3, f.length );
-    assertEquals( "<b>a</b> b b b b b b b b b ", f[0] );
-    assertEquals( "b b <b>a</b> b <b>a</b> b b b b b ", f[1] );
+    assertEquals( "<b>a</b> b b b b b b b b b b", f[0] );
+    assertEquals( "b b <b>a</b> b <b>a</b> b b b b b c", f[1] );
     assertEquals( "<b>c</b> <b>a</b> <b>a</b> b b ", f[2] );
   }
   
@@ -95,7 +94,7 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     SimpleFragListBuilder sflb = new SimpleFragListBuilder();
     FieldFragList ffl = sflb.createFieldFragList( fpl, 100 );
     SimpleFragmentsBuilder sfb = new SimpleFragmentsBuilder();
-    assertEquals( " b c  <b>d</b> e ", sfb.createFragment( reader, 0, F, ffl ) );
+    assertEquals( "a b c  <b>d</b> e ", sfb.createFragment( reader, 0, F, ffl ) );
   }
   
   public void test1PhraseLongMV() throws Exception {
@@ -107,7 +106,7 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     SimpleFragListBuilder sflb = new SimpleFragListBuilder();
     FieldFragList ffl = sflb.createFieldFragList( fpl, 100 );
     SimpleFragmentsBuilder sfb = new SimpleFragmentsBuilder();
-    assertEquals( " most <b>search engines</b> use only one of these methods. Even the <b>search engines</b> that says they can use t",
+    assertEquals( "The most <b>search engines</b> use only one of these methods. Even the <b>search engines</b> that says they can use the",
         sfb.createFragment( reader, 0, F, ffl ) );
   }
 
@@ -120,7 +119,7 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     SimpleFragListBuilder sflb = new SimpleFragListBuilder();
     FieldFragList ffl = sflb.createFieldFragList( fpl, 100 );
     SimpleFragmentsBuilder sfb = new SimpleFragmentsBuilder();
-    assertEquals( "ssing <b>speed</b>, the ", sfb.createFragment( reader, 0, F, ffl ) );
+    assertEquals( "processing <b>speed</b>, the ", sfb.createFragment( reader, 0, F, ffl ) );
   }
   
   public void testUnstoredField() throws Exception {
@@ -139,7 +138,12 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
         TEST_VERSION_CURRENT, analyzerW).setOpenMode(OpenMode.CREATE));
     Document doc = new Document();
-    doc.add( new Field( F, "aaa", Store.NO, Index.ANALYZED, TermVector.WITH_POSITIONS_OFFSETS ) );
+    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    customType.setStoreTermVectors(true);
+    customType.setStoreTermVectorOffsets(true);
+    customType.setStoreTermVectorPositions(true);
+    doc.add( new Field( F, customType, "aaa" ) );
+    //doc.add( new Field( F, "aaa", Store.NO, Index.ANALYZED, TermVector.WITH_POSITIONS_OFFSETS ) );
     writer.addDocument( doc );
     writer.close();
     if (reader != null) reader.close();
@@ -155,9 +159,8 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
     SimpleFragListBuilder sflb = new SimpleFragListBuilder();
     FieldFragList ffl = sflb.createFieldFragList( fpl, 100 );
     SimpleFragmentsBuilder sfb = new SimpleFragmentsBuilder();
-    // '/' separator doesn't effect the snippet because of NOT_ANALYZED field
     sfb.setMultiValuedSeparator( '/' );
-    assertEquals( "abc<b>defg</b>hijkl", sfb.createFragment( reader, 0, F, ffl ) );
+    assertEquals( "abc/<b>defg</b>/hijkl/", sfb.createFragment( reader, 0, F, ffl ) );
   }
   
   public void testMVSeparator() throws Exception {

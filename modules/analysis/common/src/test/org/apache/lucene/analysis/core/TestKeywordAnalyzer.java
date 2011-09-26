@@ -24,6 +24,8 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -46,8 +48,8 @@ public class TestKeywordAnalyzer extends BaseTokenStreamTestCase {
         TEST_VERSION_CURRENT, new SimpleAnalyzer(TEST_VERSION_CURRENT)));
 
     Document doc = new Document();
-    doc.add(new Field("partnum", "Q36", Field.Store.YES, Field.Index.NOT_ANALYZED));
-    doc.add(new Field("description", "Illidium Space Modulator", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("partnum", StringField.TYPE_STORED, "Q36"));
+    doc.add(new Field("description", TextField.TYPE_STORED, "Illidium Space Modulator"));
     writer.addDocument(doc);
 
     writer.close();
@@ -74,10 +76,10 @@ public class TestKeywordAnalyzer extends BaseTokenStreamTestCase {
     RAMDirectory dir = new RAMDirectory();
     IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new KeywordAnalyzer()));
     Document doc = new Document();
-    doc.add(new Field("partnum", "Q36", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("partnum", TextField.TYPE_STORED, "Q36"));
     writer.addDocument(doc);
     doc = new Document();
-    doc.add(new Field("partnum", "Q37", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("partnum", TextField.TYPE_STORED, "Q37"));
     writer.addDocument(doc);
     writer.close();
 
@@ -96,8 +98,9 @@ public class TestKeywordAnalyzer extends BaseTokenStreamTestCase {
 
   // LUCENE-1441
   public void testOffsets() throws Exception {
-    TokenStream stream = new KeywordAnalyzer().tokenStream("field", new StringReader("abcd"));
+    TokenStream stream = new KeywordAnalyzer().reusableTokenStream("field", new StringReader("abcd"));
     OffsetAttribute offsetAtt = stream.addAttribute(OffsetAttribute.class);
+    stream.reset();
     assertTrue(stream.incrementToken());
     assertEquals(0, offsetAtt.startOffset());
     assertEquals(4, offsetAtt.endOffset());

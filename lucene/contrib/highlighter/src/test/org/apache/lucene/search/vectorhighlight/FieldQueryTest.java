@@ -16,19 +16,23 @@ package org.apache.lucene.search.vectorhighlight;
  * limitations under the License.
  */
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TermRangeQuery;
+import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.search.vectorhighlight.FieldQuery.QueryPhraseMap;
 import org.apache.lucene.search.vectorhighlight.FieldTermStack.TermInfo;
 import org.apache.lucene.util.BytesRef;
@@ -48,7 +52,7 @@ public class FieldQueryTest extends AbstractTestCase {
 
     FieldQuery fq = new FieldQuery(booleanQuery, true, true );
     Set<Query> flatQueries = new HashSet<Query>();
-    fq.flatten(booleanQuery, flatQueries);
+    fq.flatten(booleanQuery, reader, flatQueries);
     assertCollectionQueries( flatQueries, tq( "A" ), tq( "B" ), tq( "C" ) );
   }
 
@@ -56,7 +60,7 @@ public class FieldQueryTest extends AbstractTestCase {
     Query query = dmq( tq( "A" ), tq( "B" ), pqF( "C", "D" ) );
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<Query>();
-    fq.flatten( query, flatQueries );
+    fq.flatten( query, reader, flatQueries );
     assertCollectionQueries( flatQueries, tq( "A" ), tq( "B" ), pqF( "C", "D" ) );
   }
 
@@ -70,7 +74,7 @@ public class FieldQueryTest extends AbstractTestCase {
 
     FieldQuery fq = new FieldQuery(booleanQuery, true, true );
     Set<Query> flatQueries = new HashSet<Query>();
-    fq.flatten(booleanQuery, flatQueries);
+    fq.flatten(booleanQuery, reader, flatQueries);
     assertCollectionQueries( flatQueries, tq( "A" ), pqF( "B", "C" ) );
   }
 
@@ -82,7 +86,7 @@ public class FieldQueryTest extends AbstractTestCase {
 
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<Query>();
-    fq.flatten( query, flatQueries );
+    fq.flatten( query, reader, flatQueries );
     assertCollectionQueries( flatQueries, tq( "AA" ), pqF( "BC", "CD" ), pqF( "EF", "FG", "GH" ) );
   }
 
@@ -90,7 +94,7 @@ public class FieldQueryTest extends AbstractTestCase {
     Query query = pqF( "A" );
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<Query>();
-    fq.flatten( query, flatQueries );
+    fq.flatten( query, reader, flatQueries );
     assertCollectionQueries( flatQueries, tq( "A" ) );
   }
 
@@ -292,7 +296,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertEquals( 1, qpm.subMap.size() );
     assertTrue( qpm.subMap.get( "a" ) != null );
     assertTrue( qpm.subMap.get( "a" ).terminal );
-    assertEquals( 1F, qpm.subMap.get( "a" ).boost );
+    assertEquals( 1F, qpm.subMap.get( "a" ).boost, 0);
     
     // phraseHighlight = true, fieldMatch = false
     fq = new FieldQuery( query, true, false );
@@ -304,7 +308,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertEquals( 1, qpm.subMap.size() );
     assertTrue( qpm.subMap.get( "a" ) != null );
     assertTrue( qpm.subMap.get( "a" ).terminal );
-    assertEquals( 1F, qpm.subMap.get( "a" ).boost );
+    assertEquals( 1F, qpm.subMap.get( "a" ).boost, 0);
     
     // phraseHighlight = false, fieldMatch = true
     fq = new FieldQuery( query, false, true );
@@ -316,7 +320,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertEquals( 1, qpm.subMap.size() );
     assertTrue( qpm.subMap.get( "a" ) != null );
     assertTrue( qpm.subMap.get( "a" ).terminal );
-    assertEquals( 1F, qpm.subMap.get( "a" ).boost );
+    assertEquals( 1F, qpm.subMap.get( "a" ).boost, 0);
     
     // phraseHighlight = false, fieldMatch = false
     fq = new FieldQuery( query, false, false );
@@ -328,14 +332,14 @@ public class FieldQueryTest extends AbstractTestCase {
     assertEquals( 1, qpm.subMap.size() );
     assertTrue( qpm.subMap.get( "a" ) != null );
     assertTrue( qpm.subMap.get( "a" ).terminal );
-    assertEquals( 1F, qpm.subMap.get( "a" ).boost );
+    assertEquals( 1F, qpm.subMap.get( "a" ).boost, 0);
     
     // boost != 1
     query = tq( 2, "a" );
     fq = new FieldQuery( query, true, true );
     map = fq.rootMaps;
     qpm = map.get( F );
-    assertEquals( 2F, qpm.subMap.get( "a" ).boost );
+    assertEquals( 2F, qpm.subMap.get( "a" ).boost, 0);
   }
   
   public void testQueryPhraseMap1Phrase() throws Exception {
@@ -356,7 +360,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "b" ) );
     QueryPhraseMap qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
     
     // phraseHighlight = true, fieldMatch = false
     fq = new FieldQuery( query, true, false );
@@ -373,7 +377,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "b" ) );
     qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
     
     // phraseHighlight = false, fieldMatch = true
     fq = new FieldQuery( query, false, true );
@@ -386,17 +390,17 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm.subMap.get( "a" ) );
     qpm2 = qpm.subMap.get( "a" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
     assertEquals( 1, qpm2.subMap.size() );
     assertNotNull( qpm2.subMap.get( "b" ) );
     qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     assertNotNull( qpm.subMap.get( "b" ) );
     qpm2 = qpm.subMap.get( "b" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
     
     // phraseHighlight = false, fieldMatch = false
     fq = new FieldQuery( query, false, false );
@@ -409,17 +413,17 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm.subMap.get( "a" ) );
     qpm2 = qpm.subMap.get( "a" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
     assertEquals( 1, qpm2.subMap.size() );
     assertNotNull( qpm2.subMap.get( "b" ) );
     qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     assertNotNull( qpm.subMap.get( "b" ) );
     qpm2 = qpm.subMap.get( "b" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
 
     // boost != 1
     query = pqF( 2, "a", "b" );
@@ -428,11 +432,11 @@ public class FieldQueryTest extends AbstractTestCase {
     map = fq.rootMaps;
     qpm = map.get( null );
     qpm2 = qpm.subMap.get( "a" );
-    assertEquals( 2F, qpm2.boost );
+    assertEquals( 2F, qpm2.boost, 0);
     qpm3 = qpm2.subMap.get( "b" );
-    assertEquals( 2F, qpm3.boost );
+    assertEquals( 2F, qpm3.boost, 0);
     qpm2 = qpm.subMap.get( "b" );
-    assertEquals( 2F, qpm2.boost );
+    assertEquals( 2F, qpm2.boost, 0);
   }
   
   public void testQueryPhraseMap1PhraseAnother() throws Exception {
@@ -453,7 +457,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "engines" ) );
     QueryPhraseMap qpm3 = qpm2.subMap.get( "engines" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
   }
   
   public void testQueryPhraseMap2Phrases() throws Exception {
@@ -478,7 +482,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "b" ) );
     QueryPhraseMap qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "c d"^2
     assertNotNull( qpm.subMap.get( "c" ) );
@@ -488,7 +492,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "d" ) );
     qpm3 = qpm2.subMap.get( "d" );
     assertTrue( qpm3.terminal );
-    assertEquals( 2F, qpm3.boost );
+    assertEquals( 2F, qpm3.boost, 0);
   }
   
   public void testQueryPhraseMap2PhrasesFields() throws Exception {
@@ -513,7 +517,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "b" ) );
     QueryPhraseMap qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "c d"^2
     assertNotNull( map.get( F2 ) );
@@ -526,7 +530,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "d" ) );
     qpm3 = qpm2.subMap.get( "d" );
     assertTrue( qpm3.terminal );
-    assertEquals( 2F, qpm3.boost );
+    assertEquals( 2F, qpm3.boost, 0);
     
     // phraseHighlight = true, fieldMatch = false
     fq = new FieldQuery( query, true, false );
@@ -546,7 +550,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "b" ) );
     qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "c d"^2
     assertNotNull( qpm.subMap.get( "c" ) );
@@ -556,7 +560,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "d" ) );
     qpm3 = qpm2.subMap.get( "d" );
     assertTrue( qpm3.terminal );
-    assertEquals( 2F, qpm3.boost );
+    assertEquals( 2F, qpm3.boost, 0);
   }
   
   /*
@@ -594,11 +598,11 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm3.subMap.get( "c" ) );
     QueryPhraseMap qpm4 = qpm3.subMap.get( "c" );
     assertTrue( qpm4.terminal );
-    assertEquals( 1F, qpm4.boost );
+    assertEquals( 1F, qpm4.boost, 0);
     assertNotNull( qpm4.subMap.get( "d" ) );
     QueryPhraseMap qpm5 = qpm4.subMap.get( "d" );
     assertTrue( qpm5.terminal );
-    assertEquals( 1F, qpm5.boost );
+    assertEquals( 1F, qpm5.boost, 0);
 
     // "b c d"^2, "b d"^3
     assertNotNull( qpm.subMap.get( "b" ) );
@@ -612,11 +616,11 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm3.subMap.get( "d" ) );
     qpm4 = qpm3.subMap.get( "d" );
     assertTrue( qpm4.terminal );
-    assertEquals( 2F, qpm4.boost );
+    assertEquals( 2F, qpm4.boost, 0);
     assertNotNull( qpm2.subMap.get( "d" ) );
     qpm3 = qpm2.subMap.get( "d" );
     assertTrue( qpm3.terminal );
-    assertEquals( 3F, qpm3.boost );
+    assertEquals( 3F, qpm3.boost, 0);
   }
   
   /*
@@ -647,14 +651,14 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "b" ) );
     QueryPhraseMap qpm3 = qpm2.subMap.get( "b" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "a b c"^2
     assertEquals( 1, qpm3.subMap.size() );
     assertNotNull( qpm3.subMap.get( "c" ) );
     QueryPhraseMap qpm4 = qpm3.subMap.get( "c" );
     assertTrue( qpm4.terminal );
-    assertEquals( 2F, qpm4.boost );
+    assertEquals( 2F, qpm4.boost, 0);
   }
   
   /*
@@ -733,14 +737,14 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "bc" ) );
     QueryPhraseMap qpm3 = qpm2.subMap.get( "bc" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "ab bc cd"
     assertEquals( 1, qpm3.subMap.size() );
     assertNotNull( qpm3.subMap.get( "cd" ) );
     QueryPhraseMap qpm4 = qpm3.subMap.get( "cd" );
     assertTrue( qpm4.terminal );
-    assertEquals( 1F, qpm4.boost );
+    assertEquals( 1F, qpm4.boost, 0);
 
     // "bc cd"
     assertNotNull( qpm.subMap.get( "bc" ) );
@@ -750,7 +754,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm2.subMap.get( "cd" ) );
     qpm3 = qpm2.subMap.get( "cd" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
     
     // phraseHighlight = false, fieldMatch = true
     fq = new FieldQuery( query, false, true );
@@ -765,36 +769,36 @@ public class FieldQueryTest extends AbstractTestCase {
     assertNotNull( qpm.subMap.get( "ab" ) );
     qpm2 = qpm.subMap.get( "ab" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
     assertEquals( 1, qpm2.subMap.size() );
     assertNotNull( qpm2.subMap.get( "bc" ) );
     qpm3 = qpm2.subMap.get( "bc" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "ab bc cd"
     assertEquals( 1, qpm3.subMap.size() );
     assertNotNull( qpm3.subMap.get( "cd" ) );
     qpm4 = qpm3.subMap.get( "cd" );
     assertTrue( qpm4.terminal );
-    assertEquals( 1F, qpm4.boost );
+    assertEquals( 1F, qpm4.boost, 0);
 
     // "bc cd"
     assertNotNull( qpm.subMap.get( "bc" ) );
     qpm2 = qpm.subMap.get( "bc" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
     assertEquals( 1, qpm2.subMap.size() );
     assertNotNull( qpm2.subMap.get( "cd" ) );
     qpm3 = qpm2.subMap.get( "cd" );
     assertTrue( qpm3.terminal );
-    assertEquals( 1F, qpm3.boost );
+    assertEquals( 1F, qpm3.boost, 0);
 
     // "cd"
     assertNotNull( qpm.subMap.get( "cd" ) );
     qpm2 = qpm.subMap.get( "cd" );
     assertTrue( qpm2.terminal );
-    assertEquals( 1F, qpm2.boost );
+    assertEquals( 1F, qpm2.boost, 0);
     assertEquals( 0, qpm2.subMap.size() );
   }
   
@@ -869,4 +873,36 @@ public class FieldQueryTest extends AbstractTestCase {
     phraseCandidate.add( new TermInfo( "c", 4, 5, 6 ) );
     assertNull( fq.searchPhrase( F, phraseCandidate ) );
   }
+  
+  public void testHighlightQuery() throws Exception {
+    makeIndexStrMV();
+    defgMultiTermQueryTest(new WildcardQuery(new Term(F, "d*g")));
+  }
+
+  public void testPrefixQuery() throws Exception {
+    makeIndexStrMV();
+    defgMultiTermQueryTest(new PrefixQuery(new Term(F, "de")));
+  }
+  
+  public void testRegexpQuery() throws Exception {
+    makeIndexStrMV();
+    Term term = new Term(F, "d[a-z].g");
+    defgMultiTermQueryTest(new RegexpQuery (term));
+  }
+
+  public void testRangeQuery() throws Exception {
+    makeIndexStrMV();
+    defgMultiTermQueryTest(new TermRangeQuery (F, new BytesRef("d"), new BytesRef("e"), true, true));
+  }
+
+  private void defgMultiTermQueryTest(Query query) throws IOException {
+    FieldQuery fq = new FieldQuery( query, reader, true, true );
+    QueryPhraseMap qpm = fq.getFieldTermMap(F, "defg");
+    assertNotNull (qpm);
+    assertNull (fq.getFieldTermMap(F, "dog"));
+    List<TermInfo> phraseCandidate = new ArrayList<TermInfo>();
+    phraseCandidate.add( new TermInfo( "defg", 0, 12, 0 ) );
+    assertNotNull (fq.searchPhrase(F, phraseCandidate));
+  }
+  
 }

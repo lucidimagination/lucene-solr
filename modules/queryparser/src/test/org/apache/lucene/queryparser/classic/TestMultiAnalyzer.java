@@ -124,14 +124,10 @@ public class TestMultiAnalyzer extends BaseTokenStreamTestCase {
    */
   private class MultiAnalyzer extends Analyzer {
 
-    public MultiAnalyzer() {
-    }
-
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      TokenStream result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
-      result = new TestFilter(result);
-      return result;
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+      return new TokenStreamComponents(result, new TestFilter(result));
     }
   }
 
@@ -198,14 +194,10 @@ public class TestMultiAnalyzer extends BaseTokenStreamTestCase {
    */
   private class PosIncrementAnalyzer extends Analyzer {
 
-    public PosIncrementAnalyzer() {
-    }
-
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      TokenStream result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
-      result = new TestPosIncrementFilter(result);
-      return result;
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+      return new TokenStreamComponents(result, new TestPosIncrementFilter(result));
     }
   }
 

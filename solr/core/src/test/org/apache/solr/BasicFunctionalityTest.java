@@ -26,9 +26,10 @@ import java.util.Map;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.LogMergePolicy;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.AppendedSolrParams;
@@ -357,32 +358,32 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     
     IndexSchema ischema = new IndexSchema(solrConfig, getSchemaFile(), null);
     SchemaField f; // Solr field type
-    Fieldable luf; // Lucene field
+    IndexableField luf; // Lucene field
 
     f = ischema.getField("test_basictv");
     luf = f.createField("test", 0f);
     assertTrue(f.storeTermVector());
-    assertTrue(luf.isTermVectorStored());
+    assertTrue(luf.fieldType().storeTermVectors());
 
     f = ischema.getField("test_notv");
     luf = f.createField("test", 0f);
     assertTrue(!f.storeTermVector());
-    assertTrue(!luf.isTermVectorStored());    
+    assertTrue(!luf.fieldType().storeTermVectors());
 
     f = ischema.getField("test_postv");
     luf = f.createField("test", 0f);
     assertTrue(f.storeTermVector() && f.storeTermPositions());
-    assertTrue(luf.isStorePositionWithTermVector());
+    assertTrue(luf.fieldType().storeTermVectorPositions());
 
     f = ischema.getField("test_offtv");
     luf = f.createField("test", 0f);
     assertTrue(f.storeTermVector() && f.storeTermOffsets());
-    assertTrue(luf.isStoreOffsetWithTermVector());
+    assertTrue(luf.fieldType().storeTermVectorOffsets());
 
     f = ischema.getField("test_posofftv");
     luf = f.createField("test", 0f);
     assertTrue(f.storeTermVector() && f.storeTermPositions() && f.storeTermOffsets());
-    assertTrue(luf.isStoreOffsetWithTermVector() && luf.isStorePositionWithTermVector());
+    assertTrue(luf.fieldType().storeTermVectorOffsets() && luf.fieldType().storeTermVectorPositions());
 
   }
 
@@ -559,10 +560,10 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     core.execute(core.getRequestHandler(req.getParams().get(CommonParams.QT)), req, rsp);
 
     DocList dl = ((ResultContext) rsp.getValues().get("response")).docs;
-    org.apache.lucene.document.Document d = req.getSearcher().doc(dl.iterator().nextDoc());
+    Document d = req.getSearcher().doc(dl.iterator().nextDoc());
     // ensure field is not lazy, only works for Non-Numeric fields currently (if you change schema behind test, this may fail)
-    assertTrue( d.getFieldable("test_hlt") instanceof Field );
-    assertTrue( d.getFieldable("title") instanceof Field );
+    assertFalse( ((Field) d.getField("test_hlt")).getClass().getSimpleName().equals("LazyField"));
+    assertFalse( ((Field) d.getField("title")).getClass().getSimpleName().equals("LazyField"));
     req.close();
   }
 
@@ -582,10 +583,10 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
 
     DocList dl = ((ResultContext) rsp.getValues().get("response")).docs;
     DocIterator di = dl.iterator();    
-    org.apache.lucene.document.Document d = req.getSearcher().doc(di.nextDoc());
+    Document d = req.getSearcher().doc(di.nextDoc());
     // ensure field is lazy
-    assertTrue( !( d.getFieldable("test_hlt") instanceof Field ) );
-    assertTrue( d.getFieldable("title") instanceof Field );
+    assertTrue( ((Field) d.getField("test_hlt")).getClass().getSimpleName().equals("LazyField"));
+    assertFalse( ((Field) d.getField("title")).getClass().getSimpleName().equals("LazyField"));
     req.close();
   } 
             
@@ -593,6 +594,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
   /** @see org.apache.solr.util.DateMathParserTest */
   @Test
   public void testDateMath() {
+    clearIndex();
 
     // testing everything from query level is hard because
     // time marches on ... and there is no easy way to reach into the
@@ -638,6 +640,19 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     assertQ("check count for near stuff",
             req("q", "bday:[NOW-1MONTH TO NOW+2HOURS]"), "*[count(//doc)=4]");
     
+  }
+
+  public void testDateRoundtrip() {
+    assertU(adoc("id", "99",  "bday", "99-01-01T12:34:56.789Z"));
+    assertU(commit());
+    assertQ("year should be canonicallized to 4 digits",
+            req("q", "id:99"),
+            "//date[@name='bday'][.='0099-01-01T12:34:56.789Z']");
+    assertU(adoc("id", "99",  "bday", "1999-01-01T12:34:56.900Z"));
+    assertU(commit());
+    assertQ("millis should be canonicallized to no trailing zeros",
+            req("q", "id:99"),
+            "//date[@name='bday'][.='1999-01-01T12:34:56.9Z']");
   }
   
   @Test

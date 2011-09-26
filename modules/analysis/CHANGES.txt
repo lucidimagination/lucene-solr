@@ -33,7 +33,15 @@ API Changes
    in half. (Robert Muir)
 
  * LUCENE-3400: Removed DutchAnalyzer.setStemDictionary (Chris Male)
-   
+
+ * LUCENE-3431: Removed QueryAutoStopWordAnalyzer.addStopWords* deprecated methods
+   since they prevented reuse.  Stopwords are now generated at instantiation through
+   the Analyzer's constructors. (Chris Male)
+
+ * LUCENE-3434: Removed ShingleAnalyzerWrapper.set* and PerFieldAnalyzerWrapper.addAnalyzer
+   since they prevent reuse.  Both Analyzers should be configured at instantiation.
+   (Chris Male)
+
 New Features
 
  * LUCENE-2341: A new analyzer/ filter: Morfologik - a dictionary-driven lemmatizer 
@@ -98,8 +106,13 @@ New Features
  * SOLR-1057: Add PathHierarchyTokenizer that represents file path hierarchies as synonyms of
    /something, /something/something, /something/something/else. (Ryan McKinley, Koji Sekiguchi)
 
+ * LUCENE-3414: Added HunspellStemFilter which uses a provided pure Java implementation of the 
+   Hunspell algorithm. (Chris Male)
+
 Build
 
  * LUCENE-2413: All analyzers in contrib/analyzers and contrib/icu were moved to the 
    analysis module.  The 'smartcn' and 'stempel' components now depend on 'common'.  
    (Robert Muir)
+
+ * LUCENE-3376: Moved ReusableAnalyzerBase into lucene core. (Chris Male)

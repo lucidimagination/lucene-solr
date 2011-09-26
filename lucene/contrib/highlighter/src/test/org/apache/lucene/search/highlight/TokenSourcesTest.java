@@ -20,15 +20,14 @@ package org.apache.lucene.search.highlight;
 import java.io.IOException;
 import java.io.Reader;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.Token;
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Field.TermVector;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
@@ -52,12 +51,12 @@ public class TokenSourcesTest extends LuceneTestCase {
   private static final class OverlapAnalyzer extends Analyzer {
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      return new TokenStreamOverlap();
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      return new TokenStreamComponents(new TokenStreamOverlap());
     }
   }
 
-  private static final class TokenStreamOverlap extends TokenStream {
+  private static final class TokenStreamOverlap extends Tokenizer {
     private Token[] tokens;
 
     private int i = -1;
@@ -107,8 +106,10 @@ public class TokenSourcesTest extends LuceneTestCase {
         newIndexWriterConfig(TEST_VERSION_CURRENT, new OverlapAnalyzer()));
     try {
       final Document document = new Document();
-      document.add(new Field(FIELD, new TokenStreamOverlap(),
-          TermVector.WITH_OFFSETS));
+      FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+      customType.setStoreTermVectors(true);
+      customType.setStoreTermVectorOffsets(true);
+      document.add(new Field(FIELD, customType, new TokenStreamOverlap()));
       indexWriter.addDocument(document);
     } finally {
       indexWriter.close();
@@ -153,8 +154,11 @@ public class TokenSourcesTest extends LuceneTestCase {
         newIndexWriterConfig(TEST_VERSION_CURRENT, new OverlapAnalyzer()));
     try {
       final Document document = new Document();
-      document.add(new Field(FIELD, new TokenStreamOverlap(),
-          TermVector.WITH_POSITIONS_OFFSETS));
+      FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+      customType.setStoreTermVectors(true);
+      customType.setStoreTermVectorOffsets(true);
+      customType.setStoreTermVectorPositions(true);
+      document.add(new Field(FIELD, customType, new TokenStreamOverlap()));
       indexWriter.addDocument(document);
     } finally {
       indexWriter.close();
@@ -199,8 +203,10 @@ public class TokenSourcesTest extends LuceneTestCase {
         newIndexWriterConfig(TEST_VERSION_CURRENT, new OverlapAnalyzer()));
     try {
       final Document document = new Document();
-      document.add(new Field(FIELD, new TokenStreamOverlap(),
-          TermVector.WITH_OFFSETS));
+      FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+      customType.setStoreTermVectors(true);
+      customType.setStoreTermVectorOffsets(true);
+      document.add(new Field(FIELD, customType, new TokenStreamOverlap()));
       indexWriter.addDocument(document);
     } finally {
       indexWriter.close();
@@ -246,8 +252,10 @@ public class TokenSourcesTest extends LuceneTestCase {
         newIndexWriterConfig(TEST_VERSION_CURRENT, new OverlapAnalyzer()));
     try {
       final Document document = new Document();
-      document.add(new Field(FIELD, new TokenStreamOverlap(),
-          TermVector.WITH_POSITIONS_OFFSETS));
+      FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+      customType.setStoreTermVectors(true);
+      customType.setStoreTermVectorOffsets(true);
+      document.add(new Field(FIELD, customType, new TokenStreamOverlap()));
       indexWriter.addDocument(document);
     } finally {
       indexWriter.close();

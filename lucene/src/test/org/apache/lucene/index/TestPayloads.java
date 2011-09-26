@@ -19,29 +19,24 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util._TestUtil;
 
 public class TestPayloads extends LuceneTestCase {
@@ -101,17 +96,17 @@ public class TestPayloads extends LuceneTestCase {
         IndexWriter writer = new IndexWriter(ram, newIndexWriterConfig( TEST_VERSION_CURRENT, analyzer));
         Document d = new Document();
         // this field won't have any payloads
-        d.add(newField("f1", "This field has no payloads", Field.Store.NO, Field.Index.ANALYZED));
+        d.add(newField("f1", "This field has no payloads", TextField.TYPE_UNSTORED));
         // this field will have payloads in all docs, however not for all term positions,
         // so this field is used to check if the DocumentWriter correctly enables the payloads bit
         // even if only some term positions have payloads
-        d.add(newField("f2", "This field has payloads in all docs", Field.Store.NO, Field.Index.ANALYZED));
-        d.add(newField("f2", "This field has payloads in all docs", Field.Store.NO, Field.Index.ANALYZED));
+        d.add(newField("f2", "This field has payloads in all docs", TextField.TYPE_UNSTORED));
+        d.add(newField("f2", "This field has payloads in all docs NO PAYLOAD", TextField.TYPE_UNSTORED));
         // this field is used to verify if the SegmentMerger enables payloads for a field if it has payloads 
         // enabled in only some documents
-        d.add(newField("f3", "This field has payloads in some docs", Field.Store.NO, Field.Index.ANALYZED));
+        d.add(newField("f3", "This field has payloads in some docs", TextField.TYPE_UNSTORED));
         // only add payload data for field f2
-        analyzer.setPayloadData("f2", 1, "somedata".getBytes(), 0, 1);
+        analyzer.setPayloadData("f2", "somedata".getBytes(), 0, 1);
         writer.addDocument(d);
         // flush
         writer.close();
@@ -125,13 +120,14 @@ public class TestPayloads extends LuceneTestCase {
         
         // now we add another document which has payloads for field f3 and verify if the SegmentMerger
         // enabled payloads for that field
+        analyzer = new PayloadAnalyzer(); // Clear payload state for each field
         writer = new IndexWriter(ram, newIndexWriterConfig( TEST_VERSION_CURRENT,
             analyzer).setOpenMode(OpenMode.CREATE));
         d = new Document();
-        d.add(newField("f1", "This field has no payloads", Field.Store.NO, Field.Index.ANALYZED));
-        d.add(newField("f2", "This field has payloads in all docs", Field.Store.NO, Field.Index.ANALYZED));
-        d.add(newField("f2", "This field has payloads in all docs", Field.Store.NO, Field.Index.ANALYZED));
-        d.add(newField("f3", "This field has payloads in some docs", Field.Store.NO, Field.Index.ANALYZED));
+        d.add(newField("f1", "This field has no payloads", TextField.TYPE_UNSTORED));
+        d.add(newField("f2", "This field has payloads in all docs", TextField.TYPE_UNSTORED));
+        d.add(newField("f2", "This field has payloads in all docs", TextField.TYPE_UNSTORED));
+        d.add(newField("f3", "This field has payloads in some docs", TextField.TYPE_UNSTORED));
         // add payload data for field f2 and f3
         analyzer.setPayloadData("f2", "somedata".getBytes(), 0, 1);
         analyzer.setPayloadData("f3", "somedata".getBytes(), 0, 3);
@@ -188,14 +184,14 @@ public class TestPayloads extends LuceneTestCase {
         byte[] payloadData = generateRandomData(payloadDataLength);
         
         Document d = new Document();
-        d.add(newField(fieldName, content, Field.Store.NO, Field.Index.ANALYZED));
+        d.add(newField(fieldName, content, TextField.TYPE_UNSTORED));
         // add the same document multiple times to have the same payload lengths for all
         // occurrences within two consecutive skip intervals
         int offset = 0;
         for (int i = 0; i < 2 * numDocs; i++) {
-            analyzer.setPayloadData(fieldName, payloadData, offset, 1);
+            analyzer = new PayloadAnalyzer(fieldName, payloadData, offset, 1);
             offset += numTerms;
-            writer.addDocument(d);
+            writer.addDocument(d, analyzer);
         }
         
         // make sure we create more than one segment to test merging
@@ -203,9 +199,9 @@ public class TestPayloads extends LuceneTestCase {
         
         // now we make sure to have different payload lengths next at the next skip point        
         for (int i = 0; i < numDocs; i++) {
-            analyzer.setPayloadData(fieldName, payloadData, offset, i);
+            analyzer = new PayloadAnalyzer(fieldName, payloadData, offset, i);
             offset += i * numTerms;
-            writer.addDocument(d);
+            writer.addDocument(d, analyzer);
         }
         
         writer.optimize();
@@ -319,7 +315,7 @@ public class TestPayloads extends LuceneTestCase {
         String singleTerm = "lucene";
         
         d = new Document();
-        d.add(newField(fieldName, singleTerm, Field.Store.NO, Field.Index.ANALYZED));
+        d.add(newField(fieldName, singleTerm, TextField.TYPE_UNSTORED));
         // add a payload whose length is greater than the buffer size of BufferedIndexOutput
         payloadData = generateRandomData(2000);
         analyzer.setPayloadData(fieldName, payloadData, 100, 1500);
@@ -411,37 +407,35 @@ public class TestPayloads extends LuceneTestCase {
      */
     private static class PayloadAnalyzer extends Analyzer {
         Map<String,PayloadData> fieldToData = new HashMap<String,PayloadData>();
+
+        public PayloadAnalyzer() {
+          super(new PerFieldReuseStrategy());
+        }
         
-        void setPayloadData(String field, byte[] data, int offset, int length) {
-            fieldToData.put(field, new PayloadData(0, data, offset, length));
+        public PayloadAnalyzer(String field, byte[] data, int offset, int length) {
+            super(new PerFieldReuseStrategy());
+            setPayloadData(field, data, offset, length);
         }
 
-        void setPayloadData(String field, int numFieldInstancesToSkip, byte[] data, int offset, int length) {
-            fieldToData.put(field, new PayloadData(numFieldInstancesToSkip, data, offset, length));
+        void setPayloadData(String field, byte[] data, int offset, int length) {
+            fieldToData.put(field, new PayloadData(data, offset, length));
         }
         
         @Override
-        public TokenStream tokenStream(String fieldName, Reader reader) {
+        public TokenStreamComponents createComponents(String fieldName, Reader reader) {
             PayloadData payload =  fieldToData.get(fieldName);
-            TokenStream ts = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
-            if (payload != null) {
-                if (payload.numFieldInstancesToSkip == 0) {
-                    ts = new PayloadFilter(ts, payload.data, payload.offset, payload.length);
-                } else {
-                    payload.numFieldInstancesToSkip--;
-                }
-            }
-            return ts;
+            Tokenizer ts = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+            TokenStream tokenStream = (payload != null) ?
+                new PayloadFilter(ts, payload.data, payload.offset, payload.length) : ts;
+            return new TokenStreamComponents(ts, tokenStream);
         }
         
         private static class PayloadData {
             byte[] data;
             int offset;
             int length;
-            int numFieldInstancesToSkip;
-            
-            PayloadData(int skip, byte[] data, int offset, int length) {
-                numFieldInstancesToSkip = skip;
+
+            PayloadData(byte[] data, int offset, int length) {
                 this.data = data;
                 this.offset = offset;
                 this.length = length;
@@ -459,6 +453,7 @@ public class TestPayloads extends LuceneTestCase {
         private int offset;
         private int startOffset;
         PayloadAttribute payloadAtt;
+        CharTermAttribute termAttribute;
         
         public PayloadFilter(TokenStream in, byte[] data, int offset, int length) {
             super(in);
@@ -467,23 +462,27 @@ public class TestPayloads extends LuceneTestCase {
             this.offset = offset;
             this.startOffset = offset;
             payloadAtt = addAttribute(PayloadAttribute.class);
+            termAttribute = addAttribute(CharTermAttribute.class);
         }
         
         @Override
         public boolean incrementToken() throws IOException {
             boolean hasNext = input.incrementToken();
-            if (hasNext) {
-                if (offset + length <= data.length) {
-                    Payload p = new Payload();
-                    payloadAtt.setPayload(p);
-                    p.setData(data, offset, length);
-                    offset += length;                
-                } else {
-                    payloadAtt.setPayload(null);
-                }
+            if (!hasNext) {
+              return false;
             }
-            
-            return hasNext;
+
+            // Some values of the same field are to have payloads and others not
+            if (offset + length <= data.length && !termAttribute.toString().endsWith("NO PAYLOAD")) {
+              Payload p = new Payload();
+              payloadAtt.setPayload(p);
+              p.setData(data, offset, length);
+              offset += length;
+            } else {
+              payloadAtt.setPayload(null);
+            }
+
+            return true;
         }
 
       @Override
@@ -511,7 +510,7 @@ public class TestPayloads extends LuceneTestCase {
                     try {
                         for (int j = 0; j < numDocs; j++) {
                             Document d = new Document();
-                            d.add(new Field(field, new PoolingPayloadTokenStream(pool)));
+                            d.add(new TextField(field, new PoolingPayloadTokenStream(pool)));
                             writer.addDocument(d);
                         }
                     } catch (Exception e) {
@@ -612,14 +611,14 @@ public class TestPayloads extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random, dir,
                                                      new MockAnalyzer(random, MockTokenizer.WHITESPACE, true));
     Document doc = new Document();
-    doc.add(new Field("hasMaybepayload", "here we go", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("hasMaybepayload", TextField.TYPE_STORED, "here we go"));
     writer.addDocument(doc);
     writer.close();
 
     writer = new RandomIndexWriter(random, dir,
                                    new MockAnalyzer(random, MockTokenizer.WHITESPACE, true));
     doc = new Document();
-    doc.add(new Field("hasMaybepayload2", "here we go", Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("hasMaybepayload2", TextField.TYPE_STORED, "here we go"));
     writer.addDocument(doc);
     writer.addDocument(doc);
     writer.optimize();

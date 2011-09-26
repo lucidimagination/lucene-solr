@@ -20,16 +20,20 @@ package org.apache.lucene.queries;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowMultiReaderWrapper;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.TermRangeFilter;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -64,10 +68,10 @@ public class BooleanFilterTest extends LuceneTestCase {
 
   private void addDoc(RandomIndexWriter writer, String accessRights, String price, String date, String inStock) throws IOException {
     Document doc = new Document();
-    doc.add(newField("accessRights", accessRights, Field.Store.YES, Field.Index.ANALYZED));
-    doc.add(newField("price", price, Field.Store.YES, Field.Index.ANALYZED));
-    doc.add(newField("date", date, Field.Store.YES, Field.Index.ANALYZED));
-    doc.add(newField("inStock", inStock, Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(newField("accessRights", accessRights, TextField.TYPE_STORED));
+    doc.add(newField("price", price, TextField.TYPE_STORED));
+    doc.add(newField("date", date, TextField.TYPE_STORED));
+    doc.add(newField("inStock", inStock, TextField.TYPE_STORED));
     writer.addDocument(doc);
   }
 
@@ -82,9 +86,42 @@ public class BooleanFilterTest extends LuceneTestCase {
 
     return tf;
   }
+  
+  private Filter getWrappedTermQuery(String field, String text) {
+    return new QueryWrapperFilter(new TermQuery(new Term(field, text)));
+  }
+  
+  private Filter getNullDISFilter() {
+    return new Filter() {
+      @Override
+      public DocIdSet getDocIdSet(AtomicReaderContext context) {
+        return null;
+      }
+    };
+  }
+
+  private Filter getNullDISIFilter() {
+    return new Filter() {
+      @Override
+      public DocIdSet getDocIdSet(AtomicReaderContext context) {
+        return new DocIdSet() {
+          @Override
+          public DocIdSetIterator iterator() {
+            return null;
+          }
+          
+          @Override
+          public boolean isCacheable() {
+            return true;
+          }
+        };
+      }
+    };
+  }
 
   private void tstFilterCard(String mes, int expected, Filter filt)
-      throws Throwable {
+      throws Exception {
+    // BooleanFilter never returns null DIS or null DISI!
     DocIdSetIterator disi = filt.getDocIdSet(new AtomicReaderContext(reader)).iterator();
     int actual = 0;
     while (disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
@@ -94,72 +131,181 @@ public class BooleanFilterTest extends LuceneTestCase {
   }
 
 
-  public void testShould() throws Throwable {
+  public void testShould() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getTermsFilter("price", "030"), BooleanClause.Occur.SHOULD));
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.SHOULD);
+    tstFilterCard("Should retrieves only 1 doc", 1, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getWrappedTermQuery("price", "030"), Occur.SHOULD);
     tstFilterCard("Should retrieves only 1 doc", 1, booleanFilter);
   }
 
-  public void testShoulds() throws Throwable {
+  public void testShoulds() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "010", "020"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "020", "030"), BooleanClause.Occur.SHOULD));
+    booleanFilter.add(getRangeFilter("price", "010", "020"), Occur.SHOULD);
+    booleanFilter.add(getRangeFilter("price", "020", "030"), Occur.SHOULD);
     tstFilterCard("Shoulds are Ored together", 5, booleanFilter);
   }
 
-  public void testShouldsAndMustNot() throws Throwable {
+  public void testShouldsAndMustNot() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "010", "020"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "020", "030"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getTermsFilter("inStock", "N"), BooleanClause.Occur.MUST_NOT));
+    booleanFilter.add(getRangeFilter("price", "010", "020"), Occur.SHOULD);
+    booleanFilter.add(getRangeFilter("price", "020", "030"), Occur.SHOULD);
+    booleanFilter.add(getTermsFilter("inStock", "N"), Occur.MUST_NOT);
     tstFilterCard("Shoulds Ored but AndNot", 4, booleanFilter);
 
-    booleanFilter.add(new FilterClause(getTermsFilter("inStock", "Maybe"), BooleanClause.Occur.MUST_NOT));
+    booleanFilter.add(getTermsFilter("inStock", "Maybe"), Occur.MUST_NOT);
+    tstFilterCard("Shoulds Ored but AndNots", 3, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getRangeFilter("price", "010", "020"), Occur.SHOULD);
+    booleanFilter.add(getRangeFilter("price", "020", "030"), Occur.SHOULD);
+    booleanFilter.add(getWrappedTermQuery("inStock", "N"), Occur.MUST_NOT);
+    tstFilterCard("Shoulds Ored but AndNot", 4, booleanFilter);
+
+    booleanFilter.add(getWrappedTermQuery("inStock", "Maybe"), Occur.MUST_NOT);
     tstFilterCard("Shoulds Ored but AndNots", 3, booleanFilter);
   }
 
-  public void testShouldsAndMust() throws Throwable {
+  public void testShouldsAndMust() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "010", "020"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "020", "030"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getTermsFilter("accessRights", "admin"), BooleanClause.Occur.MUST));
+    booleanFilter.add(getRangeFilter("price", "010", "020"), Occur.SHOULD);
+    booleanFilter.add(getRangeFilter("price", "020", "030"), Occur.SHOULD);
+    booleanFilter.add(getTermsFilter("accessRights", "admin"), Occur.MUST);
+    tstFilterCard("Shoulds Ored but MUST", 3, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getRangeFilter("price", "010", "020"), Occur.SHOULD);
+    booleanFilter.add(getRangeFilter("price", "020", "030"), Occur.SHOULD);
+    booleanFilter.add(getWrappedTermQuery("accessRights", "admin"), Occur.MUST);
     tstFilterCard("Shoulds Ored but MUST", 3, booleanFilter);
   }
 
-  public void testShouldsAndMusts() throws Throwable {
+  public void testShouldsAndMusts() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "010", "020"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "020", "030"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getTermsFilter("accessRights", "admin"), BooleanClause.Occur.MUST));
-    booleanFilter.add(new FilterClause(getRangeFilter("date", "20040101", "20041231"), BooleanClause.Occur.MUST));
+    booleanFilter.add(getRangeFilter("price", "010", "020"), Occur.SHOULD);
+    booleanFilter.add(getRangeFilter("price", "020", "030"), Occur.SHOULD);
+    booleanFilter.add(getTermsFilter("accessRights", "admin"), Occur.MUST);
+    booleanFilter.add(getRangeFilter("date", "20040101", "20041231"), Occur.MUST);
     tstFilterCard("Shoulds Ored but MUSTs ANDED", 1, booleanFilter);
   }
 
-  public void testShouldsAndMustsAndMustNot() throws Throwable {
+  public void testShouldsAndMustsAndMustNot() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getRangeFilter("price", "030", "040"), BooleanClause.Occur.SHOULD));
-    booleanFilter.add(new FilterClause(getTermsFilter("accessRights", "admin"), BooleanClause.Occur.MUST));
-    booleanFilter.add(new FilterClause(getRangeFilter("date", "20050101", "20051231"), BooleanClause.Occur.MUST));
-    booleanFilter.add(new FilterClause(getTermsFilter("inStock", "N"), BooleanClause.Occur.MUST_NOT));
+    booleanFilter.add(getRangeFilter("price", "030", "040"), Occur.SHOULD);
+    booleanFilter.add(getTermsFilter("accessRights", "admin"), Occur.MUST);
+    booleanFilter.add(getRangeFilter("date", "20050101", "20051231"), Occur.MUST);
+    booleanFilter.add(getTermsFilter("inStock", "N"), Occur.MUST_NOT);
+    tstFilterCard("Shoulds Ored but MUSTs ANDED and MustNot", 0, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getRangeFilter("price", "030", "040"), Occur.SHOULD);
+    booleanFilter.add(getWrappedTermQuery("accessRights", "admin"), Occur.MUST);
+    booleanFilter.add(getRangeFilter("date", "20050101", "20051231"), Occur.MUST);
+    booleanFilter.add(getWrappedTermQuery("inStock", "N"), Occur.MUST_NOT);
     tstFilterCard("Shoulds Ored but MUSTs ANDED and MustNot", 0, booleanFilter);
   }
 
-  public void testJustMust() throws Throwable {
+  public void testJustMust() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getTermsFilter("accessRights", "admin"), BooleanClause.Occur.MUST));
+    booleanFilter.add(getTermsFilter("accessRights", "admin"), Occur.MUST);
+    tstFilterCard("MUST", 3, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getWrappedTermQuery("accessRights", "admin"), Occur.MUST);
     tstFilterCard("MUST", 3, booleanFilter);
   }
 
-  public void testJustMustNot() throws Throwable {
+  public void testJustMustNot() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getTermsFilter("inStock", "N"), BooleanClause.Occur.MUST_NOT));
+    booleanFilter.add(getTermsFilter("inStock", "N"), Occur.MUST_NOT);
+    tstFilterCard("MUST_NOT", 4, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getWrappedTermQuery("inStock", "N"), Occur.MUST_NOT);
     tstFilterCard("MUST_NOT", 4, booleanFilter);
   }
 
-  public void testMustAndMustNot() throws Throwable {
+  public void testMustAndMustNot() throws Exception {
     BooleanFilter booleanFilter = new BooleanFilter();
-    booleanFilter.add(new FilterClause(getTermsFilter("inStock", "N"), BooleanClause.Occur.MUST));
-    booleanFilter.add(new FilterClause(getTermsFilter("price", "030"), BooleanClause.Occur.MUST_NOT));
+    booleanFilter.add(getTermsFilter("inStock", "N"), Occur.MUST);
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.MUST_NOT);
     tstFilterCard("MUST_NOT wins over MUST for same docs", 0, booleanFilter);
+    
+    // same with a real DISI (no OpenBitSetIterator)
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getWrappedTermQuery("inStock", "N"), Occur.MUST);
+    booleanFilter.add(getWrappedTermQuery("price", "030"), Occur.MUST_NOT);
+    tstFilterCard("MUST_NOT wins over MUST for same docs", 0, booleanFilter);
+  }
+
+  public void testEmpty() throws Exception {
+    BooleanFilter booleanFilter = new BooleanFilter();
+    tstFilterCard("empty BooleanFilter returns no results", 0, booleanFilter);
+  }
+
+  public void testCombinedNullDocIdSets() throws Exception {
+    BooleanFilter booleanFilter = new BooleanFilter();
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.MUST);
+    booleanFilter.add(getNullDISFilter(), Occur.MUST);
+    tstFilterCard("A MUST filter that returns a null DIS should never return documents", 0, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.MUST);
+    booleanFilter.add(getNullDISIFilter(), Occur.MUST);
+    tstFilterCard("A MUST filter that returns a null DISI should never return documents", 0, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.SHOULD);
+    booleanFilter.add(getNullDISFilter(), Occur.SHOULD);
+    tstFilterCard("A SHOULD filter that returns a null DIS should be invisible", 1, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.SHOULD);
+    booleanFilter.add(getNullDISIFilter(), Occur.SHOULD);
+    tstFilterCard("A SHOULD filter that returns a null DISI should be invisible", 1, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.MUST);
+    booleanFilter.add(getNullDISFilter(), Occur.MUST_NOT);
+    tstFilterCard("A MUST_NOT filter that returns a null DIS should be invisible", 1, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getTermsFilter("price", "030"), Occur.MUST);
+    booleanFilter.add(getNullDISIFilter(), Occur.MUST_NOT);
+    tstFilterCard("A MUST_NOT filter that returns a null DISI should be invisible", 1, booleanFilter);
+  }
+
+  public void testJustNullDocIdSets() throws Exception {
+    BooleanFilter booleanFilter = new BooleanFilter();
+    booleanFilter.add(getNullDISFilter(), Occur.MUST);
+    tstFilterCard("A MUST filter that returns a null DIS should never return documents", 0, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getNullDISIFilter(), Occur.MUST);
+    tstFilterCard("A MUST filter that returns a null DISI should never return documents", 0, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getNullDISFilter(), Occur.SHOULD);
+    tstFilterCard("A single SHOULD filter that returns a null DIS should never return documents", 0, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getNullDISIFilter(), Occur.SHOULD);
+    tstFilterCard("A single SHOULD filter that returns a null DISI should never return documents", 0, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getNullDISFilter(), Occur.MUST_NOT);
+    tstFilterCard("A single MUST_NOT filter that returns a null DIS should be invisible", 5, booleanFilter);
+    
+    booleanFilter = new BooleanFilter();
+    booleanFilter.add(getNullDISIFilter(), Occur.MUST_NOT);
+    tstFilterCard("A single MUST_NOT filter that returns a null DIS should be invisible", 5, booleanFilter);
   }
 }

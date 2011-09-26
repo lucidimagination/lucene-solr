@@ -224,7 +224,7 @@ def testChangesText(dir, version, project):
     # NOTE: O(N) but N should be smallish:
     if 'CHANGES.txt' in files:
       fullPath = '%s/CHANGES.txt' % root
-      print 'CHECK %s' % fullPath
+      #print 'CHECK %s' % fullPath
       checkChangesContent(open(fullPath).read(), version, fullPath, project, False)
       
 def checkChangesContent(s, version, name, project, isHTML):
@@ -337,6 +337,12 @@ def verifyUnpacked(project, artifact, unpackPath, version):
       if fileName not in l:
         raise RuntimeError('%s: file "%s" is missing from artifact %s' % (project, fileName, artifact))
       l.remove(fileName)
+
+    if project == 'solr':
+      # Make sure the api jdocs are there (this was missing in 3.4.0):
+      for path in ('docs', 'docs/api', 'docs/api/solrj', 'docs/api/test-framework'):
+        if not os.path.exists('%s/index.html' % path):
+          raise RuntimeError('cannot find api javadocs for "%s"' % path)
 
   if project == 'lucene':
     extras = ('lib', 'docs', 'contrib')

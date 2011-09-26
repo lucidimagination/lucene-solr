@@ -21,14 +21,13 @@ import java.io.IOException;
 import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.ReusableAnalyzerBase;
-import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -42,8 +41,7 @@ public class TestSameTokenSamePosition extends LuceneTestCase {
     Directory dir = newDirectory();
     RandomIndexWriter riw = new RandomIndexWriter(random, dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new BugReproAnalyzer()));
     Document doc = new Document();
-    doc.add(new Field("eng", "Six drunken" /*This shouldn't matter. */, 
-                      Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("eng", TextField.TYPE_STORED, "Six drunken" /*This shouldn't matter. */));
     riw.addDocument(doc);
     riw.close();
     dir.close();
@@ -56,8 +54,7 @@ public class TestSameTokenSamePosition extends LuceneTestCase {
     Directory dir = newDirectory();
     RandomIndexWriter riw = new RandomIndexWriter(random, dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new BugReproAnalyzer()));
     Document doc = new Document();
-    doc.add(new Field("eng", "Six drunken" /*This shouldn't matter. */, 
-                      Field.Store.YES, Field.Index.ANALYZED));
+    doc.add(new Field("eng", TextField.TYPE_STORED, "Six drunken" /*This shouldn't matter. */));
     for (int i = 0; i < 100; i++) {
       riw.addDocument(doc);
     }
@@ -66,10 +63,10 @@ public class TestSameTokenSamePosition extends LuceneTestCase {
   }
 }
 
-final class BugReproAnalyzer extends Analyzer{
+final class BugReproAnalyzer extends Analyzer {
   @Override
-  public TokenStream tokenStream(String arg0, Reader arg1) {
-    return new BugReproAnalyzerTokenizer();
+  public TokenStreamComponents createComponents(String arg0, Reader arg1) {
+    return new TokenStreamComponents(new BugReproAnalyzerTokenizer());
   }
 }
 

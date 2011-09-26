@@ -27,7 +27,7 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.IndexReader;
@@ -58,8 +58,8 @@ public class TestPositionIncrement extends LuceneTestCase {
   public void testSetPosition() throws Exception {
     Analyzer analyzer = new Analyzer() {
       @Override
-      public TokenStream tokenStream(String fieldName, Reader reader) {
-        return new TokenStream() {
+      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        return new TokenStreamComponents(new Tokenizer() {
           private final String[] TOKENS = {"1", "2", "3", "4", "5"};
           private final int[] INCREMENTS = {0, 2, 1, 0, 1};
           private int i = 0;
@@ -85,13 +85,13 @@ public class TestPositionIncrement extends LuceneTestCase {
             super.reset();
             this.i = 0;
           }
-        };
+        });
       }
     };
     Directory store = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, store, analyzer);
     Document d = new Document();
-    d.add(newField("field", "bogus", Field.Store.YES, Field.Index.ANALYZED));
+    d.add(newField("field", "bogus", TextField.TYPE_STORED));
     writer.addDocument(d);
     IndexReader reader = writer.getReader();
     writer.close();
@@ -209,7 +209,7 @@ public class TestPositionIncrement extends LuceneTestCase {
     Directory dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, dir, new MockPayloadAnalyzer());
     Document doc = new Document();
-    doc.add(new Field("content", new StringReader(
+    doc.add(new TextField("content", new StringReader(
         "a a b c d e a f g h i j a b k k")));
     writer.addDocument(doc);
 

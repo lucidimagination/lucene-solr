@@ -290,21 +290,22 @@ public class DirectSpellChecker {
   }
 
   /**
-   * Calls {@link #suggestSimilar(Term, int, IndexReader, boolean) 
-   *       suggestSimilar(term, numSug, ir, false)}
+   * Calls {@link #suggestSimilar(Term, int, IndexReader, SuggestMode) 
+   *       suggestSimilar(term, numSug, ir, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX)}
    */
   public SuggestWord[] suggestSimilar(Term term, int numSug, IndexReader ir) 
      throws IOException {
-    return suggestSimilar(term, numSug, ir, false);
+    return suggestSimilar(term, numSug, ir, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
   }
   
   /**
-   * Calls {@link #suggestSimilar(Term, int, IndexReader, boolean, float) 
-   *       suggestSimilar(term, numSug, ir, morePopular, this.accuracy)}
+   * Calls {@link #suggestSimilar(Term, int, IndexReader, SuggestMode, float) 
+   *       suggestSimilar(term, numSug, ir, suggestMode, this.accuracy)}
+   * 
    */
   public SuggestWord[] suggestSimilar(Term term, int numSug, IndexReader ir, 
-      boolean morePopular) throws IOException {
-    return suggestSimilar(term, numSug, ir, morePopular, accuracy);
+      SuggestMode suggestMode) throws IOException {
+  	return suggestSimilar(term, numSug, ir, suggestMode, this.accuracy);
   }
   
   /**
@@ -317,13 +318,13 @@ public class DirectSpellChecker {
    * @param term Term you want to spell check on
    * @param numSug the maximum number of suggested words
    * @param ir IndexReader to find terms from
-   * @param morePopular return only suggested words that are as frequent or more frequent than the searched word
+   * @param suggestMode specifies when to return suggested words
    * @param accuracy return only suggested words that match with this similarity
    * @return sorted list of the suggested words according to the comparator
    * @throws IOException
    */
   public SuggestWord[] suggestSimilar(Term term, int numSug, IndexReader ir, 
-      boolean morePopular, float accuracy) throws IOException {
+      SuggestMode suggestMode, float accuracy) throws IOException {
     final CharsRef spare = new CharsRef();
     String text = term.text();
     if (minQueryLength > 0 && text.codePointCount(0, text.length()) < minQueryLength)
@@ -335,9 +336,7 @@ public class DirectSpellChecker {
     
     int docfreq = ir.docFreq(term);
     
-    // see line 341 of spellchecker. this is certainly very very nice for perf,
-    // but is it really the right way to go?
-    if (!morePopular && docfreq > 0) {
+    if (suggestMode==SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX && docfreq > 0) {
       return new SuggestWord[0];
     }
     
@@ -349,7 +348,7 @@ public class DirectSpellChecker {
       return new SuggestWord[0];
     }
     
-    if (!morePopular) docfreq = 0;
+    if (suggestMode!=SuggestMode.SUGGEST_MORE_POPULAR) docfreq = 0;
     
     if (thresholdFrequency >= 1f) {
       docfreq = Math.max(docfreq, (int) thresholdFrequency);

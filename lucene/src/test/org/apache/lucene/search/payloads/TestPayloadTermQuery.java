@@ -20,17 +20,17 @@ import org.apache.lucene.analysis.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.English;
-import org.apache.lucene.search.DefaultSimilarityProvider;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.QueryUtils;
-import org.apache.lucene.search.Similarity;
-import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.CheckHits;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.DefaultSimilarity;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.search.spans.MultiSpansWrapper;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.Spans;
@@ -45,6 +45,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.apache.lucene.document.TextField;
 
 import java.io.Reader;
 import java.io.IOException;
@@ -65,12 +66,14 @@ public class TestPayloadTermQuery extends LuceneTestCase {
 
   private static class PayloadAnalyzer extends Analyzer {
 
+    private PayloadAnalyzer() {
+      super(new PerFieldReuseStrategy());
+    }
 
     @Override
-    public TokenStream tokenStream(String fieldName, Reader reader) {
-      TokenStream result = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
-      result = new PayloadFilter(result, fieldName);
-      return result;
+    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
+      Tokenizer result = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      return new TokenStreamComponents(result, new PayloadFilter(result, fieldName));
     }
   }
 
@@ -122,11 +125,11 @@ public class TestPayloadTermQuery extends LuceneTestCase {
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
       Document doc = new Document();
-      Field noPayloadField = newField(PayloadHelper.NO_PAYLOAD_FIELD, English.intToEnglish(i), Field.Store.YES, Field.Index.ANALYZED);
+      Field noPayloadField = newField(PayloadHelper.NO_PAYLOAD_FIELD, English.intToEnglish(i), TextField.TYPE_STORED);
       //noPayloadField.setBoost(0);
       doc.add(noPayloadField);
-      doc.add(newField("field", English.intToEnglish(i), Field.Store.YES, Field.Index.ANALYZED));
-      doc.add(newField("multiField", English.intToEnglish(i) + "  " + English.intToEnglish(i), Field.Store.YES, Field.Index.ANALYZED));
+      doc.add(newField("field", English.intToEnglish(i), TextField.TYPE_STORED));
+      doc.add(newField("multiField", English.intToEnglish(i) + "  " + English.intToEnglish(i), TextField.TYPE_STORED));
       writer.addDocument(doc);
     }
     reader = writer.getReader();

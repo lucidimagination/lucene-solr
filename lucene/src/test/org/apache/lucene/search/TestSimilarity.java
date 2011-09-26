@@ -27,10 +27,13 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
 
 /** Similarity unit test.
  *
@@ -61,10 +64,10 @@ public class TestSimilarity extends LuceneTestCase {
         .setSimilarityProvider(new SimpleSimilarityProvider()));
     
     Document d1 = new Document();
-    d1.add(newField("field", "a c", Field.Store.YES, Field.Index.ANALYZED));
+    d1.add(newField("field", "a c", TextField.TYPE_STORED));
 
     Document d2 = new Document();
-    d2.add(newField("field", "a b c", Field.Store.YES, Field.Index.ANALYZED));
+    d2.add(newField("field", "a b c", TextField.TYPE_STORED));
     
     writer.addDocument(d1);
     writer.addDocument(d2);
@@ -86,7 +89,7 @@ public class TestSimilarity extends LuceneTestCase {
          }
          @Override
         public final void collect(int doc) throws IOException {
-           assertEquals(1.0f, scorer.score());
+           assertEquals(1.0f, scorer.score(), 0);
          }
          @Override
         public void setNextReader(AtomicReaderContext context) {}
@@ -110,7 +113,7 @@ public class TestSimilarity extends LuceneTestCase {
          @Override
         public final void collect(int doc) throws IOException {
            //System.out.println("Doc=" + doc + " score=" + score);
-           assertEquals((float)doc+base+1, scorer.score());
+           assertEquals((float)doc+base+1, scorer.score(), 0);
          }
          @Override
         public void setNextReader(AtomicReaderContext context) {
@@ -136,7 +139,7 @@ public class TestSimilarity extends LuceneTestCase {
          @Override
          public final void collect(int doc) throws IOException {
            //System.out.println("Doc=" + doc + " score=" + score);
-           assertEquals(1.0f, scorer.score());
+           assertEquals(1.0f, scorer.score(), 0);
          }
          @Override
          public void setNextReader(AtomicReaderContext context) {}
@@ -157,7 +160,7 @@ public class TestSimilarity extends LuceneTestCase {
       @Override
       public final void collect(int doc) throws IOException {
         //System.out.println("Doc=" + doc + " score=" + score);
-        assertEquals(2.0f, scorer.score());
+        assertEquals(2.0f, scorer.score(), 0);
       }
       @Override
       public void setNextReader(AtomicReaderContext context) {}

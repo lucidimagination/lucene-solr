@@ -22,6 +22,7 @@ import java.io.IOException;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.IndexDocValuesField;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -29,6 +30,9 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.values.IndexDocValues.Source;
+import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
@@ -50,11 +54,11 @@ public class TestDocValuesScoring extends LuceneTestCase {
     Directory dir = newDirectory();
     RandomIndexWriter iw = new RandomIndexWriter(random, dir);
     Document doc = new Document();
-    Field field = newField("foo", "", Field.Store.NO, Field.Index.ANALYZED);
+    Field field = newField("foo", "", TextField.TYPE_UNSTORED);
     doc.add(field);
     IndexDocValuesField dvField = new IndexDocValuesField("foo_boost");
     doc.add(dvField);
-    Field field2 = newField("bar", "", Field.Store.NO, Field.Index.ANALYZED);
+    Field field2 = newField("bar", "", TextField.TYPE_UNSTORED);
     doc.add(field2);
     
     field.setValue("quick brown fox");
@@ -70,13 +74,24 @@ public class TestDocValuesScoring extends LuceneTestCase {
     
     // no boosting
     IndexSearcher searcher1 = newSearcher(ir);
+    final SimilarityProvider base = searcher1.getSimilarityProvider();
     // boosting
     IndexSearcher searcher2 = newSearcher(ir);
-    searcher2.setSimilarityProvider(new DefaultSimilarityProvider() {
-      final Similarity fooSim = new BoostingSimilarity(super.get("foo"), "foo_boost");
+    searcher2.setSimilarityProvider(new SimilarityProvider() {
+      final Similarity fooSim = new BoostingSimilarity(base.get("foo"), "foo_boost");
 
       public Similarity get(String field) {
-        return "foo".equals(field) ? fooSim : super.get(field);
+        return "foo".equals(field) ? fooSim : base.get(field);
+      }
+
+      @Override
+      public float coord(int overlap, int maxOverlap) {
+        return base.coord(overlap, maxOverlap);
+      }
+
+      @Override
+      public float queryNorm(float sumOfSquaredWeights) {
+        return base.queryNorm(sumOfSquaredWeights);
       }
     });
     
