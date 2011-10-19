@@ -21,9 +21,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.lang.reflect.Constructor;
 import java.util.*;
 import java.util.Map.Entry;
@@ -43,7 +45,6 @@ import org.apache.lucene.index.codecs.mockintblock.MockFixedIntBlockCodec;
 import org.apache.lucene.index.codecs.mockintblock.MockVariableIntBlockCodec;
 import org.apache.lucene.index.codecs.mocksep.MockSepCodec;
 import org.apache.lucene.index.codecs.mockrandom.MockRandomCodec;
-import org.apache.lucene.index.codecs.mockrandom.MockRandomDocValuesCodec;
 import org.apache.lucene.index.codecs.preflex.PreFlexCodec;
 import org.apache.lucene.index.codecs.preflexrw.PreFlexRWCodec;
 import org.apache.lucene.index.codecs.pulsing.PulsingCodec;
@@ -281,8 +282,6 @@ public abstract class LuceneTestCase extends Assert {
     // baseBlockSize cannot be over 127:
     swapCodec(new MockVariableIntBlockCodec(codecHasParam && "MockVariableIntBlock".equals(codec) ? codecParam : _TestUtil.nextInt(random, 1, 127)), cp);
     swapCodec(new MockRandomCodec(random), cp);
-    // give docvalues non-cfs testcoverage
-    swapCodec(new MockRandomDocValuesCodec(random), cp);
 
     return cp.lookup(codec);
   }
@@ -349,7 +348,7 @@ public abstract class LuceneTestCase extends Assert {
         if (random.nextInt(4) == 0) { // preflex-only setup
           codec = installTestCodecs("PreFlex", CodecProvider.getDefault());
         } else { // per-field setup
-          CodecProvider.setDefault(new RandomCodecProvider(random));
+          CodecProvider.setDefault(new RandomCodecProvider(random, useNoMemoryExpensiveCodec));
           codec = installTestCodecs(TEST_CODEC, CodecProvider.getDefault());
         }
       } else { // ordinary setup
@@ -638,6 +637,17 @@ public abstract class LuceneTestCase extends Assert {
 
     if (!testsFailed) {
       assertTrue("ensure your tearDown() calls super.tearDown()!!!", (s == State.INITIAL || s == State.TEARDOWN));
+    }
+    
+    if (useNoMemoryExpensiveCodec) {
+      final String defCodec = CodecProvider.getDefault().getDefaultFieldCodec();
+      // Stupid: assumeFalse in setUp() does not print any information, because
+      // TestWatchman does not watch test during setUp() - getName() is also not defined...
+      // => print info directly and use assume without message:
+      if ("SimpleText".equals(defCodec) || "Memory".equals(defCodec)) {
+        System.err.println("NOTE: A test method in " + getClass().getSimpleName() + " was ignored, as it uses too much memory with " + defCodec + ".");
+        Assume.assumeTrue(false);
+      }
     }
   }
 
@@ -1159,7 +1169,7 @@ public abstract class LuceneTestCase extends Assert {
   public static Field newField(Random random, String name, String value, FieldType type) {
     if (usually(random) || !type.indexed()) {
       // most of the time, don't modify the params
-      return new Field(name, type, value);
+      return new Field(name, value, type);
     }
 
     FieldType newType = new FieldType(type);
@@ -1186,7 +1196,7 @@ public abstract class LuceneTestCase extends Assert {
     }
     */
     
-    return new Field(name, newType, value);
+    return new Field(name, value, newType);
   }
   
   /** return a random Locale from the available locales on the system */
@@ -1400,6 +1410,9 @@ public abstract class LuceneTestCase extends Assert {
     return context;
   }
   
+  // initialized by the TestRunner
+  static boolean useNoMemoryExpensiveCodec;
+  
   // recorded seed: for beforeClass
   private static long staticSeed;
   // seed for individual test methods, changed in @before
@@ -1417,6 +1430,15 @@ public abstract class LuceneTestCase extends Assert {
   @Inherited
   @Retention(RetentionPolicy.RUNTIME)
   public @interface Nightly {}
+
+  /**
+   * Annotation for test classes that should only use codecs that are not memory expensive (avoid SimpleText, MemoryCodec).
+   */
+  @Documented
+  @Inherited
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  public @interface UseNoMemoryExpensiveCodec {}
 
   @Ignore("just a hack")
   public final void alwaysIgnoredTestMethod() {}

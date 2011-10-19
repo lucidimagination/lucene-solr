@@ -270,23 +270,38 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private volatile SnapPuller tempSnapPuller;
 
+  public Boolean shouldFetch(SolrParams solrParams) {
+    return true;
+  }
+
+  public void beforeFetch(SolrParams solrParams) {
+  }
+
+  public void afterFetch(SolrParams solrParams) {
+  }
+
   void doFetch(SolrParams solrParams) {
-    String masterUrl = solrParams == null ? null : solrParams.get(MASTER_URL);
-    if (!snapPullLock.tryLock())
-      return;
-    try {
-      tempSnapPuller = snapPuller;
-      if (masterUrl != null) {
-        NamedList<Object> nl = solrParams.toNamedList();
-        nl.remove(SnapPuller.POLL_INTERVAL);
-        tempSnapPuller = new SnapPuller(nl, this, core);
+    if (shouldFetch(solrParams)) {
+      beforeFetch(solrParams);
+      String masterUrl = solrParams == null ? null : solrParams.get(MASTER_URL);
+      if (!snapPullLock.tryLock()) {
+        return;
       }
-      tempSnapPuller.fetchLatestIndex(core);
-    } catch (Exception e) {
-      LOG.error("SnapPull failed ", e);
-    } finally {
-      tempSnapPuller = snapPuller;
-      snapPullLock.unlock();
+      try {
+        tempSnapPuller = snapPuller;
+        if (masterUrl != null) {
+          NamedList<Object> nl = solrParams.toNamedList();
+          nl.remove(SnapPuller.POLL_INTERVAL);
+          tempSnapPuller = new SnapPuller(nl, this, core);
+        }
+        tempSnapPuller.fetchLatestIndex(core);
+      } catch (Exception e) {
+        LOG.error("SnapPull failed ", e);
+      } finally {
+        tempSnapPuller = snapPuller;
+        snapPullLock.unlock();
+      }
+      afterFetch(solrParams);
     }
   }
 

@@ -295,6 +295,9 @@ public class DocBuilder {
     writer.rollback();
     statusMessages.put("", "Indexing failed. Rolled back all changes.");
     addStatusMessage("Rolledback");
+    if (document.onRollback != null) {
+      invokeEventListener(document.onRollback);
+    }
   }
 
   @SuppressWarnings("unchecked")

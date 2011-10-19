@@ -180,6 +180,10 @@ Changes in backwards compatibility policy
   overriding .tokenStream() and .reusableTokenStream() (which are now final). 
   (Chris Male)
 
+* LUCENE-3346: Analyzer.reusableTokenStream() has been renamed to tokenStream()
+  with the old tokenStream() method removed.  Consequently it is now mandatory
+  for all Analyzers to support reusability. (Chris Male)
+
 Changes in Runtime Behavior
 
 * LUCENE-2846: omitNorms now behaves like omitTermFrequencyAndPositions, if you
@@ -544,6 +548,10 @@ New features
 * LUCENE-2309: Added IndexableField.tokenStream(Analyzer) which is now 
   responsible for creating the TokenStreams for Fields when they are to 
   be indexed.  (Chris Male)
+  
+* LUCENE-3433: Added random access for non RAM resident IndexDocValues. RAM
+  resident and disk resident IndexDocValues are now exposed via the Source
+  interface. ValuesEnum has been removed in favour of Source. (Simon Willnauer)
 
 Optimizations
 
@@ -588,6 +596,11 @@ Bug fixes
   rarely cause deletions to be incorrectly applied.  (Yonik Seeley,
   Simon Willnauer, Mike McCandless)
 
+* LUCENE-3515: Fix terrible merge performance versus 3.x, especially
+  when the directory isn't MMapDirectory, due to failing to reuse
+  DocsAndPositionsEnum while merging (Marc Sturlese, Erick Erickson,
+  Robert Muir, Simon Willnauer, Mike McCandless)
+
 ======================= Lucene 3.5.0 =======================
 
 Changes in backwards compatibility policy
@@ -603,6 +616,18 @@ Changes in backwards compatibility policy
     constructor
   As this is expert API, most code will not be affected.
   (Uwe Schindler, Doron Cohen, Mike McCandless)
+
+* LUCENE-3464: IndexReader.reopen has been renamed to
+  IndexReader.openIfChanged (a static method), and now returns null
+  (instead of the old reader) if there are no changes in the index, to
+  prevent the common pitfall of accidentally closing the old reader.
+
+Changes in runtime behavior
+
+* LUCENE-3520: IndexReader.openIfChanged, when passed a near-real-time
+  reader, will now return null if there are no changes.  The API has
+  always reserved the right to do this; it's just that in the past for
+  near-real-time readers it never did. (Mike McCandless)
 
 Bug fixes
 
@@ -633,6 +658,10 @@ Bug fixes
 * LUCENE-3215: SloppyPhraseScorer sometimes computed Infinite freq
   (Robert Muir, Doron Cohen)  
 
+* LUCENE-3503: DisjunctionSumScorer would give slightly different scores
+  for a document depending if you used nextDoc() versus advance().
+  (Mike McCandless, Robert Muir)
+
 New Features
 
 * LUCENE-3448: Added FixedBitSet.and(other/DISI), andNot(other/DISI).
@@ -647,6 +676,9 @@ Optimizations
 * LUCENE-3426: Add NGramPhraseQuery which extends PhraseQuery and tries to 
   reduce the number of terms of the query when rewrite(), in order to improve 
   performance.  (Robert Muir, Koji Sekiguchi)
+  
+* LUCENE-3494: Optimize FilteredQuery to remove a multiply in score()
+  (Uwe Schindler, Robert Muir)
 
 Test Cases
 

@@ -31,7 +31,6 @@ import java.text.SimpleDateFormat;
 import java.text.ParsePosition;
 
 import org.apache.lucene.benchmark.byTask.utils.Config;
-import org.apache.lucene.benchmark.byTask.utils.Format;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -103,11 +102,11 @@ public class DocMaker {
         numericFields = new HashMap<String,NumericField>();
         
         // Initialize the map with the default fields.
-        fields.put(BODY_FIELD, new Field(BODY_FIELD, bodyFt, ""));
-        fields.put(TITLE_FIELD, new Field(TITLE_FIELD, ft, ""));
-        fields.put(DATE_FIELD, new Field(DATE_FIELD, ft, ""));
-        fields.put(ID_FIELD, new Field(ID_FIELD, StringField.TYPE_STORED, ""));
-        fields.put(NAME_FIELD, new Field(NAME_FIELD, ft, ""));
+        fields.put(BODY_FIELD, new Field(BODY_FIELD, "", bodyFt));
+        fields.put(TITLE_FIELD, new Field(TITLE_FIELD, "", ft));
+        fields.put(DATE_FIELD, new Field(DATE_FIELD, "", ft));
+        fields.put(ID_FIELD, new Field(ID_FIELD, "", StringField.TYPE_STORED));
+        fields.put(NAME_FIELD, new Field(NAME_FIELD, "", ft));
 
         numericFields.put(DATE_MSEC_FIELD, new NumericField(DATE_MSEC_FIELD));
         numericFields.put(TIME_SEC_FIELD, new NumericField(TIME_SEC_FIELD));
@@ -127,12 +126,12 @@ public class DocMaker {
      */
     Field getField(String name, FieldType ft) {
       if (!reuseFields) {
-        return new Field(name, ft, "");
+        return new Field(name, "", ft);
       }
       
       Field f = fields.get(name);
       if (f == null) {
-        f = new Field(name, ft, "");
+        f = new Field(name, "", ft);
         fields.put(name, f);
       }
       return f;
@@ -186,12 +185,7 @@ public class DocMaker {
   protected boolean reuseFields;
   protected boolean indexProperties;
   
-  private int lastPrintedNumUniqueTexts = 0;
-
-  private long lastPrintedNumUniqueBytes = 0;
   private final AtomicInteger numDocsCreated = new AtomicInteger();
-
-  private int printNum = 0;
 
   public DocMaker() {
   }
@@ -400,38 +394,9 @@ public class DocMaker {
     return doc;
   }
   
-  public void printDocStatistics() {
-    boolean print = false;
-    String col = "                  ";
-    StringBuilder sb = new StringBuilder();
-    String newline = System.getProperty("line.separator");
-    sb.append("------------> ").append(getClass().getSimpleName()).append(" statistics (").append(printNum).append("): ").append(newline);
-    int nut = source.getTotalDocsCount();
-    if (nut > lastPrintedNumUniqueTexts) {
-      print = true;
-      sb.append("total count of unique texts: ").append(Format.format(0,nut,col)).append(newline);
-      lastPrintedNumUniqueTexts = nut;
-    }
-    long nub = getTotalBytesCount();
-    if (nub > lastPrintedNumUniqueBytes) {
-      print = true;
-      sb.append("total bytes of unique texts: ").append(Format.format(0,nub,col)).append(newline);
-      lastPrintedNumUniqueBytes = nub;
-    }
-    if (source.getDocsCount() > 0) {
-      print = true;
-      sb.append("num docs added since last inputs reset:   ").append(Format.format(0,source.getDocsCount(),col)).append(newline);
-      sb.append("total bytes added since last inputs reset: ").append(Format.format(0,getBytesCount(),col)).append(newline);
-    }
-    if (print) {
-      System.out.println(sb.append(newline).toString());
-      printNum++;
-    }
-  }
-  
   /** Reset inputs so that the test run would behave, input wise, as if it just started. */
   public synchronized void resetInputs() throws IOException {
-    printDocStatistics();
+    source.printStatistics("docs");
     // re-initiate since properties by round may have changed.
     setConfig(config);
     source.resetInputs();

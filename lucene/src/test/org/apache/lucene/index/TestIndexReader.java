@@ -27,6 +27,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Random;
 import java.util.Set;
 import java.util.SortedSet;
 import org.junit.Assume;
@@ -91,7 +92,8 @@ public class TestIndexReader extends LuceneTestCase
         addDocumentWithFields(writer);
       writer.close();
 
-      IndexReader r3 = r2.reopen();
+      IndexReader r3 = IndexReader.openIfChanged(r2);
+      assertNotNull(r3);
       assertFalse(c.equals(r3.getIndexCommit()));
       assertFalse(r2.getIndexCommit().isOptimized());
       r3.close();
@@ -102,7 +104,8 @@ public class TestIndexReader extends LuceneTestCase
       writer.optimize();
       writer.close();
 
-      r3 = r2.reopen();
+      r3 = IndexReader.openIfChanged(r2);
+      assertNotNull(r3);
       assertTrue(r3.getIndexCommit().isOptimized());
       r2.close();
       r3.close();
@@ -151,9 +154,9 @@ public class TestIndexReader extends LuceneTestCase
         FieldType customType3 = new FieldType();
         customType3.setStored(true);
         
-        doc.add(new Field("keyword",StringField.TYPE_STORED,"test1"));
-        doc.add(new Field("text",TextField.TYPE_STORED,"test1"));
-        doc.add(new Field("unindexed",customType3,"test1"));
+        doc.add(new Field("keyword", "test1", StringField.TYPE_STORED));
+        doc.add(new Field("text", "test1", TextField.TYPE_STORED));
+        doc.add(new Field("unindexed", "test1", customType3));
         doc.add(new TextField("unstored","test1"));
         writer.addDocument(doc);
 
@@ -177,18 +180,18 @@ public class TestIndexReader extends LuceneTestCase
         int mergeFactor = ((LogMergePolicy) writer.getConfig().getMergePolicy()).getMergeFactor();
         for (int i = 0; i < 5*mergeFactor; i++) {
           doc = new Document();
-          doc.add(new Field("keyword",StringField.TYPE_STORED,"test1"));
-          doc.add(new Field("text",TextField.TYPE_STORED, "test1"));
-          doc.add(new Field("unindexed",customType3,"test1"));
+          doc.add(new Field("keyword", "test1", StringField.TYPE_STORED));
+          doc.add(new Field("text", "test1", TextField.TYPE_STORED));
+          doc.add(new Field("unindexed", "test1", customType3));
           doc.add(new TextField("unstored","test1"));
           writer.addDocument(doc);
         }
         // new fields are in some different segments (we hope)
         for (int i = 0; i < 5*mergeFactor; i++) {
           doc = new Document();
-          doc.add(new Field("keyword2",StringField.TYPE_STORED,"test1"));
-          doc.add(new Field("text2",TextField.TYPE_STORED, "test1"));
-          doc.add(new Field("unindexed2",customType3,"test1"));
+          doc.add(new Field("keyword2", "test1", StringField.TYPE_STORED));
+          doc.add(new Field("text2", "test1", TextField.TYPE_STORED));
+          doc.add(new Field("unindexed2", "test1", customType3));
           doc.add(new TextField("unstored2","test1"));
           writer.addDocument(doc);
         }
@@ -209,11 +212,11 @@ public class TestIndexReader extends LuceneTestCase
         
         for (int i = 0; i < 5*mergeFactor; i++) {
           doc = new Document();
-          doc.add(new Field("tvnot",TextField.TYPE_STORED,"tvnot"));
-          doc.add(new Field("termvector",customType5,"termvector"));
-          doc.add(new Field("tvoffset",customType6,"tvoffset"));
-          doc.add(new Field("tvposition",customType7,"tvposition"));
-          doc.add(new Field("tvpositionoffset",customType8, "tvpositionoffset"));
+          doc.add(new Field("tvnot", "tvnot", TextField.TYPE_STORED));
+          doc.add(new Field("termvector", "termvector", customType5));
+          doc.add(new Field("tvoffset", "tvoffset", customType6));
+          doc.add(new Field("tvposition", "tvposition", customType7));
+          doc.add(new Field("tvpositionoffset", "tvpositionoffset", customType8));
           writer.addDocument(doc);
         }
         
@@ -302,11 +305,11 @@ public class TestIndexReader extends LuceneTestCase
     customType8.setStoreTermVectorPositions(true);
     for (int i = 0; i < 5 * mergeFactor; i++) {
       Document doc = new Document();
-        doc.add(new Field("tvnot",TextField.TYPE_STORED,"one two two three three three"));
-        doc.add(new Field("termvector",customType5,"one two two three three three"));
-        doc.add(new Field("tvoffset",customType6,"one two two three three three"));
-        doc.add(new Field("tvposition",customType7,"one two two three three three"));
-        doc.add(new Field("tvpositionoffset",customType8, "one two two three three three"));
+        doc.add(new Field("tvnot", "one two two three three three", TextField.TYPE_STORED));
+        doc.add(new Field("termvector", "one two two three three three", customType5));
+        doc.add(new Field("tvoffset", "one two two three three three", customType6));
+        doc.add(new Field("tvposition", "one two two three three three", customType7));
+        doc.add(new Field("tvpositionoffset", "one two two three three three", customType8));
         
         writer.addDocument(doc);
     }
@@ -964,7 +967,8 @@ public class TestIndexReader extends LuceneTestCase
         addDocumentWithFields(writer);
       writer.close();
 
-      IndexReader r2 = r.reopen();
+      IndexReader r2 = IndexReader.openIfChanged(r);
+      assertNotNull(r2);
       assertFalse(c.equals(r2.getIndexCommit()));
       assertFalse(r2.getIndexCommit().isOptimized());
       r2.close();
@@ -975,7 +979,9 @@ public class TestIndexReader extends LuceneTestCase
       writer.optimize();
       writer.close();
 
-      r2 = r.reopen();
+      r2 = IndexReader.openIfChanged(r);
+      assertNotNull(r2);
+      assertNull(IndexReader.openIfChanged(r2));
       assertTrue(r2.getIndexCommit().isOptimized());
 
       r.close();
@@ -1010,7 +1016,8 @@ public class TestIndexReader extends LuceneTestCase
       writer.close();
 
       // Make sure reopen is still readonly:
-      IndexReader r2 = r.reopen();
+      IndexReader r2 = IndexReader.openIfChanged(r);
+      assertNotNull(r2);
       r.close();
 
       assertFalse(r == r2);
@@ -1029,7 +1036,8 @@ public class TestIndexReader extends LuceneTestCase
       writer.close();
 
       // Make sure reopen to a single segment is still readonly:
-      IndexReader r3 = r2.reopen();
+      IndexReader r3 = IndexReader.openIfChanged(r2);
+      assertNotNull(r3);
       assertFalse(r3 == r2);
       r2.close();
       
@@ -1178,7 +1186,8 @@ public class TestIndexReader extends LuceneTestCase
     writer.commit();
 
     // Reopen reader1 --> reader2
-    IndexReader r2 = r.reopen();
+    IndexReader r2 = IndexReader.openIfChanged(r);
+    assertNotNull(r2);
     r.close();
     IndexReader sub0 = r2.getSequentialSubReaders()[0];
     final int[] ints2 = FieldCache.DEFAULT.getInts(sub0, "number");
@@ -1205,7 +1214,8 @@ public class TestIndexReader extends LuceneTestCase
     assertEquals(36, r1.getUniqueTermCount());
     writer.addDocument(doc);
     writer.commit();
-    IndexReader r2 = r.reopen();
+    IndexReader r2 = IndexReader.openIfChanged(r);
+    assertNotNull(r2);
     r.close();
     try {
       r2.getUniqueTermCount();
@@ -1252,7 +1262,9 @@ public class TestIndexReader extends LuceneTestCase
     writer.close();
 
     // LUCENE-1718: ensure re-open carries over no terms index:
-    IndexReader r2 = r.reopen();
+    IndexReader r2 = IndexReader.openIfChanged(r);
+    assertNotNull(r2);
+    assertNull(IndexReader.openIfChanged(r2));
     r.close();
     IndexReader[] subReaders = r2.getSequentialSubReaders();
     assertEquals(2, subReaders.length);
@@ -1281,8 +1293,8 @@ public class TestIndexReader extends LuceneTestCase
     writer.addDocument(doc);
     writer.prepareCommit();
     assertTrue(r.isCurrent());
-    IndexReader r2 = r.reopen();
-    assertTrue(r == r2);
+    IndexReader r2 = IndexReader.openIfChanged(r);
+    assertNull(r2);
     writer.commit();
     assertFalse(r.isCurrent());
     writer.close();
@@ -1402,5 +1414,71 @@ public class TestIndexReader extends LuceneTestCase
     }
     r.close();
     dir.close();
+  }
+  
+  public void testTryIncRef() throws CorruptIndexException, LockObtainFailedException, IOException {
+    Directory dir = newDirectory();
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
+    writer.addDocument(new Document());
+    writer.commit();
+    IndexReader r = IndexReader.open(dir);
+    assertTrue(r.tryIncRef());
+    r.decRef();
+    r.close();
+    assertFalse(r.tryIncRef());
+    writer.close();
+    dir.close();
+  }
+  
+  public void testStressTryIncRef() throws CorruptIndexException, LockObtainFailedException, IOException, InterruptedException {
+    Directory dir = newDirectory();
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
+    writer.addDocument(new Document());
+    writer.commit();
+    IndexReader r = IndexReader.open(dir);
+    int numThreads = atLeast(2);
+    
+    IncThread[] threads = new IncThread[numThreads];
+    for (int i = 0; i < threads.length; i++) {
+      threads[i] = new IncThread(r, random);
+      threads[i].start();
+    }
+    Thread.sleep(100);
+
+    assertTrue(r.tryIncRef());
+    r.decRef();
+    r.close();
+
+    for (int i = 0; i < threads.length; i++) {
+      threads[i].join();
+      assertNull(threads[i].failed);
+    }
+    assertFalse(r.tryIncRef());
+    writer.close();
+    dir.close();
+  }
+  
+  static class IncThread extends Thread {
+    final IndexReader toInc;
+    final Random random;
+    Throwable failed;
+    
+    IncThread(IndexReader toInc, Random random) {
+      this.toInc = toInc;
+      this.random = random;
+    }
+    
+    @Override
+    public void run() {
+      try {
+        while (toInc.tryIncRef()) {
+          assertFalse(toInc.hasDeletions());
+          toInc.decRef();
+        }
+        assertFalse(toInc.tryIncRef());
+      } catch (Throwable e) {
+        failed = e;
+      }
+    }
   }
 }
