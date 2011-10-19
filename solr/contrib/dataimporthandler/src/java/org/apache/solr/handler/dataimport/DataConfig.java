@@ -63,7 +63,7 @@ public class DataConfig {
 
     public List<Entity> entities = new ArrayList<Entity>();
 
-    public String onImportStart, onImportEnd;
+    public String onImportStart, onImportEnd, onRollback;
 
     public Document() {
     }
@@ -72,6 +72,7 @@ public class DataConfig {
       this.deleteQuery = getStringAttribute(element, "deleteQuery", null);
       this.onImportStart = getStringAttribute(element, "onImportStart", null);
       this.onImportEnd = getStringAttribute(element, "onImportEnd", null);
+      this.onRollback = getStringAttribute(element, "onRollback", null);
       List<Element> l = getChildNodes(element, "entity");
       for (Element e : l)
         entities.add(new Entity(e));
