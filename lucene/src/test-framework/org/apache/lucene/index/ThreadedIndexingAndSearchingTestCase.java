@@ -55,7 +55,7 @@ import org.apache.lucene.util._TestUtil;
 
 // TODO
 //   - mix in optimize, addIndexes
-//   - randomoly mix in non-congruent docs
+//   - randomly mix in non-congruent docs
 
 /** Utility class that spawns multiple indexing and
  *  searching threads. */
@@ -616,17 +616,22 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
     assertEquals("index=" + writer.segString() + " addCount=" + addCount + " delCount=" + delCount, addCount.get() - delCount.get(), s.getIndexReader().numDocs());
     releaseSearcher(s);
 
-    if (es != null) {
-      es.shutdown();
-      es.awaitTermination(1, TimeUnit.SECONDS);
-    }
-
     writer.commit();
+
     assertEquals("index=" + writer.segString() + " addCount=" + addCount + " delCount=" + delCount, addCount.get() - delCount.get(), writer.numDocs());
 
     assertFalse(writer.anyNonBulkMerges);
     doClose();
     writer.close(false);
+
+    // Cannot shutdown until after writer is closed because
+    // writer has merged segment warmer that uses IS to run
+    // searches, and that IS may be using this es!
+    if (es != null) {
+      es.shutdown();
+      es.awaitTermination(1, TimeUnit.SECONDS);
+    }
+
     _TestUtil.checkIndex(dir);
     dir.close();
     _TestUtil.rmDir(tempDir);

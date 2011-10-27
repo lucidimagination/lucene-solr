@@ -17,12 +17,14 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.io.IOException;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader.ReaderContext;
+import org.apache.lucene.util.Bits;
 
 /** 
  * Helper class that adds some extra checks to ensure correct
@@ -30,20 +32,25 @@ import org.apache.lucene.index.IndexReader.ReaderContext;
  * TODO: Extend this by more checks, that's just a start.
  */
 public class AssertingIndexSearcher extends IndexSearcher {
-  public  AssertingIndexSearcher(IndexReader r) {
+  final Random random;
+  public  AssertingIndexSearcher(Random random, IndexReader r) {
     super(r);
+    this.random = new Random(random.nextLong());
   }
   
-  public  AssertingIndexSearcher(ReaderContext context) {
+  public  AssertingIndexSearcher(Random random, ReaderContext context) {
     super(context);
+    this.random = new Random(random.nextLong());
   }
   
-  public  AssertingIndexSearcher(IndexReader r, ExecutorService ex) {
+  public  AssertingIndexSearcher(Random random, IndexReader r, ExecutorService ex) {
     super(r, ex);
+    this.random = new Random(random.nextLong());
   }
   
-  public  AssertingIndexSearcher(ReaderContext context, ExecutorService ex) {
+  public  AssertingIndexSearcher(Random random, ReaderContext context, ExecutorService ex) {
     super(context, ex);
+    this.random = new Random(random.nextLong());
   }
   
   /** Ensures, that the returned {@code Weight} is not normalized again, which may produce wrong scores. */
@@ -67,8 +74,9 @@ public class AssertingIndexSearcher extends IndexSearcher {
       }
 
       @Override
-      public Scorer scorer(AtomicReaderContext context, ScorerContext scorerContext) throws IOException {
-        return w.scorer(context, scorerContext);
+      public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
+          boolean topScorer, Bits acceptDocs) throws IOException {
+        return w.scorer(context, scoreDocsInOrder, topScorer, acceptDocs);
       }
 
       @Override
@@ -79,6 +87,18 @@ public class AssertingIndexSearcher extends IndexSearcher {
       @Override
       public boolean scoresDocsOutOfOrder() {
         return w.scoresDocsOutOfOrder();
+      }
+    };
+  }
+
+  @Override
+  protected Query wrapFilter(Query query, Filter filter) {
+    if (random.nextBoolean())
+      return super.wrapFilter(query, filter);
+    return (filter == null) ? query : new FilteredQuery(query, filter) {
+      @Override
+      protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
+        return random.nextBoolean();
       }
     };
   }

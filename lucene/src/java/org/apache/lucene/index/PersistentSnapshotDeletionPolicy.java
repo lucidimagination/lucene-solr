@@ -41,10 +41,10 @@ import org.apache.lucene.util.Version;
  * a Lucene index. It is highly recommended to use a dedicated directory (and on
  * stable storage as well) for persisting the snapshots' information, and not
  * reuse the content index directory, or otherwise conflicts and index
- * corruptions will occur.
+ * corruption will occur.
  * <p>
  * <b>NOTE:</b> you should call {@link #close()} when you're done using this
- * class for safetyness (it will close the {@link IndexWriter} instance used).
+ * class for safety (it will close the {@link IndexWriter} instance used).
  */
 public class PersistentSnapshotDeletionPolicy extends SnapshotDeletionPolicy {
 
@@ -188,12 +188,12 @@ public class PersistentSnapshotDeletionPolicy extends SnapshotDeletionPolicy {
     Document d = new Document();
     FieldType ft = new FieldType();
     ft.setStored(true);
-    d.add(new Field(SNAPSHOTS_ID, ft, ""));
+    d.add(new Field(SNAPSHOTS_ID, "", ft));
     for (Entry<String, String> e : super.getSnapshots().entrySet()) {
-      d.add(new Field(e.getKey(), ft, e.getValue()));
+      d.add(new Field(e.getKey(), e.getValue(), ft));
     }
     if (id != null) {
-      d.add(new Field(id, ft, segment));
+      d.add(new Field(id, segment, ft));
     }
     writer.addDocument(d);
     writer.commit();

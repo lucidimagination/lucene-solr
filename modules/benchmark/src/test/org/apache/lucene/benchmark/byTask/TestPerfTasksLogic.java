@@ -40,6 +40,7 @@ import org.apache.lucene.benchmark.byTask.tasks.WriteLineDocTask;
 import org.apache.lucene.collation.CollationKeyAnalyzer;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldsEnum;
+import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
@@ -781,6 +782,42 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
   }
 
   /**
+   * Test indexing with facets tasks.
+   */
+  public void testIndexingWithFacets() throws Exception {
+    // 1. alg definition (required in every "logic" test)
+    String algLines[] = {
+        "# ----- properties ",
+        "content.source=org.apache.lucene.benchmark.byTask.feeds.LineDocSource",
+        "docs.file=" + getReuters20LinesFile(),
+        "content.source.log.step=100",
+        "content.source.forever=false",
+        "directory=RAMDirectory",
+        "doc.stored=false",
+        "merge.factor=3",
+        "doc.tokenized=false",
+        "debug.level=1",
+        "# ----- alg ",
+        "ResetSystemErase",
+        "CreateIndex",
+        "CreateTaxonomyIndex",
+        "{ \"AddDocs\"  AddFacetedDoc > : * ",
+        "CloseIndex",
+        "CloseTaxonomyIndex",
+        "OpenTaxonomyReader",
+    };
+
+    // 2. execute the algorithm  (required in every "logic" test)
+    Benchmark benchmark = execBenchmark(algLines);
+    PerfRunData runData = benchmark.getRunData();
+    assertNull("taxo writer was not properly closed",runData.getTaxonomyWriter());
+    TaxonomyReader taxoReader = runData.getTaxonomyReader();
+    assertNotNull("taxo reader was not opened", taxoReader);
+    assertTrue("nothing was added to the taxnomy (expecting root and at least one addtional category)",taxoReader.getSize()>1);
+    taxoReader.close();
+  }
+  
+  /**
    * Test that we can call optimize(maxNumSegments).
    */
   public void testOptimizeMaxNumSegments() throws Exception {
@@ -958,8 +995,8 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
   
   private void assertEqualCollation(Analyzer a1, Analyzer a2, String text)
       throws Exception {
-    TokenStream ts1 = a1.reusableTokenStream("bogus", new StringReader(text));
-    TokenStream ts2 = a2.reusableTokenStream("bogus", new StringReader(text));
+    TokenStream ts1 = a1.tokenStream("bogus", new StringReader(text));
+    TokenStream ts2 = a2.tokenStream("bogus", new StringReader(text));
     ts1.reset();
     ts2.reset();
     TermToBytesRefAttribute termAtt1 = ts1.addAttribute(TermToBytesRefAttribute.class);
@@ -1007,8 +1044,8 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     
     // Default analyzer, maxShingleSize, and outputUnigrams
     Benchmark benchmark = execBenchmark(getShingleConfig(""));
-    benchmark.getRunData().getAnalyzer().reusableTokenStream
-      ("bogus", new StringReader(text)).close();
+    benchmark.getRunData().getAnalyzer().tokenStream
+        ("bogus", new StringReader(text)).close();
     assertEqualShingle(benchmark.getRunData().getAnalyzer(), text,
                        new String[] {"one", "one two", "two", "two three",
                                      "three", "three four", "four", "four five",

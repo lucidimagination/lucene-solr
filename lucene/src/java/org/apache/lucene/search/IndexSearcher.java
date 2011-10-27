@@ -37,11 +37,11 @@ import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.Weight.ScorerContext;
 import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NIOFSDirectory;    // javadoc
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.ThreadInterruptedException;
 
@@ -55,7 +55,7 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * multiple searches instead of creating a new one
  * per-search.  If your index has changed and you wish to
  * see the changes reflected in searching, you should
- * use {@link IndexReader#reopen} to obtain a new reader and
+ * use {@link IndexReader#openIfChanged} to obtain a new reader and
  * then create a new IndexSearcher from that.  Also, for
  * low-latency turnaround it's best to use a near-real-time
  * reader ({@link IndexReader#open(IndexWriter,boolean)}).
@@ -274,6 +274,11 @@ public class IndexSearcher implements Closeable {
       reader.close();
     }
   }
+  
+  /** @lucene.internal */
+  protected Query wrapFilter(Query query, Filter filter) {
+    return (filter == null) ? query : new FilteredQuery(query, filter);
+  }
 
   /** Finds the top <code>n</code>
    * hits for <code>query</code> where all results are after a previous 
@@ -286,7 +291,7 @@ public class IndexSearcher implements Closeable {
    * @throws BooleanQuery.TooManyClauses
    */
   public TopDocs searchAfter(ScoreDoc after, Query query, int n) throws IOException {
-    return searchAfter(after, query, null, n);
+    return search(createNormalizedWeight(query), after, n);
   }
   
   /** Finds the top <code>n</code>
@@ -300,7 +305,7 @@ public class IndexSearcher implements Closeable {
    * @throws BooleanQuery.TooManyClauses
    */
   public TopDocs searchAfter(ScoreDoc after, Query query, Filter filter, int n) throws IOException {
-    return search(createNormalizedWeight(query), filter, after, n);
+    return search(createNormalizedWeight(wrapFilter(query, filter)), after, n);
   }
   
   /** Finds the top <code>n</code>
@@ -321,7 +326,7 @@ public class IndexSearcher implements Closeable {
    */
   public TopDocs search(Query query, Filter filter, int n)
     throws IOException {
-    return search(createNormalizedWeight(query), filter, null, n);
+    return search(createNormalizedWeight(wrapFilter(query, filter)), null, n);
   }
 
   /** Lower-level search API.
@@ -342,7 +347,7 @@ public class IndexSearcher implements Closeable {
    */
   public void search(Query query, Filter filter, Collector results)
     throws IOException {
-    search(leafContexts, createNormalizedWeight(query), filter, results);
+    search(leafContexts, createNormalizedWeight(wrapFilter(query, filter)), results);
   }
 
   /** Lower-level search API.
@@ -360,7 +365,7 @@ public class IndexSearcher implements Closeable {
   */
   public void search(Query query, Collector results)
     throws IOException {
-    search(leafContexts, createNormalizedWeight(query), null, results);
+    search(leafContexts, createNormalizedWeight(query), results);
   }
   
   /** Search implementation with arbitrary sorting.  Finds
@@ -376,7 +381,7 @@ public class IndexSearcher implements Closeable {
    */
   public TopFieldDocs search(Query query, Filter filter, int n,
                              Sort sort) throws IOException {
-    return search(createNormalizedWeight(query), filter, n, sort);
+    return search(createNormalizedWeight(wrapFilter(query, filter)), n, sort);
   }
 
   /**
@@ -389,7 +394,7 @@ public class IndexSearcher implements Closeable {
    */
   public TopFieldDocs search(Query query, int n,
                              Sort sort) throws IOException {
-    return search(createNormalizedWeight(query), null, n, sort);
+    return search(createNormalizedWeight(query), n, sort);
   }
 
   /** Expert: Low-level search implementation.  Finds the top <code>n</code>
@@ -399,9 +404,9 @@ public class IndexSearcher implements Closeable {
    * {@link IndexSearcher#search(Query,Filter,int)} instead.
    * @throws BooleanQuery.TooManyClauses
    */
-  protected TopDocs search(Weight weight, Filter filter, ScoreDoc after, int nDocs) throws IOException {
+  protected TopDocs search(Weight weight, ScoreDoc after, int nDocs) throws IOException {
     if (executor == null) {
-      return search(leafContexts, weight, filter, after, nDocs);
+      return search(leafContexts, weight, after, nDocs);
     } else {
       final HitQueue hq = new HitQueue(nDocs, false);
       final Lock lock = new ReentrantLock();
@@ -409,7 +414,7 @@ public class IndexSearcher implements Closeable {
     
       for (int i = 0; i < leafSlices.length; i++) { // search each sub
         runner.submit(
-                      new SearcherCallableNoSort(lock, this, leafSlices[i], weight, filter, after, nDocs, hq));
+                      new SearcherCallableNoSort(lock, this, leafSlices[i], weight, after, nDocs, hq));
       }
 
       int totalHits = 0;
@@ -430,13 +435,13 @@ public class IndexSearcher implements Closeable {
   }
 
   /** Expert: Low-level search implementation.  Finds the top <code>n</code>
-   * hits for <code>query</code>, using the given leaf readers applying <code>filter</code> if non-null.
+   * hits for <code>query</code>.
    *
    * <p>Applications should usually call {@link IndexSearcher#search(Query,int)} or
    * {@link IndexSearcher#search(Query,Filter,int)} instead.
    * @throws BooleanQuery.TooManyClauses
    */
-  protected TopDocs search(AtomicReaderContext[] leaves, Weight weight, Filter filter, ScoreDoc after, int nDocs) throws IOException {
+  protected TopDocs search(AtomicReaderContext[] leaves, Weight weight, ScoreDoc after, int nDocs) throws IOException {
     // single thread
     int limit = reader.maxDoc();
     if (limit == 0) {
@@ -444,37 +449,36 @@ public class IndexSearcher implements Closeable {
     }
     nDocs = Math.min(nDocs, limit);
     TopScoreDocCollector collector = TopScoreDocCollector.create(nDocs, after, !weight.scoresDocsOutOfOrder());
-    search(leaves, weight, filter, collector);
+    search(leaves, weight, collector);
     return collector.topDocs();
   }
 
   /** Expert: Low-level search implementation with arbitrary sorting.  Finds
-   * the top <code>n</code> hits for <code>query</code>, applying
-   * <code>filter</code> if non-null, and sorting the hits by the criteria in
-   * <code>sort</code>.
+   * the top <code>n</code> hits for <code>query</code> and sorting the hits
+   * by the criteria in <code>sort</code>.
    *
    * <p>Applications should usually call {@link
    * IndexSearcher#search(Query,Filter,int,Sort)} instead.
    * 
    * @throws BooleanQuery.TooManyClauses
    */
-  protected TopFieldDocs search(Weight weight, Filter filter,
+  protected TopFieldDocs search(Weight weight,
       final int nDocs, Sort sort) throws IOException {
-    return search(weight, filter, nDocs, sort, true);
+    return search(weight, nDocs, sort, true);
   }
 
   /**
-   * Just like {@link #search(Weight, Filter, int, Sort)}, but you choose
+   * Just like {@link #search(Weight, int, Sort)}, but you choose
    * whether or not the fields in the returned {@link FieldDoc} instances should
    * be set by specifying fillFields.
    *
    * <p>NOTE: this does not compute scores by default.  If you
    * need scores, create a {@link TopFieldCollector}
    * instance by calling {@link TopFieldCollector#create} and
-   * then pass that to {@link #search(IndexReader.AtomicReaderContext[], Weight, Filter,
+   * then pass that to {@link #search(IndexReader.AtomicReaderContext[], Weight,
    * Collector)}.</p>
    */
-  protected TopFieldDocs search(Weight weight, Filter filter, int nDocs,
+  protected TopFieldDocs search(Weight weight, int nDocs,
                                 Sort sort, boolean fillFields)
       throws IOException {
 
@@ -482,7 +486,7 @@ public class IndexSearcher implements Closeable {
     
     if (executor == null) {
       // use all leaves here!
-      return search (leafContexts, weight, filter, nDocs, sort, fillFields);
+      return search (leafContexts, weight, nDocs, sort, fillFields);
     } else {
       final TopFieldCollector topCollector = TopFieldCollector.create(sort, nDocs,
                                                                       fillFields,
@@ -494,7 +498,7 @@ public class IndexSearcher implements Closeable {
       final ExecutionHelper<TopFieldDocs> runner = new ExecutionHelper<TopFieldDocs>(executor);
       for (int i = 0; i < leafSlices.length; i++) { // search each leaf slice
         runner.submit(
-                      new SearcherCallableWithSort(lock, this, leafSlices[i], weight, filter, nDocs, topCollector, sort));
+                      new SearcherCallableWithSort(lock, this, leafSlices[i], weight, nDocs, topCollector, sort));
       }
       int totalHits = 0;
       float maxScore = Float.NEGATIVE_INFINITY;
@@ -513,17 +517,17 @@ public class IndexSearcher implements Closeable {
   
   
   /**
-   * Just like {@link #search(Weight, Filter, int, Sort)}, but you choose
+   * Just like {@link #search(Weight, int, Sort)}, but you choose
    * whether or not the fields in the returned {@link FieldDoc} instances should
    * be set by specifying fillFields.
    *
    * <p>NOTE: this does not compute scores by default.  If you
    * need scores, create a {@link TopFieldCollector}
    * instance by calling {@link TopFieldCollector#create} and
-   * then pass that to {@link #search(IndexReader.AtomicReaderContext[], Weight, Filter,
+   * then pass that to {@link #search(IndexReader.AtomicReaderContext[], Weight, 
    * Collector)}.</p>
    */
-  protected TopFieldDocs search(AtomicReaderContext[] leaves, Weight weight, Filter filter, int nDocs,
+  protected TopFieldDocs search(AtomicReaderContext[] leaves, Weight weight, int nDocs,
       Sort sort, boolean fillFields) throws IOException {
     // single thread
     int limit = reader.maxDoc();
@@ -534,7 +538,7 @@ public class IndexSearcher implements Closeable {
 
     TopFieldCollector collector = TopFieldCollector.create(sort, nDocs,
                                                            fillFields, fieldSortDoTrackScores, fieldSortDoMaxScore, !weight.scoresDocsOutOfOrder());
-    search(leaves, weight, filter, collector);
+    search(leaves, weight, collector);
     return (TopFieldDocs) collector.topDocs();
   }
 
@@ -558,78 +562,21 @@ public class IndexSearcher implements Closeable {
    *          the searchers leaves to execute the searches on
    * @param weight
    *          to match documents
-   * @param filter
-   *          if non-null, used to permit documents to be collected.
    * @param collector
    *          to receive hits
    * @throws BooleanQuery.TooManyClauses
    */
-  protected void search(AtomicReaderContext[] leaves, Weight weight, Filter filter, Collector collector)
+  protected void search(AtomicReaderContext[] leaves, Weight weight, Collector collector)
       throws IOException {
 
     // TODO: should we make this
     // threaded...?  the Collector could be sync'd?
-    ScorerContext scorerContext =  ScorerContext.def().scoreDocsInOrder(true).topScorer(true);
     // always use single thread:
-    if (filter == null) {
-      for (int i = 0; i < leaves.length; i++) { // search each subreader
-        collector.setNextReader(leaves[i]);
-        scorerContext = scorerContext.scoreDocsInOrder(!collector.acceptsDocsOutOfOrder());
-        Scorer scorer = weight.scorer(leaves[i], scorerContext);
-        if (scorer != null) {
-          scorer.score(collector);
-        }
-      }
-    } else {
-      for (int i = 0; i < leaves.length; i++) { // search each subreader
-        collector.setNextReader(leaves[i]);
-        searchWithFilter(leaves[i], weight, filter, collector);
-      }
-    }
-  }
-
-  private void searchWithFilter(AtomicReaderContext context, Weight weight,
-      final Filter filter, final Collector collector) throws IOException {
-
-    assert filter != null;
-    
-    Scorer scorer = weight.scorer(context, ScorerContext.def());
-    if (scorer == null) {
-      return;
-    }
-
-    int docID = scorer.docID();
-    assert docID == -1 || docID == DocIdSetIterator.NO_MORE_DOCS;
-
-    // CHECKME: use ConjunctionScorer here?
-    DocIdSet filterDocIdSet = filter.getDocIdSet(context);
-    if (filterDocIdSet == null) {
-      // this means the filter does not accept any documents.
-      return;
-    }
-    
-    DocIdSetIterator filterIter = filterDocIdSet.iterator();
-    if (filterIter == null) {
-      // this means the filter does not accept any documents.
-      return;
-    }
-    int filterDoc = filterIter.nextDoc();
-    int scorerDoc = scorer.advance(filterDoc);
-    
-    collector.setScorer(scorer);
-    while (true) {
-      if (scorerDoc == filterDoc) {
-        // Check if scorer has exhausted, only before collecting.
-        if (scorerDoc == DocIdSetIterator.NO_MORE_DOCS) {
-          break;
-        }
-        collector.collect(scorerDoc);
-        filterDoc = filterIter.nextDoc();
-        scorerDoc = scorer.advance(filterDoc);
-      } else if (scorerDoc > filterDoc) {
-        filterDoc = filterIter.advance(scorerDoc);
-      } else {
-        scorerDoc = scorer.advance(filterDoc);
+    for (int i = 0; i < leaves.length; i++) { // search each subreader
+      collector.setNextReader(leaves[i]);
+      Scorer scorer = weight.scorer(leaves[i], !collector.acceptsDocsOutOfOrder(), true, leaves[i].reader.getLiveDocs());
+      if (scorer != null) {
+        scorer.score(collector);
       }
     }
   }
@@ -731,18 +678,16 @@ public class IndexSearcher implements Closeable {
     private final Lock lock;
     private final IndexSearcher searcher;
     private final Weight weight;
-    private final Filter filter;
     private final ScoreDoc after;
     private final int nDocs;
     private final HitQueue hq;
     private final LeafSlice slice;
 
     public SearcherCallableNoSort(Lock lock, IndexSearcher searcher, LeafSlice slice,  Weight weight,
-        Filter filter, ScoreDoc after, int nDocs, HitQueue hq) {
+        ScoreDoc after, int nDocs, HitQueue hq) {
       this.lock = lock;
       this.searcher = searcher;
       this.weight = weight;
-      this.filter = filter;
       this.after = after;
       this.nDocs = nDocs;
       this.hq = hq;
@@ -750,18 +695,19 @@ public class IndexSearcher implements Closeable {
     }
 
     public TopDocs call() throws IOException {
-      final TopDocs docs = searcher.search (slice.leaves, weight, filter, after, nDocs);
+      final TopDocs docs = searcher.search (slice.leaves, weight, after, nDocs);
       final ScoreDoc[] scoreDocs = docs.scoreDocs;
-      for (int j = 0; j < scoreDocs.length; j++) { // merge scoreDocs into hq
-        final ScoreDoc scoreDoc = scoreDocs[j];
-        //it would be so nice if we had a thread-safe insert 
-        lock.lock();
-        try {
-          if (scoreDoc == hq.insertWithOverflow(scoreDoc))
+      //it would be so nice if we had a thread-safe insert 
+      lock.lock();
+      try {
+        for (int j = 0; j < scoreDocs.length; j++) { // merge scoreDocs into hq
+          final ScoreDoc scoreDoc = scoreDocs[j];
+          if (scoreDoc == hq.insertWithOverflow(scoreDoc)) {
             break;
-        } finally {
-          lock.unlock();
+          }
         }
+      } finally {
+        lock.unlock();
       }
       return docs;
     }
@@ -776,18 +722,16 @@ public class IndexSearcher implements Closeable {
     private final Lock lock;
     private final IndexSearcher searcher;
     private final Weight weight;
-    private final Filter filter;
     private final int nDocs;
     private final TopFieldCollector hq;
     private final Sort sort;
     private final LeafSlice slice;
 
     public SearcherCallableWithSort(Lock lock, IndexSearcher searcher, LeafSlice slice, Weight weight,
-        Filter filter, int nDocs, TopFieldCollector hq, Sort sort) {
+        int nDocs, TopFieldCollector hq, Sort sort) {
       this.lock = lock;
       this.searcher = searcher;
       this.weight = weight;
-      this.filter = filter;
       this.nDocs = nDocs;
       this.hq = hq;
       this.sort = sort;
@@ -832,7 +776,7 @@ public class IndexSearcher implements Closeable {
 
     public TopFieldDocs call() throws IOException {
       assert slice.leaves.length == 1;
-      final TopFieldDocs docs = searcher.search (slice.leaves, weight, filter, nDocs, sort, true);
+      final TopFieldDocs docs = searcher.search (slice.leaves, weight, nDocs, sort, true);
       lock.lock();
       try {
         final int base = slice.leaves[0].docBase;

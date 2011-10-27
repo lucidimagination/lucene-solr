@@ -1115,10 +1115,11 @@ public final class SolrCore implements SolrInfoMBean {
           IndexReader currentReader = newestSearcher.get().getIndexReader();
           IndexReader newReader;
           
-          newReader = currentReader.reopen();
+          newReader = IndexReader.openIfChanged(currentReader);
           
-          if (newReader == currentReader) {
+          if (newReader == null) {
             currentReader.incRef();
+            newReader = currentReader;
           }
           
           tmp = new SolrIndexSearcher(this, schema, "main", newReader, true, true, true, directoryFactory);
@@ -1524,7 +1525,6 @@ public final class SolrCore implements SolrInfoMBean {
     m.put("ruby", new RubyResponseWriter());
     m.put("raw", new RawResponseWriter());
     m.put("javabin", new BinaryResponseWriter());
-    m.put("velocity", new VelocityResponseWriter());
     m.put("csv", new CSVResponseWriter());
     DEFAULT_RESPONSE_WRITERS = Collections.unmodifiableMap(m);
   }

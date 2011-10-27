@@ -25,6 +25,7 @@ import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.search.similarities.Similarity.ExactDocScorer;
 import org.apache.lucene.search.similarities.Similarity.SloppyDocScorer;
 import org.apache.lucene.search.similarities.Similarity.Stats;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.TermContext;
 import org.apache.lucene.index.FieldInvertState;
@@ -159,7 +160,7 @@ final class JustCompileSearch {
     // still added here in case someone will add abstract methods in the future.
     
     @Override
-    public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
+    public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
       return null;
     }
   }
@@ -287,12 +288,12 @@ final class JustCompileSearch {
   static final class JustCompileSpanFilter extends SpanFilter {
 
     @Override
-    public SpanFilterResult bitSpans(AtomicReaderContext context) throws IOException {
+    public SpanFilterResult bitSpans(AtomicReaderContext context, Bits acceptDocs) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
     
     @Override
-    public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
+    public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
       return null;
     }    
   }
@@ -364,7 +365,8 @@ final class JustCompileSearch {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, ScorerContext scorerContext)
+    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
+        boolean topScorer, Bits acceptDocs)
         throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }

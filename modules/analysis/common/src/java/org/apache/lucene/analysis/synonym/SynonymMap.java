@@ -44,9 +44,9 @@ import org.apache.lucene.util.fst.FST;
 public class SynonymMap {
   /** for multiword support, you must separate words with this separator */
   public static final char WORD_SEPARATOR = 0;
-  /** map<input word, list<ord>> */
+  /** map&lt;input word, list&lt;ord&gt;&gt; */
   public final FST<BytesRef> fst;
-  /** map<ord, outputword> */
+  /** map&lt;ord, outputword&gt; */
   public final BytesRefHash words;
   /** maxHorizontalContext: maximum context we need on the tokenstream */
   public final int maxHorizontalContext;
@@ -115,7 +115,7 @@ public class SynonymMap {
      *  separates by {@link SynonymMap#WORD_SEPARATOR}.
      *  reuse and its chars must not be null. */
     public static CharsRef analyze(Analyzer analyzer, String text, CharsRef reuse) throws IOException {
-      TokenStream ts = analyzer.reusableTokenStream("", new StringReader(text));
+      TokenStream ts = analyzer.tokenStream("", new StringReader(text));
       CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
       PositionIncrementAttribute posIncAtt = ts.addAttribute(PositionIncrementAttribute.class);
       ts.reset();

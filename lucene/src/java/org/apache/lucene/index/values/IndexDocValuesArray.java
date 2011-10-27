@@ -1,15 +1,13 @@
 package org.apache.lucene.index.values;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.Map;
 
 import org.apache.lucene.index.values.IndexDocValues.Source;
-import org.apache.lucene.index.values.IndexDocValues.SourceEnum;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.Counter;
-import org.apache.lucene.util.LongsRef;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
 
 /**
@@ -34,75 +32,28 @@ import org.apache.lucene.util.RamUsageEstimator;
  */
 abstract class IndexDocValuesArray extends Source {
 
-  private final Counter bytesUsed;
-  private final int bytesPerValue;
-  private int size = 0;
-  private final ValueType type;
-  protected int maxDocID = -1;
+  static final Map<ValueType, IndexDocValuesArray> TEMPLATES;
 
-  IndexDocValuesArray(Counter bytesUsed, int bytesPerValue, ValueType type) {
-    this.bytesUsed = bytesUsed;
+  static {
+    EnumMap<ValueType, IndexDocValuesArray> templates = new EnumMap<ValueType, IndexDocValuesArray>(
+        ValueType.class);
+    templates.put(ValueType.FIXED_INTS_16, new ShortValues());
+    templates.put(ValueType.FIXED_INTS_32, new IntValues());
+    templates.put(ValueType.FIXED_INTS_64, new LongValues());
+    templates.put(ValueType.FIXED_INTS_8, new ByteValues());
+    templates.put(ValueType.FLOAT_32, new FloatValues());
+    templates.put(ValueType.FLOAT_64, new DoubleValues());
+    TEMPLATES = Collections.unmodifiableMap(templates);
+  }
+
+  protected final int bytesPerValue;
+
+  IndexDocValuesArray(int bytesPerValue, ValueType type) {
+    super(type);
     this.bytesPerValue = bytesPerValue;
-    this.type = type;
   }
 
-  void set(int docId, long value) {
-    if (docId >= size) {
-      adjustSize(grow(docId + 1));
-    }
-    if (docId > maxDocID) {
-      maxDocID = docId;
-    }
-    setInternal(docId, value);
-  }
-
-  protected final void adjustSize(int newSize) {
-    bytesUsed.addAndGet(bytesPerValue * (newSize - size));
-    size = newSize;
-  }
-
-  void clear() {
-    adjustSize(0);
-    maxDocID = -1;
-    size = 0;
-  }
-  
-  protected abstract void writeDirect(IndexOutput out, long value) throws IOException;
-  
-  protected abstract void writeDefaults(IndexOutput out, int num) throws IOException;
-
-  protected abstract void setInternal(int docId, long value);
-
-  protected abstract int grow(int numDocs);
-
-  abstract void write(IndexOutput output, int numDocs) throws IOException;
-
-  @Override
-  public final int getValueCount() {
-    return maxDocID + 1;
-  }
-
-  @Override
-  public final ValueType type() {
-    return type;
-  }
-
-  @Override
-  public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
-    return new SourceEnum(attrSource, type(), this, maxDocID + 1) {
-
-      @Override
-      public int advance(int target) throws IOException {
-        if (target >= numDocs) {
-          return pos = NO_MORE_DOCS;
-        }
-        intsRef.ints[intsRef.offset] = IndexDocValuesArray.this.getInt(target);
-        return pos = target;
-      }
-    };
-  }
-
-  abstract ValuesEnum getDirectEnum(AttributeSource attrSource, IndexInput input, int maxDoc)
+  public abstract IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
       throws IOException;
 
   @Override
@@ -110,20 +61,26 @@ abstract class IndexDocValuesArray extends Source {
     return true;
   }
 
-  final static class ByteValues extends IndexDocValuesArray {
-    private byte[] values;
+  void toBytes(long value, BytesRef bytesRef) {
+    bytesRef.copy(value);
+  }
 
-    ByteValues(Counter bytesUsed) {
-      super(bytesUsed, 1, ValueType.FIXED_INTS_8);
+  void toBytes(double value, BytesRef bytesRef) {
+    bytesRef.copy(Double.doubleToRawLongBits(value));
+  }
+
+  final static class ByteValues extends IndexDocValuesArray {
+    private final byte[] values;
+
+    ByteValues() {
+      super(1, ValueType.FIXED_INTS_8);
       values = new byte[0];
     }
 
-    ByteValues(IndexInput input, int numDocs) throws IOException {
-      super(Counter.newCounter(), 1, ValueType.FIXED_INTS_8);
+    private ByteValues(IndexInput input, int numDocs) throws IOException {
+      super(1, ValueType.FIXED_INTS_8);
       values = new byte[numDocs];
-      adjustSize(numDocs);
       input.readBytes(values, 0, values.length, false);
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -138,73 +95,31 @@ abstract class IndexDocValuesArray extends Source {
     }
 
     @Override
-    protected void setInternal(int docId, long value) {
-      values[docId] = (byte) (0xFFL & value);
-    }
-
-    @Override
-    protected int grow(int numDocs) {
-      values = ArrayUtil.grow(values, numDocs);
-      return values.length;
-    }
-
-    @Override
-    void write(IndexOutput output, int numDocs) throws IOException {
-      assert maxDocID + 1 <= numDocs;
-      output.writeBytes(values, 0, maxDocID + 1);
-      writeDefaults(output,  numDocs - (maxDocID+1));
-    }
-
-    @Override
-    ValuesEnum getDirectEnum(AttributeSource attrSource, IndexInput input, int maxDoc)
+    public IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
         throws IOException {
-      return new FixedIntsEnumImpl(attrSource, input, type(), maxDoc) {
-        @Override
-        protected void fillNext(LongsRef ref, IndexInput dataIn)
-            throws IOException {
-          ref.ints[ref.offset] = dataIn.readByte();
-        }
-      };
+      return new ByteValues(input, numDocs);
     }
 
-    @Override
-    void clear() {
-      super.clear();
-      values = new byte[0];
+    void toBytes(long value, BytesRef bytesRef) {
+      bytesRef.bytes[0] = (byte) (0xFFL & value);
     }
 
-    @Override
-    protected void writeDefaults(IndexOutput out, int num) throws IOException {
-      final byte zero = 0;
-      for (int i = 0; i < num; i++) {
-        out.writeByte(zero);
-      }
-    }
-
-    @Override
-    protected void writeDirect(IndexOutput out, long value) throws IOException {
-      out.writeByte((byte) (0xFFL & value));
-    }
   };
 
   final static class ShortValues extends IndexDocValuesArray {
-    private short[] values;
+    private final short[] values;
 
-    ShortValues(Counter bytesUsed) {
-      super(bytesUsed, RamUsageEstimator.NUM_BYTES_SHORT,
-          ValueType.FIXED_INTS_16);
+    ShortValues() {
+      super(RamUsageEstimator.NUM_BYTES_SHORT, ValueType.FIXED_INTS_16);
       values = new short[0];
     }
 
-    ShortValues(IndexInput input, int numDocs) throws IOException {
-      super(Counter.newCounter(), RamUsageEstimator.NUM_BYTES_SHORT,
-          ValueType.FIXED_INTS_16);
+    private ShortValues(IndexInput input, int numDocs) throws IOException {
+      super(RamUsageEstimator.NUM_BYTES_SHORT, ValueType.FIXED_INTS_16);
       values = new short[numDocs];
-      adjustSize(numDocs);
       for (int i = 0; i < values.length; i++) {
         values[i] = input.readShort();
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -219,75 +134,31 @@ abstract class IndexDocValuesArray extends Source {
     }
 
     @Override
-    protected void setInternal(int docId, long value) {
-      values[docId] = (short) (0xFFFFL & value);
-    }
-
-    @Override
-    protected int grow(int numDocs) {
-      values = ArrayUtil.grow(values, numDocs);
-      return values.length;
-    }
-
-    @Override
-    void write(IndexOutput output, int numDocs) throws IOException {
-      assert maxDocID + 1 <= numDocs;
-      for (int i = 0; i < maxDocID + 1; i++) {
-        output.writeShort(values[i]);
-      }
-      writeDefaults(output,  numDocs - (maxDocID+1));
-    }
-
-    @Override
-    ValuesEnum getDirectEnum(AttributeSource attrSource, IndexInput input, int maxDoc)
+    public IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
         throws IOException {
-      return new FixedIntsEnumImpl(attrSource, input, type(), maxDoc) {
-        @Override
-        protected void fillNext(LongsRef ref, IndexInput dataIn)
-            throws IOException {
-          ref.ints[ref.offset] = dataIn.readShort();
-        }
-      };
+      return new ShortValues(input, numDocs);
     }
 
-    @Override
-    void clear() {
-      super.clear();
-      values = new short[0];
-    }
-
-    @Override
-    protected void writeDefaults(IndexOutput out, int num) throws IOException {
-      final short zero = 0;
-      for (int i = 0; i < num; i++) {
-        out.writeShort(zero);
-      }
-    }
-    
-    @Override
-    protected void writeDirect(IndexOutput out, long value) throws IOException {
-      out.writeShort((short) (0xFFFFL & value));
+    void toBytes(long value, BytesRef bytesRef) {
+      bytesRef.copy((short) (0xFFFFL & value));
     }
 
   };
 
   final static class IntValues extends IndexDocValuesArray {
-    private int[] values;
+    private final int[] values;
 
-    IntValues(Counter bytesUsed) {
-      super(bytesUsed, RamUsageEstimator.NUM_BYTES_INT, ValueType.FIXED_INTS_32);
+    IntValues() {
+      super(RamUsageEstimator.NUM_BYTES_INT, ValueType.FIXED_INTS_32);
       values = new int[0];
     }
 
-    IntValues(IndexInput input, int numDocs) throws IOException {
-      super(Counter.newCounter(), RamUsageEstimator.NUM_BYTES_INT,
-          ValueType.FIXED_INTS_32);
+    private IntValues(IndexInput input, int numDocs) throws IOException {
+      super(RamUsageEstimator.NUM_BYTES_INT, ValueType.FIXED_INTS_32);
       values = new int[numDocs];
-      adjustSize(numDocs);
       for (int i = 0; i < values.length; i++) {
         values[i] = input.readInt();
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -302,75 +173,31 @@ abstract class IndexDocValuesArray extends Source {
     }
 
     @Override
-    protected void setInternal(int docId, long value) {
-      values[docId] = (int) (0xFFFFFFFF & value);
-    }
-
-    @Override
-    protected int grow(int numDocs) {
-      values = ArrayUtil.grow(values, numDocs);
-      return values.length;
-    }
-
-    @Override
-    void write(IndexOutput output, int numDocs) throws IOException {
-      assert maxDocID + 1 <= numDocs;
-      for (int i = 0; i < maxDocID + 1; i++) {
-        output.writeInt(values[i]);
-      }
-      writeDefaults(output,  numDocs - (maxDocID+1));
-    }
-
-    @Override
-    ValuesEnum getDirectEnum(AttributeSource attrSource, IndexInput input, int maxDoc)
+    public IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
         throws IOException {
-      return new FixedIntsEnumImpl(attrSource, input, type(), maxDoc) {
-        @Override
-        protected void fillNext(LongsRef ref, IndexInput dataIn)
-            throws IOException {
-          ref.ints[ref.offset] = dataIn.readInt();
-        }
-      };
+      return new IntValues(input, numDocs);
     }
 
-    @Override
-    void clear() {
-      super.clear();
-      values = new int[0];
-    }
-
-    @Override
-    protected void writeDefaults(IndexOutput out, int num) throws IOException {
-      for (int i = 0; i < num; i++) {
-        out.writeInt(0);
-      }
-    }
-    
-    @Override
-    protected void writeDirect(IndexOutput out, long value) throws IOException {
-      out.writeInt((int) (0xFFFFFFFFL & value));
+    void toBytes(long value, BytesRef bytesRef) {
+      bytesRef.copy((int) (0xFFFFFFFF & value));
     }
 
   };
 
   final static class LongValues extends IndexDocValuesArray {
-    private long[] values;
+    private final long[] values;
 
-    LongValues(Counter bytesUsed) {
-      super(bytesUsed, RamUsageEstimator.NUM_BYTES_LONG,
-          ValueType.FIXED_INTS_64);
+    LongValues() {
+      super(RamUsageEstimator.NUM_BYTES_LONG, ValueType.FIXED_INTS_64);
       values = new long[0];
     }
 
-    LongValues(IndexInput input, int numDocs) throws IOException {
-      super(Counter.newCounter(), RamUsageEstimator.NUM_BYTES_LONG,
-          ValueType.FIXED_INTS_64);
+    private LongValues(IndexInput input, int numDocs) throws IOException {
+      super(RamUsageEstimator.NUM_BYTES_LONG, ValueType.FIXED_INTS_64);
       values = new long[numDocs];
-      adjustSize(numDocs);
       for (int i = 0; i < values.length; i++) {
         values[i] = input.readLong();
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -385,122 +212,94 @@ abstract class IndexDocValuesArray extends Source {
     }
 
     @Override
-    protected void setInternal(int docId, long value) {
-      values[docId] = value;
-    }
-
-    @Override
-    protected int grow(int numDocs) {
-      values = ArrayUtil.grow(values, numDocs);
-      return values.length;
-    }
-
-    @Override
-    void write(IndexOutput output, int numDocs) throws IOException {
-      assert maxDocID + 1 <= numDocs;
-      for (int i = 0; i < maxDocID + 1; i++) {
-        output.writeLong(values[i]);
-      }
-      writeDefaults(output, numDocs - (maxDocID+1));
-     
-    }
-
-    @Override
-    ValuesEnum getDirectEnum(AttributeSource attrSource, IndexInput input, int maxDoc)
+    public IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
         throws IOException {
-      return new FixedIntsEnumImpl(attrSource, input, type(), maxDoc) {
-        @Override
-        protected void fillNext(LongsRef ref, IndexInput dataIn)
-            throws IOException {
-          ref.ints[ref.offset] = dataIn.readLong();
-        }
-      };
+      return new LongValues(input, numDocs);
     }
 
-    @Override
-    void clear() {
-      super.clear();
-      values = new long[0];
+  };
+
+  final static class FloatValues extends IndexDocValuesArray {
+    private final float[] values;
+
+    FloatValues() {
+      super(RamUsageEstimator.NUM_BYTES_FLOAT, ValueType.FLOAT_32);
+      values = new float[0];
     }
 
-    @Override
-    protected void writeDefaults(IndexOutput out, int num) throws IOException {
-      for (int i = 0; i < num; i++) {
-        out.writeLong(0l);
+    private FloatValues(IndexInput input, int numDocs) throws IOException {
+      super(RamUsageEstimator.NUM_BYTES_FLOAT, ValueType.FLOAT_32);
+      values = new float[numDocs];
+      /*
+       * we always read BIG_ENDIAN here since the writer serialized plain bytes
+       * we can simply read the ints / longs back in using readInt / readLong
+       */
+      for (int i = 0; i < values.length; i++) {
+        values[i] = Float.intBitsToFloat(input.readInt());
       }
     }
+
     @Override
-    protected void writeDirect(IndexOutput out, long value) throws IOException {
-      out.writeLong(value);
+    public float[] getArray() {
+      return values;
+    }
+
+    @Override
+    public double getFloat(int docID) {
+      assert docID >= 0 && docID < values.length;
+      return values[docID];
+    }
+    
+    @Override
+    void toBytes(double value, BytesRef bytesRef) {
+      bytesRef.copy(Float.floatToRawIntBits((float)value));
+
+    }
+
+    @Override
+    public IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
+        throws IOException {
+      return new FloatValues(input, numDocs);
     }
   };
 
-  private abstract static class FixedIntsEnumImpl extends ValuesEnum {
-    private final IndexInput dataIn;
-    private final int maxDoc;
-    private final int sizeInByte;
-    private int pos = -1;
+  final static class DoubleValues extends IndexDocValuesArray {
+    private final double[] values;
 
-    private FixedIntsEnumImpl(AttributeSource source, IndexInput dataIn,
-        ValueType type, int maxDoc) throws IOException {
-      super(source, type);
-      switch (type) {
-      case FIXED_INTS_16:
-        sizeInByte = 2;
-        break;
-      case FIXED_INTS_32:
-        sizeInByte = 4;
-        break;
-      case FIXED_INTS_64:
-        sizeInByte = 8;
-        break;
-      case FIXED_INTS_8:
-        sizeInByte = 1;
-        break;
-      default:
-        throw new IllegalStateException("type " + type
-            + " is not a fixed int type");
+    DoubleValues() {
+      super(RamUsageEstimator.NUM_BYTES_DOUBLE, ValueType.FLOAT_64);
+      values = new double[0];
+    }
+
+    private DoubleValues(IndexInput input, int numDocs) throws IOException {
+      super(RamUsageEstimator.NUM_BYTES_DOUBLE, ValueType.FLOAT_64);
+      values = new double[numDocs];
+      /*
+       * we always read BIG_ENDIAN here since the writer serialized plain bytes
+       * we can simply read the ints / longs back in using readInt / readLong
+       */
+      for (int i = 0; i < values.length; i++) {
+        values[i] = Double.longBitsToDouble(input.readLong());
       }
-      intsRef.offset = 0;
-      this.dataIn = dataIn;
-      this.maxDoc = maxDoc;
-
     }
 
     @Override
-    public void close() throws IOException {
-      dataIn.close();
+    public double[] getArray() {
+      return values;
     }
 
     @Override
-    public int advance(int target) throws IOException {
-      if (target >= maxDoc) {
-        return pos = NO_MORE_DOCS;
-      }
-      assert target > pos;
-      if (target > pos + 1) {
-        dataIn
-            .seek(dataIn.getFilePointer() + ((target - pos - 1) * sizeInByte));
-      }
-      fillNext(intsRef, dataIn);
-      return pos = target;
-    }
-
-    protected abstract void fillNext(LongsRef ref, IndexInput input)
-        throws IOException;
-
-    @Override
-    public int docID() {
-      return pos;
+    public double getFloat(int docID) {
+      assert docID >= 0 && docID < values.length;
+      return values[docID];
     }
 
     @Override
-    public int nextDoc() throws IOException {
-      if (pos >= maxDoc) {
-        return pos = NO_MORE_DOCS;
-      }
-      return advance(pos + 1);
+    public IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
+        throws IOException {
+      return new DoubleValues(input, numDocs);
     }
-  }
+
+  };
 
 }

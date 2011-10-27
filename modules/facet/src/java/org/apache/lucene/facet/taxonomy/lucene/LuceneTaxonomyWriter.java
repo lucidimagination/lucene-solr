@@ -181,8 +181,8 @@ public class LuceneTaxonomyWriter implements TaxonomyWriter {
 
     FieldType ft = new FieldType(TextField.TYPE_UNSTORED);
     ft.setOmitNorms(true);
-    parentStreamField = new Field(Consts.FIELD_PAYLOADS, ft, parentStream);
-    fullPathField = new Field(Consts.FULL, StringField.TYPE_STORED, "");
+    parentStreamField = new Field(Consts.FIELD_PAYLOADS, parentStream, ft);
+    fullPathField = new Field(Consts.FULL, "", StringField.TYPE_STORED);
 
     this.nextID = indexWriter.maxDoc();
 
@@ -564,8 +564,8 @@ public class LuceneTaxonomyWriter implements TaxonomyWriter {
 
   private synchronized void refreshReader() throws IOException {
     if (reader != null) {
-      IndexReader r2 = reader.reopen();
-      if (reader != r2) {
+      IndexReader r2 = IndexReader.openIfChanged(reader);
+      if (r2 != null) {
         reader.close();
         reader = r2;
       }
@@ -709,9 +709,8 @@ public class LuceneTaxonomyWriter implements TaxonomyWriter {
     return true;
   }
 
-  // TODO (Facet): synchronization of some sort?
   private ParentArray parentArray;
-  private ParentArray getParentArray() throws IOException {
+  private synchronized ParentArray getParentArray() throws IOException {
     if (parentArray==null) {
       if (reader == null) {
         reader = openReader();

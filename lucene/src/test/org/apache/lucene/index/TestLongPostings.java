@@ -33,9 +33,11 @@ import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.UseNoMemoryExpensiveCodec;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util._TestUtil;
 
+@UseNoMemoryExpensiveCodec
 public class TestLongPostings extends LuceneTestCase {
 
   // Produces a realistic unicode random string that
@@ -47,7 +49,7 @@ public class TestLongPostings extends LuceneTestCase {
       if (other != null && s.equals(other)) {
         continue;
       }
-      final TokenStream ts = a.reusableTokenStream("foo", new StringReader(s));
+      final TokenStream ts = a.tokenStream("foo", new StringReader(s));
       final TermToBytesRefAttribute termAtt = ts.getAttribute(TermToBytesRefAttribute.class);
       final BytesRef termBytes = termAtt.getBytesRef();
       ts.reset();
@@ -76,9 +78,6 @@ public class TestLongPostings extends LuceneTestCase {
   }
 
   public void testLongPostings() throws Exception {
-    assumeFalse("Too slow with SimpleText codec at night", TEST_NIGHTLY && CodecProvider.getDefault().getFieldCodec("field").equals("SimpleText"));
-    assumeFalse("Too slow with Memory codec at night", TEST_NIGHTLY && CodecProvider.getDefault().getFieldCodec("field").equals("Memory"));
-
     // Don't use _TestUtil.getTempDir so that we own the
     // randomness (ie same seed will point to same dir):
     Directory dir = newFSDirectory(_TestUtil.getTempDir("longpostings" + "." + random.nextLong()));
@@ -271,8 +270,6 @@ public class TestLongPostings extends LuceneTestCase {
   }
   
   public void doTestLongPostingsNoPositions(IndexOptions options) throws Exception {
-    assumeFalse("Too slow with SimpleText codec at night", TEST_NIGHTLY && CodecProvider.getDefault().getFieldCodec("field").equals("SimpleText"));
-    assumeFalse("Too slow with Memory codec at night", TEST_NIGHTLY && CodecProvider.getDefault().getFieldCodec("field").equals("Memory"));
     // Don't use _TestUtil.getTempDir so that we own the
     // randomness (ie same seed will point to same dir):
     Directory dir = newFSDirectory(_TestUtil.getTempDir("longpostings" + "." + random.nextLong()));

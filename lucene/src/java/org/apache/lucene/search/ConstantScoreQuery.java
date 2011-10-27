@@ -20,6 +20,7 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
@@ -29,12 +30,6 @@ import java.util.Set;
  * A query that wraps another query or a filter and simply returns a constant score equal to the
  * query boost for every document that matches the filter or query.
  * For queries it therefore simply strips of all scores and returns a constant one.
- *
- * <p><b>NOTE</b>: if the wrapped filter is an instance of
- * {@link CachingWrapperFilter}, you'll likely want to
- * enforce deletions in the filter (using either {@link
- * CachingWrapperFilter.DeletesMode#RECACHE} or {@link
- * CachingWrapperFilter.DeletesMode#DYNAMIC}).
  */
 public class ConstantScoreQuery extends Query {
   protected final Filter filter;
@@ -126,18 +121,19 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context,  ScorerContext scorerContext) throws IOException {
+    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
+        boolean topScorer, final Bits acceptDocs) throws IOException {
       final DocIdSetIterator disi;
       if (filter != null) {
         assert query == null;
-        final DocIdSet dis = filter.getDocIdSet(context);
+        final DocIdSet dis = filter.getDocIdSet(context, acceptDocs);
         if (dis == null) {
           return null;
         }
         disi = dis.iterator();
       } else {
         assert query != null && innerWeight != null;
-        disi = innerWeight.scorer(context, scorerContext);
+        disi = innerWeight.scorer(context, scoreDocsInOrder, topScorer, acceptDocs);
       }
 
       if (disi == null) {
@@ -153,7 +149,7 @@ public class ConstantScoreQuery extends Query {
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      final Scorer cs = scorer(context, ScorerContext.def());
+      final Scorer cs = scorer(context, true, false, context.reader.getLiveDocs());
       final boolean exists = (cs != null && cs.advance(doc) == doc);
 
       final ComplexExplanation result = new ComplexExplanation();

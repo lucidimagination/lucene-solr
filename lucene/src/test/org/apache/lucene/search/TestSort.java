@@ -53,6 +53,7 @@ import org.apache.lucene.search.cache.LongValuesCreator;
 import org.apache.lucene.search.cache.ShortValuesCreator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.DocIdBitSet;
 import org.apache.lucene.util.LuceneTestCase;
@@ -132,7 +133,7 @@ public class TestSort extends LuceneTestCase {
     for (int i=0; i<data.length; ++i) {
       if (((i%2)==0 && even) || ((i%2)==1 && odd)) {
         Document doc = new Document();
-        doc.add (new Field ("tracer", ft1, data[i][0]));
+        doc.add (new Field ("tracer", data[i][0], ft1));
         doc.add (new TextField ("contents", data[i][1]));
         if (data[i][2] != null) {
           Field f = new StringField ("int", data[i][2]);
@@ -196,12 +197,12 @@ public class TestSort extends LuceneTestCase {
     for (int i=0; i<NUM_STRINGS; i++) {
         Document doc = new Document();
         String num = getRandomCharString(getRandomNumber(2, 8), 48, 52);
-        doc.add (new Field ("tracer", customType, num));
+        doc.add (new Field ("tracer", num, customType));
         //doc.add (new Field ("contents", Integer.toString(i), Field.Store.NO, Field.Index.ANALYZED));
         doc.add (new StringField ("string", num));
         String num2 = getRandomCharString(getRandomNumber(1, 4), 48, 50);
         doc.add (new StringField ("string2", num2));
-        doc.add (new Field ("tracer2", customType, num2));
+        doc.add (new Field ("tracer2", num2, customType));
         for(IndexableField f : doc.getFields()) {
           ((Field) f).setBoost(2.0f);
         }
@@ -730,7 +731,8 @@ public class TestSort extends LuceneTestCase {
     // a filter that only allows through the first hit
     Filter filt = new Filter() {
       @Override
-      public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
+      public DocIdSet getDocIdSet (AtomicReaderContext context, Bits acceptDocs) {
+        assertNull("acceptDocs should be null, as we have no deletions", acceptDocs);
         BitSet bs = new BitSet(context.reader.maxDoc());
         bs.set(0, context.reader.maxDoc());
         bs.set(docs1.scoreDocs[0].doc);

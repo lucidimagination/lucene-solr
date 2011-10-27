@@ -2,6 +2,7 @@ package org.apache.solr.search;
 
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.*;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.solr.common.SolrException;
@@ -118,14 +119,15 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, ScorerContext scorerContext) throws IOException {
-      return new ConstantScorer(context, this, queryWeight);
+    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
+        boolean topScorer, Bits acceptDocs) throws IOException {
+      return new ConstantScorer(context, this, queryWeight, acceptDocs);
     }
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
 
-      ConstantScorer cs = new ConstantScorer(context, this, queryWeight);
+      ConstantScorer cs = new ConstantScorer(context, this, queryWeight, context.reader.getLiveDocs());
       boolean exists = cs.docIdSetIterator.advance(doc) == doc;
 
       ComplexExplanation result = new ComplexExplanation();
@@ -150,12 +152,14 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
   protected class ConstantScorer extends Scorer {
     final DocIdSetIterator docIdSetIterator;
     final float theScore;
+    final Bits acceptDocs;
     int doc = -1;
 
-    public ConstantScorer(AtomicReaderContext context, ConstantWeight w, float theScore) throws IOException {
+    public ConstantScorer(AtomicReaderContext context, ConstantWeight w, float theScore, Bits acceptDocs) throws IOException {
       super(w);
       this.theScore = theScore;
-      DocIdSet docIdSet = filter instanceof SolrFilter ? ((SolrFilter)filter).getDocIdSet(w.context, context) : filter.getDocIdSet(context);
+      this.acceptDocs = acceptDocs;
+      DocIdSet docIdSet = filter instanceof SolrFilter ? ((SolrFilter)filter).getDocIdSet(w.context, context, acceptDocs) : filter.getDocIdSet(context, acceptDocs);
       if (docIdSet == null) {
         docIdSetIterator = DocIdSet.EMPTY_DOCIDSET.iterator();
       } else {

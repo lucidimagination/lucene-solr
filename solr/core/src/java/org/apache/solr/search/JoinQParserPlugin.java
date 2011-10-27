@@ -187,7 +187,8 @@ class JoinQuery extends Query {
 
 
     @Override
-    public Scorer scorer(IndexReader.AtomicReaderContext context, ScorerContext scorerContext) throws IOException {
+    public Scorer scorer(IndexReader.AtomicReaderContext context, boolean scoreDocsInOrder,
+        boolean topScorer, Bits acceptDocs) throws IOException {
       if (filter == null) {
         boolean debug = rb != null && rb.isDebug();
         long start = debug ? System.currentTimeMillis() : 0;
@@ -218,7 +219,7 @@ class JoinQuery extends Query {
         filter = resultSet.getTopFilter();
       }
 
-      DocIdSet readerSet = filter.getDocIdSet(context);
+      DocIdSet readerSet = filter.getDocIdSet(context, null);  // this set only includes live docs
       if (readerSet == null) readerSet=DocIdSet.EMPTY_DOCIDSET;
       return new JoinScorer(this, readerSet.iterator(), getBoost());
     }
@@ -483,7 +484,7 @@ class JoinQuery extends Query {
 
     @Override
     public Explanation explain(IndexReader.AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, null);
+      Scorer scorer = scorer(context, true, false, context.reader.getLiveDocs());
       boolean exists = scorer.advance(doc) == doc;
 
       ComplexExplanation result = new ComplexExplanation();
