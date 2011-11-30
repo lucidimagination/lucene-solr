@@ -56,7 +56,7 @@ public class TestMultiTermQueryRewrites extends LuceneTestCase {
       writer.addDocument(doc);
       ((i % 2 == 0) ? swriter1 : swriter2).addDocument(doc);
     }
-    writer.optimize(); swriter1.optimize(); swriter2.optimize();
+    writer.forceMerge(1); swriter1.forceMerge(1); swriter2.forceMerge(1);
     writer.close(); swriter1.close(); swriter2.close();
     
     reader = IndexReader.open(dir, true);
@@ -157,7 +157,7 @@ public class TestMultiTermQueryRewrites extends LuceneTestCase {
     final MultiTermQuery mtq = new MultiTermQuery("data") {
       @Override
       protected TermsEnum getTermsEnum(Terms terms, AttributeSource atts) throws IOException {
-        return new TermRangeTermsEnum(terms.iterator(), new BytesRef("2"), new BytesRef("7"), true, true) {
+        return new TermRangeTermsEnum(terms.iterator(null), new BytesRef("2"), new BytesRef("7"), true, true) {
           final BoostAttribute boostAtt =
             attributes().addAttribute(BoostAttribute.class);
         

@@ -78,29 +78,6 @@ public class MultiTermQueryWrapperFilter<Q extends MultiTermQuery> extends Filte
   public final String getField() { return query.getField(); }
   
   /**
-   * Expert: Return the number of unique terms visited during execution of the filter.
-   * If there are many of them, you may consider using another filter type
-   * or optimize your total term count in index.
-   * <p>This method is not thread safe, be sure to only call it when no filter is running!
-   * If you re-use the same filter instance for another
-   * search, be sure to first reset the term counter
-   * with {@link #clearTotalNumberOfTerms}.
-   * @see #clearTotalNumberOfTerms
-   */
-  public int getTotalNumberOfTerms() {
-    return query.getTotalNumberOfTerms();
-  }
-  
-  /**
-   * Expert: Resets the counting of unique terms.
-   * Do this before executing the filter.
-   * @see #getTotalNumberOfTerms
-   */
-  public void clearTotalNumberOfTerms() {
-    query.clearTotalNumberOfTerms();
-  }
-  
-  /**
    * Returns a DocIdSet with documents that should be permitted in search
    * results.
    */
@@ -124,29 +101,18 @@ public class MultiTermQueryWrapperFilter<Q extends MultiTermQuery> extends Filte
     if (termsEnum.next() != null) {
       // fill into a FixedBitSet
       final FixedBitSet bitSet = new FixedBitSet(context.reader.maxDoc());
-      int termCount = 0;
       DocsEnum docsEnum = null;
       do {
-        termCount++;
         // System.out.println("  iter termCount=" + termCount + " term=" +
         // enumerator.term().toBytesString());
         docsEnum = termsEnum.docs(acceptDocs, docsEnum);
-        final DocsEnum.BulkReadResult result = docsEnum.getBulkResult();
-        while (true) {
-          final int count = docsEnum.read();
-          if (count != 0) {
-            final int[] docs = result.docs.ints;
-            for (int i = 0; i < count; i++) {
-              bitSet.set(docs[i]);
-            }
-          } else {
-            break;
-          }
+        int docid;
+        while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+          bitSet.set(docid);
         }
       } while (termsEnum.next() != null);
       // System.out.println("  done termCount=" + termCount);
 
-      query.incTotalNumberOfTerms(termCount);
       return bitSet;
     } else {
       return DocIdSet.EMPTY_DOCIDSET;

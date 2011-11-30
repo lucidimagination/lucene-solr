@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.lucene.index.IndexWriter;  // Required for javadocs
-import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.store.FSDirectory;
 
 /**
@@ -37,8 +36,8 @@ import org.apache.lucene.store.FSDirectory;
  *
  * <p>This tool does file-level copying of segments files.
  * This means it's unable to split apart a single segment
- * into multiple segments.  For example if your index is
- * optimized, this tool won't help.  Also, it does basic
+ * into multiple segments.  For example if your index is a
+ * single segment, this tool won't help.  Also, it does basic
  * file-level copying (using simple
  * File{In,Out}putStream) so it will not work with non
  * FSDirectory Directory impls.</p>
@@ -54,8 +53,6 @@ import org.apache.lucene.store.FSDirectory;
  */
 public class IndexSplitter {
   public SegmentInfos infos;
-  
-  private final CodecProvider codecs;
 
   FSDirectory fsDir;
 
@@ -96,24 +93,19 @@ public class IndexSplitter {
       is.split(targetDir, segs.toArray(new String[0]));
     }
   }
-
-  public IndexSplitter(File dir) throws IOException {
-    this(dir, CodecProvider.getDefault());
-  }
   
-  public IndexSplitter(File dir, CodecProvider codecs) throws IOException {
+  public IndexSplitter(File dir) throws IOException {
     this.dir = dir;
-    this.codecs = codecs;
     fsDir = FSDirectory.open(dir);
-    infos = new SegmentInfos(codecs);
-    infos.read(fsDir, codecs);
+    infos = new SegmentInfos();
+    infos.read(fsDir);
   }
 
   public void listSegments() throws IOException {
     DecimalFormat formatter = new DecimalFormat("###,###.###");
     for (int x = 0; x < infos.size(); x++) {
       SegmentInfo info = infos.info(x);
-      String sizeStr = formatter.format(info.sizeInBytes(true));
+      String sizeStr = formatter.format(info.sizeInBytes());
       System.out.println(info.name + " " + sizeStr);
     }
   }
@@ -140,13 +132,13 @@ public class IndexSplitter {
       infos.remove(idx);
     }
     infos.changed();
-    infos.commit(fsDir);
+    infos.commit(fsDir, infos.codecFormat());
   }
 
   public void split(File destDir, String[] segs) throws IOException {
     destDir.mkdirs();
     FSDirectory destFSDir = FSDirectory.open(destDir);
-    SegmentInfos destInfos = new SegmentInfos(codecs);
+    SegmentInfos destInfos = new SegmentInfos();
     destInfos.counter = infos.counter;
     for (String n : segs) {
       SegmentInfo info = getInfo(n);
@@ -160,7 +152,7 @@ public class IndexSplitter {
       }
     }
     destInfos.changed();
-    destInfos.commit(destFSDir);
+    destInfos.commit(destFSDir, infos.codecFormat());
     // System.out.println("destDir:"+destDir.getAbsolutePath());
   }
 

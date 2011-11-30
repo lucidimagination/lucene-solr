@@ -18,9 +18,7 @@ package org.apache.solr.search.grouping.distributed.shardresultserializer;
  */
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.FieldSelector;
-import org.apache.lucene.document.FieldSelectorResult;
-import org.apache.lucene.document.FieldSelectorVisitor;
+import org.apache.lucene.document.DocumentStoredFieldVisitor;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
@@ -29,6 +27,7 @@ import org.apache.lucene.search.grouping.GroupDocs;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.handler.component.ShardDoc;
@@ -202,7 +201,8 @@ public class TopGroupsResultTransformer implements ShardResultTransformer<List<C
           if (field != null) {
             FieldType fieldType = field.getType();
             if (sortValue instanceof BytesRef) {
-              String indexedValue = ((BytesRef) sortValue).utf8ToChars(spare).toString();
+              UnicodeUtil.UTF8toUTF16((BytesRef)sortValue, spare);
+              String indexedValue = spare.toString();
               sortValue = fieldType.toObject(field.createField(fieldType.indexedToReadable(indexedValue), 0.0f));
             } else if (sortValue instanceof String) {
               sortValue = fieldType.toObject(field.createField(fieldType.indexedToReadable((String) sortValue), 0.0f));
@@ -254,7 +254,8 @@ public class TopGroupsResultTransformer implements ShardResultTransformer<List<C
         if (field != null) {
           FieldType fieldType = field.getType();
           if (sortValue instanceof BytesRef) {
-            String indexedValue = ((BytesRef) sortValue).utf8ToChars(spare).toString();
+            UnicodeUtil.UTF8toUTF16((BytesRef)sortValue, spare);
+            String indexedValue = spare.toString();
             sortValue = fieldType.toObject(field.createField(fieldType.indexedToReadable(indexedValue), 0.0f));
           } else if (sortValue instanceof String) {
             sortValue = fieldType.toObject(field.createField(fieldType.indexedToReadable((String) sortValue), 0.0f));
@@ -269,17 +270,9 @@ public class TopGroupsResultTransformer implements ShardResultTransformer<List<C
   }
 
   private Document retrieveDocument(final SchemaField uniqueField, int doc) throws IOException {
-    FieldSelectorVisitor fieldSelectorVisitor = new FieldSelectorVisitor(new FieldSelector() {
-
-      public FieldSelectorResult accept(String fieldName) {
-        if (uniqueField.getName().equals(fieldName)) {
-          return FieldSelectorResult.LOAD_AND_BREAK;
-        }
-        return FieldSelectorResult.NO_LOAD;
-      }
-    });
-    rb.req.getSearcher().doc(doc, fieldSelectorVisitor);
-    return fieldSelectorVisitor.getDocument();
+    DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor(uniqueField.getName());
+    rb.req.getSearcher().doc(doc, visitor);
+    return visitor.getDocument();
   }
 
 }

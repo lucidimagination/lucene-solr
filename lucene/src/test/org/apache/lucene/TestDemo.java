@@ -23,6 +23,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.search.*;
@@ -45,7 +46,6 @@ public class TestDemo extends LuceneTestCase {
     // To store an index on disk, use this instead:
     //Directory directory = FSDirectory.open("/tmp/testindex");
     RandomIndexWriter iwriter = new RandomIndexWriter(random, directory, analyzer);
-    iwriter.w.setInfoStream(VERBOSE ? System.out : null);
     Document doc = new Document();
     String longTerm = "longtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongterm";
     String text = "This is the text to be indexed. " + longTerm;
@@ -54,7 +54,8 @@ public class TestDemo extends LuceneTestCase {
     iwriter.close();
     
     // Now search the index:
-    IndexSearcher isearcher = new IndexSearcher(directory, true); // read-only=true
+    IndexReader ireader = IndexReader.open(directory); // read-only=true
+    IndexSearcher isearcher = new IndexSearcher(ireader);
 
     assertEquals(1, isearcher.search(new TermQuery(new Term("fieldname", longTerm)), 1).totalHits);
     Query query = new TermQuery(new Term("fieldname", "text"));
@@ -73,6 +74,7 @@ public class TestDemo extends LuceneTestCase {
     assertEquals(1, isearcher.search(phraseQuery, null, 1).totalHits);
 
     isearcher.close();
+    ireader.close();
     directory.close();
   }
 }

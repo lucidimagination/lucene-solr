@@ -16,10 +16,12 @@ package org.apache.lucene.index;
  * License for the specific language governing permissions and limitations under
  * the License.
  */
+import java.lang.reflect.Field;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.index.DocumentsWriterDeleteQueue.DeleteSlice;
 import org.apache.lucene.search.TermQuery;
@@ -73,7 +75,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     HashSet<Term> frozenSet = new HashSet<Term>();
     for (Term t : queue.freezeGlobalBuffer(null).termsIterable()) {
       BytesRef bytesRef = new BytesRef();
-      bytesRef.copy(t.bytes);
+      bytesRef.copyBytes(t.bytes);
       frozenSet.add(new Term(t.field, bytesRef));
     }
     assertEquals(uniqueValues, frozenSet);
@@ -142,6 +144,32 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
       }
     }
   }
+  
+  public void testPartiallyAppliedGlobalSlice() throws SecurityException,
+      NoSuchFieldException, IllegalArgumentException, IllegalAccessException,
+      InterruptedException {
+    final DocumentsWriterDeleteQueue queue = new DocumentsWriterDeleteQueue();
+    Field field = DocumentsWriterDeleteQueue.class
+        .getDeclaredField("globalBufferLock");
+    field.setAccessible(true);
+    ReentrantLock lock = (ReentrantLock) field.get(queue);
+    lock.lock();
+    Thread t = new Thread() {
+      public void run() {
+        queue.addDelete(new Term("foo", "bar"));
+      }
+    };
+    t.start();
+    t.join();
+    lock.unlock();
+    assertTrue("changes in del queue but not in slice yet", queue.anyChanges());
+    queue.tryApplyGlobalSlice();
+    assertTrue("changes in global buffer", queue.anyChanges());
+    FrozenBufferedDeletes freezeGlobalBuffer = queue.freezeGlobalBuffer(null);
+    assertTrue(freezeGlobalBuffer.any());
+    assertEquals(1, freezeGlobalBuffer.termCount);
+    assertFalse("all changes applied", queue.anyChanges());
+  }
 
   public void testStressDeleteQueue() throws InterruptedException {
     DocumentsWriterDeleteQueue queue = new DocumentsWriterDeleteQueue();
@@ -176,7 +204,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     Set<Term> frozenSet = new HashSet<Term>();
     for (Term t : queue.freezeGlobalBuffer(null).termsIterable()) {
       BytesRef bytesRef = new BytesRef();
-      bytesRef.copy(t.bytes);
+      bytesRef.copyBytes(t.bytes);
       frozenSet.add(new Term(t.field, bytesRef));
     }
     assertEquals("num deletes must be 0 after freeze", 0, queue

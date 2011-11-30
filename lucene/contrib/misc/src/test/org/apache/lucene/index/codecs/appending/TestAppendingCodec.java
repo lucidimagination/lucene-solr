@@ -34,10 +34,6 @@ import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.index.codecs.SegmentInfosReader;
-import org.apache.lucene.index.codecs.SegmentInfosWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
@@ -49,30 +45,7 @@ import org.apache.lucene.util.Version;
 
 public class TestAppendingCodec extends LuceneTestCase {
   
-  static class AppendingCodecProvider extends CodecProvider {
-    Codec appending = new AppendingCodec();
-    SegmentInfosWriter infosWriter = new AppendingSegmentInfosWriter();
-    SegmentInfosReader infosReader = new AppendingSegmentInfosReader();
-    public AppendingCodecProvider() {
-      setDefaultFieldCodec(appending.name);
-    }
-    @Override
-    public Codec lookup(String name) {
-      return appending;
-    }
-   
-    @Override
-    public SegmentInfosReader getSegmentInfosReader() {
-      return infosReader;
-    }
-    @Override
-    public SegmentInfosWriter getSegmentInfosWriter() {
-      return infosWriter;
-    }
-    
-  }
-  
-  private static class AppendingIndexOutputWrapper extends IndexOutput {
+    private static class AppendingIndexOutputWrapper extends IndexOutput {
     IndexOutput wrapped;
     
     public AppendingIndexOutputWrapper(IndexOutput wrapped) {
@@ -136,7 +109,7 @@ public class TestAppendingCodec extends LuceneTestCase {
     Directory dir = new AppendingRAMDirectory(random, new RAMDirectory());
     IndexWriterConfig cfg = new IndexWriterConfig(Version.LUCENE_40, new MockAnalyzer(random));
     
-    cfg.setCodecProvider(new AppendingCodecProvider());
+    cfg.setCodec(new AppendingCodec());
     ((TieredMergePolicy)cfg.getMergePolicy()).setUseCompoundFile(false);
     IndexWriter writer = new IndexWriter(dir, cfg);
     Document doc = new Document();
@@ -148,16 +121,16 @@ public class TestAppendingCodec extends LuceneTestCase {
     writer.addDocument(doc);
     writer.commit();
     writer.addDocument(doc);
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
-    IndexReader reader = IndexReader.open(dir, null, true, 1, new AppendingCodecProvider());
+    IndexReader reader = IndexReader.open(dir, null, true, 1);
     assertEquals(2, reader.numDocs());
     Document doc2 = reader.document(0);
     assertEquals(text, doc2.get("f"));
     Fields fields = MultiFields.getFields(reader);
     Terms terms = fields.terms("f");
     assertNotNull(terms);
-    TermsEnum te = terms.iterator();
+    TermsEnum te = terms.iterator(null);
     assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("quick")));
     assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("brown")));
     assertEquals(SeekStatus.FOUND, te.seekCeil(new BytesRef("fox")));
@@ -172,5 +145,21 @@ public class TestAppendingCodec extends LuceneTestCase {
     assertTrue(de.advance(1) != DocsEnum.NO_MORE_DOCS);
     assertTrue(de.advance(2) == DocsEnum.NO_MORE_DOCS);
     reader.close();
+  }
+  
+  public void testCompoundFile() throws Exception {
+    Directory dir = new AppendingRAMDirectory(random, new RAMDirectory());
+    IndexWriterConfig cfg = new IndexWriterConfig(Version.LUCENE_40, new MockAnalyzer(random));
+    TieredMergePolicy mp = new TieredMergePolicy();
+    mp.setUseCompoundFile(true);
+    mp.setNoCFSRatio(1.0);
+    cfg.setMergePolicy(mp);
+    cfg.setCodec(new AppendingCodec());
+    IndexWriter writer = new IndexWriter(dir, cfg);
+    Document doc = new Document();
+    writer.addDocument(doc);
+    writer.close();
+    assertTrue(dir.fileExists("_0.cfs"));
+    dir.close();
   }
 }

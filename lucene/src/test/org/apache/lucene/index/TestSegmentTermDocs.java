@@ -59,7 +59,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
     assertTrue(reader != null);
     assertEquals(indexDivisor, reader.getTermInfosIndexDivisor());
 
-    TermsEnum terms = reader.fields().terms(DocHelper.TEXT_FIELD_2_KEY).iterator();
+    TermsEnum terms = reader.fields().terms(DocHelper.TEXT_FIELD_2_KEY).iterator(null);
     terms.seekCeil(new BytesRef("field"));
     DocsEnum termDocs = terms.docs(reader.getLiveDocs(), null);
     if (termDocs.nextDoc() != DocsEnum.NO_MORE_DOCS)    {
@@ -120,7 +120,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
       addDoc(writer, "ccc ccc ccc ccc");
       
     // assure that we deal with a single segment  
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
     
     IndexReader reader = IndexReader.open(dir, null, true, indexDivisor);

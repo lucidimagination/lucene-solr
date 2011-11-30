@@ -33,7 +33,6 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockObtainFailedException;
-import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -45,8 +44,6 @@ import org.apache.lucene.util.MapBackedSet;
 class DirectoryReader extends IndexReader implements Cloneable {
   protected Directory directory;
   protected boolean readOnly;
-  
-  protected CodecProvider codecs;
 
   IndexWriter writer;
 
@@ -78,15 +75,13 @@ class DirectoryReader extends IndexReader implements Cloneable {
 //  }
   
   static IndexReader open(final Directory directory, final IndexDeletionPolicy deletionPolicy, final IndexCommit commit, final boolean readOnly,
-                          final int termInfosIndexDivisor, CodecProvider codecs) throws CorruptIndexException, IOException {
-    final CodecProvider codecProvider = codecs == null ? CodecProvider.getDefault()
-        : codecs;
+                          final int termInfosIndexDivisor) throws CorruptIndexException, IOException {
     return (IndexReader) new SegmentInfos.FindSegmentsFile(directory) {
       @Override
       protected Object doBody(String segmentFileName) throws CorruptIndexException, IOException {
-        SegmentInfos infos = new SegmentInfos(codecProvider);
-        infos.read(directory, segmentFileName, codecProvider);
-        return new DirectoryReader(directory, infos, deletionPolicy, readOnly, termInfosIndexDivisor, codecProvider);
+        SegmentInfos infos = new SegmentInfos();
+        infos.read(directory, segmentFileName);
+        return new DirectoryReader(directory, infos, deletionPolicy, readOnly, termInfosIndexDivisor);
       }
     }.run(commit);
   }
@@ -97,17 +92,12 @@ class DirectoryReader extends IndexReader implements Cloneable {
 //  }
   
   /** Construct reading the named set of readers. */
-  DirectoryReader(Directory directory, SegmentInfos sis, IndexDeletionPolicy deletionPolicy, boolean readOnly, int termInfosIndexDivisor, CodecProvider codecs) throws IOException {
+  DirectoryReader(Directory directory, SegmentInfos sis, IndexDeletionPolicy deletionPolicy, boolean readOnly, int termInfosIndexDivisor) throws IOException {
     this.directory = directory;
     this.readOnly = readOnly;
     this.segmentInfos = sis;
     this.deletionPolicy = deletionPolicy;
     this.termInfosIndexDivisor = termInfosIndexDivisor;
-    if (codecs == null) {
-      this.codecs = CodecProvider.getDefault();
-    } else {
-      this.codecs = codecs;
-    }
     readerFinishedListeners = new MapBackedSet<ReaderFinishedListener>(new ConcurrentHashMap<ReaderFinishedListener,Boolean>());
     applyAllDeletes = false;
 
@@ -141,17 +131,12 @@ class DirectoryReader extends IndexReader implements Cloneable {
   }
 
   // Used by near real-time search
-  DirectoryReader(IndexWriter writer, SegmentInfos infos, CodecProvider codecs, boolean applyAllDeletes) throws IOException {
+  DirectoryReader(IndexWriter writer, SegmentInfos infos, boolean applyAllDeletes) throws IOException {
     this.directory = writer.getDirectory();
     this.readOnly = true;
     this.applyAllDeletes = applyAllDeletes;       // saved for reopen
 
     this.termInfosIndexDivisor = writer.getConfig().getReaderTermsIndexDivisor();
-    if (codecs == null) {
-      this.codecs = CodecProvider.getDefault();
-    } else {
-      this.codecs = codecs;
-    }
     readerFinishedListeners = writer.getReaderFinishedListeners();
 
     // IndexWriter synchronizes externally before calling
@@ -200,21 +185,13 @@ class DirectoryReader extends IndexReader implements Cloneable {
 
   /** This constructor is only used for {@link #doOpenIfChanged()} */
   DirectoryReader(Directory directory, SegmentInfos infos, SegmentReader[] oldReaders,
-                  boolean readOnly, boolean doClone, int termInfosIndexDivisor, CodecProvider codecs,
-                  Collection<ReaderFinishedListener> readerFinishedListeners) throws IOException {
+                  boolean readOnly, boolean doClone, int termInfosIndexDivisor, Collection<ReaderFinishedListener> readerFinishedListeners) throws IOException {
     this.directory = directory;
     this.readOnly = readOnly;
     this.segmentInfos = infos;
     this.termInfosIndexDivisor = termInfosIndexDivisor;
     this.readerFinishedListeners = readerFinishedListeners;
     applyAllDeletes = false;
-
-    if (codecs == null) {
-      this.codecs = CodecProvider.getDefault();
-    } else {
-      this.codecs = codecs;
-    }
-    
 
     // we put the old SegmentReaders in a map, that allows us
     // to lookup a reader using its segment name
@@ -347,7 +324,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
     starts[subReaders.length] = maxDoc;
 
     if (!readOnly) {
-      maxIndexVersion = SegmentInfos.readCurrentVersion(directory, codecs);
+      maxIndexVersion = SegmentInfos.readCurrentVersion(directory);
     }
   }
 
@@ -498,15 +475,15 @@ class DirectoryReader extends IndexReader implements Cloneable {
     return (IndexReader) new SegmentInfos.FindSegmentsFile(directory) {
       @Override
       protected Object doBody(String segmentFileName) throws CorruptIndexException, IOException {
-        final SegmentInfos infos = new SegmentInfos(codecs);
-        infos.read(directory, segmentFileName, codecs);
+        final SegmentInfos infos = new SegmentInfos();
+        infos.read(directory, segmentFileName);
         return doOpenIfChanged(infos, false, openReadOnly);
       }
     }.run(commit);
   }
 
   private synchronized DirectoryReader doOpenIfChanged(SegmentInfos infos, boolean doClone, boolean openReadOnly) throws CorruptIndexException, IOException {
-    return new DirectoryReader(directory, infos, subReaders, openReadOnly, doClone, termInfosIndexDivisor, codecs, readerFinishedListeners);
+    return new DirectoryReader(directory, infos, subReaders, openReadOnly, doClone, termInfosIndexDivisor, readerFinishedListeners);
   }
 
   /** Version number when this IndexReader was opened. */
@@ -517,43 +494,10 @@ class DirectoryReader extends IndexReader implements Cloneable {
   }
 
   @Override
-  public TermFreqVector[] getTermFreqVectors(int n) throws IOException {
+  public Fields getTermVectors(int docID) throws IOException {
     ensureOpen();
-    int i = readerIndex(n);        // find segment num
-    return subReaders[i].getTermFreqVectors(n - starts[i]); // dispatch to segment
-  }
-
-  @Override
-  public TermFreqVector getTermFreqVector(int n, String field)
-      throws IOException {
-    ensureOpen();
-    int i = readerIndex(n);        // find segment num
-    return subReaders[i].getTermFreqVector(n - starts[i], field);
-  }
-
-
-  @Override
-  public void getTermFreqVector(int docNumber, String field, TermVectorMapper mapper) throws IOException {
-    ensureOpen();
-    int i = readerIndex(docNumber);        // find segment num
-    subReaders[i].getTermFreqVector(docNumber - starts[i], field, mapper);
-  }
-
-  @Override
-  public void getTermFreqVector(int docNumber, TermVectorMapper mapper) throws IOException {
-    ensureOpen();
-    int i = readerIndex(docNumber);        // find segment num
-    subReaders[i].getTermFreqVector(docNumber - starts[i], mapper);
-  }
-
-  /**
-   * Checks is the index is optimized (if it has a single segment and no deletions)
-   * @return <code>true</code> if the index is optimized; <code>false</code> otherwise
-   */
-  @Override
-  public boolean isOptimized() {
-    ensureOpen();
-    return segmentInfos.size() == 1 && !hasDeletions();
+    int i = readerIndex(docID);        // find segment num
+    return subReaders[i].getTermVectors(docID - starts[i]); // dispatch to segment
   }
 
   @Override
@@ -712,7 +656,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
 
         // we have to check whether index has changed since this reader was opened.
         // if so, this reader is no longer valid for deletion
-        if (SegmentInfos.readCurrentVersion(directory, codecs) > maxIndexVersion) {
+        if (SegmentInfos.readCurrentVersion(directory) > maxIndexVersion) {
           stale = true;
           this.writeLock.release();
           this.writeLock = null;
@@ -743,7 +687,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
       // KeepOnlyLastCommitDeleter:
       IndexFileDeleter deleter = new IndexFileDeleter(directory,
                                                       deletionPolicy == null ? new KeepOnlyLastCommitDeletionPolicy() : deletionPolicy,
-                                                      segmentInfos, null, codecs, null);
+                                                      segmentInfos, null, null);
       segmentInfos.updateGeneration(deleter.getLastSegmentInfos());
       segmentInfos.changed();
 
@@ -764,7 +708,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
 
         // Sync all files we just wrote
         directory.sync(segmentInfos.files(directory, false));
-        segmentInfos.commit(directory);
+        segmentInfos.commit(directory, segmentInfos.codecFormat());
         success = true;
       } finally {
 
@@ -842,7 +786,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
     ensureOpen();
     if (writer == null || writer.isClosed()) {
       // we loaded SegmentInfos from the directory
-      return SegmentInfos.readCurrentVersion(directory, codecs) == segmentInfos.getVersion();
+      return SegmentInfos.readCurrentVersion(directory) == segmentInfos.getVersion();
     } else {
       return writer.nrtIsCurrent(segmentInfos);
     }
@@ -925,17 +869,12 @@ class DirectoryReader extends IndexReader implements Cloneable {
 
   /** @see org.apache.lucene.index.IndexReader#listCommits */
   public static List<IndexCommit> listCommits(Directory dir) throws IOException {
-    return listCommits(dir, CodecProvider.getDefault());
-  }
-
-  /** @see org.apache.lucene.index.IndexReader#listCommits */
-  public static List<IndexCommit> listCommits(Directory dir, CodecProvider codecs) throws IOException {
     final String[] files = dir.listAll();
 
     List<IndexCommit> commits = new ArrayList<IndexCommit>();
 
-    SegmentInfos latest = new SegmentInfos(codecs);
-    latest.read(dir, codecs);
+    SegmentInfos latest = new SegmentInfos();
+    latest.read(dir);
     final long currentGen = latest.getGeneration();
 
     commits.add(new ReaderCommit(latest, dir));
@@ -948,11 +887,11 @@ class DirectoryReader extends IndexReader implements Cloneable {
           !fileName.equals(IndexFileNames.SEGMENTS_GEN) &&
           SegmentInfos.generationFromSegmentsFileName(fileName) < currentGen) {
 
-        SegmentInfos sis = new SegmentInfos(codecs);
+        SegmentInfos sis = new SegmentInfos();
         try {
           // IOException allowed to throw there, in case
           // segments_N is corrupt
-          sis.read(dir, fileName, codecs);
+          sis.read(dir, fileName);
         } catch (FileNotFoundException fnfe) {
           // LUCENE-948: on NFS (and maybe others), if
           // you have writers switching back and forth
@@ -981,8 +920,8 @@ class DirectoryReader extends IndexReader implements Cloneable {
     Directory dir;
     long generation;
     long version;
-    final boolean isOptimized;
     final Map<String,String> userData;
+    private final int segmentCount;
 
     ReaderCommit(SegmentInfos infos, Directory dir) throws IOException {
       segmentsFileName = infos.getCurrentSegmentFileName();
@@ -991,7 +930,7 @@ class DirectoryReader extends IndexReader implements Cloneable {
       files = Collections.unmodifiableCollection(infos.files(dir, true));
       version = infos.getVersion();
       generation = infos.getGeneration();
-      isOptimized = infos.size() == 1 && !infos.info(0).hasDeletions();
+      segmentCount = infos.size();
     }
 
     @Override
@@ -1000,8 +939,8 @@ class DirectoryReader extends IndexReader implements Cloneable {
     }
 
     @Override
-    public boolean isOptimized() {
-      return isOptimized;
+    public int getSegmentCount() {
+      return segmentCount;
     }
 
     @Override

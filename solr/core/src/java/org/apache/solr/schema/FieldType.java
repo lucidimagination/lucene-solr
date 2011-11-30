@@ -167,10 +167,10 @@ public abstract class FieldType extends FieldProperties {
       initArgs.remove("positionIncrementGap");
     }
 
-    final String codec = initArgs.get("codec");
-    if (codec != null) {
-      this.codec = codec;
-      initArgs.remove("codec");
+    final String postingsFormat = initArgs.get("postingsFormat");
+    if (postingsFormat != null) {
+      this.postingsFormat = postingsFormat;
+      initArgs.remove("postingsFormat");
     }
 
     if (initArgs.size() > 0) {
@@ -349,7 +349,7 @@ public abstract class FieldType extends FieldProperties {
 
   /** Given an indexed term, append the human readable representation*/
   public CharsRef indexedToReadable(BytesRef input, CharsRef output) {
-    input.utf8ToChars(output);
+    UnicodeUtil.UTF8toUTF16(input, output);
     return output;
   }
 
@@ -450,9 +450,6 @@ public abstract class FieldType extends FieldProperties {
     return queryAnalyzer;
   }
 
-  private final String analyzerError = 
-    "FieldType: " + this.getClass().getSimpleName() + 
-    " (" + typeName + ") does not support specifying an analyzer";
 
   /**
    * Sets the Analyzer to be used when indexing fields of this type.
@@ -527,12 +524,12 @@ public abstract class FieldType extends FieldProperties {
   }
   
   /**
-   * The codec ID used for this field type
+   * The postings format used for this field type
    */
-  protected String codec;
+  protected String postingsFormat;
   
-  public String getCodec() {
-    return codec;
+  public String getPostingsFormat() {
+    return postingsFormat;
   }
   
   /**

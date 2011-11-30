@@ -31,10 +31,15 @@ import org.apache.lucene.analysis.fa.PersianCharFilter;
  * &lt;/fieldType&gt;</pre>
  *
  */
-public class PersianCharFilterFactory extends BaseCharFilterFactory {
+public class PersianCharFilterFactory extends BaseCharFilterFactory implements MultiTermAwareComponent {
 
   @Override
   public CharStream create(CharStream input) {
     return new PersianCharFilter(input);
+  }
+
+  @Override
+  public Object getMultiTermComponent() {
+    return this;
   }
 }

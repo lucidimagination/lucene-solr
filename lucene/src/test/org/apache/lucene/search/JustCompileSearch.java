@@ -22,12 +22,8 @@ import java.io.IOException;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.similarities.SimilarityProvider;
-import org.apache.lucene.search.similarities.Similarity.ExactDocScorer;
-import org.apache.lucene.search.similarities.Similarity.SloppyDocScorer;
-import org.apache.lucene.search.similarities.Similarity.Stats;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.TermContext;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.util.PriorityQueue;
 
@@ -250,7 +246,7 @@ final class JustCompileSearch {
   static final class JustCompileSimilarity extends Similarity {
 
     @Override
-    public Stats computeStats(IndexSearcher searcher, String fieldName, float queryBoost, TermContext... termContexts) throws IOException {
+    public Stats computeStats(CollectionStatistics collectionStats, float queryBoost, TermStatistics... termStats) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -283,19 +279,6 @@ final class JustCompileSearch {
     public Similarity get(String field) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-  }
-
-  static final class JustCompileSpanFilter extends SpanFilter {
-
-    @Override
-    public SpanFilterResult bitSpans(AtomicReaderContext context, Bits acceptDocs) throws IOException {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-    @Override
-    public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
-      return null;
-    }    
   }
 
   static final class JustCompileTopDocsCollector extends TopDocsCollector<ScoreDoc> {

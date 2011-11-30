@@ -26,6 +26,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.store.Directory;
 
 
@@ -60,25 +61,25 @@ public class TestSegmentTermEnum extends LuceneTestCase {
 
     writer.close();
 
-    // verify document frequency of terms in an unoptimized index
+    // verify document frequency of terms in an multi segment index
     verifyDocFreq();
 
-    // merge segments by optimizing the index
+    // merge segments
     writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
-    // verify document frequency of terms in an optimized index
+    // verify document frequency of terms in a single segment index
     verifyDocFreq();
   }
 
   public void testPrevTermAtEnd() throws IOException
   {
-    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodecProvider(_TestUtil.alwaysCodec("Standard")));
+    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodec(_TestUtil.alwaysPostingsFormat(new Lucene40PostingsFormat())));
     addDoc(writer, "aaa bbb");
     writer.close();
     SegmentReader reader = getOnlySegmentReader(IndexReader.open(dir, false));
-    TermsEnum terms = reader.fields().terms("content").iterator();
+    TermsEnum terms = reader.fields().terms("content").iterator(null);
     assertNotNull(terms.next());
     assertEquals("aaa", terms.term().utf8ToString());
     assertNotNull(terms.next());
@@ -102,7 +103,7 @@ public class TestSegmentTermEnum extends LuceneTestCase {
       throws IOException
   {
       IndexReader reader = IndexReader.open(dir, true);
-      TermsEnum termEnum = MultiFields.getTerms(reader, "content").iterator();
+      TermsEnum termEnum = MultiFields.getTerms(reader, "content").iterator(null);
 
     // create enumeration of all terms
     // go to the first term (aaa)

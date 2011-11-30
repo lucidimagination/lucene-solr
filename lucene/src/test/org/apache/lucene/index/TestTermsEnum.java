@@ -62,10 +62,10 @@ public class TestTermsEnum extends LuceneTestCase {
     w.close();
 
     final List<BytesRef> terms = new ArrayList<BytesRef>();
-    final TermsEnum termsEnum = MultiFields.getTerms(r, "body").iterator();
+    final TermsEnum termsEnum = MultiFields.getTerms(r, "body").iterator(null);
     BytesRef term;
     while((term = termsEnum.next()) != null) {
-      terms.add(new BytesRef(term));
+      terms.add(BytesRef.deepCopyOf(term));
     }
     if (VERBOSE) {
       System.out.println("TEST: " + terms.size() + " terms");
@@ -232,7 +232,7 @@ public class TestTermsEnum extends LuceneTestCase {
     w.close();
 
     // NOTE: intentional insanity!!
-    final int[] docIDToID = FieldCache.DEFAULT.getInts(r, "id");
+    final int[] docIDToID = FieldCache.DEFAULT.getInts(r, "id", false);
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
 
@@ -310,7 +310,7 @@ public class TestTermsEnum extends LuceneTestCase {
         if (startTerm == null) {
           loc = 0;
         } else {
-          loc = Arrays.binarySearch(termsArray, new BytesRef(startTerm));
+          loc = Arrays.binarySearch(termsArray, BytesRef.deepCopyOf(startTerm));
           if (loc < 0) {
             loc = -(loc+1);
           } else {
@@ -358,15 +358,10 @@ public class TestTermsEnum extends LuceneTestCase {
     IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
 
     /*
-    CoreCodecProvider cp = new CoreCodecProvider();    
-    cp.unregister(cp.lookup("Standard"));
-    cp.register(new StandardCodec(minTermsInBlock, maxTermsInBlock));
-    cp.setDefaultFieldCodec("Standard");
-    iwc.setCodecProvider(cp);
+    iwc.setCodec(new StandardCodec(minTermsInBlock, maxTermsInBlock));
     */
 
     final RandomIndexWriter w = new RandomIndexWriter(random, d, iwc);
-    w.w.setInfoStream(VERBOSE ? System.out : null);
     for(String term : terms) {
       Document doc = new Document();
       Field f = newField(FIELD, term, StringField.TYPE_UNSTORED);
@@ -490,7 +485,7 @@ public class TestTermsEnum extends LuceneTestCase {
     assertEquals(1, docFreq(r, "xx"));
     assertEquals(1, docFreq(r, "aa4"));
 
-    final TermsEnum te = MultiFields.getTerms(r, FIELD).iterator();
+    final TermsEnum te = MultiFields.getTerms(r, FIELD).iterator(null);
     while(te.next() != null) {
       //System.out.println("TEST: next term=" + te.term().utf8ToString());
     }
@@ -508,7 +503,6 @@ public class TestTermsEnum extends LuceneTestCase {
   public void testZeroTerms() throws Exception {
     d = newDirectory();
     final RandomIndexWriter w = new RandomIndexWriter(random, d);
-    w.w.setInfoStream(VERBOSE ? System.out : null);
     Document doc = new Document();
     doc.add(newField("field", "one two three", TextField.TYPE_UNSTORED));
     doc = new Document();
@@ -516,14 +510,14 @@ public class TestTermsEnum extends LuceneTestCase {
     w.addDocument(doc);
     w.commit();
     w.deleteDocuments(new Term("field", "one"));
-    w.optimize();
+    w.forceMerge(1);
     IndexReader r = w.getReader();
     w.close();
     assertEquals(1, r.numDocs());
     assertEquals(1, r.maxDoc());
     Terms terms = MultiFields.getTerms(r, "field");
     if (terms != null) {
-      assertNull(terms.iterator().next());
+      assertNull(terms.iterator(null).next());
     }
     r.close();
     d.close();
@@ -623,7 +617,7 @@ public class TestTermsEnum extends LuceneTestCase {
         System.out.println("  " + t.utf8ToString() + " " + t);
       }
     }
-    final TermsEnum te = MultiFields.getTerms(r, FIELD).iterator();
+    final TermsEnum te = MultiFields.getTerms(r, FIELD).iterator(null);
 
     final int END_LOC = -validTerms.length-1;
     
@@ -654,7 +648,7 @@ public class TestTermsEnum extends LuceneTestCase {
       } else {
         // pick valid term
         loc = random.nextInt(validTerms.length);
-        t = new BytesRef(validTerms[loc]);
+        t = BytesRef.deepCopyOf(validTerms[loc]);
         termState = null;
         if (VERBOSE) {
           System.out.println("\nTEST: valid term=" + t.utf8ToString());

@@ -18,7 +18,6 @@ package org.apache.lucene.index.codecs.simpletext;
  */
 
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.TermsConsumer;
 import org.apache.lucene.index.codecs.PostingsConsumer;
@@ -35,8 +34,6 @@ class SimpleTextFieldsWriter extends FieldsConsumer {
   
   private final IndexOutput out;
   private final BytesRef scratch = new BytesRef(10);
-  final static byte NEWLINE = 10;
-  final static byte ESCAPE = 92;
 
   final static BytesRef END     = new BytesRef("END");
   final static BytesRef FIELD   = new BytesRef("field ");
@@ -47,34 +44,27 @@ class SimpleTextFieldsWriter extends FieldsConsumer {
   final static BytesRef PAYLOAD = new BytesRef("        payload ");
 
   public SimpleTextFieldsWriter(SegmentWriteState state) throws IOException {
-    final String fileName = SimpleTextCodec.getPostingsFileName(state.segmentName, state.codecId);
+    final String fileName = SimpleTextPostingsFormat.getPostingsFileName(state.segmentName, state.segmentSuffix);
     out = state.directory.createOutput(fileName, state.context);
   }
 
   private void write(String s) throws IOException {
-    UnicodeUtil.UTF16toUTF8(s, 0, s.length(), scratch);
-    write(scratch);
+    SimpleTextUtil.write(out, s, scratch);
   }
 
   private void write(BytesRef b) throws IOException {
-    for(int i=0;i<b.length;i++) {
-      final byte bx = b.bytes[b.offset+i];
-      if (bx == NEWLINE || bx == ESCAPE) {
-        out.writeByte(ESCAPE);
-      }
-      out.writeByte(bx);
-    }
+    SimpleTextUtil.write(out, b);
   }
 
   private void newline() throws IOException {
-    out.writeByte(NEWLINE);
+    SimpleTextUtil.writeNewline(out);
   }
 
   @Override
   public TermsConsumer addField(FieldInfo field) throws IOException {
     write(FIELD);
     write(field.name);
-    out.writeByte(NEWLINE);
+    newline();
     return new SimpleTextTermsWriter(field);
   }
 

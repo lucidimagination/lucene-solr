@@ -21,7 +21,6 @@ import java.io.IOException;
 
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TermContext;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -50,7 +49,7 @@ public class TestOmitTf extends LuceneTestCase {
         @Override public float tf(float freq) { return freq; }
         @Override public float sloppyFreq(int distance) { return 2.0f; }
         @Override public float idf(int docFreq, int numDocs) { return 1.0f; }
-        @Override public Explanation idfExplain(TermContext[] terms, IndexSearcher searcher) throws IOException {
+        @Override public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics[] termStats) {
           return new Explanation(1.0f, "Inexplicable");
         }
         @Override public float scorePayload(int doc, int start, int end, BytesRef payload) { return 1.0f; }
@@ -82,7 +81,7 @@ public class TestOmitTf extends LuceneTestCase {
     d.add(f2);
         
     writer.addDocument(d);
-    writer.optimize();
+    writer.forceMerge(1);
     // now we add another document which has term freq for field f2 and not for f1 and verify if the SegmentMerger
     // keep things constant
     d = new Document();
@@ -97,7 +96,7 @@ public class TestOmitTf extends LuceneTestCase {
     writer.addDocument(d);
 
     // force merge
-    writer.optimize();
+    writer.forceMerge(1);
     // flush
     writer.close();
 
@@ -121,7 +120,6 @@ public class TestOmitTf extends LuceneTestCase {
             setMaxBufferedDocs(3).
             setMergePolicy(newLogMergePolicy(2))
     );
-    writer.setInfoStream(VERBOSE ? System.out : null);
     Document d = new Document();
         
     // this field will have Tf
@@ -150,7 +148,7 @@ public class TestOmitTf extends LuceneTestCase {
       writer.addDocument(d);
         
     // force merge
-    writer.optimize();
+    writer.forceMerge(1);
     // flush
     writer.close();
 
@@ -192,7 +190,7 @@ public class TestOmitTf extends LuceneTestCase {
       writer.addDocument(d);
 
     // force merge
-    writer.optimize();
+    writer.forceMerge(1);
 
     // flush
     writer.close();
@@ -235,7 +233,8 @@ public class TestOmitTf extends LuceneTestCase {
 
     assertNoPrx(ram);
     
-    // now add some documents with positions, and check there is no prox after optimization
+    // now add some documents with positions, and check
+    // there is no prox after full merge
     d = new Document();
     f1 = newField("f1", "This field has positions", TextField.TYPE_UNSTORED);
     d.add(f1);
@@ -244,7 +243,7 @@ public class TestOmitTf extends LuceneTestCase {
       writer.addDocument(d);
  
     // force merge
-    writer.optimize();
+    writer.forceMerge(1);
     // flush
     writer.close();
 
@@ -263,7 +262,6 @@ public class TestOmitTf extends LuceneTestCase {
             setSimilarityProvider(new SimpleSimilarityProvider()).
             setMergePolicy(newLogMergePolicy(2))
     );
-    writer.setInfoStream(VERBOSE ? System.out : null);
         
     StringBuilder sb = new StringBuilder(265);
     String term = "term";
@@ -281,14 +279,15 @@ public class TestOmitTf extends LuceneTestCase {
       //System.out.println(d);
     }
         
-    writer.optimize();
+    writer.forceMerge(1);
     // flush
     writer.close();
 
     /*
      * Verify the index
      */         
-    IndexSearcher searcher = new IndexSearcher(dir, true);
+    IndexReader reader = IndexReader.open(dir);
+    IndexSearcher searcher = new IndexSearcher(reader);
     searcher.setSimilarityProvider(new SimpleSimilarityProvider());
         
     Term a = new Term("noTf", term);
@@ -402,7 +401,8 @@ public class TestOmitTf extends LuceneTestCase {
                     });
     assertEquals(15, CountingHitCollector.getCount());
         
-    searcher.close();     
+    searcher.close(); 
+    reader.close();
     dir.close();
   }
      
@@ -416,7 +416,7 @@ public class TestOmitTf extends LuceneTestCase {
     @Override
     public void collect(int doc) throws IOException {
       count++;
-      sum += doc + docBase;  // use it to avoid any possibility of being optimized away
+      sum += doc + docBase;  // use it to avoid any possibility of being merged away
     }
 
     public static int getCount() { return count; }
@@ -447,7 +447,7 @@ public class TestOmitTf extends LuceneTestCase {
     IndexReader ir = iw.getReader();
     iw.close();
     Terms terms = MultiFields.getTerms(ir, "foo");
-    assertEquals(-1, terms.totalTermFreq(new BytesRef("bar")));
+    assertEquals(-1, MultiFields.totalTermFreq(ir, "foo", new BytesRef("bar")));
     assertEquals(-1, terms.getSumTotalTermFreq());
     ir.close();
     dir.close();

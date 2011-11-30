@@ -31,7 +31,6 @@ import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.Terms;
@@ -470,7 +469,9 @@ public class SpellChecker implements java.io.Closeable {
     // obtainSearcher calls ensureOpen
     final IndexSearcher indexSearcher = obtainSearcher();
     try{
-      return indexSearcher.docFreq(new Term(F_WORD, word)) > 0;
+      // TODO: we should use ReaderUtil+seekExact, we dont care about the docFreq
+      // this is just an existence check
+      return indexSearcher.getIndexReader().docFreq(new Term(F_WORD, word)) > 0;
     } finally {
       releaseSearcher(indexSearcher);
     }
@@ -479,28 +480,27 @@ public class SpellChecker implements java.io.Closeable {
   /**
    * Indexes the data from the given {@link Dictionary}.
    * @param dict Dictionary to index
-   * @param mergeFactor mergeFactor to use when indexing
-   * @param ramMB the max amount or memory in MB to use
-   * @param optimize whether or not the spellcheck index should be optimized
+   * @param config {@link IndexWriterConfig} to use
+   * @param fullMerge whether or not the spellcheck index should be fully merged
    * @throws AlreadyClosedException if the Spellchecker is already closed
    * @throws IOException
    */
-  public final void indexDictionary(Dictionary dict, int mergeFactor, int ramMB, boolean optimize) throws IOException {
+  public final void indexDictionary(Dictionary dict, IndexWriterConfig config, boolean fullMerge) throws IOException {
     synchronized (modifyCurrentIndexLock) {
       ensureOpen();
       final Directory dir = this.spellIndex;
-      final IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(Version.LUCENE_CURRENT, null).setRAMBufferSizeMB(ramMB));
-      ((TieredMergePolicy) writer.getConfig().getMergePolicy()).setMaxMergeAtOnce(mergeFactor);
+      final IndexWriter writer = new IndexWriter(dir, config);
       IndexSearcher indexSearcher = obtainSearcher();
       final List<TermsEnum> termsEnums = new ArrayList<TermsEnum>();
 
-      if (searcher.maxDoc() > 0) {
-        new ReaderUtil.Gather(searcher.getIndexReader()) {
+      final IndexReader reader = searcher.getIndexReader();
+      if (reader.maxDoc() > 0) {
+        new ReaderUtil.Gather(reader) {
           @Override
           protected void add(int base, IndexReader r) throws IOException {
             Terms terms = r.terms(F_WORD);
             if (terms != null)
-              termsEnums.add(terms.iterator());
+              termsEnums.add(terms.iterator(null));
           }
         }.run();
       }
@@ -521,7 +521,7 @@ public class SpellChecker implements java.io.Closeable {
   
           if (!isEmpty) {
             // we have a non-empty index, check if the term exists
-            currentTerm.copy(word);
+            currentTerm.copyChars(word);
             for (TermsEnum te : termsEnums) {
               if (te.seekExact(currentTerm, false)) {
                 continue terms;
@@ -536,34 +536,18 @@ public class SpellChecker implements java.io.Closeable {
       } finally {
         releaseSearcher(indexSearcher);
       }
+      if (fullMerge) {
+        writer.forceMerge(1);
+      }
       // close writer
-      if (optimize)
-        writer.optimize();
       writer.close();
+      // TODO: this isn't that great, maybe in the future SpellChecker should take
+      // IWC in its ctor / keep its writer open?
+      
       // also re-open the spell index to see our own changes when the next suggestion
       // is fetched:
       swapSearcher(dir);
     }
-  }
-
-  /**
-   * Indexes the data from the given {@link Dictionary}.
-   * @param dict the dictionary to index
-   * @param mergeFactor mergeFactor to use when indexing
-   * @param ramMB the max amount or memory in MB to use
-   * @throws IOException
-   */
-  public final void indexDictionary(Dictionary dict, int mergeFactor, int ramMB) throws IOException {
-    indexDictionary(dict, mergeFactor, ramMB, true);
-  }
-  
-  /**
-   * Indexes the data from the given {@link Dictionary}.
-   * @param dict the dictionary to index
-   * @throws IOException
-   */
-  public final void indexDictionary(Dictionary dict) throws IOException {
-    indexDictionary(dict, 300, (int)IndexWriterConfig.DEFAULT_RAM_BUFFER_SIZE_MB);
   }
 
   private static int getMin(int l) {
@@ -654,6 +638,7 @@ public class SpellChecker implements java.io.Closeable {
       ensureOpen();
       closed = true;
       if (searcher != null) {
+        searcher.getIndexReader().close();
         searcher.close();
       }
       searcher = null;
@@ -669,10 +654,12 @@ public class SpellChecker implements java.io.Closeable {
     final IndexSearcher indexSearcher = createSearcher(dir);
     synchronized (searcherLock) {
       if(closed){
+        indexSearcher.getIndexReader().close();
         indexSearcher.close();
         throw new AlreadyClosedException("Spellchecker has been closed");
       }
       if (searcher != null) {
+        searcher.getIndexReader().close();
         searcher.close();
       }
       // set the spellindex in the sync block - ensure consistency.
@@ -689,7 +676,7 @@ public class SpellChecker implements java.io.Closeable {
    */
   // for testing purposes
   IndexSearcher createSearcher(final Directory dir) throws IOException{
-    return new IndexSearcher(dir, true);
+    return new IndexSearcher(IndexReader.open(dir));
   }
   
   /**

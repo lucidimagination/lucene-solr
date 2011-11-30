@@ -24,7 +24,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
@@ -61,7 +60,6 @@ public class TestIndexWriterOnDiskFull extends LuceneTestCase {
         MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory());
         dir.setMaxSizeInBytes(diskFree);
         IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-        writer.setInfoStream(VERBOSE ? System.out : null);
         MergeScheduler ms = writer.getConfig().getMergeScheduler();
         if (ms instanceof ConcurrentMergeScheduler) {
           // This test intentionally produces exceptions
@@ -154,8 +152,10 @@ public class TestIndexWriterOnDiskFull extends LuceneTestCase {
     // them, the merged result can easily be larger than the
     // sum because the merged FST may use array encoding for
     // some arcs (which uses more space):
-    assumeFalse("This test cannot run with Memory codec", CodecProvider.getDefault().getFieldCodec("id").equals("Memory"));
-    assumeFalse("This test cannot run with Memory codec", CodecProvider.getDefault().getFieldCodec("content").equals("Memory"));
+
+    final String idFormat = _TestUtil.getPostingsFormat("id");
+    final String contentFormat = _TestUtil.getPostingsFormat("content");
+    assumeFalse("This test cannot run with Memory codec", idFormat.equals("Memory") || contentFormat.equals("Memory"));
 
     int START_COUNT = 57;
     int NUM_DIR = TEST_NIGHTLY ? 50 : 5;
@@ -179,7 +179,7 @@ public class TestIndexWriterOnDiskFull extends LuceneTestCase {
     }
     
     // Now, build a starting index that has START_COUNT docs.  We
-    // will then try to addIndexesNoOptimize into a copy of this:
+    // will then try to addIndexes into a copy of this:
     MockDirectoryWrapper startDir = newDirectory();
     IndexWriter writer = new IndexWriter(startDir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
     for(int j=0;j<START_COUNT;j++) {
@@ -233,7 +233,7 @@ public class TestIndexWriterOnDiskFull extends LuceneTestCase {
       
       String methodName;
       if (0 == method) {
-        methodName = "addIndexes(Directory[]) + optimize()";
+        methodName = "addIndexes(Directory[]) + forceMerge(1)";
       } else if (1 == method) {
         methodName = "addIndexes(IndexReader[])";
       } else {
@@ -249,7 +249,6 @@ public class TestIndexWriterOnDiskFull extends LuceneTestCase {
         MockDirectoryWrapper dir = new MockDirectoryWrapper(random, new RAMDirectory(startDir, newIOContext(random)));
         writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND).setMergePolicy(newLogMergePolicy()));
         IOException err = null;
-        writer.setInfoStream(VERBOSE ? System.out : null);
 
         MergeScheduler ms = writer.getConfig().getMergeScheduler();
         for(int x=0;x<2;x++) {
@@ -303,7 +302,7 @@ public class TestIndexWriterOnDiskFull extends LuceneTestCase {
             
             if (0 == method) {
               writer.addIndexes(dirs);
-              writer.optimize();
+              writer.forceMerge(1);
             } else if (1 == method) {
               IndexReader readers[] = new IndexReader[dirs.length];
               for(int i=0;i<dirs.length;i++) {

@@ -28,7 +28,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
@@ -52,22 +51,26 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       writer.close();
 
       Term searchTerm = new Term("content", "aaa");
-      IndexSearcher searcher = new IndexSearcher(dir, false);
+      IndexReader reader = IndexReader.open(dir, false);
+      IndexSearcher searcher = new IndexSearcher(reader);
       ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("first number of hits", 14, hits.length);
       searcher.close();
+      reader.close();
 
-      IndexReader reader = IndexReader.open(dir, true);
+      reader = IndexReader.open(dir, true);
 
       writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
       for(int i=0;i<3;i++) {
         for(int j=0;j<11;j++) {
           TestIndexWriter.addDoc(writer);
         }
-        searcher = new IndexSearcher(dir, false);
+        IndexReader r = IndexReader.open(dir, false);
+        searcher = new IndexSearcher(r);
         hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
         assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
         searcher.close();
+        r.close();
         assertTrue("reader should have still been current", reader.isCurrent());
       }
 
@@ -75,10 +78,12 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       writer.close();
       assertFalse("reader should not be current now", reader.isCurrent());
 
-      searcher = new IndexSearcher(dir, false);
+      IndexReader r = IndexReader.open(dir, false);
+      searcher = new IndexSearcher(r);
       hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("reader did not see changes after writer was closed", 47, hits.length);
       searcher.close();
+      r.close();
       reader.close();
       dir.close();
   }
@@ -100,10 +105,12 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.close();
 
     Term searchTerm = new Term("content", "aaa");
-    IndexSearcher searcher = new IndexSearcher(dir, false);
+    IndexReader reader = IndexReader.open(dir, false);
+    IndexSearcher searcher = new IndexSearcher(reader);
     ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("first number of hits", 14, hits.length);
     searcher.close();
+    reader.close();
 
     writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random))
       .setOpenMode(OpenMode.APPEND).setMaxBufferedDocs(10));
@@ -113,20 +120,24 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     // Delete all docs:
     writer.deleteDocuments(searchTerm);
 
-    searcher = new IndexSearcher(dir, false);
+    reader = IndexReader.open(dir, false);
+    searcher = new IndexSearcher(reader);
     hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
     searcher.close();
+    reader.close();
 
     // Now, close the writer:
     writer.rollback();
 
     TestIndexWriter.assertNoUnreferencedFiles(dir, "unreferenced files remain after rollback()");
 
-    searcher = new IndexSearcher(dir, false);
+    reader = IndexReader.open(dir, false);
+    searcher = new IndexSearcher(reader);
     hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("saw changes after writer.abort", 14, hits.length);
     searcher.close();
+    reader.close();
 
     // Now make sure we can re-open the index, add docs,
     // and all is good:
@@ -141,17 +152,21 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       for(int j=0;j<17;j++) {
         TestIndexWriter.addDoc(writer);
       }
-      searcher = new IndexSearcher(dir, false);
+      IndexReader r = IndexReader.open(dir, false);
+      searcher = new IndexSearcher(r);
       hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
       searcher.close();
+      r.close();
     }
 
     writer.close();
-    searcher = new IndexSearcher(dir, false);
+    IndexReader r = IndexReader.open(dir, false);
+    searcher = new IndexSearcher(r);
     hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("didn't see changes after close", 218, hits.length);
     searcher.close();
+    r.close();
 
     dir.close();
   }
@@ -169,8 +184,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     // them, the merged result can easily be larger than the
     // sum because the merged FST may use array encoding for
     // some arcs (which uses more space):
-    assumeFalse("This test cannot run with Memory codec", CodecProvider.getDefault().getFieldCodec("id").equals("Memory"));
-    assumeFalse("This test cannot run with Memory codec", CodecProvider.getDefault().getFieldCodec("content").equals("Memory"));
+
+    final String idFormat = _TestUtil.getPostingsFormat("id");
+    final String contentFormat = _TestUtil.getPostingsFormat("content");
+    assumeFalse("This test cannot run with Memory codec", idFormat.equals("Memory") || contentFormat.equals("Memory"));
     MockDirectoryWrapper dir = newDirectory();
     Analyzer analyzer;
     if (random.nextBoolean()) {
@@ -223,7 +240,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     }
     long midDiskUsage = dir.getMaxUsedSizeInBytes();
     dir.resetMaxUsedSizeInBytes();
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
     IndexReader.open(dir, true).close();
@@ -245,11 +262,11 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
 
   /*
-   * Verify that calling optimize when writer is open for
+   * Verify that calling forceMerge when writer is open for
    * "commit on close" works correctly both for rollback()
    * and close().
    */
-  public void testCommitOnCloseOptimize() throws IOException {
+  public void testCommitOnCloseForceMerge() throws IOException {
     MockDirectoryWrapper dir = newDirectory();
     // Must disable throwing exc on double-write: this
     // test uses IW.rollback which easily results in
@@ -267,51 +284,44 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.close();
 
     writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
-    writer.optimize();
-
-    if (VERBOSE) {
-      writer.setInfoStream(System.out);
-    }
+    writer.forceMerge(1);
 
     // Open a reader before closing (commiting) the writer:
     IndexReader reader = IndexReader.open(dir, true);
 
-    // Reader should see index as unoptimized at this
+    // Reader should see index as multi-seg at this
     // point:
-    assertFalse("Reader incorrectly sees that the index is optimized", reader.isOptimized());
+    assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().length > 1);
     reader.close();
 
     // Abort the writer:
     writer.rollback();
-    TestIndexWriter.assertNoUnreferencedFiles(dir, "aborted writer after optimize");
+    TestIndexWriter.assertNoUnreferencedFiles(dir, "aborted writer after forceMerge");
 
     // Open a reader after aborting writer:
     reader = IndexReader.open(dir, true);
 
-    // Reader should still see index as unoptimized:
-    assertFalse("Reader incorrectly sees that the index is optimized", reader.isOptimized());
+    // Reader should still see index as multi-segment
+    assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().length > 1);
     reader.close();
 
     if (VERBOSE) {
-      System.out.println("TEST: do real optimize");
+      System.out.println("TEST: do real full merge");
     }
     writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
-    if (VERBOSE) {
-      writer.setInfoStream(System.out);
-    }
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
     if (VERBOSE) {
       System.out.println("TEST: writer closed");
     }
-    TestIndexWriter.assertNoUnreferencedFiles(dir, "aborted writer after optimize");
+    TestIndexWriter.assertNoUnreferencedFiles(dir, "aborted writer after forceMerge");
 
     // Open a reader after aborting writer:
     reader = IndexReader.open(dir, true);
 
-    // Reader should still see index as unoptimized:
-    assertTrue("Reader incorrectly sees that the index is unoptimized", reader.isOptimized());
+    // Reader should see index as one segment
+    assertEquals("Reader incorrectly sees more than one segment", 1, reader.getSequentialSubReaders().length);
     reader.close();
     dir.close();
   }
@@ -663,7 +673,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     r.close();
 
     w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-    w.optimize();
+    w.forceMerge(1);
     w.close();
 
     assertEquals("test1", IndexReader.getCommitUserData(dir).get("label"));

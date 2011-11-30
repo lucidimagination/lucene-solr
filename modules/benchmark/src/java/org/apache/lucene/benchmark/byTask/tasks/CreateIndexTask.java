@@ -33,7 +33,7 @@ import org.apache.lucene.index.NoDeletionPolicy;
 import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.NoMergeScheduler;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.util.Version;
 
@@ -58,12 +58,12 @@ import java.io.PrintStream;
  * This task also supports a "writer.info.stream" property with the following
  * values:
  * <ul>
- * <li>SystemOut - sets {@link IndexWriter#setInfoStream(java.io.PrintStream)}
+ * <li>SystemOut - sets {@link IndexWriterConfig#setInfoStream(java.io.PrintStream)}
  * to {@link System#out}.
- * <li>SystemErr - sets {@link IndexWriter#setInfoStream(java.io.PrintStream)}
+ * <li>SystemErr - sets {@link IndexWriterConfig#setInfoStream(java.io.PrintStream)}
  * to {@link System#err}.
  * <li>&lt;file_name&gt; - attempts to create a file given that name and sets
- * {@link IndexWriter#setInfoStream(java.io.PrintStream)} to that file. If this
+ * {@link IndexWriterConfig#setInfoStream(java.io.PrintStream)} to that file. If this
  * denotes an invalid file name, or some error occurs, an exception will be
  * thrown.
  * </ul>
@@ -133,7 +133,12 @@ public class CreateIndexTask extends PerfTask {
 
     final String defaultCodec = config.get("default.codec", null);
     if (defaultCodec != null) {
-      CodecProvider.getDefault().setDefaultFieldCodec(defaultCodec);
+      try {
+        Class<? extends Codec> clazz = Class.forName(defaultCodec).asSubclass(Codec.class);
+        Codec.setDefault(clazz.newInstance());
+      } catch (Exception e) {
+        throw new RuntimeException("Couldn't instantiate Codec: " + defaultCodec, e);
+      }
     }
 
     final String mergePolicy = config.get("merge.policy",
@@ -170,18 +175,19 @@ public class CreateIndexTask extends PerfTask {
   }
   
   public static IndexWriter configureWriter(Config config, PerfRunData runData, OpenMode mode, IndexCommit commit) throws CorruptIndexException, LockObtainFailedException, IOException {
-    IndexWriter writer = new IndexWriter(runData.getDirectory(), createWriterConfig(config, runData, mode, commit));
+    IndexWriterConfig iwc = createWriterConfig(config, runData, mode, commit);
     String infoStreamVal = config.get("writer.info.stream", null);
     if (infoStreamVal != null) {
       if (infoStreamVal.equals("SystemOut")) {
-        writer.setInfoStream(System.out);
+        iwc.setInfoStream(System.out);
       } else if (infoStreamVal.equals("SystemErr")) {
-        writer.setInfoStream(System.err);
+        iwc.setInfoStream(System.err);
       } else {
         File f = new File(infoStreamVal).getAbsoluteFile();
-        writer.setInfoStream(new PrintStream(new BufferedOutputStream(new FileOutputStream(f))));
+        iwc.setInfoStream(new PrintStream(new BufferedOutputStream(new FileOutputStream(f))));
       }
     }
+    IndexWriter writer = new IndexWriter(runData.getDirectory(), iwc);
     return writer;
   }
 }

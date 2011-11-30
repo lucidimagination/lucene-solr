@@ -71,7 +71,7 @@ public class BlockTermsWriter extends FieldsConsumer {
   public BlockTermsWriter(TermsIndexWriterBase termsIndexWriter,
       SegmentWriteState state, PostingsWriterBase postingsWriter)
       throws IOException {
-    final String termsFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, TERMS_EXTENSION);
+    final String termsFileName = IndexFileNames.segmentFileName(state.segmentName, state.segmentSuffix, TERMS_EXTENSION);
     this.termsIndexWriter = termsIndexWriter;
     out = state.directory.createOutput(termsFileName, state.context);
     boolean success = false;
@@ -225,7 +225,7 @@ public class BlockTermsWriter extends FieldsConsumer {
         pendingTerms = newArray;
       }
       final TermEntry te = pendingTerms[pendingCount];
-      te.term.copy(text);
+      te.term.copyBytes(text);
       te.stats = stats;
 
       pendingCount++;
@@ -312,7 +312,7 @@ public class BlockTermsWriter extends FieldsConsumer {
       bytesWriter.reset();
 
       postingsWriter.flushTermsBlock(pendingCount, pendingCount);
-      lastPrevTerm.copy(pendingTerms[pendingCount-1].term);
+      lastPrevTerm.copyBytes(pendingTerms[pendingCount-1].term);
       pendingCount = 0;
     }
   }

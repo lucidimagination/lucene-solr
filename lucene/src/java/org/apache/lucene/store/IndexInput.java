@@ -26,7 +26,17 @@ import java.io.IOException;
  */
 public abstract class IndexInput extends DataInput implements Cloneable,Closeable {
 
-  protected byte[] copyBuf = null;
+  private final String resourceDescription;
+
+  /** resourceDescription should be a non-null, opaque string
+   *  describing this resource; it's returned from
+   *  {@link #toString}. */
+  protected IndexInput(String resourceDescription) {
+    if (resourceDescription == null) {
+      throw new IllegalArgumentException("resourceDescription must not be null");
+    }
+    this.resourceDescription = resourceDescription;
+  }
 
   /** Closes the stream to further operations. */
   public abstract void close() throws IOException;
@@ -59,9 +69,7 @@ public abstract class IndexInput extends DataInput implements Cloneable,Closeabl
   public void copyBytes(IndexOutput out, long numBytes) throws IOException {
     assert numBytes >= 0: "numBytes=" + numBytes;
 
-    if (copyBuf == null) {
-      copyBuf = new byte[BufferedIndexInput.BUFFER_SIZE];
-    }
+    byte copyBuf[] = new byte[BufferedIndexInput.BUFFER_SIZE];
 
     while (numBytes > 0) {
       final int toCopy = (int) (numBytes > copyBuf.length ? copyBuf.length : numBytes);
@@ -70,5 +78,9 @@ public abstract class IndexInput extends DataInput implements Cloneable,Closeabl
       numBytes -= toCopy;
     }
   }
-  
+
+  @Override
+  public String toString() {
+    return resourceDescription;
+  }
 }

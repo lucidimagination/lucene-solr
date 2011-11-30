@@ -26,6 +26,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.ArrayList;
 
+import org.apache.lucene.util.InfoStream;
+
 /**
  *  Merges segments of approximately equal size, subject to
  *  an allowed number of segments per tier.  This is similar
@@ -60,7 +62,7 @@ import java.util.ArrayList;
  *  <p><b>NOTE</b>: This policy always merges by byte size
  *  of the segments, always pro-rates by percent deletes,
  *  and does not apply any maximum segment size during
- *  optimize (unlike {@link LogByteSizeMergePolicy}).
+ *  forceMerge (unlike {@link LogByteSizeMergePolicy}).
  *
  *  @lucene.experimental
  */
@@ -79,14 +81,14 @@ public class TieredMergePolicy extends MergePolicy {
 
   private long floorSegmentBytes = 2*1024*1024L;
   private double segsPerTier = 10.0;
-  private double expungeDeletesPctAllowed = 10.0;
+  private double forceMergeDeletesPctAllowed = 10.0;
   private boolean useCompoundFile = true;
   private double noCFSRatio = 0.1;
   private double reclaimDeletesWeight = 2.0;
 
   /** Maximum number of segments to be merged at a time
    *  during "normal" merging.  For explicit merging (eg,
-   *  optimize or expungeDeletes was called), see {@link
+   *  forceMerge or forceMergeDeletes was called), see {@link
    *  #setMaxMergeAtOnceExplicit}.  Default is 10. */
   public TieredMergePolicy setMaxMergeAtOnce(int v) {
     if (v < 2) {
@@ -105,7 +107,7 @@ public class TieredMergePolicy extends MergePolicy {
   // if user calls IW.maybeMerge "explicitly"
 
   /** Maximum number of segments to be merged at a time,
-   *  during optimize or expungeDeletes. Default is 30. */
+   *  during forceMerge or forceMergeDeletes. Default is 30. */
   public TieredMergePolicy setMaxMergeAtOnceExplicit(int v) {
     if (v < 2) {
       throw new IllegalArgumentException("maxMergeAtOnceExplicit must be > 1 (got " + v + ")");
@@ -169,20 +171,20 @@ public class TieredMergePolicy extends MergePolicy {
     return floorSegmentBytes/1024*1024.;
   }
 
-  /** When expungeDeletes is called, we only merge away a
+  /** When forceMergeDeletes is called, we only merge away a
    *  segment if its delete percentage is over this
    *  threshold.  Default is 10%. */ 
-  public TieredMergePolicy setExpungeDeletesPctAllowed(double v) {
+  public TieredMergePolicy setForceMergeDeletesPctAllowed(double v) {
     if (v < 0.0 || v > 100.0) {
-      throw new IllegalArgumentException("expungeDeletesPctAllowed must be between 0.0 and 100.0 inclusive (got " + v + ")");
+      throw new IllegalArgumentException("forceMergeDeletesPctAllowed must be between 0.0 and 100.0 inclusive (got " + v + ")");
     }
-    expungeDeletesPctAllowed = v;
+    forceMergeDeletesPctAllowed = v;
     return this;
   }
 
-  /** @see #setExpungeDeletesPctAllowed */
-  public double getExpungeDeletesPctAllowed() {
-    return expungeDeletesPctAllowed;
+  /** @see #setForceMergeDeletesPctAllowed */
+  public double getForceMergeDeletesPctAllowed() {
+    return forceMergeDeletesPctAllowed;
   }
 
   /** Sets the allowed number of segments per tier.  Smaller
@@ -336,7 +338,7 @@ public class TieredMergePolicy extends MergePolicy {
       for(int idx = tooBigCount; idx<infosSorted.size(); idx++) {
         final SegmentInfo info = infosSorted.get(idx);
         if (merging.contains(info)) {
-          mergingBytes += info.sizeInBytes(true);
+          mergingBytes += info.sizeInBytes();
         } else if (!toBeMerged.contains(info)) {
           eligible.add(info);
         }
@@ -428,7 +430,7 @@ public class TieredMergePolicy extends MergePolicy {
       final long segBytes = size(info);
       totAfterMergeBytes += segBytes;
       totAfterMergeBytesFloored += floorSize(segBytes);
-      totBeforeMergeBytes += info.sizeInBytes(true);
+      totBeforeMergeBytes += info.sizeInBytes();
     }
 
     // Measure "skew" of the merge, which can range
@@ -476,23 +478,23 @@ public class TieredMergePolicy extends MergePolicy {
   }
 
   @Override
-  public MergeSpecification findMergesForOptimize(SegmentInfos infos, int maxSegmentCount, Map<SegmentInfo,Boolean> segmentsToOptimize) throws IOException {
+  public MergeSpecification findForcedMerges(SegmentInfos infos, int maxSegmentCount, Map<SegmentInfo,Boolean> segmentsToMerge) throws IOException {
     if (verbose()) {
-      message("findMergesForOptimize maxSegmentCount=" + maxSegmentCount + " infos=" + writer.get().segString(infos) + " segmentsToOptimize=" + segmentsToOptimize);
+      message("findForcedMerges maxSegmentCount=" + maxSegmentCount + " infos=" + writer.get().segString(infos) + " segmentsToMerge=" + segmentsToMerge);
     }
 
     List<SegmentInfo> eligible = new ArrayList<SegmentInfo>();
-    boolean optimizeMergeRunning = false;
+    boolean forceMergeRunning = false;
     final Collection<SegmentInfo> merging = writer.get().getMergingSegments();
     boolean segmentIsOriginal = false;
     for(SegmentInfo info : infos) {
-      final Boolean isOriginal = segmentsToOptimize.get(info);
+      final Boolean isOriginal = segmentsToMerge.get(info);
       if (isOriginal != null) {
         segmentIsOriginal = isOriginal;
         if (!merging.contains(info)) {
           eligible.add(info);
         } else {
-          optimizeMergeRunning = true;
+          forceMergeRunning = true;
         }
       }
     }
@@ -502,9 +504,9 @@ public class TieredMergePolicy extends MergePolicy {
     }
 
     if ((maxSegmentCount > 1 && eligible.size() <= maxSegmentCount) ||
-        (maxSegmentCount == 1 && eligible.size() == 1 && (!segmentIsOriginal || isOptimized(eligible.get(0))))) {
+        (maxSegmentCount == 1 && eligible.size() == 1 && (!segmentIsOriginal || isMerged(eligible.get(0))))) {
       if (verbose()) {
-        message("already optimized");
+        message("already merged");
       }
       return null;
     }
@@ -513,7 +515,7 @@ public class TieredMergePolicy extends MergePolicy {
 
     if (verbose()) {
       message("eligible=" + eligible);
-      message("optimizeMergeRunning=" + optimizeMergeRunning);
+      message("forceMergeRunning=" + forceMergeRunning);
     }
 
     int end = eligible.size();
@@ -533,7 +535,7 @@ public class TieredMergePolicy extends MergePolicy {
       end -= maxMergeAtOnceExplicit;
     }
 
-    if (spec == null && !optimizeMergeRunning) {
+    if (spec == null && !forceMergeRunning) {
       // Do final merge
       final int numToMerge = end - maxSegmentCount + 1;
       final OneMerge merge = new OneMerge(eligible.subList(end-numToMerge, end));
@@ -548,16 +550,16 @@ public class TieredMergePolicy extends MergePolicy {
   }
 
   @Override
-  public MergeSpecification findMergesToExpungeDeletes(SegmentInfos infos)
+  public MergeSpecification findForcedDeletesMerges(SegmentInfos infos)
       throws CorruptIndexException, IOException {
     if (verbose()) {
-      message("findMergesToExpungeDeletes infos=" + writer.get().segString(infos) + " expungeDeletesPctAllowed=" + expungeDeletesPctAllowed);
+      message("findForcedDeletesMerges infos=" + writer.get().segString(infos) + " forceMergeDeletesPctAllowed=" + forceMergeDeletesPctAllowed);
     }
     final List<SegmentInfo> eligible = new ArrayList<SegmentInfo>();
     final Collection<SegmentInfo> merging = writer.get().getMergingSegments();
     for(SegmentInfo info : infos) {
       double pctDeletes = 100.*((double) writer.get().numDeletedDocs(info))/info.docCount;
-      if (pctDeletes > expungeDeletesPctAllowed && !merging.contains(info)) {
+      if (pctDeletes > forceMergeDeletesPctAllowed && !merging.contains(info)) {
         eligible.add(info);
       }
     }
@@ -577,8 +579,8 @@ public class TieredMergePolicy extends MergePolicy {
 
     while(start < eligible.size()) {
       // Don't enforce max merged size here: app is explicitly
-      // calling expungeDeletes, and knows this may take a
-      // long time / produce big segments (like optimize):
+      // calling forceMergeDeletes, and knows this may take a
+      // long time / produce big segments (like forceMerge):
       final int end = Math.min(start + maxMergeAtOnceExplicit, eligible.size());
       if (spec == null) {
         spec = new MergeSpecification();
@@ -617,7 +619,7 @@ public class TieredMergePolicy extends MergePolicy {
   public void close() {
   }
 
-  private boolean isOptimized(SegmentInfo info)
+  private boolean isMerged(SegmentInfo info)
     throws IOException {
     IndexWriter w = writer.get();
     assert w != null;
@@ -630,7 +632,7 @@ public class TieredMergePolicy extends MergePolicy {
 
   // Segment size in bytes, pro-rated by % deleted
   private long size(SegmentInfo info) throws IOException {
-    final long byteSize = info.sizeInBytes(true);    
+    final long byteSize = info.sizeInBytes();    
     final int delCount = writer.get().numDeletedDocs(info);
     final double delRatio = (info.docCount <= 0 ? 0.0f : ((double)delCount / (double)info.docCount));    
     assert delRatio <= 1.0;
@@ -648,7 +650,10 @@ public class TieredMergePolicy extends MergePolicy {
 
   private void message(String message) {
     if (verbose()) {
-      writer.get().message("TMP: " + message);
+      final InfoStream infoStream = writer.get().infoStream;
+      if (infoStream != null) {
+        infoStream.message("TMP", message);
+      }
     }
   }
 
@@ -659,7 +664,7 @@ public class TieredMergePolicy extends MergePolicy {
     sb.append("maxMergeAtOnceExplicit=").append(maxMergeAtOnceExplicit).append(", ");
     sb.append("maxMergedSegmentMB=").append(maxMergedSegmentBytes/1024/1024.).append(", ");
     sb.append("floorSegmentMB=").append(floorSegmentBytes/1024/1024.).append(", ");
-    sb.append("expungeDeletesPctAllowed=").append(expungeDeletesPctAllowed).append(", ");
+    sb.append("forceMergeDeletesPctAllowed=").append(forceMergeDeletesPctAllowed).append(", ");
     sb.append("segmentsPerTier=").append(segsPerTier).append(", ");
     sb.append("useCompoundFile=").append(useCompoundFile).append(", ");
     sb.append("noCFSRatio=").append(noCFSRatio);

@@ -30,12 +30,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.index.codecs.FieldsReader;
+import org.apache.lucene.index.codecs.StoredFieldsReader;
 import org.apache.lucene.index.codecs.PerDocValues;
+import org.apache.lucene.index.codecs.TermVectorsReader;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.BitVector;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CloseableThreadLocal;
 import org.apache.lucene.util.StringHelper;
 
@@ -47,7 +47,7 @@ public class SegmentReader extends IndexReader implements Cloneable {
 
   private SegmentInfo si;
   private final ReaderContext readerContext = new AtomicReaderContext(this);
-  CloseableThreadLocal<FieldsReader> fieldsReaderLocal = new FieldsReaderLocal();
+  CloseableThreadLocal<StoredFieldsReader> fieldsReaderLocal = new FieldsReaderLocal();
   CloseableThreadLocal<TermVectorsReader> termVectorsLocal = new CloseableThreadLocal<TermVectorsReader>();
 
   volatile BitVector liveDocs;
@@ -74,9 +74,9 @@ public class SegmentReader extends IndexReader implements Cloneable {
   /**
    * Sets the initial value 
    */
-  private class FieldsReaderLocal extends CloseableThreadLocal<FieldsReader> {
+  private class FieldsReaderLocal extends CloseableThreadLocal<StoredFieldsReader> {
     @Override
-    protected FieldsReader initialValue() {
+    protected StoredFieldsReader initialValue() {
       return core.getFieldsReaderOrig().clone();
     }
   }
@@ -368,7 +368,8 @@ public class SegmentReader extends IndexReader implements Cloneable {
     hasChanges = false;
   }
 
-  FieldsReader getFieldsReader() {
+  /** @lucene.internal */
+  public StoredFieldsReader getFieldsReader() {
     return fieldsReaderLocal.get();
   }
 
@@ -469,17 +470,6 @@ public class SegmentReader extends IndexReader implements Cloneable {
   public Fields fields() throws IOException {
     ensureOpen();
     return core.fields;
-  }
-
-  @Override
-  public int docFreq(String field, BytesRef term) throws IOException {
-    ensureOpen();
-    Terms terms = core.fields.terms(field);
-    if (terms != null) {
-      return terms.docFreq(term);
-    } else {
-      return 0;
-    }
   }
 
   @Override
@@ -658,19 +648,16 @@ public class SegmentReader extends IndexReader implements Cloneable {
   /**
    * Create a clone from the initial TermVectorsReader and store it in the ThreadLocal.
    * @return TermVectorsReader
+   * @lucene.internal
    */
-  TermVectorsReader getTermVectorsReader() {
+  public TermVectorsReader getTermVectorsReader() {
     TermVectorsReader tvReader = termVectorsLocal.get();
     if (tvReader == null) {
       TermVectorsReader orig = core.getTermVectorsReaderOrig();
       if (orig == null) {
         return null;
       } else {
-        try {
-          tvReader = (TermVectorsReader) orig.clone();
-        } catch (CloneNotSupportedException cnse) {
-          return null;
-        }
+        tvReader = orig.clone();
       }
       termVectorsLocal.set(tvReader);
     }
@@ -688,67 +675,15 @@ public class SegmentReader extends IndexReader implements Cloneable {
    * @throws IOException
    */
   @Override
-  public TermFreqVector getTermFreqVector(int docNumber, String field) throws IOException {
-    // Check if this field is invalid or has no stored term vector
+  public Fields getTermVectors(int docID) throws IOException {
     ensureOpen();
-    FieldInfo fi = core.fieldInfos.fieldInfo(field);
-    if (fi == null || !fi.storeTermVector) 
-      return null;
-    
-    TermVectorsReader termVectorsReader = getTermVectorsReader();
-    if (termVectorsReader == null)
-      return null;
-    
-    return termVectorsReader.get(docNumber, field);
-  }
-
-
-  @Override
-  public void getTermFreqVector(int docNumber, String field, TermVectorMapper mapper) throws IOException {
-    ensureOpen();
-    FieldInfo fi = core.fieldInfos.fieldInfo(field);
-    if (fi == null || !fi.storeTermVector)
-      return;
-
     TermVectorsReader termVectorsReader = getTermVectorsReader();
     if (termVectorsReader == null) {
-      return;
-    }
-
-
-    termVectorsReader.get(docNumber, field, mapper);
-  }
-
-
-  @Override
-  public void getTermFreqVector(int docNumber, TermVectorMapper mapper) throws IOException {
-    ensureOpen();
-
-    TermVectorsReader termVectorsReader = getTermVectorsReader();
-    if (termVectorsReader == null)
-      return;
-
-    termVectorsReader.get(docNumber, mapper);
-  }
-
-  /** Return an array of term frequency vectors for the specified document.
-   *  The array contains a vector for each vectorized field in the document.
-   *  Each vector vector contains term numbers and frequencies for all terms
-   *  in a given vectorized field.
-   *  If no such fields existed, the method returns null.
-   * @throws IOException
-   */
-  @Override
-  public TermFreqVector[] getTermFreqVectors(int docNumber) throws IOException {
-    ensureOpen();
-    
-    TermVectorsReader termVectorsReader = getTermVectorsReader();
-    if (termVectorsReader == null)
       return null;
-    
-    return termVectorsReader.get(docNumber);
+    }
+    return termVectorsReader.get(docID);
   }
-  
+
   /** {@inheritDoc} */
   @Override
   public String toString() {

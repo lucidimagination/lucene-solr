@@ -28,8 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Random;
-import java.util.Set;
-import java.util.SortedSet;
 import org.junit.Assume;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.BinaryField;
@@ -39,7 +37,7 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader.FieldOption;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldCache;
@@ -95,18 +93,18 @@ public class TestIndexReader extends LuceneTestCase
       IndexReader r3 = IndexReader.openIfChanged(r2);
       assertNotNull(r3);
       assertFalse(c.equals(r3.getIndexCommit()));
-      assertFalse(r2.getIndexCommit().isOptimized());
+      assertFalse(r2.getIndexCommit().getSegmentCount() == 1 && !r2.hasDeletions());
       r3.close();
 
       writer = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random))
         .setOpenMode(OpenMode.APPEND));
-      writer.optimize();
+      writer.forceMerge(1);
       writer.close();
 
       r3 = IndexReader.openIfChanged(r2);
       assertNotNull(r3);
-      assertTrue(r3.getIndexCommit().isOptimized());
+      assertEquals(1, r3.getIndexCommit().getSegmentCount());
       r2.close();
       r3.close();
       d.close();
@@ -314,19 +312,6 @@ public class TestIndexReader extends LuceneTestCase
         writer.addDocument(doc);
     }
     writer.close();
-    IndexReader reader = IndexReader.open(d, false);
-    FieldSortedTermVectorMapper mapper = new FieldSortedTermVectorMapper(new TermVectorEntryFreqSortedComparator());
-    reader.getTermFreqVector(0, mapper);
-    Map<String,SortedSet<TermVectorEntry>> map = mapper.getFieldToTerms();
-    assertTrue("map is null and it shouldn't be", map != null);
-    assertTrue("map Size: " + map.size() + " is not: " + 4, map.size() == 4);
-    Set<TermVectorEntry> set = map.get("termvector");
-    for (Iterator<TermVectorEntry> iterator = set.iterator(); iterator.hasNext();) {
-      TermVectorEntry entry =  iterator.next();
-      assertTrue("entry is null and it shouldn't be", entry != null);
-      if (VERBOSE) System.out.println("Entry: " + entry);
-    }
-    reader.close();
     d.close();
   }
 
@@ -381,11 +366,11 @@ public class TestIndexReader extends LuceneTestCase
           assertEquals(bin[i], bytesRef.bytes[i + bytesRef.offset]);
         }
         reader.close();
-        // force optimize
+        // force merge
 
 
         writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND).setMergePolicy(newLogMergePolicy()));
-        writer.optimize();
+        writer.forceMerge(1);
         writer.close();
         reader = IndexReader.open(dir, false);
         doc2 = reader.document(reader.maxDoc() - 1);
@@ -721,7 +706,7 @@ public class TestIndexReader extends LuceneTestCase
       // [incorrectly] hit a "docs out of order"
       // IllegalStateException because above out-of-bounds
       // deleteDocument corrupted the index:
-      writer.optimize();
+      writer.forceMerge(1);
       writer.close();
       if (!gotException) {
         fail("delete of out-of-bounds doc number failed to hit exception");
@@ -846,7 +831,9 @@ public class TestIndexReader extends LuceneTestCase
       assertEquals("IndexReaders have different values for numDocs.", index1.numDocs(), index2.numDocs());
       assertEquals("IndexReaders have different values for maxDoc.", index1.maxDoc(), index2.maxDoc());
       assertEquals("Only one IndexReader has deletions.", index1.hasDeletions(), index2.hasDeletions());
-      assertEquals("Only one index is optimized.", index1.isOptimized(), index2.isOptimized());
+      if (!(index1 instanceof ParallelReader)) {
+        assertEquals("Single segment test differs.", index1.getSequentialSubReaders().length == 1, index2.getSequentialSubReaders().length == 1);
+      }
       
       // check field names
       Collection<String> fields1 = index1.getFieldNames(FieldOption.ALL);
@@ -912,8 +899,17 @@ public class TestIndexReader extends LuceneTestCase
       Bits liveDocs = MultiFields.getLiveDocs(index1);
       while((field1=fenum1.next()) != null) {
         assertEquals("Different fields", field1, fenum2.next());
-        TermsEnum enum1 = fenum1.terms();
-        TermsEnum enum2 = fenum2.terms();
+        Terms terms1 = fenum1.terms();
+        if (terms1 == null) {
+          assertNull(fenum2.terms());
+          continue;
+        }
+        TermsEnum enum1 = terms1.iterator(null);
+
+        Terms terms2 = fenum2.terms();
+        assertNotNull(terms2);
+        TermsEnum enum2 = terms2.iterator(null);
+
         while(enum1.next() != null) {
           assertEquals("Different terms", enum1.term(), enum2.next());
           DocsAndPositionsEnum tp1 = enum1.docsAndPositions(liveDocs, null);
@@ -947,7 +943,7 @@ public class TestIndexReader extends LuceneTestCase
       writer.close();
 
       SegmentInfos sis = new SegmentInfos();
-      sis.read(d, CodecProvider.getDefault());
+      sis.read(d);
       IndexReader r = IndexReader.open(d, false);
       IndexCommit c = r.getIndexCommit();
 
@@ -970,19 +966,19 @@ public class TestIndexReader extends LuceneTestCase
       IndexReader r2 = IndexReader.openIfChanged(r);
       assertNotNull(r2);
       assertFalse(c.equals(r2.getIndexCommit()));
-      assertFalse(r2.getIndexCommit().isOptimized());
+      assertFalse(r2.getIndexCommit().getSegmentCount() == 1);
       r2.close();
 
       writer = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random))
         .setOpenMode(OpenMode.APPEND));
-      writer.optimize();
+      writer.forceMerge(1);
       writer.close();
 
       r2 = IndexReader.openIfChanged(r);
       assertNotNull(r2);
       assertNull(IndexReader.openIfChanged(r2));
-      assertTrue(r2.getIndexCommit().isOptimized());
+      assertEquals(1, r2.getIndexCommit().getSegmentCount());
 
       r.close();
       r2.close();
@@ -1032,7 +1028,7 @@ public class TestIndexReader extends LuceneTestCase
       writer = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random))
         .setOpenMode(OpenMode.APPEND));
-      writer.optimize();
+      writer.forceMerge(1);
       writer.close();
 
       // Make sure reopen to a single segment is still readonly:
@@ -1141,7 +1137,7 @@ public class TestIndexReader extends LuceneTestCase
 
     // Open reader
     IndexReader r = getOnlySegmentReader(IndexReader.open(dir, false));
-    final int[] ints = FieldCache.DEFAULT.getInts(r, "number");
+    final int[] ints = FieldCache.DEFAULT.getInts(r, "number", false);
     assertEquals(1, ints.length);
     assertEquals(17, ints[0]);
 
@@ -1149,7 +1145,7 @@ public class TestIndexReader extends LuceneTestCase
     IndexReader r2 = (IndexReader) r.clone();
     r.close();
     assertTrue(r2 != r);
-    final int[] ints2 = FieldCache.DEFAULT.getInts(r2, "number");
+    final int[] ints2 = FieldCache.DEFAULT.getInts(r2, "number", false);
     r2.close();
 
     assertEquals(1, ints2.length);
@@ -1177,7 +1173,7 @@ public class TestIndexReader extends LuceneTestCase
     // Open reader1
     IndexReader r = IndexReader.open(dir, false);
     IndexReader r1 = getOnlySegmentReader(r);
-    final int[] ints = FieldCache.DEFAULT.getInts(r1, "number");
+    final int[] ints = FieldCache.DEFAULT.getInts(r1, "number", false);
     assertEquals(1, ints.length);
     assertEquals(17, ints[0]);
 
@@ -1190,7 +1186,7 @@ public class TestIndexReader extends LuceneTestCase
     assertNotNull(r2);
     r.close();
     IndexReader sub0 = r2.getSequentialSubReaders()[0];
-    final int[] ints2 = FieldCache.DEFAULT.getInts(sub0, "number");
+    final int[] ints2 = FieldCache.DEFAULT.getInts(sub0, "number", false);
     r2.close();
     assertTrue(ints == ints2);
 
@@ -1231,7 +1227,7 @@ public class TestIndexReader extends LuceneTestCase
   // LUCENE-1609: don't load terms index
   public void testNoTermsIndex() throws Throwable {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodecProvider(_TestUtil.alwaysCodec("Standard")));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodec(_TestUtil.alwaysPostingsFormat(new Lucene40PostingsFormat())));
     Document doc = new Document();
     doc.add(newField("field", "a b c d e f g h i j k l m n o p q r s t u v w x y z", TextField.TYPE_UNSTORED));
     doc.add(newField("number", "0 1 2 3 4 5 6 7 8 9", TextField.TYPE_UNSTORED));
@@ -1251,7 +1247,7 @@ public class TestIndexReader extends LuceneTestCase
     writer = new IndexWriter(
         dir,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
-            setCodecProvider(_TestUtil.alwaysCodec("Standard")).
+            setCodec(_TestUtil.alwaysPostingsFormat(new Lucene40PostingsFormat())).
             setMergePolicy(newLogMergePolicy(10))
     );
     writer.addDocument(doc);
@@ -1344,13 +1340,12 @@ public class TestIndexReader extends LuceneTestCase
     writer.addDocument(d);
     IndexReader r = writer.getReader();
     writer.close();
-    Terms terms = MultiFields.getTerms(r, "f");
     try {
       // Make sure codec impls totalTermFreq (eg PreFlex doesn't)
-      Assume.assumeTrue(terms.totalTermFreq(new BytesRef("b")) != -1);
-      assertEquals(1, terms.totalTermFreq(new BytesRef("b")));
-      assertEquals(2, terms.totalTermFreq(new BytesRef("a")));
-      assertEquals(1, terms.totalTermFreq(new BytesRef("b")));
+      Assume.assumeTrue(MultiFields.totalTermFreq(r, "f", new BytesRef("b")) != -1);
+      assertEquals(1, MultiFields.totalTermFreq(r, "f", new BytesRef("b")));
+      assertEquals(2, MultiFields.totalTermFreq(r, "f", new BytesRef("a")));
+      assertEquals(1, MultiFields.totalTermFreq(r, "f", new BytesRef("b")));
     } finally {
       r.close();
       dir.close();
@@ -1362,7 +1357,6 @@ public class TestIndexReader extends LuceneTestCase
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
     ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(3);
-    writer.setInfoStream(VERBOSE ? System.out : null);
     writer.addDocument(new Document());
     writer.commit();
     writer.addDocument(new Document());

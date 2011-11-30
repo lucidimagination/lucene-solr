@@ -18,21 +18,18 @@ package org.apache.lucene.index;
  */
 
 import java.io.FileNotFoundException;
-import java.io.FilenameFilter;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NoSuchDirectoryException;
 import org.apache.lucene.util.CollectionUtil;
+import org.apache.lucene.util.InfoStream;
 
 /*
  * This class keeps track of each SegmentInfos instance that
@@ -97,7 +94,7 @@ final class IndexFileDeleter {
   /* Commits that the IndexDeletionPolicy have decided to delete: */
   private List<CommitPoint> commitsToDelete = new ArrayList<CommitPoint>();
 
-  private PrintStream infoStream;
+  private final InfoStream infoStream;
   private Directory directory;
   private IndexDeletionPolicy policy;
 
@@ -110,19 +107,6 @@ final class IndexFileDeleter {
 
   // Used only for assert
   private final IndexWriter writer;
-
-  void setInfoStream(PrintStream infoStream) {
-    this.infoStream = infoStream;
-    if (infoStream != null) {
-      message("setInfoStream deletionPolicy=" + policy);
-    }
-  }
-
-  private void message(String message) {
-    infoStream.println("IFD [" + new Date() + "; " + Thread.currentThread().getName() + "]: " + message);
-  }
-
-  private final FilenameFilter indexFilenameFilter;
 
   // called only from assert
   private boolean locked() {
@@ -138,14 +122,14 @@ final class IndexFileDeleter {
    * @throws IOException if there is a low-level IO error
    */
   public IndexFileDeleter(Directory directory, IndexDeletionPolicy policy, SegmentInfos segmentInfos,
-                          PrintStream infoStream, CodecProvider codecs, IndexWriter writer) throws CorruptIndexException, IOException {
+                          InfoStream infoStream, IndexWriter writer) throws CorruptIndexException, IOException {
     this.infoStream = infoStream;
     this.writer = writer;
 
     final String currentSegmentsFile = segmentInfos.getCurrentSegmentFileName();
 
     if (infoStream != null) {
-      message("init: current segments file is \"" + currentSegmentsFile + "\"; deletionPolicy=" + policy);
+      infoStream.message("IFD", "init: current segments file is \"" + currentSegmentsFile + "\"; deletionPolicy=" + policy);
     }
 
     this.policy = policy;
@@ -154,7 +138,6 @@ final class IndexFileDeleter {
     // First pass: walk the files and initialize our ref
     // counts:
     long currentGen = segmentInfos.getGeneration();
-    indexFilenameFilter = new IndexFileNameFilter(codecs);
 
     CommitPoint currentCommitPoint = null;
     String[] files = null;
@@ -167,7 +150,7 @@ final class IndexFileDeleter {
 
     for (String fileName : files) {
 
-      if ((indexFilenameFilter.accept(null, fileName)) && !fileName.endsWith("write.lock") && !fileName.equals(IndexFileNames.SEGMENTS_GEN)) {
+      if ((IndexFileNameFilter.INSTANCE.accept(null, fileName)) && !fileName.endsWith("write.lock") && !fileName.equals(IndexFileNames.SEGMENTS_GEN)) {
 
         // Add this file to refCounts with initial count 0:
         getRefCount(fileName);
@@ -178,11 +161,11 @@ final class IndexFileDeleter {
           // it's valid (<= the max gen).  Load it, then
           // incref all files it refers to:
           if (infoStream != null) {
-            message("init: load commit \"" + fileName + "\"");
+            infoStream.message("IFD", "init: load commit \"" + fileName + "\"");
           }
-          SegmentInfos sis = new SegmentInfos(codecs);
+          SegmentInfos sis = new SegmentInfos();
           try {
-            sis.read(directory, fileName, codecs);
+            sis.read(directory, fileName);
           } catch (FileNotFoundException e) {
             // LUCENE-948: on NFS (and maybe others), if
             // you have writers switching back and forth
@@ -192,7 +175,7 @@ final class IndexFileDeleter {
             // doesn't.  So, we catch this and handle it
             // as if the file does not exist
             if (infoStream != null) {
-              message("init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
+              infoStream.message("IFD", "init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
             }
             sis = null;
           } catch (IOException e) {
@@ -223,7 +206,7 @@ final class IndexFileDeleter {
                 refresh(segmentInfo.name);
                 sis = null;
                 if (infoStream != null) {
-                  message("init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
+                  infoStream.message("IFD", "init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
                 }
               }
             }
@@ -253,14 +236,14 @@ final class IndexFileDeleter {
       // listing was stale (eg when index accessed via NFS
       // client with stale directory listing cache).  So we
       // try now to explicitly open this commit point:
-      SegmentInfos sis = new SegmentInfos(codecs);
+      SegmentInfos sis = new SegmentInfos();
       try {
-        sis.read(directory, currentSegmentsFile, codecs);
+        sis.read(directory, currentSegmentsFile);
       } catch (IOException e) {
         throw new CorruptIndexException("failed to locate current segments_N file");
       }
       if (infoStream != null) {
-        message("forced open of current segments file " + segmentInfos.getCurrentSegmentFileName());
+        infoStream.message("IFD", "forced open of current segments file " + segmentInfos.getCurrentSegmentFileName());
       }
       currentCommitPoint = new CommitPoint(commitsToDelete, directory, sis);
       commits.add(currentCommitPoint);
@@ -278,7 +261,7 @@ final class IndexFileDeleter {
       final String fileName = entry.getKey();
       if (0 == rc.count) {
         if (infoStream != null) {
-          message("init: removing unreferenced file \"" + fileName + "\"");
+          infoStream.message("IFD", "init: removing unreferenced file \"" + fileName + "\"");
         }
         deleteFile(fileName);
       }
@@ -318,7 +301,7 @@ final class IndexFileDeleter {
       for(int i=0;i<size;i++) {
         CommitPoint commit = commitsToDelete.get(i);
         if (infoStream != null) {
-          message("deleteCommits: now decRef commit \"" + commit.getSegmentsFileName() + "\"");
+          infoStream.message("IFD", "deleteCommits: now decRef commit \"" + commit.getSegmentsFileName() + "\"");
         }
         for (final String file : commit.files) {
           decRef(file);
@@ -373,12 +356,12 @@ final class IndexFileDeleter {
     for(int i=0;i<files.length;i++) {
       String fileName = files[i];
       if ((segmentName == null || fileName.startsWith(segmentPrefix1) || fileName.startsWith(segmentPrefix2)) &&
-          indexFilenameFilter.accept(null, fileName) &&
+          IndexFileNameFilter.INSTANCE.accept(null, fileName) &&
           !refCounts.containsKey(fileName) &&
           !fileName.equals(IndexFileNames.SEGMENTS_GEN)) {
         // Unreferenced file, so remove it
         if (infoStream != null) {
-          message("refresh [prefix=" + segmentName + "]: removing newly created unreferenced file \"" + fileName + "\"");
+          infoStream.message("IFD", "refresh [prefix=" + segmentName + "]: removing newly created unreferenced file \"" + fileName + "\"");
         }
         deleteFile(fileName);
       }
@@ -420,7 +403,7 @@ final class IndexFileDeleter {
   void revisitPolicy() throws IOException {
     assert locked();
     if (infoStream != null) {
-      message("now revisitPolicy");
+      infoStream.message("IFD", "now revisitPolicy");
     }
 
     if (commits.size() > 0) {
@@ -437,7 +420,7 @@ final class IndexFileDeleter {
       int size = oldDeletable.size();
       for(int i=0;i<size;i++) {
         if (infoStream != null) {
-          message("delete pending file " + oldDeletable.get(i));
+          infoStream.message("IFD", "delete pending file " + oldDeletable.get(i));
         }
         deleteFile(oldDeletable.get(i));
       }
@@ -468,7 +451,7 @@ final class IndexFileDeleter {
     assert locked();
 
     if (infoStream != null) {
-      message("now checkpoint \"" + segmentInfos.toString(directory) + "\" [" + segmentInfos.size() + " segments " + "; isCommit = " + isCommit + "]");
+      infoStream.message("IFD", "now checkpoint \"" + segmentInfos.toString(directory) + "\" [" + segmentInfos.size() + " segments " + "; isCommit = " + isCommit + "]");
     }
 
     // Try again now to delete any previously un-deletable
@@ -519,7 +502,7 @@ final class IndexFileDeleter {
     assert locked();
     RefCount rc = getRefCount(fileName);
     if (infoStream != null && VERBOSE_REF_COUNTS) {
-      message("  IncRef \"" + fileName + "\": pre-incr count is " + rc.count);
+      infoStream.message("IFD", "  IncRef \"" + fileName + "\": pre-incr count is " + rc.count);
     }
     rc.IncRef();
   }
@@ -535,7 +518,7 @@ final class IndexFileDeleter {
     assert locked();
     RefCount rc = getRefCount(fileName);
     if (infoStream != null && VERBOSE_REF_COUNTS) {
-      message("  DecRef \"" + fileName + "\": pre-decr count is " + rc.count);
+      infoStream.message("IFD", "  DecRef \"" + fileName + "\": pre-decr count is " + rc.count);
     }
     if (0 == rc.DecRef()) {
       // This file is no longer referenced by any past
@@ -587,7 +570,7 @@ final class IndexFileDeleter {
     for (final String fileName: files) {
       if (!refCounts.containsKey(fileName)) {
         if (infoStream != null) {
-          message("delete new file \"" + fileName + "\"");
+          infoStream.message("IFD", "delete new file \"" + fileName + "\"");
         }
         deleteFile(fileName);
       }
@@ -599,7 +582,7 @@ final class IndexFileDeleter {
     assert locked();
     try {
       if (infoStream != null) {
-        message("delete \"" + fileName + "\"");
+        infoStream.message("IFD", "delete \"" + fileName + "\"");
       }
       directory.deleteFile(fileName);
     } catch (IOException e) {			  // if delete fails
@@ -613,7 +596,7 @@ final class IndexFileDeleter {
         // the file for subsequent deletion.
 
         if (infoStream != null) {
-          message("unable to remove file \"" + fileName + "\": " + e.toString() + "; Will re-try later.");
+          infoStream.message("IFD", "unable to remove file \"" + fileName + "\": " + e.toString() + "; Will re-try later.");
         }
         if (deletable == null) {
           deletable = new ArrayList<String>();
@@ -668,8 +651,8 @@ final class IndexFileDeleter {
     Collection<CommitPoint> commitsToDelete;
     long version;
     long generation;
-    final boolean isOptimized;
     final Map<String,String> userData;
+    private final int segmentCount;
 
     public CommitPoint(Collection<CommitPoint> commitsToDelete, Directory directory, SegmentInfos segmentInfos) throws IOException {
       this.directory = directory;
@@ -679,7 +662,7 @@ final class IndexFileDeleter {
       version = segmentInfos.getVersion();
       generation = segmentInfos.getGeneration();
       files = Collections.unmodifiableCollection(segmentInfos.files(directory, true));
-      isOptimized = segmentInfos.size() == 1 && !segmentInfos.info(0).hasDeletions();
+      segmentCount = segmentInfos.size();
     }
 
     @Override
@@ -688,8 +671,8 @@ final class IndexFileDeleter {
     }
 
     @Override
-    public boolean isOptimized() {
-      return isOptimized;
+    public int getSegmentCount() {
+      return segmentCount;
     }
 
     @Override

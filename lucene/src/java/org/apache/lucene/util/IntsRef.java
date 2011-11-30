@@ -22,7 +22,7 @@ package org.apache.lucene.util;
  *  {@link #EMPTY_INTS} if necessary.
  *
  *  @lucene.internal */
-public final class IntsRef implements Comparable<IntsRef> {
+public final class IntsRef implements Comparable<IntsRef>, Cloneable {
 
   public static final int[] EMPTY_INTS = new int[0];
 
@@ -31,6 +31,7 @@ public final class IntsRef implements Comparable<IntsRef> {
   public int length;
 
   public IntsRef() {
+    ints = EMPTY_INTS;
   }
 
   public IntsRef(int capacity) {
@@ -38,18 +39,15 @@ public final class IntsRef implements Comparable<IntsRef> {
   }
 
   public IntsRef(int[] ints, int offset, int length) {
+    assert ints != null;
     this.ints = ints;
     this.offset = offset;
     this.length = length;
   }
 
-  public IntsRef(IntsRef other) {
-    copy(other);
-  }
-
   @Override
-  public Object clone() {
-    return new IntsRef(this);
+  public IntsRef clone() {
+    return new IntsRef(ints, offset, length);
   }
 
   @Override
@@ -65,7 +63,13 @@ public final class IntsRef implements Comparable<IntsRef> {
   
   @Override
   public boolean equals(Object other) {
-    return this.intsEquals((IntsRef) other);
+    if (other == null) {
+      return false;
+    }
+    if (other instanceof IntsRef) {
+      return this.intsEquals((IntsRef) other);
+    }
+    return false;
   }
 
   public boolean intsEquals(IntsRef other) {
@@ -109,7 +113,7 @@ public final class IntsRef implements Comparable<IntsRef> {
     return this.length - other.length;
   }
 
-  public void copy(IntsRef other) {
+  public void copyInts(IntsRef other) {
     if (ints == null) {
       ints = new int[other.length];
     } else {
@@ -139,5 +143,18 @@ public final class IntsRef implements Comparable<IntsRef> {
     }
     sb.append(']');
     return sb.toString();
+  }
+  
+  /**
+   * Creates a new IntsRef that points to a copy of the ints from 
+   * <code>other</code>
+   * <p>
+   * The returned IntsRef will have a length of other.length
+   * and an offset of zero.
+   */
+  public static IntsRef deepCopyOf(IntsRef other) {
+    IntsRef clone = new IntsRef();
+    clone.copyInts(other);
+    return clone;
   }
 }

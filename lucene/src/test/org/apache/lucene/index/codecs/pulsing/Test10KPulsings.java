@@ -35,12 +35,10 @@ import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
-import org.junit.Ignore;
 
 /**
  * Pulses 10k terms/docs, 
@@ -51,13 +49,13 @@ import org.junit.Ignore;
 public class Test10KPulsings extends LuceneTestCase {
   public void test10kPulsed() throws Exception {
     // we always run this test with pulsing codec.
-    CodecProvider cp = _TestUtil.alwaysCodec(new PulsingCodec(1));
+    Codec cp = _TestUtil.alwaysPostingsFormat(new Pulsing40PostingsFormat(1));
     
     File f = _TestUtil.getTempDir("10kpulsed");
     MockDirectoryWrapper dir = newFSDirectory(f);
     dir.setCheckIndexOnClose(false); // we do this ourselves explicitly
     RandomIndexWriter iw = new RandomIndexWriter(random, dir, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodecProvider(cp));
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodec(cp));
     
     Document document = new Document();
     FieldType ft = new FieldType(TextField.TYPE_STORED);
@@ -81,7 +79,7 @@ public class Test10KPulsings extends LuceneTestCase {
     IndexReader ir = iw.getReader();
     iw.close();
 
-    TermsEnum te = MultiFields.getTerms(ir, "field").iterator();
+    TermsEnum te = MultiFields.getTerms(ir, "field").iterator(null);
     DocsEnum de = null;
     
     for (int i = 0; i < 10050; i++) {
@@ -101,13 +99,14 @@ public class Test10KPulsings extends LuceneTestCase {
    */
   public void test10kNotPulsed() throws Exception {
     // we always run this test with pulsing codec.
-    CodecProvider cp = _TestUtil.alwaysCodec(new PulsingCodec(1));
+    int freqCutoff = _TestUtil.nextInt(random, 1, 10);
+    Codec cp = _TestUtil.alwaysPostingsFormat(new Pulsing40PostingsFormat(freqCutoff));
     
     File f = _TestUtil.getTempDir("10knotpulsed");
     MockDirectoryWrapper dir = newFSDirectory(f);
     dir.setCheckIndexOnClose(false); // we do this ourselves explicitly
     RandomIndexWriter iw = new RandomIndexWriter(random, dir, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodecProvider(cp));
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setCodec(cp));
     
     Document document = new Document();
     FieldType ft = new FieldType(TextField.TYPE_STORED);
@@ -123,10 +122,7 @@ public class Test10KPulsings extends LuceneTestCase {
     
     NumberFormat df = new DecimalFormat("00000", new DecimalFormatSymbols(Locale.ENGLISH));
 
-    Codec codec = cp.lookup(cp.getFieldCodec("field"));
-    assertTrue(codec instanceof PulsingCodec);
-    PulsingCodec pulsing = (PulsingCodec) codec;
-    final int freq = pulsing.getFreqCutoff() + 1;
+    final int freq = freqCutoff + 1;
     
     for (int i = 0; i < 10050; i++) {
       StringBuilder sb = new StringBuilder();
@@ -141,7 +137,7 @@ public class Test10KPulsings extends LuceneTestCase {
     IndexReader ir = iw.getReader();
     iw.close();
 
-    TermsEnum te = MultiFields.getTerms(ir, "field").iterator();
+    TermsEnum te = MultiFields.getTerms(ir, "field").iterator(null);
     DocsEnum de = null;
     
     for (int i = 0; i < 10050; i++) {

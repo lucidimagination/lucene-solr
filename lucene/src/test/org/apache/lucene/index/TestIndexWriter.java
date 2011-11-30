@@ -19,17 +19,18 @@ package org.apache.lucene.index;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -41,6 +42,8 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.IndexSearcher;
@@ -55,9 +58,11 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockFactory;
+import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.NoLockFactory;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.store.SimpleFSLockFactory;
 import org.apache.lucene.store.SingleInstanceLockFactory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
@@ -101,10 +106,10 @@ public class TestIndexWriter extends LuceneTestCase {
         assertEquals(60, reader.numDocs());
         reader.close();
 
-        // optimize the index and check that the new doc count is correct
+        // merge the index down and check that the new doc count is correct
         writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
         assertEquals(60, writer.numDocs());
-        writer.optimize();
+        writer.forceMerge(1);
         assertEquals(60, writer.maxDoc());
         assertEquals(60, writer.numDocs());
         writer.close();
@@ -143,8 +148,6 @@ public class TestIndexWriter extends LuceneTestCase {
 
     public static void assertNoUnreferencedFiles(Directory dir, String message) throws IOException {
       String[] startFiles = dir.listAll();
-      SegmentInfos infos = new SegmentInfos();
-      infos.read(dir);
       new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random))).rollback();
       String[] endFiles = dir.listAll();
 
@@ -449,10 +452,12 @@ public class TestIndexWriter extends LuceneTestCase {
       }
       writer.close();
 
-      IndexSearcher searcher = new IndexSearcher(dir, false);
+      IndexReader reader = IndexReader.open(dir, false);
+      IndexSearcher searcher = new IndexSearcher(reader);
       ScoreDoc[] hits = searcher.search(new TermQuery(new Term("field", "aaa")), null, 1000).scoreDocs;
       assertEquals(300, hits.length);
       searcher.close();
+      reader.close();
 
       dir.close();
     }
@@ -479,10 +484,12 @@ public class TestIndexWriter extends LuceneTestCase {
 
       Term searchTerm = new Term("field", "aaa");
 
-      IndexSearcher searcher = new IndexSearcher(dir, false);
+      IndexReader reader = IndexReader.open(dir, false);
+      IndexSearcher searcher = new IndexSearcher(reader);
       ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals(10, hits.length);
       searcher.close();
+      reader.close();
 
       writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random))
         .setOpenMode(OpenMode.CREATE).setMaxBufferedDocs(10));
@@ -500,12 +507,14 @@ public class TestIndexWriter extends LuceneTestCase {
         writer.addDocument(doc);
       }
       writer.close();
-      searcher = new IndexSearcher(dir, false);
+      reader = IndexReader.open(dir, false);
+      searcher = new IndexSearcher(reader);
       hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals(27, hits.length);
       searcher.close();
+      reader.close();
 
-      IndexReader reader = IndexReader.open(dir, true);
+      reader = IndexReader.open(dir, true);
       reader.close();
 
       dir.close();
@@ -575,15 +584,16 @@ public class TestIndexWriter extends LuceneTestCase {
       }
       writer.close();
       Term searchTerm = new Term("content", "aaa");
-      IndexSearcher searcher = new IndexSearcher(dir, false);
+      IndexReader reader = IndexReader.open(dir, false);
+      IndexSearcher searcher = new IndexSearcher(reader);
       ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("did not get right number of hits", 100, hits.length);
       searcher.close();
+      reader.close();
 
       writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random))
         .setOpenMode(OpenMode.CREATE));
       writer.close();
-      searcher.close();
       dir.close();
     }
 
@@ -618,7 +628,6 @@ public class TestIndexWriter extends LuceneTestCase {
     public void testEmptyDocAfterFlushingRealDoc() throws IOException {
       Directory dir = newDirectory();
       IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-      writer.setInfoStream(VERBOSE ? System.out : null);
       Document doc = new Document();
       FieldType customType = new FieldType(TextField.TYPE_STORED);
       customType.setStoreTermVectors(true);
@@ -693,7 +702,6 @@ public class TestIndexWriter extends LuceneTestCase {
         System.out.println("TEST: iter=" + i);
       }
       IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(2).setMergePolicy(newLogMergePolicy()));
-      writer.setInfoStream(VERBOSE ? System.out : null);
       //LogMergePolicy lmp = (LogMergePolicy) writer.getConfig().getMergePolicy();
       //lmp.setMergeFactor(2);
       //lmp.setUseCompoundFile(false);
@@ -728,7 +736,7 @@ public class TestIndexWriter extends LuceneTestCase {
         writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
         //LogMergePolicy lmp2 = (LogMergePolicy) writer.getConfig().getMergePolicy();
         //lmp2.setUseCompoundFile(false);
-        writer.optimize();
+        writer.forceMerge(1);
         writer.close();
       }
     }
@@ -761,7 +769,6 @@ public class TestIndexWriter extends LuceneTestCase {
 
       IndexWriter writer = new IndexWriter(directory, conf);
       ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(100);          
-      writer.setInfoStream(VERBOSE ? System.out : null);
 
       for(int iter=0;iter<10;iter++) {
         if (VERBOSE) {
@@ -826,7 +833,6 @@ public class TestIndexWriter extends LuceneTestCase {
 
         // Reopen
         writer = new IndexWriter(directory, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND).setMergePolicy(newLogMergePolicy()));
-        writer.setInfoStream(VERBOSE ? System.out : null);
       }
       writer.close();
     }
@@ -879,7 +885,7 @@ public class TestIndexWriter extends LuceneTestCase {
     writer.close();
     IndexReader reader = IndexReader.open(dir, true);
     IndexReader subreader = getOnlySegmentReader(reader);
-    TermsEnum te = subreader.fields().terms("").iterator();
+    TermsEnum te = subreader.fields().terms("").iterator(null);
     assertEquals(new BytesRef("a"), te.next());
     assertEquals(new BytesRef("b"), te.next());
     assertEquals(new BytesRef("c"), te.next());
@@ -900,7 +906,7 @@ public class TestIndexWriter extends LuceneTestCase {
     writer.close();
     IndexReader reader = IndexReader.open(dir, true);
     IndexReader subreader = getOnlySegmentReader(reader);
-    TermsEnum te = subreader.fields().terms("").iterator();
+    TermsEnum te = subreader.fields().terms("").iterator(null);
     assertEquals(new BytesRef(""), te.next());
     assertEquals(new BytesRef("a"), te.next());
     assertEquals(new BytesRef("b"), te.next());
@@ -986,7 +992,8 @@ public class TestIndexWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.commit();
 
-    IndexSearcher s = new IndexSearcher(dir, false);
+    IndexReader r = IndexReader.open(dir, false);
+    IndexSearcher s = new IndexSearcher(r);
     PhraseQuery pq = new PhraseQuery();
     pq.add(new Term("field", "a"));
     pq.add(new Term("field", "b"));
@@ -1009,6 +1016,7 @@ public class TestIndexWriter extends LuceneTestCase {
     w.close();
 
     s.close();
+    r.close();
     dir.close();
   }
 
@@ -1063,13 +1071,23 @@ public class TestIndexWriter extends LuceneTestCase {
     w.close();
 
     IndexReader r = IndexReader.open(dir, true);
-    TermPositionVector tpv = ((TermPositionVector) r.getTermFreqVector(0, "field"));
-    int[] poss = tpv.getTermPositions(0);
-    assertEquals(1, poss.length);
-    assertEquals(100, poss[0]);
-    poss = tpv.getTermPositions(1);
-    assertEquals(1, poss.length);
-    assertEquals(101, poss[0]);
+    Terms tpv = r.getTermVectors(0).terms("field");
+    TermsEnum termsEnum = tpv.iterator(null);
+    assertNotNull(termsEnum.next());
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
+    assertNotNull(dpEnum);
+    assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertEquals(1, dpEnum.freq());
+    assertEquals(100, dpEnum.nextPosition());
+
+    assertNotNull(termsEnum.next());
+    dpEnum = termsEnum.docsAndPositions(null, dpEnum);
+    assertNotNull(dpEnum);
+    assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertEquals(1, dpEnum.freq());
+    assertEquals(101, dpEnum.nextPosition());
+    assertNull(termsEnum.next());
+
     r.close();
     dir.close();
   }
@@ -1154,7 +1172,6 @@ public class TestIndexWriter extends LuceneTestCase {
             IndexWriterConfig conf = newIndexWriterConfig(
                                                           TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(2);
             w = new IndexWriter(dir, conf);
-            w.setInfoStream(VERBOSE ? System.out : null);
 
             Document doc = new Document();
             doc.add(newField("field", "some text contents", storedTextType));
@@ -1300,7 +1317,7 @@ public class TestIndexWriter extends LuceneTestCase {
 
     w.addDocument(doc);
     w.commit();
-    w.optimize();   // force segment merge.
+    w.forceMerge(1);   // force segment merge.
     w.close();
 
     IndexReader ir = IndexReader.open(dir, true);
@@ -1373,7 +1390,6 @@ public class TestIndexWriter extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random)));
     ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
-    writer.setInfoStream(new PrintStream(bos));
     writer.addDocument(new Document());
     writer.close();
 
@@ -1396,7 +1412,7 @@ public class TestIndexWriter extends LuceneTestCase {
     w.addDocument(d);
 
     IndexReader r = w.getReader().getSequentialSubReaders()[0];
-    TermsEnum t = r.fields().terms("field").iterator();
+    TermsEnum t = r.fields().terms("field").iterator(null);
     int count = 0;
     while(t.next() != null) {
       final DocsEnum docs = t.docs(null, null);
@@ -1438,7 +1454,7 @@ public class TestIndexWriter extends LuceneTestCase {
       List<String> files = Arrays.asList(dir.listAll());
       assertTrue(files.contains("_0.cfs"));
       w.addDocument(doc);
-      w.optimize();
+      w.forceMerge(1);
       if (iter == 1) {
         w.commit();
       }
@@ -1449,10 +1465,10 @@ public class TestIndexWriter extends LuceneTestCase {
 
       // NOTE: here we rely on "Windows" behavior, ie, even
       // though IW wanted to delete _0.cfs since it was
-      // optimized away, because we have a reader open
+      // merged away, because we have a reader open
       // against this file, it should still be here:
       assertTrue(files.contains("_0.cfs"));
-      // optimize created this
+      // forceMerge created this
       //assertTrue(files.contains("_2.cfs"));
       w.deleteUnusedFiles();
 
@@ -1532,6 +1548,8 @@ public class TestIndexWriter extends LuceneTestCase {
   }
 
   public void testEmptyDirRollback() throws Exception {
+    // TODO: generalize this test
+    assumeFalse("test makes assumptions about file counts", Codec.getDefault() instanceof SimpleTextCodec);
     // Tests that if IW is created over an empty Directory, some documents are
     // indexed, flushed (but not committed) and then IW rolls back, then no
     // files are left in the Directory.
@@ -1540,8 +1558,6 @@ public class TestIndexWriter extends LuceneTestCase {
         TEST_VERSION_CURRENT, new MockAnalyzer(random))
                                          .setMaxBufferedDocs(2).setMergePolicy(newLogMergePolicy()));
     String[] files = dir.listAll();
-
-    writer.setInfoStream(VERBOSE ? System.out : null);
 
     // Creating over empty dir should not create any files,
     // or, at most the write.lock file
@@ -1610,11 +1626,7 @@ public class TestIndexWriter extends LuceneTestCase {
     Directory dir = newDirectory();
     Random rand = random;
     RandomIndexWriter w = new RandomIndexWriter(rand, dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(_TestUtil.nextInt(rand, 5, 20)));
-    //w.w.setInfoStream(System.out);
     //w.w.setUseCompoundFile(false);
-    if (VERBOSE) {
-      w.w.setInfoStream(System.out);
-    }
     final int docCount = atLeast(200);
     final int fieldCount = _TestUtil.nextInt(rand, 1, 5);
 
@@ -1700,7 +1712,7 @@ public class TestIndexWriter extends LuceneTestCase {
         }
         s.close();
         r.close();
-        w.optimize();
+        w.forceMerge(1);
       }
     }
     w.close();
@@ -1738,13 +1750,16 @@ public class TestIndexWriter extends LuceneTestCase {
     _TestUtil.checkIndex(dir);
 
     assertNoUnreferencedFiles(dir, "no tv files");
-    String[] files = dir.listAll();
-    for(String file : files) {
-      assertTrue(!file.endsWith(IndexFileNames.VECTORS_FIELDS_EXTENSION));
-      assertTrue(!file.endsWith(IndexFileNames.VECTORS_INDEX_EXTENSION));
-      assertTrue(!file.endsWith(IndexFileNames.VECTORS_DOCUMENTS_EXTENSION));
+    IndexReader r0 = IndexReader.open(dir);
+    for (IndexReader r : r0.getSequentialSubReaders()) {
+      SegmentInfo s = ((SegmentReader) r).getSegmentInfo();
+      assertFalse(s.getHasVectors());
+      Set<String> files = new HashSet<String>();
+      s.getCodec().termVectorsFormat().files(dir, s, files);
+      assertTrue(files.isEmpty());
     }
-
+    
+    r0.close();
     dir.close();
   }
 
@@ -1935,6 +1950,24 @@ public class TestIndexWriter extends LuceneTestCase {
     long version3 = r.getVersion();
     r.close();
     assert(version3 > version2);
+    d.close();
+  }
+
+  public void testWhetherDeleteAllDeletesWriteLock() throws Exception {
+    Directory d = newFSDirectory(_TestUtil.getTempDir("TestIndexWriter.testWhetherDeleteAllDeletesWriteLock"));
+    // Must use SimpleFSLockFactory... NativeFSLockFactory
+    // somehow "knows" a lock is held against write.lock
+    // even if you remove that file:
+    d.setLockFactory(new SimpleFSLockFactory());
+    RandomIndexWriter w1 = new RandomIndexWriter(random, d);
+    w1.deleteAll();
+    try {
+      new RandomIndexWriter(random, d);
+      fail("should not be able to create another writer");
+    } catch (LockObtainFailedException lofe) {
+      // expected
+    }
+    w1.close();
     d.close();
   }
 }

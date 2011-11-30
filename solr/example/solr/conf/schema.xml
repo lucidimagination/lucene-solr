@@ -74,8 +74,11 @@
     <!--Binary data type. The data should be sent/retrieved in as Base64 encoded Strings -->
     <fieldtype name="binary" class="solr.BinaryField"/>
 
-    <!--  sortMissingLast and sortMissingFirst attributes are optional attributes
-          that control how fields are sorted when values are missing.
+    <!-- sortMissingLast and sortMissingFirst attributes are optional attributes are
+         currently supported on types that are sorted internally as strings
+         and on numeric types.
+	     This includes "string","boolean", and, as of 3.5 (and 4.x),
+	     int, float, long, date, double, including the "Trie" variants.
        - If sortMissingLast="true", then a sort on this field will cause documents
          without the field to come after documents with the field,
          regardless of the requested sort order (asc or desc).
@@ -141,7 +144,8 @@
     <!--
       Note:
       These should only be used for compatibility with existing indexes (created with lucene or older Solr versions).
-
+      Use Trie based fields instead. As of Solr 3.5 and 4.x, Trie based fields support sortMissingFirst/Last
+      
       Plain numeric field types that store and index the text
       value verbatim (and hence don't correctly support range queries, since the
       lexicographic ordering isn't equal to the numeric ordering)
@@ -423,6 +427,7 @@
       </analyzer>
     </fieldType>
 
+
     <!-- since fields of this type are by default not stored or indexed,
          any data added to them will be ignored outright.  --> 
     <fieldtype name="ignored" stored="false" indexed="false" multiValued="true" class="solr.StrField" />
@@ -547,6 +552,7 @@
    <dynamicField name="*_l"  type="long"   indexed="true"  stored="true"/>
    <dynamicField name="*_t"  type="text_general"    indexed="true"  stored="true"/>
    <dynamicField name="*_txt" type="text_general"    indexed="true"  stored="true" multiValued="true"/>
+   <dynamicField name="*_en"  type="text_en"    indexed="true"  stored="true" multiValued="true" />
    <dynamicField name="*_b"  type="boolean" indexed="true"  stored="true"/>
    <dynamicField name="*_f"  type="float"  indexed="true"  stored="true"/>
    <dynamicField name="*_d"  type="double" indexed="true"  stored="true"/>

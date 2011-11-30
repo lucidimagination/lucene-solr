@@ -17,9 +17,10 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.IOException;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -29,11 +30,20 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.index.codecs.mocksep.MockSepCodec;
-import org.apache.lucene.index.codecs.pulsing.PulsingCodec;
-import org.apache.lucene.index.codecs.simpletext.SimpleTextCodec;
-import org.apache.lucene.index.codecs.standard.StandardCodec;
+import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.DefaultDocValuesFormat;
+import org.apache.lucene.index.codecs.DefaultFieldInfosFormat;
+import org.apache.lucene.index.codecs.DefaultStoredFieldsFormat;
+import org.apache.lucene.index.codecs.DefaultSegmentInfosFormat;
+import org.apache.lucene.index.codecs.DefaultTermVectorsFormat;
+import org.apache.lucene.index.codecs.DocValuesFormat;
+import org.apache.lucene.index.codecs.FieldInfosFormat;
+import org.apache.lucene.index.codecs.StoredFieldsFormat;
+import org.apache.lucene.index.codecs.PostingsFormat;
+import org.apache.lucene.index.codecs.SegmentInfosFormat;
+import org.apache.lucene.index.codecs.TermVectorsFormat;
+import org.apache.lucene.index.codecs.lucene40.Lucene40Codec;
+import org.apache.lucene.index.codecs.pulsing.Pulsing40PostingsFormat;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.store.AlreadyClosedException;
@@ -57,7 +67,6 @@ public class TestAddIndexes extends LuceneTestCase {
     writer = newWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random))
         .setOpenMode(OpenMode.CREATE));
-    writer.setInfoStream(VERBOSE ? System.out : null);
     // add 100 documents
     addDocs(writer, 100);
     assertEquals(100, writer.maxDoc());
@@ -103,7 +112,7 @@ public class TestAddIndexes extends LuceneTestCase {
     assertEquals(40, writer.maxDoc());
     writer.close();
 
-    // test doc count before segments are merged/index is optimized
+    // test doc count before segments are merged
     writer = newWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
     assertEquals(190, writer.maxDoc());
     writer.addIndexes(aux3);
@@ -117,9 +126,9 @@ public class TestAddIndexes extends LuceneTestCase {
 
     verifyTermDocs(dir, new Term("content", "bbb"), 50);
 
-    // now optimize it.
+    // now fully merge it.
     writer = newWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
     // make sure the new index is correct
@@ -159,7 +168,6 @@ public class TestAddIndexes extends LuceneTestCase {
 
     setUpDirs(dir, aux);
     IndexWriter writer = newWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
-    writer.setInfoStream(VERBOSE ? System.out : null);
     writer.addIndexes(aux);
 
     // Adds 10 docs, then replaces them with another 10
@@ -176,7 +184,7 @@ public class TestAddIndexes extends LuceneTestCase {
     q.add(new Term("content", "14"));
     writer.deleteDocuments(q);
 
-    writer.optimize();
+    writer.forceMerge(1);
     writer.commit();
 
     verifyNumDocs(dir, 1039);
@@ -214,7 +222,7 @@ public class TestAddIndexes extends LuceneTestCase {
     q.add(new Term("content", "14"));
     writer.deleteDocuments(q);
 
-    writer.optimize();
+    writer.forceMerge(1);
     writer.commit();
 
     verifyNumDocs(dir, 1039);
@@ -252,7 +260,7 @@ public class TestAddIndexes extends LuceneTestCase {
 
     writer.addIndexes(aux);
 
-    writer.optimize();
+    writer.forceMerge(1);
     writer.commit();
 
     verifyNumDocs(dir, 1039);
@@ -453,7 +461,6 @@ public class TestAddIndexes extends LuceneTestCase {
             setMaxBufferedDocs(100).
             setMergePolicy(newLogMergePolicy(10))
     );
-    writer.setInfoStream(VERBOSE ? System.out : null);
     writer.addIndexes(aux);
     assertEquals(30, writer.maxDoc());
     assertEquals(3, writer.getSegmentCount());
@@ -643,7 +650,6 @@ public class TestAddIndexes extends LuceneTestCase {
 
       dir2 = newDirectory();
       writer2 = new IndexWriter(dir2, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-      writer2.setInfoStream(VERBOSE ? System.out : null);
       writer2.commit();
       
 
@@ -721,10 +727,10 @@ public class TestAddIndexes extends LuceneTestCase {
       switch(j%5) {
       case 0:
         if (VERBOSE) {
-          System.out.println(Thread.currentThread().getName() + ": TEST: addIndexes(Dir[]) then optimize");
+          System.out.println(Thread.currentThread().getName() + ": TEST: addIndexes(Dir[]) then full merge");
         }
         writer2.addIndexes(dirs);
-        writer2.optimize();
+        writer2.forceMerge(1);
         break;
       case 1:
         if (VERBOSE) {
@@ -761,7 +767,6 @@ public class TestAddIndexes extends LuceneTestCase {
     final int NUM_ITER = TEST_NIGHTLY ? 15 : 5;
     final int NUM_COPY = 3;
     CommitAndAddIndexes c = new CommitAndAddIndexes(NUM_COPY);
-    c.writer2.setInfoStream(VERBOSE ? System.out : null);
     c.launchThreads(NUM_ITER);
 
     for(int i=0;i<100;i++)
@@ -827,10 +832,10 @@ public class TestAddIndexes extends LuceneTestCase {
       switch(j%5) {
       case 0:
         if (VERBOSE) {
-          System.out.println("TEST: " + Thread.currentThread().getName() + ": addIndexes + optimize");
+          System.out.println("TEST: " + Thread.currentThread().getName() + ": addIndexes + full merge");
         }
         writer2.addIndexes(dirs);
-        writer2.optimize();
+        writer2.forceMerge(1);
         break;
       case 1:
         if (VERBOSE) {
@@ -846,9 +851,9 @@ public class TestAddIndexes extends LuceneTestCase {
         break;
       case 3:
         if (VERBOSE) {
-          System.out.println("TEST: " + Thread.currentThread().getName() + ": optimize");
+          System.out.println("TEST: " + Thread.currentThread().getName() + ": full merge");
         }
-        writer2.optimize();
+        writer2.forceMerge(1);
         break;
       case 4:
         if (VERBOSE) {
@@ -886,9 +891,6 @@ public class TestAddIndexes extends LuceneTestCase {
 
     final int NUM_COPY = 50;
     CommitAndAddIndexes3 c = new CommitAndAddIndexes3(NUM_COPY);
-    if (VERBOSE) {
-      c.writer2.setInfoStream(System.out);
-    }
     c.launchThreads(-1);
 
     Thread.sleep(_TestUtil.nextInt(random, 10, 500));
@@ -975,30 +977,29 @@ public class TestAddIndexes extends LuceneTestCase {
     }
   }
 
-  public void testSimpleCaseCustomCodecProvider() throws IOException {
+  public void testSimpleCaseCustomCodec() throws IOException {
     // main directory
     Directory dir = newDirectory();
     // two auxiliary directories
     Directory aux = newDirectory();
     Directory aux2 = newDirectory();
-    CodecProvider provider = new MockCodecProvider();
+    Codec codec = new CustomPerFieldCodec();
     IndexWriter writer = null;
 
     writer = newWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random)).setOpenMode(OpenMode.CREATE).setCodecProvider(
-        provider));
+        new MockAnalyzer(random)).setOpenMode(OpenMode.CREATE).setCodec(codec));
     // add 100 documents
     addDocs3(writer, 100);
     assertEquals(100, writer.maxDoc());
     writer.commit();
     writer.close();
-    _TestUtil.checkIndex(dir, provider);
+    _TestUtil.checkIndex(dir);
 
     writer = newWriter(
         aux,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
             setOpenMode(OpenMode.CREATE).
-            setCodecProvider(provider).
+            setCodec(codec).
             setMaxBufferedDocs(10).
             setMergePolicy(newLogMergePolicy(false))
     );
@@ -1012,7 +1013,7 @@ public class TestAddIndexes extends LuceneTestCase {
         aux2,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
             setOpenMode(OpenMode.CREATE).
-            setCodecProvider(provider)
+            setCodec(codec)
     );
     // add 40 documents in compound files
     addDocs2(writer, 50);
@@ -1025,7 +1026,7 @@ public class TestAddIndexes extends LuceneTestCase {
         dir,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
             setOpenMode(OpenMode.APPEND).
-            setCodecProvider(provider)
+            setCodec(codec)
     );
     assertEquals(100, writer.maxDoc());
     writer.addIndexes(aux, aux2);
@@ -1037,18 +1038,23 @@ public class TestAddIndexes extends LuceneTestCase {
     aux2.close();
   }
 
-  public static class MockCodecProvider extends CodecProvider {
-    public MockCodecProvider() {
-      StandardCodec standardCodec = new StandardCodec();
-      SimpleTextCodec simpleTextCodec = new SimpleTextCodec();
-      MockSepCodec mockSepCodec = new MockSepCodec();
-      register(standardCodec);
-      register(mockSepCodec);
-      register(simpleTextCodec);
-      setFieldCodec("id", simpleTextCodec.name);
-      setFieldCodec("content", mockSepCodec.name);
+  private static final class CustomPerFieldCodec extends Lucene40Codec {
+    private final PostingsFormat simpleTextFormat = PostingsFormat.forName("SimpleText");
+    private final PostingsFormat defaultFormat = PostingsFormat.forName("Lucene40");
+    private final PostingsFormat mockSepFormat = PostingsFormat.forName("MockSep");
+
+    @Override
+    public PostingsFormat getPostingsFormatForField(String field) {
+      if (field.equals("id")) {
+        return simpleTextFormat;
+      } else if (field.equals("content")) {
+        return mockSepFormat;
+      } else {
+        return defaultFormat;
+      }
     }
   }
+
 
   // LUCENE-2790: tests that the non CFS files were deleted by addIndexes
   public void testNonCFSLeftovers() throws Exception {
@@ -1066,7 +1072,7 @@ public class TestAddIndexes extends LuceneTestCase {
     
     IndexReader[] readers = new IndexReader[] { IndexReader.open(dirs[0]), IndexReader.open(dirs[1]) };
     
-    Directory dir = new RAMDirectory();
+    Directory dir = new MockDirectoryWrapper(random, new RAMDirectory());
     IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy());
     LogMergePolicy lmp = (LogMergePolicy) conf.getMergePolicy();
     lmp.setUseCompoundFile(true);
@@ -1074,80 +1080,60 @@ public class TestAddIndexes extends LuceneTestCase {
     IndexWriter w3 = new IndexWriter(dir, conf);
     w3.addIndexes(readers);
     w3.close();
-    // we should now see segments_X, segments.gen,_Y.cfs,_Y.cfe, _Z.fnx
-    assertEquals("Only one compound segment should exist", 5, dir.listAll().length);
+    // we should now see segments_X,
+    // segments.gen,_Y.cfs,_Y.cfe, _Z.fnx
+    assertEquals("Only one compound segment should exist, but got: " + Arrays.toString(dir.listAll()), 5, dir.listAll().length);
+    dir.close();
   }
   
-  // LUCENE-3126: tests that if a non-CFS segment is copied, it is converted to
-  // a CFS, given MP preferences
-  public void testCopyIntoCFS() throws Exception {
-    // create an index, no CFS (so we can assert that existing segments are not affected)
-    Directory target = newDirectory();
-    LogMergePolicy lmp = newLogMergePolicy(false);
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, null).setMergePolicy(lmp);
-    IndexWriter w = new IndexWriter(target, conf);
-    w.addDocument(new Document());
-    w.commit();
-    assertFalse(w.segmentInfos.info(0).getUseCompoundFile());
+  private static class UnRegisteredCodec extends Codec {
+    public UnRegisteredCodec() {
+      super("NotRegistered");
+    }
 
-    // prepare second index, no-CFS too + .del file + separate norms file
-    Directory src = newDirectory();
-    LogMergePolicy lmp2 = newLogMergePolicy(false);
-    IndexWriterConfig conf2 = newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random)).setMergePolicy(lmp2);
-    IndexWriter w2 = new IndexWriter(src, conf2);
-    Document doc = new Document();
-    doc.add(new Field("c", "some text", TextField.TYPE_STORED));
-    w2.addDocument(doc);
-    doc = new Document();
-    doc.add(new StringField("d", "delete"));
-    w2.addDocument(doc);
-    w2.commit();
-    w2.deleteDocuments(new Term("d", "delete"));
-    w2.commit();
-    w2.close();
+    @Override
+    public PostingsFormat postingsFormat() {
+      return PostingsFormat.forName("Lucene40");
+    }
 
-    // create separate norms file
-    IndexReader r = IndexReader.open(src, false);
-    r.setNorm(0, "c", (byte) 1);
-    r.close();
-    assertTrue(".del file not found", src.fileExists("_0_1.del"));
-    assertTrue("separate norms file not found", src.fileExists("_0_1.s0"));
+    @Override
+    public DocValuesFormat docValuesFormat() {
+      return new DefaultDocValuesFormat();
+    }
+
+    @Override
+    public StoredFieldsFormat storedFieldsFormat() {
+      return new DefaultStoredFieldsFormat();
+    }
     
-    // Case 1: force 'CFS' on target
-    lmp.setUseCompoundFile(true);
-    lmp.setNoCFSRatio(1.0);
-    w.addIndexes(src);
-    w.commit();
-    assertFalse("existing segments should not be modified by addIndexes", w.segmentInfos.info(0).getUseCompoundFile());
-    assertTrue("segment should have been converted to a CFS by addIndexes", w.segmentInfos.info(1).getUseCompoundFile());
-    assertTrue(".del file not found", target.fileExists("_1_1.del"));
-    assertTrue("separate norms file not found", target.fileExists("_1_1.s0"));
+    @Override
+    public TermVectorsFormat termVectorsFormat() {
+      return new DefaultTermVectorsFormat();
+    }
+    
+    @Override
+    public FieldInfosFormat fieldInfosFormat() {
+      return new DefaultFieldInfosFormat();
+    }
 
-    // Case 2: LMP disallows CFS
-    lmp.setUseCompoundFile(false);
-    w.addIndexes(src);
-    w.commit();
-    assertFalse("segment should not have been converted to a CFS by addIndexes if MP disallows", w.segmentInfos.info(2).getUseCompoundFile());
-
-    w.close();
-
-    // cleanup
-    src.close();
-    target.close();
+    @Override
+    public SegmentInfosFormat segmentInfosFormat() {
+      return new DefaultSegmentInfosFormat();
+    }
   }
   
   /*
    * simple test that ensures we getting expected exceptions 
    */
   public void testAddIndexMissingCodec() throws IOException {
-    Directory toAdd = newDirectory();
+    MockDirectoryWrapper toAdd = newDirectory();
+    // Disable checkIndex, else we get an exception because
+    // of the unregistered codec:
+    toAdd.setCheckIndexOnClose(false);
     {
       IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT,
           new MockAnalyzer(random));
-      CodecProvider provider = new CodecProvider();
-      provider.register(new StandardCodec());
-      conf.setCodecProvider(provider);
+      conf.setCodec(new UnRegisteredCodec());
       IndexWriter w = new IndexWriter(toAdd, conf);
       Document doc = new Document();
       FieldType customType = new FieldType();
@@ -1156,13 +1142,12 @@ public class TestAddIndexes extends LuceneTestCase {
       w.addDocument(doc);
       w.close();
     }
+
     {
       Directory dir = newDirectory();
       IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT,
           new MockAnalyzer(random));
-      CodecProvider provider = new CodecProvider();
-      provider.register(new PulsingCodec(1 + random.nextInt(20)));
-      conf.setCodecProvider(provider);
+      conf.setCodec(_TestUtil.alwaysPostingsFormat(new Pulsing40PostingsFormat(1 + random.nextInt(20))));
       IndexWriter w = new IndexWriter(dir, conf);
       try {
         w.addIndexes(toAdd);
@@ -1177,29 +1162,55 @@ public class TestAddIndexes extends LuceneTestCase {
       dir.close();
     }
 
-    {
-      Directory dir = newDirectory();
-      IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT,
-          new MockAnalyzer(random));
-      CodecProvider provider = new CodecProvider();
-      provider.register(new PulsingCodec(1 + random.nextInt(20)));
-      conf.setCodecProvider(provider);
-      IndexWriter w = new IndexWriter(dir, conf);
-      IndexReader indexReader = IndexReader.open(toAdd);
-      try {
-        w.addIndexes(indexReader);
-        fail("no such codec");
-      } catch (IllegalArgumentException ex) {
-        // expected
-      }
-      indexReader.close();
-      w.close();
-      IndexReader open = IndexReader.open(dir);
-      assertEquals(0, open.numDocs());
-      open.close();
-      dir.close();
+    try {
+      IndexReader.open(toAdd);
+      fail("no such codec");
+    } catch (IllegalArgumentException ex) {
+      // expected
     }
     toAdd.close();
   }
 
+  // LUCENE-3575
+  public void testFieldNamesChanged() throws IOException {
+    Directory d1 = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random, d1);
+    Document doc = new Document();
+    doc.add(newField("f1", "doc1 field1", StringField.TYPE_STORED));
+    doc.add(newField("id", "1", StringField.TYPE_STORED));
+    w.addDocument(doc);
+    IndexReader r1 = w.getReader();
+    w.close();
+
+    Directory d2 = newDirectory();
+    w = new RandomIndexWriter(random, d2);
+    doc = new Document();
+    doc.add(newField("f2", "doc2 field2", StringField.TYPE_STORED));
+    doc.add(newField("id", "2", StringField.TYPE_STORED));
+    w.addDocument(doc);
+    IndexReader r2 = w.getReader();
+    w.close();
+
+    Directory d3 = newDirectory();
+    w = new RandomIndexWriter(random, d3);
+    w.addIndexes(r1, r2);
+    r1.close();
+    d1.close();
+    r2.close();
+    d2.close();
+
+    IndexReader r3 = w.getReader();
+    w.close();
+    assertEquals(2, r3.numDocs());
+    for(int docID=0;docID<2;docID++) {
+      Document d = r3.document(docID);
+      if (d.get("id").equals("1")) {
+        assertEquals("doc1 field1", d.get("f1"));
+      } else {
+        assertEquals("doc2 field2", d.get("f2"));
+      }
+    }
+    r3.close();
+    d3.close();
+  } 
 }

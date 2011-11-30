@@ -17,12 +17,16 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import java.io.PrintStream;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.DocumentsWriterPerThread.IndexingChain;
 import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.similarities.SimilarityProvider;
+import org.apache.lucene.util.InfoStream;
+import org.apache.lucene.util.PrintStreamInfoStream;
 import org.apache.lucene.util.Version;
 
 /**
@@ -121,7 +125,8 @@ public final class IndexWriterConfig implements Cloneable {
   private volatile int maxBufferedDocs;
   private volatile IndexingChain indexingChain;
   private volatile IndexReaderWarmer mergedSegmentWarmer;
-  private volatile CodecProvider codecProvider;
+  private volatile Codec codec;
+  private volatile InfoStream infoStream;
   private volatile MergePolicy mergePolicy;
   private volatile DocumentsWriterPerThreadPool indexerThreadPool;
   private volatile boolean readerPooling;
@@ -158,7 +163,8 @@ public final class IndexWriterConfig implements Cloneable {
     maxBufferedDocs = DEFAULT_MAX_BUFFERED_DOCS;
     indexingChain = DocumentsWriterPerThread.defaultIndexingChain;
     mergedSegmentWarmer = null;
-    codecProvider = CodecProvider.getDefault();
+    codec = Codec.getDefault();
+    infoStream = InfoStream.getDefault();
     if (matchVersion.onOrAfter(Version.LUCENE_32)) {
       mergePolicy = new TieredMergePolicy();
     } else {
@@ -512,7 +518,7 @@ public final class IndexWriterConfig implements Cloneable {
    * Expert: {@link MergePolicy} is invoked whenever there are changes to the
    * segments in the index. Its role is to select which merges to do, if any,
    * and return a {@link MergePolicy.MergeSpecification} describing the merges.
-   * It also selects merges to do for optimize(). (The default is
+   * It also selects merges to do for forceMerge. (The default is
    * {@link LogByteSizeMergePolicy}.
    *
    * <p>Only takes effect when IndexWriter is first created. */
@@ -521,17 +527,17 @@ public final class IndexWriterConfig implements Cloneable {
     return this;
   }
 
-  /** Set the CodecProvider. See {@link CodecProvider}.
+  /** Set the Codec. See {@link Codec}.
    *
    * <p>Only takes effect when IndexWriter is first created. */
-  public IndexWriterConfig setCodecProvider(CodecProvider codecProvider) {
-    this.codecProvider = codecProvider;
+  public IndexWriterConfig setCodec(Codec codec) {
+    this.codec = codec;
     return this;
   }
 
-  /** Returns the current merged segment warmer. See {@link IndexReaderWarmer}. */
-  public CodecProvider getCodecProvider() {
-    return codecProvider;
+  /** Returns the current Codec. See {@link Codec}. */
+  public Codec getCodec() {
+    return codec;
   }
 
 
@@ -676,6 +682,30 @@ public final class IndexWriterConfig implements Cloneable {
   public FlushPolicy getFlushPolicy() {
     return flushPolicy;
   }
+  
+  /**
+   * @see #setInfoStream(InfoStream)
+   */
+  public InfoStream getInfoStream() {
+    return infoStream;
+  }
+  
+  /** If non-null, information about merges, deletes and a
+   * message when maxFieldLength is reached will be printed
+   * to this.
+   */
+  public IndexWriterConfig setInfoStream(InfoStream infoStream) {
+    this.infoStream = infoStream;
+    return this;
+  }
+  
+  /**
+   * Convenience method that uses {@link PrintStreamInfoStream}
+   */
+  public IndexWriterConfig setInfoStream(PrintStream printStream) {
+    this.infoStream = printStream == null ? null : new PrintStreamInfoStream(printStream);
+    return this;
+  }
 
   @Override
   public String toString() {
@@ -694,7 +724,8 @@ public final class IndexWriterConfig implements Cloneable {
     sb.append("ramBufferSizeMB=").append(ramBufferSizeMB).append("\n");
     sb.append("maxBufferedDocs=").append(maxBufferedDocs).append("\n");
     sb.append("mergedSegmentWarmer=").append(mergedSegmentWarmer).append("\n");
-    sb.append("codecProvider=").append(codecProvider).append("\n");
+    sb.append("codec=").append(codec).append("\n");
+    sb.append("infoStream=").append(infoStream == null ? "null" : infoStream.getClass().getName()).append("\n");
     sb.append("mergePolicy=").append(mergePolicy).append("\n");
     sb.append("indexerThreadPool=").append(indexerThreadPool).append("\n");
     sb.append("readerPooling=").append(readerPooling).append("\n");

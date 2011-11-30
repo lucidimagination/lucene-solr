@@ -25,9 +25,12 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.FieldInfosReader;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MockDirectoryWrapper;
@@ -53,8 +56,6 @@ public class TestIndexFileDeleter extends LuceneTestCase {
             setMaxBufferedDocs(10).
             setMergePolicy(mergePolicy)
     );
-
-    writer.setInfoStream(VERBOSE ? System.out : null);
 
     int i;
     for(i=0;i<35;i++) {
@@ -93,7 +94,8 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // "content", and then set our expected file names below
     // accordingly:
     CompoundFileDirectory cfsReader = new CompoundFileDirectory(dir, "_2.cfs", newIOContext(random), false);
-    FieldInfos fieldInfos = new FieldInfos(cfsReader, "_2.fnm");
+    FieldInfosReader infosReader = Codec.getDefault().fieldInfosFormat().getFieldInfosReader();
+    FieldInfos fieldInfos = infosReader.read(cfsReader, "2", IOContext.READONCE);
     int contentFieldIndex = -1;
     for (FieldInfo fi : fieldInfos) {
       if (fi.name.equals("content")) {
@@ -149,7 +151,9 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     copyFile(dir, "segments_2", "segments_1");
 
     // Create a bogus cfs file shadowing a non-cfs segment:
-    assertTrue(dir.fileExists("_3.fdt"));
+    
+    // TODO: assert is bogus (relies upon codec-specific filenames)
+    assertTrue(dir.fileExists("_3.fdt") || dir.fileExists("_3.fld"));
     assertTrue(!dir.fileExists("_3.cfs"));
     copyFile(dir, "_1.cfs", "_3.cfs");
     

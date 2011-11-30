@@ -40,7 +40,8 @@ import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
@@ -72,7 +73,8 @@ public class TestFSTs extends LuceneTestCase {
 
   @Override
   public void tearDown() throws Exception {
-    dir.close();
+    // can be null if we force simpletext (funky, some kind of bug in test runner maybe)
+    if (dir != null) dir.close();
     super.tearDown();
   }
 
@@ -809,7 +811,7 @@ public class TestFSTs extends LuceneTestCase {
       final Map<IntsRef,CountMinOutput<T>> prefixes = new HashMap<IntsRef,CountMinOutput<T>>();
       final IntsRef scratch = new IntsRef(10);
       for(InputOutput<T> pair: pairs) {
-        scratch.copy(pair.input);
+        scratch.copyInts(pair.input);
         for(int idx=0;idx<=pair.input.length;idx++) {
           scratch.length = idx;
           CountMinOutput<T> cmo = prefixes.get(scratch);
@@ -817,7 +819,7 @@ public class TestFSTs extends LuceneTestCase {
             cmo = new CountMinOutput<T>();
             cmo.count = 1;
             cmo.output = pair.output;
-            prefixes.put(new IntsRef(scratch), cmo);
+            prefixes.put(IntsRef.deepCopyOf(scratch), cmo);
           } else {
             cmo.count++;
             cmo.output = outputs.common(cmo.output, pair.output);
@@ -869,7 +871,7 @@ public class TestFSTs extends LuceneTestCase {
         } else {
           // clear isLeaf for all ancestors
           //System.out.println("    keep");
-          scratch.copy(prefix);
+          scratch.copyInts(prefix);
           scratch.length--;
           while(scratch.length >= 0) {
             final CountMinOutput<T> cmo2 = prefixes.get(scratch);
@@ -1013,10 +1015,11 @@ public class TestFSTs extends LuceneTestCase {
   // file, up until a time limit
   public void testRealTerms() throws Exception {
 
-    final String defaultCodec = CodecProvider.getDefault().getDefaultFieldCodec();
-    if (defaultCodec.equals("SimpleText") || defaultCodec.equals("Memory")) {
+    // TODO: is this necessary? we use the annotation...
+    final String defaultFormat = _TestUtil.getPostingsFormat("abracadabra");
+    if (defaultFormat.equals("SimpleText") || defaultFormat.equals("Memory")) {
       // no
-      CodecProvider.getDefault().setDefaultFieldCodec("Standard");
+      Codec.setDefault(_TestUtil.alwaysPostingsFormat(new Lucene40PostingsFormat()));
     }
 
     final LineFileDocs docs = new LineFileDocs(random);
@@ -1025,7 +1028,6 @@ public class TestFSTs extends LuceneTestCase {
     final File tempDir = _TestUtil.getTempDir("fstlines");
     final MockDirectoryWrapper dir = newFSDirectory(tempDir);
     final IndexWriter writer = new IndexWriter(dir, conf);
-    writer.setInfoStream(VERBOSE ? System.out : null);
     final long stopTime = System.currentTimeMillis() + RUN_TIME_MSEC;
     Document doc;
     int docCount = 0;
@@ -1048,7 +1050,7 @@ public class TestFSTs extends LuceneTestCase {
     }
     Terms terms = MultiFields.getTerms(r, "body");
     if (terms != null) {
-      final TermsEnum termsEnum = terms.iterator();
+      final TermsEnum termsEnum = terms.iterator(null);
       if (VERBOSE) {
         System.out.println("TEST: got termsEnum=" + termsEnum);
       }
@@ -1459,7 +1461,7 @@ public class TestFSTs extends LuceneTestCase {
         w.addDocument(doc);
       }
 
-      //w.optimize();
+      //w.forceMerge(1);
 
       // turn writer into reader:
       final IndexReader r = w.getReader();
@@ -1499,7 +1501,7 @@ public class TestFSTs extends LuceneTestCase {
       }
 
       // Verify w/ MultiTermsEnum
-      final TermsEnum termsEnum = MultiFields.getTerms(r, "id").iterator();
+      final TermsEnum termsEnum = MultiFields.getTerms(r, "id").iterator(null);
       for(int iter=0;iter<2*NUM_IDS;iter++) {
         final String id;
         final String nextID;
@@ -1565,8 +1567,6 @@ public class TestFSTs extends LuceneTestCase {
 
     RandomIndexWriter w = new RandomIndexWriter(random, dir,
                                                 newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(IndexWriterConfig.OpenMode.CREATE));
-    w.w.setInfoStream(VERBOSE ? System.out : null);
-
     Document doc = new Document();
     Field f = newField("field", "", StringField.TYPE_UNSTORED);
     doc.add(f);
@@ -1633,7 +1633,7 @@ public class TestFSTs extends LuceneTestCase {
           if (w == null) {
             break;
           }
-          term.copy(w);
+          term.copyChars(w);
           b.add(term, nothing);
         }
         

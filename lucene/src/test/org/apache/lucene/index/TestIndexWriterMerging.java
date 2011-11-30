@@ -63,9 +63,8 @@ public class TestIndexWriterMerging extends LuceneTestCase
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
             setMergePolicy(newLogMergePolicy(2))
     );
-    writer.setInfoStream(VERBOSE ? System.out : null);
     writer.addIndexes(indexA, indexB);
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
     fail = verifyIndex(merged, 0);
@@ -117,15 +116,14 @@ public class TestIndexWriterMerging extends LuceneTestCase
     writer.close();
   }
   
-  // LUCENE-325: test expungeDeletes, when 2 singular merges
+  // LUCENE-325: test forceMergeDeletes, when 2 singular merges
   // are required
-  public void testExpungeDeletes() throws IOException {
+  public void testForceMergeDeletes() throws IOException {
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random))
         .setMaxBufferedDocs(2).setRAMBufferSizeMB(
                                                   IndexWriterConfig.DISABLE_AUTO_FLUSH));
-    writer.setInfoStream(VERBOSE ? System.out : null);
     Document document = new Document();
 
     document = new Document();
@@ -158,7 +156,7 @@ public class TestIndexWriterMerging extends LuceneTestCase
     writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
     assertEquals(8, writer.numDocs());
     assertEquals(10, writer.maxDoc());
-    writer.expungeDeletes();
+    writer.forceMergeDeletes();
     assertEquals(8, writer.numDocs());
     writer.close();
     ir = IndexReader.open(dir, true);
@@ -168,8 +166,8 @@ public class TestIndexWriterMerging extends LuceneTestCase
     dir.close();
   }
 
-  // LUCENE-325: test expungeDeletes, when many adjacent merges are required
-  public void testExpungeDeletes2() throws IOException {
+  // LUCENE-325: test forceMergeDeletes, when many adjacent merges are required
+  public void testForceMergeDeletes2() throws IOException {
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(
         dir,
@@ -212,7 +210,7 @@ public class TestIndexWriterMerging extends LuceneTestCase
             setMergePolicy(newLogMergePolicy(3))
     );
     assertEquals(49, writer.numDocs());
-    writer.expungeDeletes();
+    writer.forceMergeDeletes();
     writer.close();
     ir = IndexReader.open(dir, true);
     assertEquals(49, ir.maxDoc());
@@ -221,9 +219,9 @@ public class TestIndexWriterMerging extends LuceneTestCase
     dir.close();
   }
 
-  // LUCENE-325: test expungeDeletes without waiting, when
+  // LUCENE-325: test forceMergeDeletes without waiting, when
   // many adjacent merges are required
-  public void testExpungeDeletes3() throws IOException {
+  public void testForceMergeDeletes3() throws IOException {
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(
         dir,
@@ -232,8 +230,6 @@ public class TestIndexWriterMerging extends LuceneTestCase
             setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH).
             setMergePolicy(newLogMergePolicy(50))
     );
-
-    writer.setInfoStream(VERBOSE ? System.out : null);
 
     FieldType customType = new FieldType();
     customType.setStored(true);
@@ -266,7 +262,7 @@ public class TestIndexWriterMerging extends LuceneTestCase
         newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).
             setMergePolicy(newLogMergePolicy(3))
     );
-    writer.expungeDeletes(false);
+    writer.forceMergeDeletes(false);
     writer.close();
     ir = IndexReader.open(dir, true);
     assertEquals(49, ir.maxDoc());
@@ -308,7 +304,6 @@ public class TestIndexWriterMerging extends LuceneTestCase
     lmp.setMaxMergeDocs(20);
     lmp.setMergeFactor(2);
     IndexWriter iw = new IndexWriter(dir, conf);
-    iw.setInfoStream(VERBOSE ? System.out : null);
     Document document = new Document();
 
     FieldType customType = new FieldType(TextField.TYPE_UNSTORED);

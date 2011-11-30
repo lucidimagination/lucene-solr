@@ -56,7 +56,7 @@ public class FixedGapTermsIndexWriter extends TermsIndexWriterBase {
   private final FieldInfos fieldInfos; // unread
 
   public FixedGapTermsIndexWriter(SegmentWriteState state) throws IOException {
-    final String indexFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, TERMS_INDEX_EXTENSION);
+    final String indexFileName = IndexFileNames.segmentFileName(state.segmentName, state.segmentSuffix, TERMS_INDEX_EXTENSION);
     termIndexInterval = state.termIndexInterval;
     out = state.directory.createOutput(indexFileName, state.context);
     boolean success = false;
@@ -141,7 +141,7 @@ public class FixedGapTermsIndexWriter extends TermsIndexWriterBase {
         if (0 == numTerms % termIndexInterval) {
           // save last term just before next index term so we
           // can compute wasted suffix
-          lastTerm.copy(text);
+          lastTerm.copyBytes(text);
         }
         return false;
       }
@@ -172,7 +172,7 @@ public class FixedGapTermsIndexWriter extends TermsIndexWriterBase {
       termLengths[numIndexTerms] = (short) indexedTermLength;
       totTermLength += indexedTermLength;
 
-      lastTerm.copy(text);
+      lastTerm.copyBytes(text);
       numIndexTerms++;
     }
 

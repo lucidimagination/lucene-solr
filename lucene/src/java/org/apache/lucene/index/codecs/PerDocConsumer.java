@@ -20,6 +20,7 @@ import java.io.IOException;
 
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.values.IndexDocValues;
 import org.apache.lucene.index.values.TypePromoter;
 import org.apache.lucene.index.values.ValueType;
@@ -29,7 +30,7 @@ import org.apache.lucene.index.values.ValueType;
  * this convert field values into a Codec specific format during indexing.
  * <p>
  * The {@link PerDocConsumer} API is accessible through the
- * {@link Codec} - API providing per field consumers and producers for inverted
+ * {@link PostingsFormat} - API providing per field consumers and producers for inverted
  * data (terms, postings) as well as per-document data.
  * 
  * @lucene.experimental

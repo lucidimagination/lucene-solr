@@ -17,75 +17,61 @@ package org.apache.lucene.index.codecs.simpletext;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Set;
-
-import org.apache.lucene.index.PerDocWriteState;
-import org.apache.lucene.index.SegmentInfo;
-import org.apache.lucene.index.SegmentWriteState;
-import org.apache.lucene.index.SegmentReadState;
-import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.DefaultDocValuesProducer;
-import org.apache.lucene.index.codecs.FieldsConsumer;
-import org.apache.lucene.index.codecs.FieldsProducer;
-import org.apache.lucene.index.codecs.PerDocConsumer;
-import org.apache.lucene.index.codecs.DefaultDocValuesConsumer;
-import org.apache.lucene.index.codecs.PerDocValues;
-import org.apache.lucene.store.Directory;
+import org.apache.lucene.index.codecs.DefaultDocValuesFormat;
+import org.apache.lucene.index.codecs.DocValuesFormat;
+import org.apache.lucene.index.codecs.FieldInfosFormat;
+import org.apache.lucene.index.codecs.PostingsFormat;
+import org.apache.lucene.index.codecs.SegmentInfosFormat;
+import org.apache.lucene.index.codecs.StoredFieldsFormat;
+import org.apache.lucene.index.codecs.TermVectorsFormat;
 
-/** For debugging, curiosity, transparency only!!  Do not
- *  use this codec in production.
- *
- *  <p>This codec stores all postings data in a single
- *  human-readable text file (_N.pst).  You can view this in
- *  any text editor, and even edit it to alter your index.
- *
- *  @lucene.experimental */
-public class SimpleTextCodec extends Codec {
+/**
+ * plain text index format.
+ * <p>
+ * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * @lucene.experimental
+ */
+public final class SimpleTextCodec extends Codec {
+  private final PostingsFormat postings = new SimpleTextPostingsFormat();
+  private final StoredFieldsFormat storedFields = new SimpleTextStoredFieldsFormat();
+  private final SegmentInfosFormat segmentInfos = new SimpleTextSegmentInfosFormat();
+  private final FieldInfosFormat fieldInfosFormat = new SimpleTextFieldInfosFormat();
+  private final TermVectorsFormat vectorsFormat = new SimpleTextTermVectorsFormat();
+  // TODO: need a plain-text impl
+  private final DocValuesFormat docValues = new DefaultDocValuesFormat();
   
   public SimpleTextCodec() {
     super("SimpleText");
   }
-
-
+  
   @Override
-  public FieldsConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
-    return new SimpleTextFieldsWriter(state);
+  public PostingsFormat postingsFormat() {
+    return postings;
   }
 
   @Override
-  public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
-    return new SimpleTextFieldsReader(state);
-  }
-
-  /** Extension of freq postings file */
-  static final String POSTINGS_EXTENSION = "pst";
-
-  static String getPostingsFileName(String segment, int id) {
-    return IndexFileNames.segmentFileName(segment, id, POSTINGS_EXTENSION);
+  public DocValuesFormat docValuesFormat() {
+    return docValues;
   }
 
   @Override
-  public void files(Directory dir, SegmentInfo segmentInfo, int id, Set<String> files) throws IOException {
-    files.add(getPostingsFileName(segmentInfo.name, id));
-    DefaultDocValuesConsumer.files(dir, segmentInfo, id, files);
-  }
-
-  @Override
-  public void getExtensions(Set<String> extensions) {
-    extensions.add(POSTINGS_EXTENSION);
-    DefaultDocValuesConsumer.getExtensions(extensions);
+  public StoredFieldsFormat storedFieldsFormat() {
+    return storedFields;
   }
   
-  // TODO: would be great if these used a plain text impl
   @Override
-  public PerDocConsumer docsConsumer(PerDocWriteState state) throws IOException {
-    return new DefaultDocValuesConsumer(state);
+  public TermVectorsFormat termVectorsFormat() {
+    return vectorsFormat;
+  }
+  
+  @Override
+  public FieldInfosFormat fieldInfosFormat() {
+    return fieldInfosFormat;
   }
 
   @Override
-  public PerDocValues docsProducer(SegmentReadState state) throws IOException {
-    return new DefaultDocValuesProducer(state);
+  public SegmentInfosFormat segmentInfosFormat() {
+    return segmentInfos;
   }
 }

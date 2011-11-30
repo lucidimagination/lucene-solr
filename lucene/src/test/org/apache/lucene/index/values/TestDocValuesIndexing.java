@@ -39,7 +39,7 @@ import org.apache.lucene.index.LogMergePolicy;
 import org.apache.lucene.index.MultiPerDocValues;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.PerDocValues;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.search.*;
@@ -58,14 +58,14 @@ import org.junit.Before;
  */
 public class TestDocValuesIndexing extends LuceneTestCase {
   /*
-   * - add test for unoptimized case with deletes
+   * - add test for multi segment case with deletes
    * - add multithreaded tests / integrate into stress indexing?
    */
 
   @Before
   public void setUp() throws Exception {
     super.setUp();
-    assumeFalse("cannot work with preflex codec", CodecProvider.getDefault().getDefaultFieldCodec().equals("PreFlex"));
+    assumeFalse("cannot work with preflex codec", Codec.getDefault().getName().equals("Lucene3x"));
   }
   
   /*
@@ -83,12 +83,12 @@ public class TestDocValuesIndexing extends LuceneTestCase {
       writer.addDocument(doc);
     }
     writer.commit();
-    writer.optimize(true);
+    writer.forceMerge(1, true);
 
     writer.close(true);
 
     IndexReader reader = IndexReader.open(dir, null, true, 1);
-    assertTrue(reader.isOptimized());
+    assertEquals(1, reader.getSequentialSubReaders().length);
 
     IndexSearcher searcher = new IndexSearcher(reader);
 
@@ -140,7 +140,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     indexValues(w_1, valuesPerIndex, first, values, false, 7);
     w_1.commit();
     assertEquals(valuesPerIndex, w_1.maxDoc());
-    _TestUtil.checkIndex(d_1, w_1.getConfig().getCodecProvider());
+    _TestUtil.checkIndex(d_1);
 
     // index second index
     Directory d_2 = newDirectory();
@@ -148,7 +148,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     indexValues(w_2, valuesPerIndex, second, values, false, 7);
     w_2.commit();
     assertEquals(valuesPerIndex, w_2.maxDoc());
-    _TestUtil.checkIndex(d_2, w_2.getConfig().getCodecProvider());
+    _TestUtil.checkIndex(d_2);
 
     Directory target = newDirectory();
     IndexWriter w = new IndexWriter(target, writerConfig(random.nextBoolean()));
@@ -159,10 +159,10 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     } else {
       w.addIndexes(r_1, r_2);
     }
-    w.optimize(true);
+    w.forceMerge(1, true);
     w.commit();
     
-    _TestUtil.checkIndex(target, w.getConfig().getCodecProvider());
+    _TestUtil.checkIndex(target);
     assertEquals(valuesPerIndex * 2, w.maxDoc());
 
     // check values
@@ -418,10 +418,10 @@ public class TestDocValuesIndexing extends LuceneTestCase {
 
   private IndexDocValues getDocValues(IndexReader reader, String field)
       throws IOException {
-    boolean optimized = reader.isOptimized();
-    PerDocValues perDoc = optimized ? reader.getSequentialSubReaders()[0].perDocValues()
+    boolean singleSeg = reader.getSequentialSubReaders().length == 1;
+    PerDocValues perDoc = singleSeg ? reader.getSequentialSubReaders()[0].perDocValues()
         : MultiPerDocValues.getPerDocs(reader);
-    switch (random.nextInt(optimized ? 3 : 2)) { // case 2 only if optimized
+    switch (random.nextInt(singleSeg ? 3 : 2)) { // case 2 only if single seg
     case 0:
       return perDoc.docValues(field);
     case 1:
@@ -430,7 +430,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
         return docValues;
       }
       throw new RuntimeException("no such field " + field);
-    case 2:// this only works if we are on an optimized index!
+    case 2:// this only works if we are on a single seg index!
       return reader.getSequentialSubReaders()[0].docValues(field);
     }
     throw new RuntimeException();
@@ -538,15 +538,14 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     }
     w.commit();
 
-    // TODO test unoptimized with deletions
+    // TODO test multi seg with deletions
     if (withDeletions || random.nextBoolean()) {
-      w.optimize(true);
+      w.forceMerge(1, true);
     }
     return deleted;
   }
 
   public void testMultiValuedIndexDocValuesField() throws Exception {
-    assumeFalse("cannot work with preflex codec", CodecProvider.getDefault().getDefaultFieldCodec().equals("PreFlex"));
     Directory d = newDirectory();
     RandomIndexWriter w = new RandomIndexWriter(random, d);
     Document doc = new Document();
@@ -566,7 +565,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     doc = new Document();
     doc.add(f);
     w.addDocument(doc);
-    w.optimize();
+    w.forceMerge(1);
     IndexReader r = w.getReader();
     w.close();
     assertEquals(17, r.getSequentialSubReaders()[0].perDocValues().docValues("field").load().getInt(0));
@@ -575,7 +574,6 @@ public class TestDocValuesIndexing extends LuceneTestCase {
   }
 
   public void testDifferentTypedDocValuesField() throws Exception {
-    assumeFalse("cannot work with preflex codec", CodecProvider.getDefault().getDefaultFieldCodec().equals("PreFlex"));
     Directory d = newDirectory();
     RandomIndexWriter w = new RandomIndexWriter(random, d);
     Document doc = new Document();
@@ -597,7 +595,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     doc = new Document();
     doc.add(f);
     w.addDocument(doc);
-    w.optimize();
+    w.forceMerge(1);
     IndexReader r = w.getReader();
     w.close();
     assertEquals(17, r.getSequentialSubReaders()[0].perDocValues().docValues("field").load().getInt(0));

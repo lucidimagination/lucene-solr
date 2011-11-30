@@ -22,7 +22,6 @@ import org.apache.lucene.queries.function.FunctionTestSetup;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.FloatFieldSource;
 import org.apache.lucene.search.*;
-import org.apache.lucene.search.cache.*;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import java.io.IOException;
@@ -30,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 
 /**
@@ -77,9 +77,6 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
   @Test
   public void testCustomScoreFloat() throws Exception {
     // INT field can be parsed as float
-    FloatValuesCreator valuesCreator = new FloatValuesCreator(INT_FIELD, null, CachedArrayCreator.CACHE_VALUES_AND_BITS);
-    FloatFieldSource fieldSource = new FloatFieldSource(valuesCreator);
-
     doTestCustomScore(INT_AS_FLOAT_VALUESOURCE, 1.0);
     doTestCustomScore(INT_AS_FLOAT_VALUESOURCE, 5.0);
 
@@ -177,7 +174,7 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
 
     @Override
     protected CustomScoreProvider getCustomScoreProvider(AtomicReaderContext context) throws IOException {
-      final int[] values = FieldCache.DEFAULT.getInts(context.reader, INT_FIELD);
+      final int[] values = FieldCache.DEFAULT.getInts(context.reader, INT_FIELD, false);
       return new CustomScoreProvider(context) {
         @Override
         public float customScore(int doc, float subScore, float valSrcScore) throws IOException {
@@ -202,7 +199,8 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     final Query q = new CustomExternalQuery(q1);
     log(q);
 
-    IndexSearcher s = new IndexSearcher(dir, true);
+    IndexReader r = IndexReader.open(dir);
+    IndexSearcher s = new IndexSearcher(r);
     TopDocs hits = s.search(q, 1000);
     assertEquals(N_DOCS, hits.totalHits);
     for(int i=0;i<N_DOCS;i++) {
@@ -211,11 +209,13 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
       assertEquals("doc=" + doc, (float) 1+(4*doc) % N_DOCS, score, 0.0001);
     }
     s.close();
+    r.close();
   }
   
   @Test
   public void testRewrite() throws Exception {
-    final IndexSearcher s = new IndexSearcher(dir, true);
+    IndexReader r = IndexReader.open(dir);
+    final IndexSearcher s = new IndexSearcher(r);
 
     Query q = new TermQuery(new Term(TEXT_FIELD, "first"));
     CustomScoreQuery original = new CustomScoreQuery(q);
@@ -233,13 +233,15 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     assertEquals(s.search(q,1).totalHits, s.search(rewritten,1).totalHits);
     
     s.close();
+    r.close();
   }
   
   // Test that FieldScoreQuery returns docs with expected score.
   private void doTestCustomScore(ValueSource valueSource, double dboost) throws Exception {
-    FunctionQuery functionQuery = new FunctionQuery(valueSource);
     float boost = (float) dboost;
-    IndexSearcher s = new IndexSearcher(dir, true);
+    FunctionQuery functionQuery = new FunctionQuery(valueSource);
+    IndexReader r = IndexReader.open(dir);
+    IndexSearcher s = new IndexSearcher(r);
 
     // regular (boolean) query.
     BooleanQuery q1 = new BooleanQuery();
@@ -289,6 +291,7 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
         h1, h2CustomNeutral, h3CustomMul, h4CustomAdd, h5CustomMulAdd,
         q1, q2CustomNeutral, q3CustomMul, q4CustomAdd, q5CustomMulAdd);
     s.close();
+    r.close();
   }
 
   // verify results are as expected.

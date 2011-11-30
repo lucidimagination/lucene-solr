@@ -29,27 +29,26 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.FieldsEnum;
-import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.TermFreqVector;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.PriorityQueue;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.analysis.CharFilterFactory;
 import org.apache.solr.analysis.TokenFilterFactory;
 import org.apache.solr.analysis.TokenizerChain;
@@ -58,9 +57,9 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.luke.FieldFlag;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.common.util.Base64;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
@@ -68,6 +67,8 @@ import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This handler exposes the internal lucene index.  It is inspired by and 
@@ -266,11 +267,15 @@ public class LukeRequestHandler extends RequestHandlerBase
       // If we have a term vector, return that
       if( field.fieldType().storeTermVectors() ) {
         try {
-          TermFreqVector v = reader.getTermFreqVector( docId, field.name() );
+          Terms v = reader.getTermVector( docId, field.name() );
           if( v != null ) {
             SimpleOrderedMap<Integer> tfv = new SimpleOrderedMap<Integer>();
-            for( int i=0; i<v.size(); i++ ) {
-              tfv.add( v.getTerms()[i].utf8ToChars(spare).toString(), v.getTermFrequencies()[i] );
+            final TermsEnum termsEnum = v.iterator(null);
+            BytesRef text;
+            while((text = termsEnum.next()) != null) {
+              final int freq = (int) termsEnum.totalTermFreq();
+              UnicodeUtil.UTF8toUTF16(text, spare);
+              tfv.add(spare.toString(), freq);
             }
             f.add( "termVector", tfv );
           }
@@ -482,9 +487,12 @@ public class LukeRequestHandler extends RequestHandlerBase
       if (fields != null) {
         FieldsEnum fieldsEnum = fields.iterator();
         while(fieldsEnum.next() != null) {
-          TermsEnum termsEnum = fieldsEnum.terms();
-          while(termsEnum.next() != null) {
-            numTerms++;
+          Terms terms = fieldsEnum.terms();
+          if (terms != null) {
+            TermsEnum termsEnum = terms.iterator(null);
+            while(termsEnum.next() != null) {
+              numTerms++;
+            }
           }
         }
       }
@@ -492,7 +500,7 @@ public class LukeRequestHandler extends RequestHandlerBase
     }
 
     indexInfo.add("version", reader.getVersion());  // TODO? Is this different then: IndexReader.getCurrentVersion( dir )?
-    indexInfo.add("optimized", reader.isOptimized() );
+    indexInfo.add("segmentCount", reader.getSequentialSubReaders().length);
     indexInfo.add("current", reader.isCurrent() );
     indexInfo.add("hasDeletions", reader.hasDeletions() );
     indexInfo.add("directory", dir );
@@ -636,10 +644,15 @@ public class LukeRequestHandler extends RequestHandlerBase
       String field;
       while((field = fieldsEnum.next()) != null) {
 
-        TermsEnum termsEnum = fieldsEnum.terms();
+        Terms terms = fieldsEnum.terms();
+        if (terms == null) {
+          continue;
+        }
+        TermsEnum termsEnum = terms.iterator(null);
         BytesRef text;
         while((text = termsEnum.next()) != null) {
-          String t = text.utf8ToChars(spare).toString();
+          UnicodeUtil.UTF8toUTF16(text, spare);
+          String t = spare.toString();
   
           // Compute distinct terms for every field
           TopTermQueue tiq = info.get( field );

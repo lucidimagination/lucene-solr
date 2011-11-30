@@ -39,7 +39,7 @@ public class TestDirectoryReader extends LuceneTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    dir = newDirectory();
+    dir = createDirectory();
     doc1 = new Document();
     doc2 = new Document();
     DocHelper.setupDoc(doc1);
@@ -56,6 +56,10 @@ public class TestDirectoryReader extends LuceneTestCase {
     if (readers[1] != null) readers[1].close();
     dir.close();
     super.tearDown();
+  }
+  
+  protected Directory createDirectory() throws IOException {
+    return newDirectory();
   }
 
   protected IndexReader openReader() throws IOException {
@@ -85,8 +89,8 @@ public class TestDirectoryReader extends LuceneTestCase {
     Document newDoc2 = reader.document(1);
     assertTrue(newDoc2 != null);
     assertTrue(DocHelper.numFields(newDoc2) == DocHelper.numFields(doc2) - DocHelper.unstored.size());
-    TermFreqVector vector = reader.getTermFreqVector(0, DocHelper.TEXT_FIELD_2_KEY);
-    assertTrue(vector != null);
+    Terms vector = reader.getTermVectors(0).terms(DocHelper.TEXT_FIELD_2_KEY);
+    assertNotNull(vector);
     TestSegmentReader.checkNorms(reader);
     reader.close();
   }
@@ -108,7 +112,7 @@ public class TestDirectoryReader extends LuceneTestCase {
     if (reader instanceof MultiReader)
       // MultiReader does not "own" the directory so it does
       // not write the changes to sis on commit:
-      sis.commit(dir);
+      sis.commit(dir, sis.codecFormat());
 
     sis.read(dir);
     reader = openReader();
@@ -121,7 +125,7 @@ public class TestDirectoryReader extends LuceneTestCase {
     if (reader instanceof MultiReader)
       // MultiReader does not "own" the directory so it does
       // not write the changes to sis on commit:
-      sis.commit(dir);
+      sis.commit(dir, sis.codecFormat());
     sis.read(dir);
     reader = openReader();
     assertEquals( 1, reader.numDocs() );
@@ -165,14 +169,14 @@ public class TestDirectoryReader extends LuceneTestCase {
     MultiReader mr3 = new MultiReader(readers2);
 
     // test mixing up TermDocs and TermEnums from different readers.
-    TermsEnum te2 = MultiFields.getTerms(mr2, "body").iterator();
+    TermsEnum te2 = MultiFields.getTerms(mr2, "body").iterator(null);
     te2.seekCeil(new BytesRef("wow"));
     DocsEnum td = MultiFields.getTermDocsEnum(mr2,
                                               MultiFields.getLiveDocs(mr2),
                                               "body",
                                               te2.term());
 
-    TermsEnum te3 = MultiFields.getTerms(mr3, "body").iterator();
+    TermsEnum te3 = MultiFields.getTerms(mr3, "body").iterator(null);
     te3.seekCeil(new BytesRef("wow"));
     td = te3.docs(MultiFields.getLiveDocs(mr3),
                   td);
@@ -184,7 +188,7 @@ public class TestDirectoryReader extends LuceneTestCase {
     while (td.nextDoc() != td.NO_MORE_DOCS) ret += td.docID();
 
     // really a dummy assert to ensure that we got some docs and to ensure that
-    // nothing is optimized out.
+    // nothing is eliminated by hotspot
     assertTrue(ret > 0);
     readers1[0].close();
     readers1[1].close();

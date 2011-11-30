@@ -13,6 +13,8 @@ Changes in Runtime Behavior
    provide an analyzer that returns 1 from the offsetGap method.
    (Mike McCandless)
 
+ * LUCENE-2621: Removed contrib/instantiated.  (Robert Muir)
+
 Build
 
  * LUCENE-2845: Moved contrib/benchmark to modules.
@@ -51,6 +53,10 @@ New Features
     
  * LUCENE-2507: Added DirectSpellChecker, which retrieves correction candidates directly 
    from the term dictionary using levenshtein automata.  (Robert Muir)
+
+ * LUCENE-3527: Add LuceneLevenshteinDistance, which computes string distance in a compatible
+   way as DirectSpellChecker. This can be used to merge top-N results from more than one
+   SpellChecker.  (James Dyer via Robert Muir)
   
 API Changes
 
@@ -75,6 +81,26 @@ Bug Fixes
  * LUCENE-3045: fixed QueryNodeImpl.containsTag(String key) that was
    not lowercasing the key before checking for the tag (Adriano Crestani)
 
+======================= Lucene 3.6.0 ================
+
+(No Changes)
+
+Bug Fixes
+
+ * LUCENE-3600: BlockJoinQuery now supports parent docs that have no
+   children (such docs will never match, but BJQ was tripping an
+   assert if such a parent doc was the first doc in the segment).
+   (Shay Banon, Mike McCandless)
+
+ * LUCENE-3609: Fix regression in BooleanFilter, introduced in Lucene 3.5,
+   to correctly handle minShouldMatch behaviour of previous versions.
+   (Shay Banon, Uwe Schindler)
+ 
+Documentation
+
+ * LUCENE-3599: Javadocs for DistanceUtils.haversine() were incorrectly 
+   stating the expected order of the arguments (David Smiley via hossman)
+
 ======================= Lucene 3.5.0 ================
 
 Changes in backwards compatibility policy
@@ -84,6 +110,22 @@ Changes in backwards compatibility policy
 
  * LUCENE-3508: Changed some method signatures in decompounding TokenFilters
    to make them no longer use the Token class.  (Uwe Schindler)
+   
+ * LUCENE-3557: The various SpellChecker.indexDictionary methods were removed,
+   and consolidated to one:
+
+   indexDictionary(Dictionary dict, IndexWriterConfig config, boolean optimize)
+   
+   Previously, there was no way to specify an IndexWriterConfig, and some
+   of these methods would sneakily pass 'true' to optimize.  (Robert Muir)
+   
+ * LUCENE-3558: Moved NRTManager & NRTManagerReopenThread into lucene core 
+   o.a.l.search. (Simon Willnauer)
+   
+ * LUCENE-2564: WordListLoader is now flaged as @lucene.internal. All methods in
+   WordListLoader now return CharArraySet/Map and expect Reader instances for 
+   efficiency. Utilities to open Readers from Files, InputStreams or Java 
+   resources were added to IOUtils. (Simon Willnauer, Robert Muir)
 
 New Features
 
@@ -135,6 +177,9 @@ Bug Fixes
  * LUCENE-3508: Decompounders based on CompoundWordTokenFilterBase can now be
    used with custom attributes. All those attributes are preserved and set on all
    added decompounded tokens.  (Spyros Kapnissis, Uwe Schindler)
+   
+ * LUCENE-3542: Group expanded query terms to preserve parent boolean operator
+   in StandartQueryParser. (Simon Willnauer) 
 
 API Changes
  

@@ -17,6 +17,7 @@ package org.apache.lucene.queries.function;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionQuery;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.ByteFieldSource;
@@ -27,7 +28,6 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.cache.*;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -81,7 +81,8 @@ public class TestFieldScoreQuery extends FunctionTestSetup {
   // Test that FieldScoreQuery returns docs in expected order.
   private void doTestRank (ValueSource valueSource) throws Exception {
     FunctionQuery functionQuery = new FunctionQuery(valueSource);
-    IndexSearcher s = new IndexSearcher(dir, true);
+    IndexReader r = IndexReader.open(dir);
+    IndexSearcher s = new IndexSearcher(r);
     log("test: "+ functionQuery);
     QueryUtils.check(random, functionQuery,s);
     ScoreDoc[] h = s.search(functionQuery, null, 1000).scoreDocs;
@@ -95,6 +96,7 @@ public class TestFieldScoreQuery extends FunctionTestSetup {
       prevID = resID;
     }
     s.close();
+    r.close();
   }
 
   /** Test that FieldScoreQuery of Type.BYTE returns the expected scores. */
@@ -129,7 +131,8 @@ public class TestFieldScoreQuery extends FunctionTestSetup {
   // Test that FieldScoreQuery returns docs with expected score.
   private void doTestExactScore (ValueSource valueSource) throws Exception {
     FunctionQuery functionQuery = new FunctionQuery(valueSource);
-    IndexSearcher s = new IndexSearcher(dir, true);
+    IndexReader r = IndexReader.open(dir);
+    IndexSearcher s = new IndexSearcher(r);
     TopDocs td = s.search(functionQuery,null,1000);
     assertEquals("All docs should be matched!",N_DOCS,td.totalHits);
     ScoreDoc sd[] = td.scoreDocs;
@@ -141,6 +144,7 @@ public class TestFieldScoreQuery extends FunctionTestSetup {
       assertEquals("score of " + id + " shuould be " + expectedScore + " != " + score, expectedScore, score, TEST_SCORE_TOLERANCE_DELTA);
     }
     s.close();
+    r.close();
   }
 
 }

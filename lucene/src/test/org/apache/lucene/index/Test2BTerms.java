@@ -24,7 +24,8 @@ import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.*;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -76,7 +77,7 @@ public class Test2BTerms extends LuceneTestCase {
       random.nextBytes(bytes.bytes);
       tokenCount++;
       if (--nextSave == 0) {
-        savedTerms.add(new BytesRef(bytes));
+        savedTerms.add(BytesRef.deepCopyOf(bytes));
         System.out.println("TEST: save term=" + bytes);
         nextSave = _TestUtil.nextInt(random, 500000, 1000000);
       }
@@ -142,7 +143,7 @@ public class Test2BTerms extends LuceneTestCase {
   @Ignore("Takes ~4 hours to run on a fast machine!!  And requires that you don't use PreFlex codec.")
   public void test2BTerms() throws IOException {
 
-    if ("PreFlex".equals(CodecProvider.getDefault().getDefaultFieldCodec())) {
+    if ("Lucene3x".equals(Codec.getDefault().getName())) {
       throw new RuntimeException("thist test cannot run with PreFlex codec");
     }
 
@@ -167,7 +168,6 @@ public class Test2BTerms extends LuceneTestCase {
                                       .setMergePolicy(newLogMergePolicy(false, 10))
                                       .setOpenMode(IndexWriterConfig.OpenMode.CREATE));
 
-      w.setInfoStream(VERBOSE ? System.out : null);
       MergePolicy mp = w.getConfig().getMergePolicy();
       if (mp instanceof LogByteSizeMergePolicy) {
         // 1 petabyte:
@@ -195,8 +195,8 @@ public class Test2BTerms extends LuceneTestCase {
       }
       savedTerms = ts.savedTerms;
 
-      System.out.println("TEST: optimize");
-      w.optimize();
+      System.out.println("TEST: full merge");
+      w.forceMerge(1);
       System.out.println("TEST: close writer");
       w.close();
     }
@@ -225,13 +225,13 @@ public class Test2BTerms extends LuceneTestCase {
 
   private List<BytesRef> findTerms(IndexReader r) throws IOException {
     System.out.println("TEST: findTerms");
-    final TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator();
+    final TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator(null);
     final List<BytesRef> savedTerms = new ArrayList<BytesRef>();
     int nextSave = _TestUtil.nextInt(random, 500000, 1000000);
     BytesRef term;
     while((term = termsEnum.next()) != null) {
       if (--nextSave == 0) {
-        savedTerms.add(new BytesRef(term));
+        savedTerms.add(BytesRef.deepCopyOf(term));
         System.out.println("TEST: add " + term);
         nextSave = _TestUtil.nextInt(random, 500000, 1000000);
       }
@@ -243,7 +243,7 @@ public class Test2BTerms extends LuceneTestCase {
     System.out.println("TEST: run " + terms.size() + " terms on reader=" + r);
     IndexSearcher s = new IndexSearcher(r);
     Collections.shuffle(terms);
-    TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator();
+    TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator(null);
     boolean failed = false;
     for(int iter=0;iter<10*terms.size();iter++) {
       final BytesRef term = terms.get(random.nextInt(terms.size()));

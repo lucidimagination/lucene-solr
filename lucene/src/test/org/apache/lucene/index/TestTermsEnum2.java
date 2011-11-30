@@ -29,7 +29,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.CheckHits;
 import org.apache.lucene.search.IndexSearcher;
@@ -57,7 +57,7 @@ public class TestTermsEnum2 extends LuceneTestCase {
     super.setUp();
     // we generate aweful regexps: good for testing.
     // but for preflex codec, the test can be very slow, so use less iterations.
-    numIterations = CodecProvider.getDefault().getFieldCodec("field").equals("PreFlex") ? 10 * RANDOM_MULTIPLIER : atLeast(50);
+    numIterations = Codec.getDefault().getName().equals("Lucene3x") ? 10 * RANDOM_MULTIPLIER : atLeast(50);
     dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, dir,
         newIndexWriterConfig(TEST_VERSION_CURRENT,
@@ -117,7 +117,7 @@ public class TestTermsEnum2 extends LuceneTestCase {
     for (int i = 0; i < numIterations; i++) {
       String reg = AutomatonTestUtil.randomRegexp(random);
       Automaton automaton = new RegExp(reg, RegExp.NONE).toAutomaton();
-      TermsEnum te = MultiFields.getTerms(reader, "field").iterator();
+      TermsEnum te = MultiFields.getTerms(reader, "field").iterator(null);
       ArrayList<BytesRef> unsortedTerms = new ArrayList<BytesRef>(terms);
       Collections.shuffle(unsortedTerms, random);
 
@@ -140,7 +140,7 @@ public class TestTermsEnum2 extends LuceneTestCase {
   /** mixes up seek and next for all terms */
   public void testSeekingAndNexting() throws Exception {
     for (int i = 0; i < numIterations; i++) {
-      TermsEnum te = MultiFields.getTerms(reader, "field").iterator();
+      TermsEnum te = MultiFields.getTerms(reader, "field").iterator(null);
 
       for (BytesRef term : terms) {
         int c = random.nextInt(3);
@@ -166,7 +166,7 @@ public class TestTermsEnum2 extends LuceneTestCase {
       Automaton expected = BasicOperations.intersection(termsAutomaton, automaton);
       TreeSet<BytesRef> found = new TreeSet<BytesRef>();
       while (te.next() != null) {
-        found.add(new BytesRef(te.term()));
+        found.add(BytesRef.deepCopyOf(te.term()));
       }
       
       Automaton actual = DaciukMihovAutomatonBuilder.build(found);     

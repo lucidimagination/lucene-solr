@@ -633,7 +633,7 @@ public class SimpleFacets {
     SolrIndexSearcher.DocsEnumState deState = null;
     BytesRef term = null;
     if (terms != null) {
-      termsEnum = terms.iterator();
+      termsEnum = terms.iterator(null);
 
       // TODO: OPT: if seek(ord) is supported for this termsEnum, then we could use it for
       // facet.offset when sorting by index order.
@@ -656,7 +656,7 @@ public class SimpleFacets {
     if (docs.size() >= mincount) {
       while (term != null) {
 
-        if (startTermBytes != null && !term.startsWith(startTermBytes))
+        if (startTermBytes != null && !StringHelper.startsWith(term, startTermBytes))
           break;
 
         int df = termsEnum.docFreq();
@@ -696,31 +696,16 @@ public class SimpleFacets {
               for (int subindex = 0; subindex<numSubs; subindex++) {
                 MultiDocsEnum.EnumWithSlice sub = subs[subindex];
                 if (sub.docsEnum == null) continue;
-                DocsEnum.BulkReadResult bulk = sub.docsEnum.getBulkResult();
                 int base = sub.slice.start;
-                for (;;) {
-                  int nDocs = sub.docsEnum.read();
-                  if (nDocs == 0) break;
-                  int[] docArr = bulk.docs.ints;  // this might be movable outside the loop, but perhaps not worth the risk.
-                  int end = bulk.docs.offset + nDocs;
-                  for (int i=bulk.docs.offset; i<end; i++) {
-                    if (fastForRandomSet.exists(docArr[i]+base)) c++;
-                  }
+                int docid;
+                while ((docid = sub.docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                  if (fastForRandomSet.exists(docid+base)) c++;
                 }
               }
             } else {
-
-              // this should be the same bulk result object if sharing of the docsEnum succeeded
-              DocsEnum.BulkReadResult bulk = docsEnum.getBulkResult();
-
-              for (;;) {
-                int nDocs = docsEnum.read();
-                if (nDocs == 0) break;
-                int[] docArr = bulk.docs.ints;  // this might be movable outside the loop, but perhaps not worth the risk.
-                int end = bulk.docs.offset + nDocs;
-                for (int i=bulk.docs.offset; i<end; i++) {
-                  if (fastForRandomSet.exists(docArr[i])) c++;
-                }
+              int docid;
+              while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                if (fastForRandomSet.exists(docid)) c++;
               }
             }
             
@@ -729,7 +714,7 @@ public class SimpleFacets {
 
           if (sortByCount) {
             if (c>min) {
-              BytesRef termCopy = new BytesRef(term);
+              BytesRef termCopy = BytesRef.deepCopyOf(term);
               queue.add(new CountPair<BytesRef,Integer>(termCopy, c));
               if (queue.size()>=maxsize) min=queue.last().val;
             }

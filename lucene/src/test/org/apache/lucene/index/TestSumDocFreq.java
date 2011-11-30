@@ -66,7 +66,7 @@ public class TestSumDocFreq extends LuceneTestCase {
     ir.close();
     
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-    w.optimize();
+    w.forceMerge(1);
     w.close();
     
     ir = IndexReader.open(dir, true);
@@ -92,7 +92,7 @@ public class TestSumDocFreq extends LuceneTestCase {
       }
       
       long computedSumDocFreq = 0;
-      TermsEnum termsEnum = terms.iterator();
+      TermsEnum termsEnum = terms.iterator(null);
       while (termsEnum.next() != null) {
         computedSumDocFreq += termsEnum.docFreq();
       }

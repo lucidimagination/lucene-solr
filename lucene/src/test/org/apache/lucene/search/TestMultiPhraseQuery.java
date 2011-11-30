@@ -80,7 +80,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     
     // this TermEnum gives "piccadilly", "pie" and "pizza".
     String prefix = "pi";
-    TermsEnum te = MultiFields.getFields(reader).terms("body").iterator();
+    TermsEnum te = MultiFields.getFields(reader).terms("body").iterator(null);
     te.seekCeil(new BytesRef(prefix));
     do {
       String s = te.term().utf8ToString();
@@ -316,8 +316,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
         return new DefaultSimilarity() {
           
           @Override
-          public Explanation idfExplain(TermContext stats[],
-              IndexSearcher searcher) throws IOException {
+          public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats[]) {
             return new Explanation(10f, "just a test");
           } 
         };
@@ -588,4 +587,3 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
   }
   
 }
-

@@ -21,6 +21,8 @@ import java.util.regex.Pattern;
 
 import org.apache.lucene.index.codecs.Codec;  // for javadocs
 
+// TODO: put all files under codec and remove all the static extensions here
+
 /**
  * This class contains useful constants representing filenames and extensions
  * used by lucene, as well as convenience methods for querying whether a file
@@ -51,21 +53,6 @@ public final class IndexFileNames {
   /** Extension of norms file */
   public static final String NORMS_EXTENSION = "nrm";
 
-  /** Extension of stored fields index file */
-  public static final String FIELDS_INDEX_EXTENSION = "fdx";
-
-  /** Extension of stored fields file */
-  public static final String FIELDS_EXTENSION = "fdt";
-
-  /** Extension of vectors fields file */
-  public static final String VECTORS_FIELDS_EXTENSION = "tvf";
-
-  /** Extension of vectors documents file */
-  public static final String VECTORS_DOCUMENTS_EXTENSION = "tvd";
-
-  /** Extension of vectors index file */
-  public static final String VECTORS_INDEX_EXTENSION = "tvx";
-
   /** Extension of compound file */
   public static final String COMPOUND_FILE_EXTENSION = "cfs";
   
@@ -77,9 +64,6 @@ public final class IndexFileNames {
 
   /** Extension of deletes */
   public static final String DELETES_EXTENSION = "del";
-
-  /** Extension of field infos */
-  public static final String FIELD_INFOS_EXTENSION = "fnm";
 
   /** Extension of separate norms */
   public static final String SEPARATE_NORMS_EXTENSION = "s";
@@ -97,43 +81,15 @@ public final class IndexFileNames {
   public static final String INDEX_EXTENSIONS[] = new String[] {
     COMPOUND_FILE_EXTENSION,
     COMPOUND_FILE_ENTRIES_EXTENSION,
-    FIELD_INFOS_EXTENSION,
-    FIELDS_INDEX_EXTENSION,
-    FIELDS_EXTENSION,
     DELETES_EXTENSION,
-    VECTORS_INDEX_EXTENSION,
-    VECTORS_DOCUMENTS_EXTENSION,
-    VECTORS_FIELDS_EXTENSION,
     GEN_EXTENSION,
     NORMS_EXTENSION,
     COMPOUND_FILE_STORE_EXTENSION,
     GLOBAL_FIELD_NUM_MAP_EXTENSION,
   };
 
-  public static final String[] STORE_INDEX_EXTENSIONS = new String[] {
-    VECTORS_INDEX_EXTENSION,
-    VECTORS_FIELDS_EXTENSION,
-    VECTORS_DOCUMENTS_EXTENSION,
-    FIELDS_INDEX_EXTENSION,
-    FIELDS_EXTENSION
-  };
-
   public static final String[] NON_STORE_INDEX_EXTENSIONS = new String[] {
-    FIELD_INFOS_EXTENSION,
     NORMS_EXTENSION
-  };
-  
-  static final String COMPOUND_EXTENSIONS_NOT_CODEC[] = new String[] {
-    FIELD_INFOS_EXTENSION,
-    FIELDS_INDEX_EXTENSION,
-    FIELDS_EXTENSION,
-  };
-  
-  /** File extensions for term vector support */
-  public static final String VECTOR_EXTENSIONS[] = new String[] {
-    VECTORS_INDEX_EXTENSION,
-    VECTORS_DOCUMENTS_EXTENSION,
-    VECTORS_FIELDS_EXTENSION
   };
 
   /**
@@ -167,20 +123,6 @@ public final class IndexFileNames {
   }
 
   /**
-   * Returns true if the provided filename is one of the doc store files (ends
-   * with an extension in {@link #STORE_INDEX_EXTENSIONS}).
-   */
-  public static boolean isDocStoreFile(String fileName) {
-    if (fileName.endsWith(COMPOUND_FILE_STORE_EXTENSION))
-      return true;
-    for (String ext : STORE_INDEX_EXTENSIONS) {
-      if (fileName.endsWith(ext))
-        return true;
-    }
-    return false;
-  }
-
-  /**
    * Returns a file name that includes the given segment name, your own custom
    * name and extension. The format of the filename is:
    * &lt;segmentName&gt;(_&lt;name&gt;)(.&lt;ext&gt;).
@@ -188,20 +130,20 @@ public final class IndexFileNames {
    * <b>NOTE:</b> .&lt;ext&gt; is added to the result file name only if
    * <code>ext</code> is not empty.
    * <p>
-   * <b>NOTE:</b> _&lt;name&gt; is added to the result file name only if
-   * <code>name</code> is not empty.
+   * <b>NOTE:</b> _&lt;segmentSuffix&gt; is added to the result file name only if
+   * it's not the empty string
    * <p>
    * <b>NOTE:</b> all custom files should be named using this method, or
    * otherwise some structures may fail to handle them properly (such as if they
    * are added to compound files).
    */
-  public static String segmentFileName(String segmentName, String name, String ext) {
-    if (ext.length() > 0 || name.length() > 0) {
+  public static String segmentFileName(String segmentName, String segmentSuffix, String ext) {
+    if (ext.length() > 0 || segmentSuffix.length() > 0) {
       assert !ext.startsWith(".");
-      StringBuilder sb = new StringBuilder(segmentName.length() + 2 + name.length() + ext.length());
+      StringBuilder sb = new StringBuilder(segmentName.length() + 2 + segmentSuffix.length() + ext.length());
       sb.append(segmentName);
-      if (name.length() > 0) {
-        sb.append('_').append(name);
+      if (segmentSuffix.length() > 0) {
+        sb.append('_').append(segmentSuffix);
       }
       if (ext.length() > 0) {
         sb.append('.').append(ext);
@@ -210,11 +152,6 @@ public final class IndexFileNames {
     } else {
       return segmentName;
     }
-  }
-
-  /** Sugar for passing "" + name instead */
-  public static String segmentFileName(String segmentName, int name, String ext) {
-    return segmentFileName(segmentName, ""+name, ext);
   }
 
   /**

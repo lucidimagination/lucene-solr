@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import org.apache.lucene.store.*;
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.*;
+import org.apache.lucene.index.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.util.*;
 
 public class TestFlex extends LuceneTestCase {
@@ -47,12 +48,12 @@ public class TestFlex extends LuceneTestCase {
           w.addDocument(doc);
         }
       } else {
-        w.optimize();
+        w.forceMerge(1);
       }
 
       IndexReader r = w.getReader();
       
-      TermsEnum terms = MultiFields.getTerms(r, "field3").iterator();
+      TermsEnum terms = MultiFields.getTerms(r, "field3").iterator(null);
       assertEquals(TermsEnum.SeekStatus.END, terms.seekCeil(new BytesRef("abc")));
       r.close();
     }
@@ -64,12 +65,12 @@ public class TestFlex extends LuceneTestCase {
   public void testTermOrd() throws Exception {
     Directory d = newDirectory();
     IndexWriter w = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT,
-                                                             new MockAnalyzer(random)).setCodecProvider(_TestUtil.alwaysCodec("Standard")));
+                                                             new MockAnalyzer(random)).setCodec(_TestUtil.alwaysPostingsFormat(new Lucene40PostingsFormat())));
     Document doc = new Document();
     doc.add(newField("f", "a b c", TextField.TYPE_UNSTORED));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    TermsEnum terms = r.getSequentialSubReaders()[0].fields().terms("f").iterator();
+    TermsEnum terms = r.getSequentialSubReaders()[0].fields().terms("f").iterator(null);
     assertTrue(terms.next() != null);
     try {
       assertEquals(0, terms.ord());

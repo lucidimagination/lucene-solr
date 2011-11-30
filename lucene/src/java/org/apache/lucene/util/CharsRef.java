@@ -22,11 +22,11 @@ import java.util.Comparator;
 /**
  * Represents char[], as a slice (offset + length) into an existing char[].
  * The {@link #chars} member should never be null; use
- * {@link #EMPTY_ARRAY} if necessary.
+ * {@link #EMPTY_CHARS} if necessary.
  * @lucene.internal
  */
-public final class CharsRef implements Comparable<CharsRef>, CharSequence {
-  private static final char[] EMPTY_ARRAY = new char[0];
+public final class CharsRef implements Comparable<CharsRef>, CharSequence, Cloneable {
+  public static final char[] EMPTY_CHARS = new char[0];
   public char[] chars;
   public int offset;
   public int length;
@@ -35,7 +35,7 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
    * Creates a new {@link CharsRef} initialized an empty array zero-length
    */
   public CharsRef() {
-    this(EMPTY_ARRAY, 0, 0);
+    this(EMPTY_CHARS, 0, 0);
   }
 
   /**
@@ -68,18 +68,9 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
     this.length = chars.length;
   }
 
-  /**
-   * Creates a new {@link CharsRef} and copies the contents of the source into
-   * the new instance.
-   * @see #copy(CharsRef)
-   */
-  public CharsRef(CharsRef other) {
-    copy(other);
-  }
-
   @Override
-  public Object clone() {
-    return new CharsRef(this);
+  public CharsRef clone() {
+    return new CharsRef(chars, offset, length);
   }
 
   @Override
@@ -95,26 +86,11 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
 
   @Override
   public boolean equals(Object other) {
-    if (this == other) {
-      return true;
+    if (other == null) {
+      return false;
     }
-
     if (other instanceof CharsRef) {
-      return charsEquals((CharsRef) other);
-    }
-
-    if (other instanceof CharSequence) {
-      final CharSequence seq = (CharSequence) other;
-      if (length == seq.length()) {
-        int n = length;
-        int i = offset;
-        int j = 0;
-        while (n-- != 0) {
-          if (chars[i++] != seq.charAt(j++))
-            return false;
-        }
-        return true;
-      }
+      return this.charsEquals((CharsRef) other);
     }
     return false;
   }
@@ -168,7 +144,8 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
    * @param other
    *          the {@link CharsRef} to copy
    */
-  public void copy(CharsRef other) {
+  // TODO: why does this behave differently/not invoke copyChars(char[], int, int) ???
+  public void copyChars(CharsRef other) {
     if (chars == null) {
       chars = new char[other.length];
     } else {
@@ -188,19 +165,23 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
   /**
    * Copies the given array into this CharsRef starting at offset 0
    */
-  public void copy(char[] otherChars, int otherOffset, int otherLength) {
+  public void copyChars(char[] otherChars, int otherOffset, int otherLength) {
+    grow(otherLength);
+    System.arraycopy(otherChars, otherOffset, this.chars, 0,
+        otherLength);
     this.offset = 0;
-    append(otherChars, otherOffset, otherLength);
+    this.length = otherLength;
   }
 
   /**
-   * Appends the given array to this CharsRef starting at the current offset
+   * Appends the given array to this CharsRef
    */
   public void append(char[] otherChars, int otherOffset, int otherLength) {
-    grow(this.offset + otherLength);
-    System.arraycopy(otherChars, otherOffset, this.chars, this.offset,
+    final int newLength = length + otherLength;
+    grow(this.offset + newLength);
+    System.arraycopy(otherChars, otherOffset, this.chars, this.offset+length,
         otherLength);
-    this.length = otherLength;
+    this.length += otherLength;
   }
 
   @Override
@@ -220,12 +201,18 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
     return new CharsRef(chars, offset + start, offset + end - 1);
   }
   
+  /** @deprecated */
+  @Deprecated
   private final static Comparator<CharsRef> utf16SortedAsUTF8SortOrder = new UTF16SortedAsUTF8Comparator();
   
+  /** @deprecated This comparator is only a transition mechanism */
+  @Deprecated
   public static Comparator<CharsRef> getUTF16SortedAsUTF8Comparator() {
     return utf16SortedAsUTF8SortOrder;
   }
   
+  /** @deprecated */
+  @Deprecated
   private static class UTF16SortedAsUTF8Comparator implements Comparator<CharsRef> {
     // Only singleton
     private UTF16SortedAsUTF8Comparator() {};
@@ -270,5 +257,18 @@ public final class CharsRef implements Comparable<CharsRef>, CharSequence {
       // One is a prefix of the other, or, they are equal:
       return a.length - b.length;
     }
+  }
+  
+  /**
+   * Creates a new CharsRef that points to a copy of the chars from 
+   * <code>other</code>
+   * <p>
+   * The returned CharsRef will have a length of other.length
+   * and an offset of zero.
+   */
+  public static CharsRef deepCopyOf(CharsRef other) {
+    CharsRef clone = new CharsRef();
+    clone.copyChars(other);
+    return clone;
   }
 }

@@ -158,7 +158,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
   // in the extremes.
 
   public VariableGapTermsIndexWriter(SegmentWriteState state, IndexTermSelector policy) throws IOException {
-    final String indexFileName = IndexFileNames.segmentFileName(state.segmentName, state.codecId, TERMS_INDEX_EXTENSION);
+    final String indexFileName = IndexFileNames.segmentFileName(state.segmentName, state.segmentSuffix, TERMS_INDEX_EXTENSION);
     out = state.directory.createOutput(indexFileName, state.context);
     boolean success = false;
     try {
@@ -241,7 +241,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
         //System.out.println("  YES");
         return true;
       } else {
-        lastTerm.copy(text);
+        lastTerm.copyBytes(text);
         return false;
       }
     }
@@ -260,7 +260,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
       } finally {
         text.length = lengthSave;
       }
-      lastTerm.copy(text);
+      lastTerm.copyBytes(text);
     }
 
     @Override

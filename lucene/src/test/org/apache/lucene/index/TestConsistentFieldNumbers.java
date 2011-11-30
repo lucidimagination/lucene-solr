@@ -27,6 +27,7 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.FailOnNonBulkMergesInfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
 
@@ -76,7 +77,7 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
       assertEquals("f4", fis2.fieldInfo(3).name);
 
       writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-      writer.optimize();
+      writer.forceMerge(1);
       writer.close();
 
       sis = new SegmentInfos();
@@ -140,7 +141,7 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
     assertEquals("f4", fis2.fieldInfo(3).name);
 
     writer = new IndexWriter(dir1, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
     sis = new SegmentInfos();
@@ -178,7 +179,7 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
         FieldInfos fis1 = sis.info(0).getFieldInfos();
         assertEquals("f1", fis1.fieldInfo(0).name);
         assertEquals("f2", fis1.fieldInfo(1).name);
-        assertTrue(dir.fileExists("1.fnx"));
+        assertTrue(dir.fileExists("_1.fnx"));
       }
       
 
@@ -202,8 +203,8 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
         assertEquals("f1", fis2.fieldInfo(0).name);
         assertNull(fis2.fieldInfo(1));
         assertEquals("f3", fis2.fieldInfo(2).name);
-        assertFalse(dir.fileExists("1.fnx"));
-        assertTrue(dir.fileExists("2.fnx"));
+        assertFalse(dir.fileExists("_1.fnx"));
+        assertTrue(dir.fileExists("_2.fnx"));
       }
 
       {
@@ -231,9 +232,9 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
         assertEquals("f1", fis3.fieldInfo(0).name);
         assertEquals("f2", fis3.fieldInfo(1).name);
         assertEquals("f3", fis3.fieldInfo(2).name);
-        assertFalse(dir.fileExists("1.fnx"));
-        assertTrue(dir.fileExists("2.fnx"));
-        assertFalse(dir.fileExists("3.fnx"));
+        assertFalse(dir.fileExists("_1.fnx"));
+        assertTrue(dir.fileExists("_2.fnx"));
+        assertFalse(dir.fileExists("_3.fnx"));
       }
 
       {
@@ -244,15 +245,14 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
         writer.deleteDocuments(new Term("f1", "d1"));
         // nuke the first segment entirely so that the segment with gaps is
         // loaded first!
-        writer.expungeDeletes();
+        writer.forceMergeDeletes();
         writer.close();
       }
 
       IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
           TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(
-          new LogByteSizeMergePolicy()));
-      writer.optimize();
-      assertFalse(" field numbers got mixed up", writer.anyNonBulkMerges);
+          new LogByteSizeMergePolicy()).setInfoStream(new FailOnNonBulkMergesInfoStream()));
+      writer.forceMerge(1);
       writer.close();
 
       SegmentInfos sis = new SegmentInfos();
@@ -262,9 +262,9 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
       assertEquals("f1", fis1.fieldInfo(0).name);
       assertEquals("f2", fis1.fieldInfo(1).name);
       assertEquals("f3", fis1.fieldInfo(2).name);
-      assertFalse(dir.fileExists("1.fnx"));
-      assertTrue(dir.fileExists("2.fnx"));
-      assertFalse(dir.fileExists("3.fnx"));
+      assertFalse(dir.fileExists("_1.fnx"));
+      assertTrue(dir.fileExists("_2.fnx"));
+      assertFalse(dir.fileExists("_3.fnx"));
       dir.close();
     }
   }
@@ -293,7 +293,7 @@ public class TestConsistentFieldNumbers extends LuceneTestCase {
       writer.addDocument(d);
     }
 
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
 
     SegmentInfos sis = new SegmentInfos();

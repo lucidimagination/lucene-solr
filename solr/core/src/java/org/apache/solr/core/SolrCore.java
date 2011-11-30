@@ -20,7 +20,7 @@ package org.apache.solr.core;
 import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.solr.common.SolrException;
@@ -55,10 +55,7 @@ import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -93,7 +90,7 @@ public final class SolrCore implements SolrInfoMBean {
   private IndexDeletionPolicyWrapper solrDelPolicy;
   private DirectoryFactory directoryFactory;
   private IndexReaderFactory indexReaderFactory;
-  private final CodecProvider codecProvider;
+  private final Codec codec;
 
   public long getStartTime() { return startTime; }
 
@@ -154,10 +151,12 @@ public final class SolrCore implements SolrInfoMBean {
   }
 
   public String getIndexDir() {
-    if (_searcher == null)
-      return dataDir + "index/";
-    SolrIndexSearcher searcher = _searcher.get();
-    return searcher.getIndexDir() == null ? dataDir + "index/" : searcher.getIndexDir();
+    synchronized (searcherLock) {
+      if (_searcher == null)
+        return dataDir + "index/";
+      SolrIndexSearcher searcher = _searcher.get();
+      return searcher.getIndexDir() == null ? dataDir + "index/" : searcher.getIndexDir();
+    }
   }
 
 
@@ -292,8 +291,8 @@ public final class SolrCore implements SolrInfoMBean {
    * 
    * @see SolrCoreAware
    */
-  public void registerResponseWriter( String name, QueryResponseWriter responseWriter ){
-    responseWriters.put(name, responseWriter);
+  public QueryResponseWriter registerResponseWriter( String name, QueryResponseWriter responseWriter ){
+    return responseWriters.put(name, responseWriter);
   }
   
   public SolrCore reload(SolrResourceLoader resourceLoader) throws IOException,
@@ -347,7 +346,6 @@ public final class SolrCore implements SolrInfoMBean {
       indexReaderFactory = new StandardIndexReaderFactory();
     } 
     this.indexReaderFactory = indexReaderFactory;
-    this.indexReaderFactory.setCodecProvider(codecProvider);
   }
   
   // protect via synchronized(SolrCore.class)
@@ -383,7 +381,7 @@ public final class SolrCore implements SolrInfoMBean {
         log.warn(logid+"Solr index directory '" + new File(indexDir) + "' doesn't exist."
                 + " Creating new index...");
 
-        SolrIndexWriter writer = new SolrIndexWriter("SolrCore.initIndex", indexDir, getDirectoryFactory(), true, schema, solrConfig.mainIndexConfig, solrDelPolicy, codecProvider, false);
+        SolrIndexWriter writer = new SolrIndexWriter("SolrCore.initIndex", indexDir, getDirectoryFactory(), true, schema, solrConfig.mainIndexConfig, solrDelPolicy, codec, false);
         writer.close();
       }
 
@@ -477,6 +475,10 @@ public final class SolrCore implements SolrInfoMBean {
   private UpdateHandler createUpdateHandler(String className, UpdateHandler updateHandler) {
     return createReloadedUpdateHandler(className, UpdateHandler.class, "Update Handler", updateHandler);
   }
+
+  private QueryResponseWriter createQueryResponseWriter(String className) {
+    return createInstance(className, QueryResponseWriter.class, "Query Response Writer");
+  }
   
   /**
    * 
@@ -556,7 +558,7 @@ public final class SolrCore implements SolrInfoMBean {
 
     initDeletionPolicy();
 
-    this.codecProvider = initCodecProvider(solrConfig, schema);
+    this.codec= initCodec(solrConfig, schema);
     
     if (updateHandler == null) {
       initDirectoryFactory();
@@ -634,18 +636,16 @@ public final class SolrCore implements SolrInfoMBean {
     resourceLoader.inform(infoRegistry);
   }
 
-  private CodecProvider initCodecProvider(SolrConfig solrConfig, IndexSchema schema) {
-    final PluginInfo info = solrConfig.getPluginInfo(CodecProviderFactory.class.getName());
-    CodecProvider cp;
+  private Codec initCodec(SolrConfig solrConfig, final IndexSchema schema) {
+    final PluginInfo info = solrConfig.getPluginInfo(CodecFactory.class.getName());
+    final CodecFactory factory;
     if (info != null) {
-      CodecProviderFactory factory = (CodecProviderFactory) schema.getResourceLoader().newInstance(info.className);
+      factory = (CodecFactory) schema.getResourceLoader().newInstance(info.className);
       factory.init(info.initArgs);
-      cp = factory.create();
     } else {
-      // make sure we use the default if nothing is configured
-      cp = CodecProvider.getDefault();
+      factory = new DefaultCodecFactory();
     }
-    return new SchemaCodecProvider(schema, cp);
+    return factory.create(schema);
   }
 
   /**
@@ -815,6 +815,21 @@ public final class SolrCore implements SolrInfoMBean {
      closeHooks.add( hook );
    }
 
+  /** @lucene.internal
+   *  Debugging aid only.  No non-test code should be released with uncommented verbose() calls.  */
+  public static boolean VERBOSE = Boolean.parseBoolean(System.getProperty("tests.verbose","false"));
+  public static void verbose(Object... args) {
+    if (!VERBOSE) return;
+    StringBuilder sb = new StringBuilder("VERBOSE:");
+    sb.append(Thread.currentThread().getName());
+    sb.append(':');
+    for (Object o : args) {
+      sb.append(' ');
+      sb.append(o==null ? "(null)" : o.toString());
+    }
+    System.out.println(sb.toString());
+  }
+
 
   ////////////////////////////////////////////////////////////////////////////////
   // Request Handler
@@ -944,7 +959,8 @@ public final class SolrCore implements SolrInfoMBean {
 
   // The current searcher used to service queries.
   // Don't access this directly!!!! use getSearcher() to
-  // get it (and it will increment the ref count at the same time)
+  // get it (and it will increment the ref count at the same time).
+  // This reference is protected by searcherLock.
   private RefCounted<SolrIndexSearcher> _searcher;
 
   // All of the open searchers.  Don't access this directly.
@@ -1105,18 +1121,20 @@ public final class SolrCore implements SolrInfoMBean {
       
       if (newestSearcher != null && solrConfig.reopenReaders
           && indexDirFile.equals(newIndexDirFile)) {
-        
+
         if (updateHandlerReopens) {
           
           tmp = getUpdateHandler().reopenSearcher(newestSearcher.get());
-          
         } else {
           
           IndexReader currentReader = newestSearcher.get().getIndexReader();
           IndexReader newReader;
           
+          // verbose("start reopen without writer, reader=", currentReader);
           newReader = IndexReader.openIfChanged(currentReader);
-          
+          // verbose("reopen result", newReader);
+
+
           if (newReader == null) {
             currentReader.incRef();
             newReader = currentReader;
@@ -1125,8 +1143,11 @@ public final class SolrCore implements SolrInfoMBean {
           tmp = new SolrIndexSearcher(this, schema, "main", newReader, true, true, true, directoryFactory);
         }
 
+
       } else {
+        // verbose("non-reopen START:");
         tmp = new SolrIndexSearcher(this, newIndexDir, schema, getSolrConfig().mainIndexConfig, "main", true, true, directoryFactory);
+        // verbose("non-reopen DONE: searcher=",tmp);
       }
     } catch (Throwable th) {
       synchronized(searcherLock) {
@@ -1159,6 +1180,7 @@ public final class SolrCore implements SolrInfoMBean {
       boolean alreadyRegistered = false;
       synchronized (searcherLock) {
         _searchers.add(newSearchHolder);
+        // verbose("added searcher ",newSearchHolder.get()," to _searchers");
 
         if (_searcher == null) {
           // if there isn't a current searcher then we may
@@ -1532,7 +1554,54 @@ public final class SolrCore implements SolrInfoMBean {
   /** Configure the query response writers. There will always be a default writer; additional
    * writers may also be configured. */
   private void initWriters() {
-    defaultResponseWriter = initPlugins(responseWriters, QueryResponseWriter.class);
+    // use link map so we iterate in the same order
+    Map<PluginInfo,QueryResponseWriter> writers = new LinkedHashMap<PluginInfo,QueryResponseWriter>();
+    for (PluginInfo info : solrConfig.getPluginInfos(QueryResponseWriter.class.getName())) {
+      try {
+        QueryResponseWriter writer;
+        String startup = info.attributes.get("startup") ;
+        if( startup != null ) {
+          if( "lazy".equals(startup) ) {
+            log.info("adding lazy queryResponseWriter: " + info.className);
+            writer = new LazyQueryResponseWriterWrapper(this, info.className, info.initArgs );
+          } else {
+            throw new Exception( "Unknown startup value: '"+startup+"' for: "+info.className );
+          }
+        } else {
+          writer = createQueryResponseWriter(info.className);
+        }
+        writers.put(info,writer);
+        QueryResponseWriter old = registerResponseWriter(info.name, writer);
+        if(old != null) {
+          log.warn("Multiple queryResponseWriter registered to the same name: " + info.name + " ignoring: " + old.getClass().getName());
+        }
+        if(info.isDefault()){
+          defaultResponseWriter = writer;
+          if(defaultResponseWriter != null)
+            log.warn("Multiple default queryResponseWriter registered ignoring: " + old.getClass().getName());
+        }
+        log.info("created "+info.name+": " + info.className);
+      } catch (Exception ex) {
+          SolrConfig.severeErrors.add( ex );
+          SolrException e = new SolrException
+            (SolrException.ErrorCode.SERVER_ERROR, "QueryResponseWriter init failure", ex);
+          SolrException.logOnce(log,null,e);
+          throw e;
+      }
+    }
+
+    // we've now registered all handlers, time to init them in the same order
+    for (Map.Entry<PluginInfo,QueryResponseWriter> entry : writers.entrySet()) {
+      PluginInfo info = entry.getKey();
+      QueryResponseWriter writer = entry.getValue();
+      responseWriters.put(info.name, writer);
+      if (writer instanceof PluginInfoInitialized) {
+        ((PluginInfoInitialized) writer).init(info);
+      } else{
+        writer.init(info.initArgs);
+      }
+    }
+
     for (Map.Entry<String, QueryResponseWriter> entry : DEFAULT_RESPONSE_WRITERS.entrySet()) {
       if(responseWriters.get(entry.getKey()) == null) responseWriters.put(entry.getKey(), entry.getValue());
     }
@@ -1634,6 +1703,10 @@ public final class SolrCore implements SolrInfoMBean {
   
   public TransformerFactory getTransformerFactory(String name) {
     return transformerFactories.get(name);
+  }
+
+  public void addTransformerFactory(String name, TransformerFactory factory){
+    transformerFactories.put(name, factory);
   }
   
 
@@ -1780,10 +1853,54 @@ public final class SolrCore implements SolrInfoMBean {
     return lst;
   }
   
-  public CodecProvider getCodecProvider() {
-    return codecProvider;
+  public Codec getCodec() {
+    return codec;
   }
 
+  public final class LazyQueryResponseWriterWrapper implements QueryResponseWriter {
+    private SolrCore _core;
+    private String _className;
+    private NamedList _args;
+    private QueryResponseWriter _writer;
+
+    public LazyQueryResponseWriterWrapper(SolrCore core, String className, NamedList args) {
+      _core = core;
+      _className = className;
+      _args = args;
+      _writer = null;
+    }
+
+    public synchronized QueryResponseWriter getWrappedWriter()
+    {
+      if( _writer == null ) {
+        try {
+          QueryResponseWriter writer = createQueryResponseWriter(_className);
+          writer.init( _args );
+          _writer = writer;
+        }
+        catch( Exception ex ) {
+          throw new SolrException( SolrException.ErrorCode.SERVER_ERROR, "lazy loading error", ex );
+        }
+      }
+      return _writer;
+    }
+
+
+    @Override
+    public void init(NamedList args) {
+      // do nothing
+    }
+
+    @Override
+    public void write(Writer writer, SolrQueryRequest request, SolrQueryResponse response) throws IOException {
+      getWrappedWriter().write(writer, request, response);
+    }
+
+    @Override
+    public String getContentType(SolrQueryRequest request, SolrQueryResponse response) {
+      return getWrappedWriter().getContentType(request, response);
+    }
+  }
 }
 
 

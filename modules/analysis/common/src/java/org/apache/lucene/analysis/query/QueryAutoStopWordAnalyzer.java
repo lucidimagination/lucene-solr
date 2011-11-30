@@ -25,6 +25,7 @@ import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util.BytesRef;
 
@@ -154,11 +155,12 @@ public final class QueryAutoStopWordAnalyzer extends AnalyzerWrapper {
       Terms terms = MultiFields.getTerms(indexReader, field);
       CharsRef spare = new CharsRef();
       if (terms != null) {
-        TermsEnum te = terms.iterator();
+        TermsEnum te = terms.iterator(null);
         BytesRef text;
         while ((text = te.next()) != null) {
           if (te.docFreq() > maxDocFreq) {
-            stopWords.add(text.utf8ToChars(spare).toString());
+            UnicodeUtil.UTF8toUTF16(text, spare);
+            stopWords.add(spare.toString());
           }
         }
       }

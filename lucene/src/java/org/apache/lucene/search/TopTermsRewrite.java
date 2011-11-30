@@ -91,12 +91,12 @@ public abstract class TopTermsRewrite<Q extends Query> extends TermCollectingRew
       private BytesRef lastTerm;
       private boolean compareToLastTerm(BytesRef t) throws IOException {
         if (lastTerm == null && t != null) {
-          lastTerm = new BytesRef(t);
+          lastTerm = BytesRef.deepCopyOf(t);
         } else if (t == null) {
           lastTerm = null;
         } else {
           assert termsEnum.getComparator().compare(lastTerm, t) < 0: "lastTerm=" + lastTerm + " t=" + t;
-          lastTerm.copy(t);
+          lastTerm.copyBytes(t);
         }
         return true;
       }
@@ -127,7 +127,7 @@ public abstract class TopTermsRewrite<Q extends Query> extends TermCollectingRew
           t.termState.register(state, readerContext.ord, termsEnum.docFreq(), termsEnum.totalTermFreq());
         } else {
           // add new entry in PQ, we must clone the term, else it may get overwritten!
-          st.bytes.copy(bytes);
+          st.bytes.copyBytes(bytes);
           st.boost = boost;
           visitedTerms.put(st.bytes, st);
           assert st.termState.docFreq() == 0;
@@ -163,7 +163,6 @@ public abstract class TopTermsRewrite<Q extends Query> extends TermCollectingRew
       assert reader.docFreq(term) == st.termState.docFreq() : "reader DF is " + reader.docFreq(term) + " vs " + st.termState.docFreq() + " term=" + term;
       addClause(q, term, st.termState.docFreq(), query.getBoost() * st.boost, st.termState); // add to query
     }
-    query.incTotalNumberOfTerms(scoreTerms.length);
     return q;
   }
 

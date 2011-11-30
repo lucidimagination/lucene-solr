@@ -15,7 +15,7 @@ import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.NoMergePolicy;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -42,8 +42,7 @@ public class TestTypePromotion extends LuceneTestCase {
   @Before
   public void setUp() throws Exception {
     super.setUp();
-    assumeFalse("cannot work with preflex codec", CodecProvider.getDefault()
-        .getDefaultFieldCodec().equals("PreFlex"));
+    assumeFalse("cannot work with preflex codec", Codec.getDefault().getName().equals("Lucene3x"));
   }
 
   private static EnumSet<ValueType> INTEGERS = EnumSet.of(ValueType.VAR_INTS,
@@ -88,7 +87,7 @@ public class TestTypePromotion extends LuceneTestCase {
     
     if (random.nextInt(4) == 0) {
       // once in a while use addIndexes
-      writer.optimize();
+      writer.forceMerge(1);
       
       Directory dir_2 = newDirectory() ;
       IndexWriter writer_2 = new IndexWriter(dir_2,
@@ -111,16 +110,17 @@ public class TestTypePromotion extends LuceneTestCase {
           randomValueType(types, random), values, num_1 + num_2, num_3);
     }
 
-    writer.optimize();
+    writer.forceMerge(1);
     writer.close();
     assertValues(type, dir, values);
     dir.close();
   }
 
+  
   private void assertValues(TestType type, Directory dir, long[] values)
       throws CorruptIndexException, IOException {
     IndexReader reader = IndexReader.open(dir);
-    assertTrue(reader.isOptimized());
+    assertEquals(1, reader.getSequentialSubReaders().length);
     ReaderContext topReaderContext = reader.getTopReaderContext();
     ReaderContext[] children = topReaderContext.children();
     IndexDocValues docValues = children[0].reader.docValues("promote");
@@ -138,13 +138,13 @@ public class TestTypePromotion extends LuceneTestCase {
           value = bytes.bytes[bytes.offset];
           break;
         case 2:
-          value = bytes.asShort();
+          value = BytesRefUtils.asShort(bytes);
           break;
         case 4:
-          value = bytes.asInt();
+          value = BytesRefUtils.asInt(bytes);
           break;
         case 8:
-          value = bytes.asLong();
+          value = BytesRefUtils.asLong(bytes);
           break;
           
         default:
@@ -210,18 +210,18 @@ public class TestTypePromotion extends LuceneTestCase {
       case BYTES_FIXED_SORTED:
       case BYTES_FIXED_STRAIGHT:
         values[i] = random.nextLong();
-        ref.copy(values[i]);
+        BytesRefUtils.copyLong(ref, values[i]);
         valField.setBytes(ref, valueType);
         break;
       case BYTES_VAR_DEREF:
       case BYTES_VAR_SORTED:
       case BYTES_VAR_STRAIGHT:
         if (random.nextBoolean()) {
-          ref.copy(random.nextInt());
-          values[i] = ref.asInt();
+          BytesRefUtils.copyInt(ref, random.nextInt());
+          values[i] = BytesRefUtils.asInt(ref);
         } else {
-          ref.copy(random.nextLong());
-          values[i] = ref.asLong();
+          BytesRefUtils.copyLong(ref, random.nextLong());
+          values[i] = BytesRefUtils.asLong(ref);
         }
         valField.setBytes(ref, valueType);
         break;
@@ -293,14 +293,14 @@ public class TestTypePromotion extends LuceneTestCase {
     writer.close();
     writerConfig = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
     if (writerConfig.getMergePolicy() instanceof NoMergePolicy) {
-      writerConfig.setMergePolicy(newLogMergePolicy()); // make sure we optimize to one segment (merge everything together)
+      writerConfig.setMergePolicy(newLogMergePolicy()); // make sure we merge to one segment (merge everything together)
     }
     writer = new IndexWriter(dir, writerConfig);
-    // now optimize
-    writer.optimize();
+    // now merge
+    writer.forceMerge(1);
     writer.close();
     IndexReader reader = IndexReader.open(dir);
-    assertTrue(reader.isOptimized());
+    assertEquals(1, reader.getSequentialSubReaders().length);
     ReaderContext topReaderContext = reader.getTopReaderContext();
     ReaderContext[] children = topReaderContext.children();
     IndexDocValues docValues = children[0].reader.docValues("promote");

@@ -83,8 +83,8 @@
     </or>
   </condition>
   <property name="tests.multiplier" value="1" />
-  <property name="tests.codec" value="randomPerField" />
-  <property name="tests.codecprovider" value="random" />
+  <property name="tests.codec" value="random" />
+  <property name="tests.postingsformat" value="random" />
   <property name="tests.locale" value="random" />
   <property name="tests.timezone" value="random" />
   <property name="tests.directory" value="random" />
@@ -95,6 +95,9 @@
   <property name="tests.loggingfile" value="/dev/null"/>
   <property name="tests.nightly" value="false" />
   <property name="tests.cleanthreads.sysprop" value="perMethod"/>
+  <property name="tests.asserts.gracious" value="false"/>
+  <property name="tests.verbose" value="false"/>
+  <property name="tests.infostream" value="${tests.verbose}"/>
     
   <property name="javac.deprecation" value="off"/>
   <property name="javac.debug" value="on"/>
@@ -129,7 +132,7 @@
 
   <property name="src.dir" location="src/java"/>
   <property name="tests.src.dir" location="src/test"/>
-  <property name="tests-framework.src.dir" location="${common.dir}/src/test-framework"/>
+  <property name="tests-framework.src.dir" location="${common.dir}/src/test-framework/java"/>
   <property name="build.dir" location="build"/>
   <!-- Needed in case a contrib needs the original build, also for compile-tools to be called from contrib -->
   <property name="common.build.dir" location="${common.dir}/build"/>
@@ -321,9 +324,8 @@
     </compile>
 
     <!-- Copy the resources folder (if existent) -->
-    <copy todir="${build.dir}/classes/java" includeEmptyDirs="false">
-      <globmapper from="resources/*" to="*" handledirsep="yes"/>
-      <fileset dir="src" includes="resources/**"/>
+    <copy todir="${build.dir}/classes/java">
+      <fileset dir="${src.dir}/../resources" erroronmissingdir="no"/>
     </copy>
   </target>
 
@@ -474,6 +476,10 @@
   <target name="compile-test-framework" depends="compile-core">
   	<compile-test-macro srcdir="${tests-framework.src.dir}" destdir="${common.dir}/build/classes/test-framework"
   						test.classpath="test-framework.classpath"/>
+       <!-- Copy the resources folder (if existent) -->
+       <copy todir="${common.dir}/build/classes/test-framework">
+          <fileset dir="${tests-framework.src.dir}/../resources" erroronmissingdir="no"/>
+       </copy>
   </target>
 
   <target name="compile-tools">
@@ -488,8 +494,6 @@
   	<compile-test-macro srcdir="${tests.src.dir}" destdir="${build.dir}/classes/test"
   						test.classpath="test.classpath"/>
   </target>
-
-  <property name="tests.verbose" value="false"/>
 	
   <macrodef name="compile-test-macro" description="Compiles junit tests.">
   	<attribute name="srcdir"/>
@@ -547,12 +551,14 @@
 	
 	      <!-- allow tests to control debug prints -->
 	      <sysproperty key="tests.verbose" value="${tests.verbose}"/>
+	      <!-- even more debugging -->
+	      <sysproperty key="tests.infostream" value="${tests.infostream}"/>
               <!-- directory for formatter lock -->
 	      <sysproperty key="tests.lockdir" value="${tests.lockdir}"/>
               <!-- set the codec tests should run with -->
 	      <sysproperty key="tests.codec" value="${tests.codec}"/>
-              <!-- set the codec provider tests should run with -->
-	      <sysproperty key="tests.codecprovider" value="${tests.codecprovider}"/>
+              <!-- set the postingsformat tests should run with -->
+	      <sysproperty key="tests.postingsformat" value="${tests.postingsformat}"/>
               <!-- set the locale tests should run with -->
 	      <sysproperty key="tests.locale" value="${tests.locale}"/>
               <!-- set the timezone tests should run with -->
@@ -575,6 +581,9 @@
               <sysproperty key="java.util.logging.config.file" value="${tests.loggingfile}"/>
           <!-- set whether or not nightly tests should run -->
           <sysproperty key="tests.nightly" value="@{tests.nightly}"/>
+	    	
+          <!-- set whether tests framework should not require java assertions enabled -->
+          <sysproperty key="tests.asserts.gracious" value="${tests.asserts.gracious}"/>
 
 	      <!-- TODO: create propertyset for test properties, so each project can have its own set -->
               <sysproperty key="tests.multiplier" value="@{tests.multiplier}"/>
@@ -692,7 +701,7 @@
     <fileset dir="contrib" id="clover.contrib.test.src.files">
       <include name="**/test/**/*.java"/>
     </fileset>
-    <fileset dir="${tests-framework.src.dir}" id="clover.test.src.files">
+    <fileset dir="${tests-framework.src.dir}" id="clover.test-framework.src.files">
       <include name="**/*.java" />
     </fileset>
     <fileset dir="${tests.src.dir}" id="clover.test.src.files">
@@ -707,12 +716,14 @@
        <current outfile="${clover.report.dir}" title="${final.name}" numThreads="0">
           <format type="html" filter="assert"/>
           <testsources refid="clover.test.src.files"/>
+          <testsources refid="clover.test-framework.src.files"/>
           <testsources refid="clover.contrib.test.src.files"/>
           <testresults refid="clover.test.result.files"/>
        </current>
        <current outfile="${clover.report.dir}/clover.xml" title="${final.name}">
           <format type="xml" filter="assert"/>
           <testsources refid="clover.test.src.files"/>
+          <testsources refid="clover.test-framework.src.files"/>
           <testsources refid="clover.contrib.test.src.files"/>
           <testresults refid="clover.test.result.files"/>
        </current>
@@ -747,8 +758,13 @@
     <!-- convenience target to package core JAR -->
   </target>
 
-  <target name="jar-src" depends="init">
-  	<jarify basedir="${src.dir}" destfile="${build.dir}/${final.name}-src.jar"/>
+  <target name="jar-src">
+    <sequential>
+      <mkdir dir="${build.dir}" />
+      <jarify basedir="${src.dir}" destfile="${build.dir}/${final.name}-src.jar">
+        <fileset dir="${src.dir}/../resources" erroronmissingdir="no"/>
+      </jarify>
+    </sequential>
   </target>
 
   <target name="default" depends="jar-core"/>
@@ -795,7 +811,7 @@
         <!-- <compilerarg line="-Xmaxwarns 10000000"/>
         <compilerarg line="-Xmaxerrs 10000000"/> -->
         <!-- for generics in Java 1.5: -->
-        <compilerarg line="-Xlint -Xlint:-deprecation -Xlint:-serial"/>
+	<compilerarg line="-Xlint -Xlint:-deprecation -Xlint:-serial"/>
       </javac>
     </sequential>
   </macrodef>

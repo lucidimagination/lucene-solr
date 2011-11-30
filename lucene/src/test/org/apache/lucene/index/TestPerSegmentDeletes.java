@@ -44,7 +44,6 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
     RangeMergePolicy fsmp = new RangeMergePolicy(false);
     iwc.setMergePolicy(fsmp);
     IndexWriter writer = new IndexWriter(dir, iwc);
-    writer.setInfoStream(VERBOSE ? System.out : null);
     for (int x = 0; x < 5; x++) {
       writer.addDocument(DocHelper.createDocument(x, "1", 2));
       //System.out.println("numRamDocs(" + x + ")" + writer.numRamDocs());
@@ -223,7 +222,7 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
       throws IOException {
     Fields fields = MultiFields.getFields(reader);
     Terms cterms = fields.terms(term.field);
-    TermsEnum ctermsEnum = cterms.iterator();
+    TermsEnum ctermsEnum = cterms.iterator(null);
     if (ctermsEnum.seekExact(new BytesRef(term.text()), false)) {
       DocsEnum docsEnum = ctermsEnum.docs(bits, null);
       return toArray(docsEnum);
@@ -268,14 +267,14 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
     }
 
     @Override
-    public MergeSpecification findMergesForOptimize(SegmentInfos segmentInfos,
-        int maxSegmentCount, Map<SegmentInfo,Boolean> segmentsToOptimize)
+    public MergeSpecification findForcedMerges(SegmentInfos segmentInfos,
+        int maxSegmentCount, Map<SegmentInfo,Boolean> segmentsToMerge)
         throws CorruptIndexException, IOException {
       return null;
     }
 
     @Override
-    public MergeSpecification findMergesToExpungeDeletes(
+    public MergeSpecification findForcedDeletesMerges(
         SegmentInfos segmentInfos) throws CorruptIndexException, IOException {
       return null;
     }

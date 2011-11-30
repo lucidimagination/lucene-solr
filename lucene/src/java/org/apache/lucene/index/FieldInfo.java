@@ -21,7 +21,6 @@ import org.apache.lucene.index.values.ValueType;
 
 /** @lucene.experimental */
 public final class FieldInfo {
-  public static final int UNASSIGNED_CODEC_ID = -1;
   public final String name;
   public final int number;
 
@@ -38,7 +37,6 @@ public final class FieldInfo {
   public IndexOptions indexOptions;
 
   public boolean storePayloads; // whether this field stores payloads together with term positions
-  private int codecId = UNASSIGNED_CODEC_ID; // set inside SegmentCodecs#build() during segment flush - this is used to identify the codec used to write this field
 
   /**
    * Controls how much information is stored in the postings lists.
@@ -53,12 +51,15 @@ public final class FieldInfo {
     DOCS_AND_FREQS_AND_POSITIONS 
   };
 
-  FieldInfo(String na, boolean tk, int nu, boolean storeTermVector, 
+  /**
+   * @lucene.experimental
+   */
+  public FieldInfo(String name, boolean isIndexed, int number, boolean storeTermVector, 
             boolean storePositionWithTermVector,  boolean storeOffsetWithTermVector, 
             boolean omitNorms, boolean storePayloads, IndexOptions indexOptions, ValueType docValues) {
-    name = na;
-    isIndexed = tk;
-    number = nu;
+    this.name = name;
+    this.isIndexed = isIndexed;
+    this.number = number;
     this.docValues = docValues;
     if (isIndexed) {
       this.storeTermVector = storeTermVector;
@@ -77,21 +78,11 @@ public final class FieldInfo {
     }
     assert indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS || !storePayloads;
   }
-
-  void setCodecId(int codecId) {
-    assert this.codecId == UNASSIGNED_CODEC_ID : "CodecId can only be set once.";
-    this.codecId = codecId;
-  }
-
-  public int getCodecId() {
-    return codecId;
-  }
   
   @Override
   public Object clone() {
     FieldInfo clone = new FieldInfo(name, isIndexed, number, storeTermVector, storePositionWithTermVector,
                          storeOffsetWithTermVector, omitNorms, storePayloads, indexOptions, docValues);
-    clone.codecId = this.codecId;
     return clone;
   }
 

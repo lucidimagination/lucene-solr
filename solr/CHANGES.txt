@@ -109,6 +109,8 @@ New Features
   as results. 
   (ryan with patches from grant, noble, cmale, yonik, Jan Høydahl, 
   Arul Kalaipandian, hossman)
+  SOLR-2037: Thanks to SOLR-1566, documents boosted by the QueryElevationComponent
+  can be marked as boosted.  (gsingers, ryan, yonik)
 
 * SOLR-2396: Add CollationField, which is much more efficient than 
   the Solr 3.x CollationKeyFilterFactory, and also supports 
@@ -133,10 +135,8 @@ New Features
     fq={!join from=name to=parent}eyes:blue
   (yonik)
 
-* SOLR-1942: Added the ability to select codec per fieldType in schema.xml
-  as well as support custom CodecProviders in solrconfig.xml.
-  NOTE: IndexReaderFactory now has a codecProvider that should be passed
-  to IndexReader.open (in the case you have a custom IndexReaderFactory).
+* SOLR-1942: Added the ability to select postings format per fieldType in schema.xml
+  as well as support custom Codecs in solrconfig.xml.
   (simonw via rmuir)
 
 * SOLR-2136: Boolean type added to function queries, along with
@@ -185,12 +185,19 @@ New Features
     LMDirichletSimilarity: LM with Dirichlet smoothing
     LMJelinekMercerSimilarity: LM with Jelinek-Mercer smoothing
  (David Mark Nemeskey, Robert Muir)
+ 
+* SOLR-2134 Trie* fields should support sortMissingLast=true, and deprecate Sortable* Field Types
+  (Ryan McKinley, Mike McCandless, Uwe Schindler, Erick Erickson)
+    
+  
+* SOLR-2438 added MultiTermAwareComponent to the various classes to allow automatic lowercasing
+  for multiterm queries (wildcards, regex, prefix, range, etc). You can now optionally specify a
+  "multiterm" analyzer in our schema.xml, but Solr should "do the right thing" if you don't
+  specify <fieldType="multiterm"> (Pete Sturge Erick Erickson, Mentoring from Seeley and Muir)
+
 
 Optimizations
 ----------------------
-
-* SOLR-2742: SolrJ: Provide commitWithinMs as optional parameter for all add() methods,
-  making the feature more conveniently accessible for developers (janhoy)
 
 * SOLR-1875: Per-segment field faceting for single valued string fields.
   Enable with facet.method=fcs, control the number of threads used with
@@ -261,6 +268,18 @@ Bug Fixes
 
 * SOLR-2654: Directorys used by a SolrCore are now closed when they are no longer used.
   (Mark Miller)
+  
+* SOLR-2854: Now load URL content stream data (via stream.url) when called for during request handling,
+  rather than loading URL content streams automatically regardless of use.
+  (David Smiley and Ryan McKinley via ehatcher)
+  
+* SOLR-2829: Fix problem with false-positives due to incorrect
+  equals methods. (Yonik Seeley, Hossman, Erick Erickson. 
+  Marc Tinnemeyer caught the bug)  
+
+* SOLR-2848: Removed 'instanceof AbstractLuceneSpellChecker' hacks from distributed spellchecking code,
+  and added a merge() method to SolrSpellChecker instead. Previously if you extended SolrSpellChecker
+  your spellchecker would not work in distributed fashion.  (James Dyer via rmuir)
   
 Other Changes
 ----------------------
@@ -340,13 +359,51 @@ Other Changes
   from org.codehaus.woodstox:wstx-asl dependency. (David Smiley via Steve Rowe)
 
 * SOLR-2588: Moved VelocityResponseWriter back to contrib module in order to 
-  remove it as a mandatory core dependency.  (Erik Hatcher)
+  remove it as a mandatory core dependency.  (ehatcher)
+  
+* SOLR-2718: Add ability to lazy load response writers, defined with startup="lazy".
+  (ehatcher)
+
+* SOLR-2862: More explicit lexical resources location logged if Carrot2 clustering 
+  extension is used. Fixed solr. impl. of IResource and IResourceLookup. (Dawid Weiss)
+
+* SOLR-1123: Changed JSONResponseWriter to now use application/json as its Content-Type
+  by default.  However the Content-Type can be overwritten and is set to text/plain in
+  the example configuration. (Uri Boness, Chris Male)
+  
+* SOLR-2607: Removed deprecated client/ruby directory, which included solr-ruby and flare.
+  (ehatcher)
 
 Documentation
 ----------------------
 
 * SOLR-2232: Improved README info on solr.solr.home in examples
   (Eric Pugh and hossman)
+  
+==================  3.6.0  ==================
+
+New Features
+----------------------
+* SOLR-2904: BinaryUpdateRequestHandler should be able to accept multiple update requests from
+  a stream (shalin)
+
+* SOLR-1565: StreamingUpdateSolrServer supports RequestWriter API and therefore, javabin update
+  format (shalin)
+
+* SOLR-2438 added MultiTermAwareComponent to the various classes to allow automatic lowercasing
+  for multiterm queries (wildcards, regex, prefix, range, etc). You can now optionally specify a
+  "multiterm" analyzer in our schema.xml, but Solr should "do the right thing" if you don't
+  specify <fieldType="multiterm"> (Pete Sturge Erick Erickson, Mentoring from Seeley and Muir)
+
+* SOLR-2919: Added support for localized range queries when the analysis chain uses 
+  CollationKeyFilter or ICUCollationKeyFilter.  (Michael Sokolov, rmuir)
+
+Bug Fixes
+----------------------
+* SOLR-2912: Fixed File descriptor leak in ShowFileRequestHandler (Michael Ryan, shalin)
+
+* SOLR-2819: Improved speed of parsing hex entities in HTMLStripCharFilter
+  (Bernhard Berger, hossman)
 
 ==================  3.5.0  ==================
 
@@ -368,11 +425,32 @@ New Features
 
 * SOLR-2818: Added before/after count response parsing support for range facets in
   SolrJ. (Bernhard Frauendienst via Martijn van Groningen)  
+  
+* SOLR-2276: Add support for cologne phonetic to PhoneticFilterFactory. 
+  (Marc Pompl via rmuir)
+
+* SOLR-1926: Add hl.q parameter. (koji)
+
+* SOLR-2881: Numeric types now support sortMissingFirst/Last. This includes Trie and date types
+  (Ryan McKinley, Mike McCandless, Uwe Schindler, Erick Erickson)
+
+* SOLR-1023: StatsComponent now supports date fields and string fields.
+  (Chris Male, Mark Holland, Gunnlaugur Thor Briem, Ryan McKinley)
+
+* SOLR-2578: ReplicationHandler's backup command now supports a 'numberToKeep' 
+  param that can be used to delete all but the most recent N backups.
+  (James Dyer via hossman)
+
+Optimizations
+----------------------
+
+* SOLR-2742: SolrJ: Provide commitWithinMs as optional parameter for all add() methods,
+  making the feature more conveniently accessible for developers (janhoy)
 
 Bug Fixes
 ----------------------
 * SOLR-2748: The CommitTracker used for commitWith or autoCommit by maxTime
-  could commit too frequently and could block adds until a new seaercher was
+  could commit too frequently and could block adds until a new searcher was
   registered. (yonik)
 
 * SOLR-2726: Fixed NullPointerException when using spellcheck.q with Suggester.
@@ -391,6 +469,16 @@ Bug Fixes
 
 * SOLR-2791: Replication: abortfetch command is broken if replication was started
   by fetchindex command instead of a regular poll (Yury Kats via shalin)
+
+* SOLR-2861: Fix extremely rare race condition on commit that can result
+  in a NPE (yonik)
+
+* SOLR-2813: Fix HTTP error codes returned when requests contain strings that
+  can not be parsed as numbers for Trie fields. (Jeff Crump and hossman)
+  
+* SOLR-2902: List of collations are wrong parsed in SpellCheckResponse causing
+  a wrong number of collation results in the response.
+  (Bastiaan Verhoef, James Dyer via Simon Willnauer)
 
  Other Changes
 ----------------------
@@ -421,6 +509,13 @@ Bug Fixes
 * SOLR-2372: Upgrade Solr to Tika 0.10 (janhoy)
 
 * SOLR-2792: Allow case insensitive Hunspell stemming (janhoy, rmuir)
+
+* SOLR-2862: More explicit lexical resources location logged if Carrot2 clustering 
+  extension is used. Fixed solr. impl. of IResource and IResourceLookup. (Dawid Weiss)
+
+* SOLR-2849: Fix dependencies in Maven POMs. (David Smiley via Steve Rowe)
+
+* SOLR-2591: Remove commitLockTimeout option from solrconfig.xml (Luca Cavanna via Martijn van Groningen)
 
 ==================  3.4.0  ==================
 

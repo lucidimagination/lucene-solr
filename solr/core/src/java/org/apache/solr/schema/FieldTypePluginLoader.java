@@ -18,19 +18,15 @@
 package org.apache.solr.schema;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Version;
+import org.apache.solr.analysis.*;
 import org.apache.solr.common.ResourceLoader;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.DOMUtil;
-import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.Config;
 import org.apache.solr.core.SolrResourceLoader;
-import org.apache.solr.analysis.CharFilterFactory;
-import org.apache.solr.analysis.TokenFilterFactory;
-import org.apache.solr.analysis.TokenizerChain;
-import org.apache.solr.analysis.TokenizerFactory;
 import org.apache.solr.util.plugin.AbstractPluginLoader;
 import org.w3c.dom.*;
 
@@ -88,12 +84,16 @@ public final class FieldTypePluginLoader
     String expression = "./analyzer[@type='query']";
     Node anode = (Node)xpath.evaluate(expression, node, XPathConstants.NODE);
     Analyzer queryAnalyzer = readAnalyzer(anode);
-    
+
+    expression = "./analyzer[@type='multiterm']";
+    anode = (Node)xpath.evaluate(expression, node, XPathConstants.NODE);
+    Analyzer multiAnalyzer = readAnalyzer(anode);
+
     // An analyzer without a type specified, or with type="index"
     expression = "./analyzer[not(@type)] | ./analyzer[@type='index']";
     anode = (Node)xpath.evaluate(expression, node, XPathConstants.NODE);
     Analyzer analyzer = readAnalyzer(anode);
-    
+
     // a custom similarity[Factory]
     expression = "./similarity";
     anode = (Node)xpath.evaluate(expression, node, XPathConstants.NODE);
@@ -101,9 +101,14 @@ public final class FieldTypePluginLoader
     
     if (queryAnalyzer==null) queryAnalyzer=analyzer;
     if (analyzer==null) analyzer=queryAnalyzer;
+    if (multiAnalyzer == null) {
+      multiAnalyzer = constructMultiTermAnalyzer(queryAnalyzer);
+    }
     if (analyzer!=null) {
       ft.setAnalyzer(analyzer);
       ft.setQueryAnalyzer(queryAnalyzer);
+      if (ft instanceof TextField)
+        ((TextField)ft).setMultiTermAnalyzer(multiAnalyzer);
     }
     if (similarity!=null) {
       ft.setSimilarity(similarity);
@@ -129,6 +134,81 @@ public final class FieldTypePluginLoader
     log.trace("fieldtype defined: " + plugin );
     return fieldTypes.put( name, plugin );
   }
+
+  // The point here is that, if no multitermanalyzer was specified in the schema file, do one of several things:
+  // 1> If legacyMultiTerm == false, assemble a new analyzer composed of all of the charfilters,
+  //    lowercase filters and asciifoldingfilter.
+  // 2> If letacyMultiTerm == true just construct the analyzer from a KeywordTokenizer. That should mimic current behavior.
+  //    Do the same if they've specified that the old behavior is required (legacyMultiTerm="true")
+
+  private Analyzer constructMultiTermAnalyzer(Analyzer queryAnalyzer) {
+    if (queryAnalyzer == null) return null;
+
+    if (!(queryAnalyzer instanceof TokenizerChain)) {
+      return new KeywordAnalyzer();
+    }
+
+    TokenizerChain tc = (TokenizerChain) queryAnalyzer;
+    MultiTermChainBuilder builder = new MultiTermChainBuilder();
+
+    CharFilterFactory[] charFactories = tc.getCharFilterFactories();
+    if (charFactories != null) {
+      for (CharFilterFactory fact : charFactories) {
+        builder.add(fact);
+      }
+    }
+
+    builder.add(tc.getTokenizerFactory());
+
+    for (TokenFilterFactory fact : tc.getTokenFilterFactories()) {
+      builder.add(fact);
+    }
+
+    return builder.build();
+  }
+
+  private static class MultiTermChainBuilder {
+    static final KeywordTokenizerFactory keyFactory;
+
+    static {
+      keyFactory = new KeywordTokenizerFactory();
+      keyFactory.init(new HashMap<String,String>());
+    }
+
+    ArrayList<CharFilterFactory> charFilters = null;
+    ArrayList<TokenFilterFactory> filters = new ArrayList<TokenFilterFactory>(2);
+    TokenizerFactory tokenizer = keyFactory;
+
+    public void add(Object current) {
+      if (!(current instanceof MultiTermAwareComponent)) return;
+      Object newComponent = ((MultiTermAwareComponent)current).getMultiTermComponent();
+      if (newComponent instanceof TokenFilterFactory) {
+        if (filters == null) {
+          filters = new ArrayList<TokenFilterFactory>(2);
+        }
+        filters.add((TokenFilterFactory)newComponent);
+      } else if (newComponent instanceof TokenizerFactory) {
+        tokenizer = (TokenizerFactory)newComponent;
+      } else if (newComponent instanceof CharFilterFactory) {
+        if (charFilters == null) {
+          charFilters = new ArrayList<CharFilterFactory>(1);
+        }
+        charFilters.add( (CharFilterFactory)newComponent);
+
+      } else {
+        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown analysis component from MultiTermAwareComponent: " + newComponent);
+      }
+    }
+
+    public TokenizerChain build() {
+      CharFilterFactory[] charFilterArr =  charFilters == null ? null : charFilters.toArray(new CharFilterFactory[charFilters.size()]);
+      TokenFilterFactory[] filterArr = filters == null ? new TokenFilterFactory[0] : filters.toArray(new TokenFilterFactory[filters.size()]);
+      return new TokenizerChain(charFilterArr, tokenizer, filterArr);
+    }
+
+
+  }
+
 
   //
   // <analyzer><tokenizer class="...."/><tokenizer class="...." arg="....">

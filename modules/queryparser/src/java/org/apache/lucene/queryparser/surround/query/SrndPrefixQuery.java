@@ -19,6 +19,7 @@ package org.apache.lucene.queryparser.surround.query;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
@@ -60,14 +61,14 @@ public class SrndPrefixQuery extends SimpleTerm {
     /* inspired by PrefixQuery.rewrite(): */
     Terms terms = MultiFields.getTerms(reader, fieldName);
     if (terms != null) {
-      TermsEnum termsEnum = terms.iterator();
+      TermsEnum termsEnum = terms.iterator(null);
 
       boolean skip = false;
       TermsEnum.SeekStatus status = termsEnum.seekCeil(new BytesRef(getPrefix()));
       if (status == TermsEnum.SeekStatus.FOUND) {
         mtv.visitMatchingTerm(getLucenePrefixTerm(fieldName));
       } else if (status == TermsEnum.SeekStatus.NOT_FOUND) {
-        if (termsEnum.term().startsWith(prefixRef)) {
+        if (StringHelper.startsWith(termsEnum.term(), prefixRef)) {
           mtv.visitMatchingTerm(new Term(fieldName, termsEnum.term().utf8ToString()));
         } else {
           skip = true;
@@ -80,7 +81,7 @@ public class SrndPrefixQuery extends SimpleTerm {
       if (!skip) {
         while(true) {
           BytesRef text = termsEnum.next();
-          if (text != null && text.startsWith(prefixRef)) {
+          if (text != null && StringHelper.startsWith(text, prefixRef)) {
             mtv.visitMatchingTerm(new Term(fieldName, text.utf8ToString()));
           } else {
             break;

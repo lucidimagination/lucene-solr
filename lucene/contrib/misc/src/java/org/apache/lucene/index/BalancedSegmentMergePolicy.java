@@ -57,7 +57,7 @@ public class BalancedSegmentMergePolicy extends LogByteSizeMergePolicy {
   
   @Override
   protected long size(SegmentInfo info) throws IOException {
-    long byteSize = info.sizeInBytes(true);
+    long byteSize = info.sizeInBytes();
     float delRatio = (info.docCount <= 0 ? 0.0f : ((float)info.getDelCount() / (float)info.docCount));
     return (info.docCount <= 0 ?  byteSize : (long)((1.0f - delRatio) * byteSize));
   }
@@ -105,22 +105,22 @@ public class BalancedSegmentMergePolicy extends LogByteSizeMergePolicy {
   }
   
   @Override
-  public MergeSpecification findMergesForOptimize(SegmentInfos infos, int maxNumSegments, Map<SegmentInfo,Boolean> segmentsToOptimize) throws IOException {
+  public MergeSpecification findForcedMerges(SegmentInfos infos, int maxNumSegments, Map<SegmentInfo,Boolean> segmentsToMerge) throws IOException {
     
     assert maxNumSegments > 0;
 
     MergeSpecification spec = null;
 
-    if (!isOptimized(infos, maxNumSegments, segmentsToOptimize)) {
+    if (!isMerged(infos, maxNumSegments, segmentsToMerge)) {
 
       // Find the newest (rightmost) segment that needs to
-      // be optimized (other segments may have been flushed
-      // since optimize started):
+      // be merged (other segments may have been flushed
+      // since the merge started):
       int last = infos.size();
       while(last > 0) {
 
         final SegmentInfo info = infos.info(--last);
-        if (segmentsToOptimize.containsKey(info)) {
+        if (segmentsToMerge.containsKey(info)) {
           last++;
           break;
         }
@@ -130,9 +130,9 @@ public class BalancedSegmentMergePolicy extends LogByteSizeMergePolicy {
 
         if (maxNumSegments == 1) {
 
-          // Since we must optimize down to 1 segment, the
+          // Since we must merge down to 1 segment, the
           // choice is simple:
-          if (last > 1 || !isOptimized(infos.info(0))) {
+          if (last > 1 || !isMerged(infos.info(0))) {
 
             spec = new MergeSpecification();
             spec.add(new OneMerge(infos.asList().subList(0, last)));
@@ -243,7 +243,7 @@ public class BalancedSegmentMergePolicy extends LogByteSizeMergePolicy {
   }
   
   @Override
-  public MergeSpecification findMergesToExpungeDeletes(SegmentInfos infos)
+  public MergeSpecification findForcedDeletesMerges(SegmentInfos infos)
     throws CorruptIndexException, IOException {
     final int numSegs = infos.size();
     final int numLargeSegs = (numSegs < _numLargeSegments ? numSegs : _numLargeSegments);
@@ -254,7 +254,7 @@ public class BalancedSegmentMergePolicy extends LogByteSizeMergePolicy {
       // it does not clone all metadata, but LogMerge does not need it
       final SegmentInfos smallSegments = new SegmentInfos();
       smallSegments.rollbackSegmentInfos(infos.asList().subList(numLargeSegs, numSegs));
-      spec = super.findMergesToExpungeDeletes(smallSegments);
+      spec = super.findForcedDeletesMerges(smallSegments);
     }
     
     if(spec == null) spec = new MergeSpecification();

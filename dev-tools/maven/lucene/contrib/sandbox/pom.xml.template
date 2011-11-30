@@ -36,25 +36,21 @@
     <build-directory>../../build/contrib/sandbox</build-directory>
   </properties>
   <dependencies>
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-core</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
+    <dependency> 
+      <!-- lucene-test-framework dependency must be declared before lucene-core -->
       <groupId>${project.groupId}</groupId>
       <artifactId>lucene-test-framework</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>jakarta-regexp</groupId>
-      <artifactId>jakarta-regexp</artifactId>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>lucene-core</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
+      <groupId>jakarta-regexp</groupId>
+      <artifactId>jakarta-regexp</artifactId>
     </dependency>
   </dependencies>
   <build>

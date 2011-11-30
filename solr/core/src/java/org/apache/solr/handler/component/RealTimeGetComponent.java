@@ -27,9 +27,11 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.core.SolrCore;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.response.transform.DocTransformer;
+import org.apache.solr.response.transform.TransformContext;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
@@ -39,6 +41,7 @@ import org.apache.solr.update.DocumentBuilder;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.util.RefCounted;
 
+import javax.xml.transform.Transformer;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -102,6 +105,11 @@ public class RealTimeGetComponent extends SearchComponent
     RefCounted<SolrIndexSearcher> searcherHolder = null;
 
     DocTransformer transformer = rsp.getReturnFields().getTransformer();
+    if (transformer != null) {
+      TransformContext context = new TransformContext();
+      context.req = req;
+      transformer.setContext(context);
+    }
    try {
      SolrIndexSearcher searcher = null;
 
@@ -137,6 +145,8 @@ public class RealTimeGetComponent extends SearchComponent
          searcherHolder =  req.getCore().getNewestSearcher(false);
          searcher = searcherHolder.get();
        }
+
+       // SolrCore.verbose("RealTimeGet using searcher ", searcher);
 
        int docid = searcher.getFirstMatch(new Term(idField.getName(), idBytes));
        if (docid < 0) continue;

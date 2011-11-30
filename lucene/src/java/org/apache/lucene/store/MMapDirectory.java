@@ -26,6 +26,9 @@ import java.nio.channels.ClosedChannelException; // javadoc @link
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 import java.security.AccessController;
 import java.security.PrivilegedExceptionAction;
 import java.security.PrivilegedActionException;
@@ -177,7 +180,7 @@ public class MMapDirectory extends FSDirectory {
   }
   
   /**
-   * Sets the maximum chunk size (default is {@link Integer#MAX_VALUE} for
+   * Sets the maximum chunk size (default is 1 GiBytes for
    * 64 bit JVMs and 256 MiBytes for 32 bit JVMs) used for memory mapping.
    * Especially on 32 bit platform, the address space can be very fragmented,
    * so large index files cannot be mapped.
@@ -213,7 +216,7 @@ public class MMapDirectory extends FSDirectory {
     File f = new File(getDirectory(), name);
     RandomAccessFile raf = new RandomAccessFile(f, "r");
     try {
-      return new MMapIndexInput(raf, 0, raf.length(), chunkSizePower);
+      return new MMapIndexInput("MMapIndexInput(path=\"" + f + "\")", raf, 0, raf.length(), chunkSizePower);
     } finally {
       raf.close();
     }
@@ -221,7 +224,7 @@ public class MMapDirectory extends FSDirectory {
   
   public IndexInputSlicer createSlicer(final String name, final IOContext context) throws IOException {
     ensureOpen();
-    File f = new File(getDirectory(), name);
+    final File f = new File(getDirectory(), name);
     final RandomAccessFile raf = new RandomAccessFile(f, "r");
     return new IndexInputSlicer() {
       @Override
@@ -230,13 +233,13 @@ public class MMapDirectory extends FSDirectory {
       }
 
       @Override
-      public IndexInput openSlice(long offset, long length) throws IOException {
-        return new MMapIndexInput(raf, offset, length, chunkSizePower);
+      public IndexInput openSlice(String sliceDescription, long offset, long length) throws IOException {
+        return new MMapIndexInput("MMapIndexInput(" + sliceDescription + " in path=\"" + f + "\" slice=" + offset + ":" + (offset+length) + ")", raf, offset, length, chunkSizePower);
       }
 
       @Override
       public IndexInput openFullSlice() throws IOException {
-        return openSlice(0, raf.length());
+        return openSlice("full-slice", 0, raf.length());
       }
     };
   }
@@ -256,8 +259,10 @@ public class MMapDirectory extends FSDirectory {
     private ByteBuffer curBuf; // redundant for speed: buffers[curBufIndex]
   
     private boolean isClone = false;
-    
-    MMapIndexInput(RandomAccessFile raf, long offset, long length, int chunkSizePower) throws IOException {
+    private final Map<MMapIndexInput,Boolean> clones = new WeakHashMap<MMapIndexInput,Boolean>();
+
+    MMapIndexInput(String resourceDescription, RandomAccessFile raf, long offset, long length, int chunkSizePower) throws IOException {
+      super(resourceDescription);
       this.length = length;
       this.chunkSizePower = chunkSizePower;
       this.chunkSize = 1L << chunkSizePower;
@@ -296,12 +301,15 @@ public class MMapDirectory extends FSDirectory {
       } catch (BufferUnderflowException e) {
         do {
           curBufIndex++;
-          if (curBufIndex >= buffers.length)
-            throw new IOException("read past EOF");
+          if (curBufIndex >= buffers.length) {
+            throw new IOException("read past EOF: " + this);
+          }
           curBuf = buffers[curBufIndex];
           curBuf.position(0);
         } while (!curBuf.hasRemaining());
         return curBuf.get();
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
       }
     }
   
@@ -316,13 +324,16 @@ public class MMapDirectory extends FSDirectory {
           len -= curAvail;
           offset += curAvail;
           curBufIndex++;
-          if (curBufIndex >= buffers.length)
-            throw new IOException("read past EOF");
+          if (curBufIndex >= buffers.length) {
+            throw new IOException("read past EOF: " + this);
+          }
           curBuf = buffers[curBufIndex];
           curBuf.position(0);
           curAvail = curBuf.remaining();
         }
         curBuf.get(b, offset, len);
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
       }
     }
   
@@ -332,6 +343,8 @@ public class MMapDirectory extends FSDirectory {
         return curBuf.getShort();
       } catch (BufferUnderflowException e) {
         return super.readShort();
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
       }
     }
 
@@ -341,6 +354,8 @@ public class MMapDirectory extends FSDirectory {
         return curBuf.getInt();
       } catch (BufferUnderflowException e) {
         return super.readInt();
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
       }
     }
 
@@ -350,12 +365,18 @@ public class MMapDirectory extends FSDirectory {
         return curBuf.getLong();
       } catch (BufferUnderflowException e) {
         return super.readLong();
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
       }
     }
     
     @Override
     public long getFilePointer() {
-      return (((long) curBufIndex) << chunkSizePower) + curBuf.position();
+      try {
+        return (((long) curBufIndex) << chunkSizePower) + curBuf.position();
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
+      }
     }
   
     @Override
@@ -369,13 +390,17 @@ public class MMapDirectory extends FSDirectory {
         this.curBufIndex = bi;
         this.curBuf = b;
       } catch (ArrayIndexOutOfBoundsException aioobe) {
-        if (pos < 0L)
-          throw new IllegalArgumentException("Seeking to negative position");
+        if (pos < 0L) {
+          throw new IllegalArgumentException("Seeking to negative position: " + this);
+        }
         throw new IOException("seek past EOF");
       } catch (IllegalArgumentException iae) {
-        if (pos < 0L)
-          throw new IllegalArgumentException("Seeking to negative position");
-        throw new IOException("seek past EOF");
+        if (pos < 0L) {
+          throw new IllegalArgumentException("Seeking to negative position: " + this);
+        }
+        throw new IOException("seek past EOF: " + this);
+      } catch (NullPointerException npe) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
       }
     }
   
@@ -386,39 +411,70 @@ public class MMapDirectory extends FSDirectory {
   
     @Override
     public Object clone() {
-      if (buffers == null)
-        throw new AlreadyClosedException("MMapIndexInput already closed");
+      if (buffers == null) {
+        throw new AlreadyClosedException("MMapIndexInput already closed: " + this);
+      }
       final MMapIndexInput clone = (MMapIndexInput)super.clone();
       clone.isClone = true;
+      // we keep clone.clones, so it shares the same map with original and we have no additional cost on clones
+      assert clone.clones == this.clones;
       clone.buffers = new ByteBuffer[buffers.length];
-      // Since most clones will use only one buffer, duplicate() could also be
-      // done lazy in clones, e.g. when adapting curBuf.
       for (int bufNr = 0; bufNr < buffers.length; bufNr++) {
         clone.buffers[bufNr] = buffers[bufNr].duplicate();
       }
       try {
         clone.seek(getFilePointer());
       } catch(IOException ioe) {
-        throw new RuntimeException("Should never happen", ioe);
+        throw new RuntimeException("Should never happen: " + this, ioe);
       }
+      
+      // register the new clone in our clone list to clean it up on closing:
+      synchronized(this.clones) {
+        this.clones.put(clone, Boolean.TRUE);
+      }
+      
       return clone;
+    }
+    
+    private void unsetBuffers() {
+      buffers = null;
+      curBuf = null;
+      curBufIndex = 0;
     }
   
     @Override
     public void close() throws IOException {
       try {
         if (isClone || buffers == null) return;
-        for (int bufNr = 0; bufNr < buffers.length; bufNr++) {
-          // unmap the buffer (if enabled) and at least unset it for GC
-          try {
-            cleanMapping(buffers[bufNr]);
-          } finally {
-            buffers[bufNr] = null;
+        
+        // for extra safety unset also all clones' buffers:
+        synchronized(this.clones) {
+          for (final MMapIndexInput clone : this.clones.keySet()) {
+            assert clone.isClone;
+            clone.unsetBuffers();
           }
+          this.clones.clear();
+        }
+        
+        curBuf = null; curBufIndex = 0; // nuke curr pointer early
+        for (int bufNr = 0; bufNr < buffers.length; bufNr++) {
+          cleanMapping(buffers[bufNr]);
         }
       } finally {
-        buffers = null;
+        unsetBuffers();
       }
+    }
+
+    // make sure we have identity on equals/hashCode for WeakHashMap
+    @Override
+    public int hashCode() {
+      return System.identityHashCode(this);
+    }
+
+    // make sure we have identity on equals/hashCode for WeakHashMap
+    @Override
+    public boolean equals(Object obj) {
+      return obj == this;
     }
   }
 

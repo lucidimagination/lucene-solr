@@ -21,9 +21,11 @@ import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.codecs.PostingsFormat;
 import org.apache.lucene.index.codecs.FieldsProducer;
-import org.apache.lucene.index.codecs.FieldsReader;
+import org.apache.lucene.index.codecs.StoredFieldsReader;
 import org.apache.lucene.index.codecs.PerDocValues;
+import org.apache.lucene.index.codecs.TermVectorsReader;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -54,7 +56,7 @@ final class SegmentCoreReaders {
   
   private final SegmentReader owner;
   
-  FieldsReader fieldsReaderOrig;
+  StoredFieldsReader fieldsReaderOrig;
   TermVectorsReader termVectorsReaderOrig;
   CompoundFileDirectory cfsReader;
   CompoundFileDirectory storeCFSReader;
@@ -68,7 +70,7 @@ final class SegmentCoreReaders {
     }
     
     segment = si.name;
-    final SegmentCodecs segmentCodecs = si.getSegmentCodecs();
+    final Codec codec = si.getCodec();
     this.context = context;
     this.dir = dir;
     
@@ -85,12 +87,12 @@ final class SegmentCoreReaders {
       fieldInfos = si.getFieldInfos();
       
       this.termsIndexDivisor = termsIndexDivisor;
-      final Codec codec = segmentCodecs.codec();
+      final PostingsFormat format = codec.postingsFormat();
       final SegmentReadState segmentReadState = new SegmentReadState(cfsDir, si, fieldInfos, context, termsIndexDivisor);
       // Ask codec for its Fields
-      fields = codec.fieldsProducer(segmentReadState);
+      fields = format.fieldsProducer(segmentReadState);
       assert fields != null;
-      perDocProducer = codec.docsProducer(segmentReadState);
+      perDocProducer = codec.docValuesFormat().docsProducer(segmentReadState);
       success = true;
     } finally {
       if (!success) {
@@ -109,7 +111,7 @@ final class SegmentCoreReaders {
     return termVectorsReaderOrig;
   }
   
-  synchronized FieldsReader getFieldsReaderOrig() {
+  synchronized StoredFieldsReader getFieldsReaderOrig() {
     return fieldsReaderOrig;
   }
   
@@ -164,17 +166,10 @@ final class SegmentCoreReaders {
         assert storeDir != null;
       }
       
-      final String storesSegment = si.getDocStoreSegment();
-      fieldsReaderOrig = si.getSegmentCodecs().provider.fieldsReader(storeDir, storesSegment, fieldInfos, context,
-          si.getDocStoreOffset(), si.docCount);
-      
-      // Verify two sources of "maxDoc" agree:
-      if (si.getDocStoreOffset() == -1 && fieldsReaderOrig.size() != si.docCount) {
-        throw new CorruptIndexException("doc counts differ for segment " + segment + ": fieldsReader shows " + fieldsReaderOrig.size() + " but segmentInfo shows " + si.docCount);
-      }
-      
+      fieldsReaderOrig = si.getCodec().storedFieldsFormat().fieldsReader(storeDir, si, fieldInfos, context);
+ 
       if (si.getHasVectors()) { // open term vector files only as needed
-        termVectorsReaderOrig = new TermVectorsReader(storeDir, storesSegment, fieldInfos, context, si.getDocStoreOffset(), si.docCount);
+        termVectorsReaderOrig = si.getCodec().termVectorsFormat().vectorsReader(storeDir, si, fieldInfos, context);
       }
     }
   }

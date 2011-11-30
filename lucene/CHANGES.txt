@@ -32,6 +32,11 @@ Changes in backwards compatibility policy
     now specify the skipDocs explicitly (typically this will be the
     deleted docs, but in general you can provide any Bits).
 
+  - The term vectors APIs (TermFreqVector, TermPositionVector, 
+    TermVectorMapper) have been removed in favor of the above
+    flexible indexing APIs, presenting a single-document inverted
+    index of the document from the term vectors.
+
   - MultiReader ctor now throws IOException
 
   - Directory.copy/Directory.copyTo now copies all files (not just
@@ -194,6 +199,13 @@ Changes in backwards compatibility policy
   to the Bits interface. This method should never do I/O for performance reasons.
   (Mike McCandless, Uwe Schindler, Robert Muir, Chris Male, Yonik Seeley,
   Jason Rutherglen, Paul Elschot)
+
+* LUCENE-3559: The methods "docFreq" and "maxDoc" on IndexSearcher were removed,
+  as these are no longer used by the scoring system. See MIGRATE.txt for more
+  details.  (Robert Muir)
+  
+* LUCENE-3533: Removed SpanFilters, they created large lists of objects and 
+  did not scale. (Robert Muir)
   
 Changes in Runtime Behavior
 
@@ -215,7 +227,7 @@ Changes in Runtime Behavior
 * LUCENE-2881: FieldInfos is now tracked per segment.  Before it was tracked
   per IndexWriter session, which resulted in FieldInfos that had the FieldInfo
   properties from all previous segments combined. Field numbers are now tracked
-  globally across IndexWriter sessions and persisted into a X.fnx file on
+  globally across IndexWriter sessions and persisted into a _X.fnx file on
   successful commit. The corresponding file format changes are backwards-
   compatible. (Michael Busch, Simon Willnauer)
   
@@ -364,11 +376,6 @@ New features
   and FuzzyQuery with finite-state methods. Adds RegexpQuery.
   (Robert Muir, Mike McCandless, Uwe Schindler, Mark Miller)
 
-* LUCENE-1990: Adds internal packed ints implementation, to be used
-  for more efficient storage of int arrays when the values are
-  bounded, for example for storing the terms dict index (Toke
-  Eskildsen via Mike McCandless)
-
 * LUCENE-2321: Cutover to a more RAM efficient packed-ints based
   representation for the in-memory terms dict index.  (Mike
   McCandless)
@@ -380,9 +387,8 @@ New features
 * LUCENE-1458, LUCENE-2111: With flexible indexing it is now possible
   for an application to create its own postings codec, to alter how
   fields, terms, docs and positions are encoded into the index.  The
-  standard codec is the default codec.  Both IndexWriter and
-  IndexReader accept a CodecProvider class to obtain codecs for newly
-  written segments as well as existing segments opened for reading.
+  standard codec is the default codec. IndexWriter accepts a Codec
+  class to obtain codecs for newly written segments.
 
 * LUCENE-1458, LUCENE-2111: Some experimental codecs have been added
   for flexible indexing, including pulsing codec (inlines
@@ -408,7 +414,7 @@ New features
 * LUCENE-2489: Added PerFieldCodecWrapper (in oal.index.codecs) which
   lets you set the Codec per field (Mike McCandless)
 
-* LUCENE-2373: Extend CodecProvider to use SegmentInfosWriter and
+* LUCENE-2373: Extend Codec to use SegmentInfosWriter and
   SegmentInfosReader to allow customization of SegmentInfos data.
   (Andrzej Bialecki)
 
@@ -450,10 +456,10 @@ New features
   (i.e. \* or "*")  Custom QueryParser subclasses overriding getRangeQuery()
   will be passed null for any open endpoint. (Adriano Crestani, yonik)
 
-* LUCENE-2742: Add native per-field codec support. CodecProvider lets you now
-  register a codec for each field and which is in turn recorded in the segment
-  and field information. Codecs are maintained on a per-segment basis and be
-  resolved without knowing the actual codec used for writing the segment.
+* LUCENE-2742: Add native per-field postings format support. Codec lets you now
+  register a postings format for each field and which is in turn recorded 
+  into the index. Postings formtas are maintained on a per-segment basis and be
+  resolved without knowing the actual postings format used for writing the segment.
   (Simon Willnauer)
 
 * LUCENE-2741: Add support for multiple codecs that use the same file
@@ -614,9 +620,6 @@ Optimizations
   
 Bug fixes
 
-* LUCENE-2633: PackedInts Packed32 and Packed64 did not support internal
-  structures larger than 256MB (Toke Eskildsen via Mike McCandless)
-
 * LUCENE-2803: The FieldCache can miss values if an entry for a reader
   with more document deletions is requested before a reader with fewer
   deletions, provided they share some segments. (yonik)
@@ -634,6 +637,38 @@ Bug fixes
   DocsAndPositionsEnum while merging (Marc Sturlese, Erick Erickson,
   Robert Muir, Simon Willnauer, Mike McCandless)
 
+* LUCENE-3589: BytesRef copy(short) didnt set length.
+  (Peter Chang via Robert Muir)
+  
+  
+======================= Lucene 3.6.0 =======================
+
+Changes in backwards compatibility policy
+
+* LUCENE-3594: The protected inner class (never intended to be visible)
+  FieldCacheTermsFilter.FieldCacheTermsFilterDocIdSet was removed and
+  replaced by another internal implementation.  (Uwe Schindler)
+
+Security fixes
+
+* LUCENE-3588: Try harder to prevent SIGSEGV on cloned MMapIndexInputs:
+  Previous versions of Lucene could SIGSEGV the JVM if you try to access
+  the clone of an IndexInput retrieved from MMapDirectory. This security fix
+  prevents this as best as it can by throwing AlreadyClosedException
+  also on clones.  (Uwe Schindler, Robert Muir)
+
+New Features
+
+* LUCENE-3593: Added a FieldValueFilter that accepts all documents that either
+  have at least one or no value at all in a specific field. (Simon Willnauer,
+  Uwe Schindler, Robert Muir)
+  
+Bug fixes
+
+* LUCENE-3595: Fixed FieldCacheRangeFilter and FieldCacheTermsFilter
+  to correctly respect deletions on reopened SegmentReaders. Factored out
+  FieldCacheDocIdSet to be a top-level class.  (Uwe Schindler, Simon Willnauer)
+
 ======================= Lucene 3.5.0 =======================
 
 Changes in backwards compatibility policy
@@ -650,10 +685,17 @@ Changes in backwards compatibility policy
   As this is expert API, most code will not be affected.
   (Uwe Schindler, Doron Cohen, Mike McCandless)
 
-* LUCENE-3464: IndexReader.reopen has been renamed to
-  IndexReader.openIfChanged (a static method), and now returns null
-  (instead of the old reader) if there are no changes in the index, to
-  prevent the common pitfall of accidentally closing the old reader.
+* LUCENE-3541: Remove IndexInput's protected copyBuf. If you want to
+  keep a buffer in your IndexInput, do this yourself in your implementation, 
+  and be sure to do the right thing on clone()!  (Robert Muir)
+  
+* LUCENE-2822: TimeLimitingCollector now expects a counter clock instead of
+  relying on a private daemon thread. The global time limiting clock thread
+  has been exposed and is now lazily loaded and fully optional.
+  TimeLimitingCollector now supports setting clock baseline manually to include
+  prelude of a search. Previous versions set the baseline on construction time, 
+  now baseline is set once the first IndexReader is passed to the collector
+  unless set before. (Simon Willnauer)
 
 Changes in runtime behavior
 
@@ -700,6 +742,58 @@ Bug fixes
   flush, if you didn't, you would get an invalid index.  
   (Mike McCandless, Robert Muir)
 
+* LUCENE-2633: PackedInts Packed32 and Packed64 did not support internal
+  structures larger than 256MB (Toke Eskildsen via Mike McCandless)
+
+* LUCENE-3540: LUCENE-3255 dropped support for pre-1.9 indexes, but the
+  error message in IndexFormatTooOldException was incorrect. (Uwe Schindler,
+  Mike McCandless)
+
+* LUCENE-3541: IndexInput's default copyBytes() implementation was not safe 
+  across multiple threads, because all clones shared the same buffer.
+  (Robert Muir)
+  
+* LUCENE-3548: Fix CharsRef#append to extend length of the existing char[]
+  and preserve existing chars. (Simon Willnauer) 
+
+* LUCENE-3582: Normalize NaN values in NumericUtils.floatToSortableInt() /
+  NumericUtils.doubleToSortableLong(), so this is consistent with stored
+  fields. Also fix NumericRangeQuery to not falsely hit NaNs on half-open
+  ranges (one bound is null). Because of normalization, NumericRangeQuery
+  can now be used to hit NaN values by creating a query with
+  upper == lower == NaN (inclusive).  (Dawid Weiss, Uwe Schindler)
+
+API Changes
+
+* LUCENE-3454: Rename IndexWriter.optimize to forceMerge to discourage
+  use of this method since it is horribly costly and rarely justified
+  anymore.  MergePolicy.findMergesForOptimize was renamed to
+  findForcedMerges.  IndexReader.isOptimized was
+  deprecated. IndexCommit.isOptimized was replaced with
+  getSegmentCount. (Robert Muir, Mike McCandless)
+
+* LUCENE-3205: Deprecated MultiTermQuery.getTotalNumerOfTerms() [and
+  related methods], as the numbers returned are not useful
+  for multi-segment indexes. They were only needed for tests of
+  NumericRangeQuery.  (Mike McCandless, Uwe Schindler)
+
+* LUCENE-3574: Deprecate outdated constants in org.apache.lucene.util.Constants
+  and add new ones for Java 6 and Java 7.  (Uwe Schindler)
+
+* LUCENE-3571: Deprecate IndexSearcher(Directory). Use the constructors
+  that take IndexReader instead.  (Robert Muir)
+
+* LUCENE-3577: Rename IndexWriter.expungeDeletes to forceMergeDeletes,
+  and revamped the javadocs, to discourage
+  use of this method since it is horribly costly and rarely
+  justified.  MergePolicy.findMergesToExpungeDeletes was renamed to
+  findForcedDeletesMerges. (Robert Muir, Mike McCandless)
+
+* LUCENE-3464: IndexReader.reopen has been renamed to
+  IndexReader.openIfChanged (a static method), and now returns null
+  (instead of the old reader) if there are no changes in the index, to
+  prevent the common pitfall of accidentally closing the old reader.
+
 New Features
 
 * LUCENE-3448: Added FixedBitSet.and(other/DISI), andNot(other/DISI).
@@ -708,6 +802,14 @@ New Features
 * LUCENE-2215: Added IndexSearcher.searchAfter which returns results after a 
   specified ScoreDoc (e.g. last document on the previous page) to support deep
   paging use cases.  (Aaron McCurry, Grant Ingersoll, Robert Muir) 
+
+* LUCENE-1990: Adds internal packed ints implementation, to be used
+  for more efficient storage of int arrays when the values are
+  bounded, for example for storing the terms dict index (Toke
+  Eskildsen via Mike McCandless)
+  
+* LUCENE-3558: Moved SearcherManager, NRTManager & SearcherLifetimeManager into
+  core. All classes are contained in o.a.l.search. (Simon Willnauer)
 
 Optimizations
 
@@ -723,6 +825,14 @@ Optimizations
   FilteredQuery/IndexSearcher added by LUCENE-1536 to Lucene 4.0.
   (Uwe Schindler)
 
+* LUCENE-2205: Very substantial (3-5X) RAM reduction required to hold
+  the terms index on opening an IndexReader (Aaron McCurry via Mike McCandless)
+
+* LUCENE-3443: FieldCache can now set docsWithField, and create an
+  array, in a single pass.  This results in faster init time for apps
+  that need both (such as sorting by a field with a missing value).
+  (Mike McCandless)
+
 Test Cases
 
 * LUCENE-3420: Disable the finalness checks in TokenStream and Analyzer
@@ -731,8 +841,16 @@ Test Cases
 
 * LUCENE-3506: tests relying on assertions being enabled were no-op because
   they ignored AssertionError. With this fix now entire test framework 
-  (all tests) fail if assertions are disabled. (Doron Cohen)
-  
+  (every test) fails if assertions are disabled, unless 
+  -Dtests.asserts.gracious=true is specified. (Doron Cohen)
+
+Build
+
+* SOLR-2849: Fix dependencies in Maven POMs. (David Smiley via Steve Rowe)
+
+* LUCENE-3561: Fix maven xxx-src.jar files that were missing resources.
+  (Uwe Schindler)
+
 ======================= Lucene 3.4.0 =======================
 
 Bug fixes

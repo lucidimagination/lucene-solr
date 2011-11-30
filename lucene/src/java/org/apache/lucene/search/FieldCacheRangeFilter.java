@@ -124,7 +124,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          final boolean matchDoc(int doc) {
+          protected final boolean matchDoc(int doc) {
             final int docOrd = fcsi.getOrd(doc);
             return docOrd >= inclusiveLowerPoint && docOrd <= inclusiveUpperPoint;
           }
@@ -134,7 +134,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getBytes(IndexReader,String)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getBytes(IndexReader,String,boolean)}. This works with all
    * byte fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -143,7 +143,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getBytes(IndexReader,String,FieldCache.ByteParser)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getBytes(IndexReader,String,FieldCache.ByteParser,boolean)}. This works with all
    * byte fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -172,10 +172,10 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         if (inclusiveLowerPoint > inclusiveUpperPoint)
           return DocIdSet.EMPTY_DOCIDSET;
         
-        final byte[] values = FieldCache.DEFAULT.getBytes(context.reader, field, (FieldCache.ByteParser) parser);
+        final byte[] values = FieldCache.DEFAULT.getBytes(context.reader, field, (FieldCache.ByteParser) parser, false);
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          boolean matchDoc(int doc) {
+          protected boolean matchDoc(int doc) {
             return values[doc] >= inclusiveLowerPoint && values[doc] <= inclusiveUpperPoint;
           }
         };
@@ -184,7 +184,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getShorts(IndexReader,String)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getShorts(IndexReader,String,boolean)}. This works with all
    * short fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -193,7 +193,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getShorts(IndexReader,String,FieldCache.ShortParser)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getShorts(IndexReader,String,FieldCache.ShortParser,boolean)}. This works with all
    * short fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -222,10 +222,10 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         if (inclusiveLowerPoint > inclusiveUpperPoint)
           return DocIdSet.EMPTY_DOCIDSET;
         
-        final short[] values = FieldCache.DEFAULT.getShorts(context.reader, field, (FieldCache.ShortParser) parser);
+        final short[] values = FieldCache.DEFAULT.getShorts(context.reader, field, (FieldCache.ShortParser) parser, false);
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          boolean matchDoc(int doc) {
+          protected boolean matchDoc(int doc) {
             return values[doc] >= inclusiveLowerPoint && values[doc] <= inclusiveUpperPoint;
           }
         };
@@ -234,7 +234,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getInts(IndexReader,String)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getInts(IndexReader,String,boolean)}. This works with all
    * int fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -243,7 +243,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getInts(IndexReader,String,FieldCache.IntParser)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getInts(IndexReader,String,FieldCache.IntParser,boolean)}. This works with all
    * int fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -272,10 +272,10 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         if (inclusiveLowerPoint > inclusiveUpperPoint)
           return DocIdSet.EMPTY_DOCIDSET;
         
-        final int[] values = FieldCache.DEFAULT.getInts(context.reader, field, (FieldCache.IntParser) parser);
+        final int[] values = FieldCache.DEFAULT.getInts(context.reader, field, (FieldCache.IntParser) parser, false);
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          boolean matchDoc(int doc) {
+          protected boolean matchDoc(int doc) {
             return values[doc] >= inclusiveLowerPoint && values[doc] <= inclusiveUpperPoint;
           }
         };
@@ -284,7 +284,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getLongs(IndexReader,String)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getLongs(IndexReader,String,boolean)}. This works with all
    * long fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -293,7 +293,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getLongs(IndexReader,String,FieldCache.LongParser)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getLongs(IndexReader,String,FieldCache.LongParser,boolean)}. This works with all
    * long fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -322,10 +322,10 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         if (inclusiveLowerPoint > inclusiveUpperPoint)
           return DocIdSet.EMPTY_DOCIDSET;
         
-        final long[] values = FieldCache.DEFAULT.getLongs(context.reader, field, (FieldCache.LongParser) parser);
+        final long[] values = FieldCache.DEFAULT.getLongs(context.reader, field, (FieldCache.LongParser) parser, false);
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          boolean matchDoc(int doc) {
+          protected boolean matchDoc(int doc) {
             return values[doc] >= inclusiveLowerPoint && values[doc] <= inclusiveUpperPoint;
           }
         };
@@ -334,7 +334,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getFloats(IndexReader,String)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getFloats(IndexReader,String,boolean)}. This works with all
    * float fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -343,7 +343,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getFloats(IndexReader,String,FieldCache.FloatParser)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getFloats(IndexReader,String,FieldCache.FloatParser,boolean)}. This works with all
    * float fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -376,10 +376,10 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         if (inclusiveLowerPoint > inclusiveUpperPoint)
           return DocIdSet.EMPTY_DOCIDSET;
         
-        final float[] values = FieldCache.DEFAULT.getFloats(context.reader, field, (FieldCache.FloatParser) parser);
+        final float[] values = FieldCache.DEFAULT.getFloats(context.reader, field, (FieldCache.FloatParser) parser, false);
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          boolean matchDoc(int doc) {
+          protected boolean matchDoc(int doc) {
             return values[doc] >= inclusiveLowerPoint && values[doc] <= inclusiveUpperPoint;
           }
         };
@@ -388,7 +388,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getDoubles(IndexReader,String)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getDoubles(IndexReader,String,boolean)}. This works with all
    * double fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -397,7 +397,7 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   }
   
   /**
-   * Creates a numeric range filter using {@link FieldCache#getDoubles(IndexReader,String,FieldCache.DoubleParser)}. This works with all
+   * Creates a numeric range filter using {@link FieldCache#getDoubles(IndexReader,String,FieldCache.DoubleParser,boolean)}. This works with all
    * double fields containing exactly one numeric term in the field. The range can be half-open by setting one
    * of the values to <code>null</code>.
    */
@@ -430,11 +430,11 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
         if (inclusiveLowerPoint > inclusiveUpperPoint)
           return DocIdSet.EMPTY_DOCIDSET;
         
-        final double[] values = FieldCache.DEFAULT.getDoubles(context.reader, field, (FieldCache.DoubleParser) parser);
+        final double[] values = FieldCache.DEFAULT.getDoubles(context.reader, field, (FieldCache.DoubleParser) parser, false);
         // ignore deleted docs if range doesn't contain 0
         return new FieldCacheDocIdSet(context.reader.maxDoc(), acceptDocs) {
           @Override
-          boolean matchDoc(int doc) {
+          protected boolean matchDoc(int doc) {
             return values[doc] >= inclusiveLowerPoint && values[doc] <= inclusiveUpperPoint;
           }
         };
@@ -497,122 +497,4 @@ public abstract class FieldCacheRangeFilter<T> extends Filter {
   
   /** Returns the current numeric parser ({@code null} for {@code T} is {@code String}} */
   public FieldCache.Parser getParser() { return parser; }
-  
-  static abstract class FieldCacheDocIdSet extends DocIdSet {
-    private final int maxDoc;
-    private final Bits acceptDocs;
-
-    FieldCacheDocIdSet(int maxDoc, Bits acceptDocs) {
-      this.maxDoc = maxDoc;
-      this.acceptDocs = acceptDocs;
-    }
-
-    /**
-     * this method checks, if a doc is a hit, should throw AIOBE, when position
-     * invalid
-     */
-    abstract boolean matchDoc(int doc) throws ArrayIndexOutOfBoundsException;
-
-    /**
-     * this DocIdSet is always cacheable (does not go back
-     * to the reader for iteration)
-     */
-    @Override
-    public boolean isCacheable() {
-      return true;
-    }
-
-    @Override
-    public Bits bits() {
-      return (acceptDocs == null) ? new Bits() {
-        public boolean get(int docid) {
-          return FieldCacheDocIdSet.this.matchDoc(docid);
-        }
-
-        public int length() {
-          return FieldCacheDocIdSet.this.maxDoc;
-        }
-      } : new Bits() {
-        public boolean get(int docid) {
-          return acceptDocs.get(docid) && FieldCacheDocIdSet.this.matchDoc(docid);
-        }
-
-        public int length() {
-          return FieldCacheDocIdSet.this.maxDoc;
-        }
-      };
-    }
-
-    @Override
-    public DocIdSetIterator iterator() throws IOException {
-      if (acceptDocs == null) {
-        // Specialization optimization disregard deletions
-        return new DocIdSetIterator() {
-          private int doc = -1;
-          @Override
-            public int docID() {
-            return doc;
-          }
-        
-          @Override
-          public int nextDoc() {
-            try {
-              do {
-                doc++;
-              } while (!matchDoc(doc));
-              return doc;
-            } catch (ArrayIndexOutOfBoundsException e) {
-              return doc = NO_MORE_DOCS;
-            }
-          }
-        
-          @Override
-          public int advance(int target) {
-            try {
-              doc = target;
-              while (!matchDoc(doc)) {
-                doc++;
-              }
-              return doc;
-            } catch (ArrayIndexOutOfBoundsException e) {
-              return doc = NO_MORE_DOCS;
-            }
-          }
-        };
-      } else {
-        // Must consult acceptDocs
-
-        // a DocIdSetIterator generating docIds by
-        // incrementing a variable & checking acceptDocs -
-        return new DocIdSetIterator() {
-          private int doc = -1;
-          @Override
-            public int docID() {
-            return doc;
-          }
-        
-          @Override
-          public int nextDoc() {
-            do {
-              doc++;
-              if (doc >= maxDoc) {
-                return doc = NO_MORE_DOCS;
-              }
-            } while (!acceptDocs.get(doc) || !matchDoc(doc));
-            return doc;
-          }
-        
-          @Override
-          public int advance(int target) {
-            for(doc=target;doc<maxDoc;doc++) {
-              if (acceptDocs.get(doc) && matchDoc(doc)) {
-                return doc;
-              }
-            }
-            return doc = NO_MORE_DOCS;
-          }
-        };
-      }
-    }
-  }
 }

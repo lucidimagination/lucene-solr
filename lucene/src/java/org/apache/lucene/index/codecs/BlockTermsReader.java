@@ -17,7 +17,6 @@ package org.apache.lucene.index.codecs;
  * limitations under the License.
  */
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Comparator;
@@ -86,7 +85,7 @@ public class BlockTermsReader extends FieldsProducer {
 
     public FieldAndTerm(FieldAndTerm other) {
       field = other.field;
-      term = new BytesRef(other.term);
+      term = BytesRef.deepCopyOf(other.term);
     }
 
     @Override
@@ -109,14 +108,14 @@ public class BlockTermsReader extends FieldsProducer {
   // private String segment;
   
   public BlockTermsReader(TermsIndexReaderBase indexReader, Directory dir, FieldInfos fieldInfos, String segment, PostingsReaderBase postingsReader, IOContext context,
-                          int termsCacheSize, int codecId)
+                          int termsCacheSize, String segmentSuffix)
     throws IOException {
     
     this.postingsReader = postingsReader;
     termsCache = new DoubleBarrelLRUCache<FieldAndTerm,BlockTermState>(termsCacheSize);
 
     // this.segment = segment;
-    in = dir.openInput(IndexFileNames.segmentFileName(segment, codecId, BlockTermsWriter.TERMS_EXTENSION),
+    in = dir.openInput(IndexFileNames.segmentFileName(segment, segmentSuffix, BlockTermsWriter.TERMS_EXTENSION),
                        context);
 
     boolean success = false;
@@ -130,7 +129,6 @@ public class BlockTermsReader extends FieldsProducer {
       seekDir(in, dirOffset);
 
       final int numFields = in.readVInt();
-
       for(int i=0;i<numFields;i++) {
         final int field = in.readVInt();
         final long numTerms = in.readVLong();
@@ -182,24 +180,14 @@ public class BlockTermsReader extends FieldsProducer {
         }
       }
     } finally {
-      try {
-        if (postingsReader != null) {
-          postingsReader.close();
-        }
-      } finally {
-        for(FieldReader field : fields.values()) {
-          field.close();
-        }
+      if (postingsReader != null) {
+        postingsReader.close();
       }
     }
   }
 
-  public static void files(Directory dir, SegmentInfo segmentInfo, int id, Collection<String> files) {
-    files.add(IndexFileNames.segmentFileName(segmentInfo.name, id, BlockTermsWriter.TERMS_EXTENSION));
-  }
-
-  public static void getExtensions(Collection<String> extensions) {
-    extensions.add(BlockTermsWriter.TERMS_EXTENSION);
+  public static void files(Directory dir, SegmentInfo segmentInfo, String segmentSuffix, Collection<String> files) {
+    files.add(IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, BlockTermsWriter.TERMS_EXTENSION));
   }
 
   @Override
@@ -210,6 +198,11 @@ public class BlockTermsReader extends FieldsProducer {
   @Override
   public Terms terms(String field) throws IOException {
     return fields.get(field);
+  }
+
+  @Override
+  public int getUniqueFieldCount() {
+    return fields.size();
   }
 
   // Iterates through all fields
@@ -233,12 +226,12 @@ public class BlockTermsReader extends FieldsProducer {
     }
     
     @Override
-    public TermsEnum terms() throws IOException {
-      return current.iterator();
+    public Terms terms() throws IOException {
+      return current;
     }
   }
 
-  private class FieldReader extends Terms implements Closeable {
+  private class FieldReader extends Terms {
     final long numTerms;
     final FieldInfo fieldInfo;
     final long termsStartPointer;
@@ -262,12 +255,7 @@ public class BlockTermsReader extends FieldsProducer {
     }
 
     @Override
-    public void close() {
-      super.close();
-    }
-    
-    @Override
-    public TermsEnum iterator() throws IOException {
+    public TermsEnum iterator(TermsEnum reuse) throws IOException {
       return new SegmentTermsEnum();
     }
 
@@ -449,7 +437,7 @@ public class BlockTermsReader extends FieldsProducer {
             state.ord = indexEnum.ord()-1;
           }
 
-          term.copy(indexEnum.term());
+          term.copyBytes(indexEnum.term());
           //System.out.println("  seek: term=" + term.utf8ToString());
         } else {
           //System.out.println("  skip seek");
@@ -732,7 +720,7 @@ public class BlockTermsReader extends FieldsProducer {
         state.copyFrom(otherState);
         seekPending = true;
         indexIsCurrent = false;
-        term.copy(target);
+        term.copyBytes(target);
       }
       
       @Override
@@ -769,7 +757,7 @@ public class BlockTermsReader extends FieldsProducer {
 
         state.ord = indexEnum.ord()-1;
         assert state.ord >= -1: "ord=" + state.ord;
-        term.copy(indexEnum.term());
+        term.copyBytes(indexEnum.term());
 
         // Now, scan:
         int left = (int) (ord - state.ord);

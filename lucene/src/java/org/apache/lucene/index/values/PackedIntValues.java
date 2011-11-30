@@ -73,7 +73,7 @@ class PackedIntValues {
         }
       }
       lastDocId = docID;
-      bytesRef.copy(v);
+      BytesRefUtils.copyLong(bytesRef, v);
       add(docID, bytesRef);
     }
 
@@ -128,7 +128,17 @@ class PackedIntValues {
           PackedInts.bitsRequired(maxValue - minValue));
       for (int i = 0; i < lastDocID + 1; i++) {
         set(bytesRef, i);
-        long asLong = bytesRef.asLong();
+        byte[] bytes = bytesRef.bytes;
+        int offset = bytesRef.offset;
+        long asLong =  
+           (((long)(bytes[offset+0] & 0xff) << 56) |
+            ((long)(bytes[offset+1] & 0xff) << 48) |
+            ((long)(bytes[offset+2] & 0xff) << 40) |
+            ((long)(bytes[offset+3] & 0xff) << 32) |
+            ((long)(bytes[offset+4] & 0xff) << 24) |
+            ((long)(bytes[offset+5] & 0xff) << 16) |
+            ((long)(bytes[offset+6] & 0xff) <<  8) |
+            ((long)(bytes[offset+7] & 0xff)));
         w.add(asLong == 0 ? defaultValue : asLong - minValue);
       }
       for (int i = lastDocID + 1; i < docCount; i++) {
@@ -156,7 +166,7 @@ class PackedIntValues {
     protected PackedIntsReader(Directory dir, String id, int numDocs,
         IOContext context) throws IOException {
       datIn = dir.openInput(
-          IndexFileNames.segmentFileName(id, "", Writer.DATA_EXTENSION),
+                IndexFileNames.segmentFileName(id, Bytes.DV_SEGMENT_SUFFIX, Writer.DATA_EXTENSION),
           context);
       this.numDocs = numDocs;
       boolean success = false;
@@ -186,7 +196,7 @@ class PackedIntValues {
         input = (IndexInput) datIn.clone();
         
         if (values == null) {
-          source = new PackedIntsSource(input);
+          source = new PackedIntsSource(input, false);
         } else {
           source = values.newFromInput(input, numDocs);
         }
@@ -214,7 +224,7 @@ class PackedIntValues {
 
     @Override
     public Source getDirectSource() throws IOException {
-      return values != null ? new FixedStraightBytesImpl.DirectFixedStraightSource((IndexInput) datIn.clone(), 8, ValueType.FIXED_INTS_64) : new DirectPackedIntsSource((IndexInput) datIn.clone());
+      return values != null ? new FixedStraightBytesImpl.DirectFixedStraightSource((IndexInput) datIn.clone(), 8, ValueType.FIXED_INTS_64) : new PackedIntsSource((IndexInput) datIn.clone(), true);
     }
   }
 
@@ -224,11 +234,18 @@ class PackedIntValues {
     private final long defaultValue;
     private final PackedInts.Reader values;
 
-    public PackedIntsSource(IndexInput dataIn) throws IOException {
+    public PackedIntsSource(IndexInput dataIn, boolean direct) throws IOException {
       super(ValueType.VAR_INTS);
       minValue = dataIn.readLong();
       defaultValue = dataIn.readLong();
-      values = PackedInts.getReader(dataIn);
+      values = direct ? PackedInts.getDirectReader(dataIn) : PackedInts.getReader(dataIn);
+    }
+    
+    @Override
+    public BytesRef getBytes(int docID, BytesRef ref) {
+      ref.grow(8);
+      BytesRefUtils.copyLong(ref, getInt(docID));
+      return ref;
     }
 
     @Override
@@ -239,42 +256,6 @@ class PackedIntValues {
       assert docID >= 0;
       final long value = values.get(docID);
       return value == defaultValue ? 0 : minValue + value;
-    }
-  }
-
-  private static final class DirectPackedIntsSource extends Source {
-    private final PackedInts.RandomAccessReaderIterator ints;
-    private long minValue;
-    private final long defaultValue;
-
-    private DirectPackedIntsSource(IndexInput dataIn)
-        throws IOException {
-      super(ValueType.VAR_INTS);
-      minValue = dataIn.readLong();
-      defaultValue = dataIn.readLong();
-      this.ints = PackedInts.getRandomAccessReaderIterator(dataIn);
-    }
-
-    @Override
-    public double getFloat(int docID) {
-      return getInt(docID);
-    }
-
-    @Override
-    public BytesRef getBytes(int docID, BytesRef ref) {
-      ref.grow(8);
-      ref.copy(getInt(docID));
-      return ref;
-    }
-
-    @Override
-    public long getInt(int docID) {
-      try {
-      final long val = ints.get(docID);
-      return val == defaultValue ? 0 : minValue + val;
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
     }
   }
 

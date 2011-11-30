@@ -48,7 +48,7 @@ public abstract class FieldProperties {
   
   protected final static int REQUIRED            = 0x00001000;
   protected final static int OMIT_POSITIONS      = 0x00002000;
-  
+
   static final String[] propertyNames = {
           "indexed", "tokenized", "stored",
           "binary", "omitNorms", "omitTermFreqAndPositions",

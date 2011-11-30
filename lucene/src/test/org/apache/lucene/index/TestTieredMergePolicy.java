@@ -27,7 +27,7 @@ import org.apache.lucene.util._TestUtil;
 
 public class TestTieredMergePolicy extends LuceneTestCase {
 
-  public void testExpungeDeletes() throws Exception {
+  public void testForceMergeDeletes() throws Exception {
     Directory dir = newDirectory();
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
     TieredMergePolicy tmp = newTieredMergePolicy();
@@ -35,9 +35,8 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     conf.setMaxBufferedDocs(4);
     tmp.setMaxMergeAtOnce(100);
     tmp.setSegmentsPerTier(100);
-    tmp.setExpungeDeletesPctAllowed(30.0);
+    tmp.setForceMergeDeletesPctAllowed(30.0);
     IndexWriter w = new IndexWriter(dir, conf);
-    w.setInfoStream(VERBOSE ? System.out : null);
     for(int i=0;i<80;i++) {
       Document doc = new Document();
       doc.add(newField("content", "aaa " + (i%4), TextField.TYPE_UNSTORED));
@@ -50,23 +49,23 @@ public class TestTieredMergePolicy extends LuceneTestCase {
       System.out.println("\nTEST: delete docs");
     }
     w.deleteDocuments(new Term("content", "0"));
-    w.expungeDeletes();
+    w.forceMergeDeletes();
 
     assertEquals(80, w.maxDoc());
     assertEquals(60, w.numDocs());
 
     if (VERBOSE) {
-      System.out.println("\nTEST: expunge2");
+      System.out.println("\nTEST: forceMergeDeletes2");
     }
-    tmp.setExpungeDeletesPctAllowed(10.0);
-    w.expungeDeletes();
+    tmp.setForceMergeDeletesPctAllowed(10.0);
+    w.forceMergeDeletes();
     assertEquals(60, w.maxDoc());
     assertEquals(60, w.numDocs());
     w.close();
     dir.close();
   }
 
-  public void testPartialOptimize() throws Exception {
+  public void testPartialMerge() throws Exception {
     int num = atLeast(10);
     for(int iter=0;iter<num;iter++) {
       if (VERBOSE) {
@@ -82,7 +81,6 @@ public class TestTieredMergePolicy extends LuceneTestCase {
       tmp.setSegmentsPerTier(6);
 
       IndexWriter w = new IndexWriter(dir, conf);
-      w.setInfoStream(VERBOSE ? System.out : null);
       int maxCount = 0;
       final int numDocs = _TestUtil.nextInt(random, 20, 100);
       for(int i=0;i<numDocs;i++) {
@@ -99,9 +97,9 @@ public class TestTieredMergePolicy extends LuceneTestCase {
       int segmentCount = w.getSegmentCount();
       int targetCount = _TestUtil.nextInt(random, 1, segmentCount);
       if (VERBOSE) {
-        System.out.println("TEST: optimize to " + targetCount + " segs (current count=" + segmentCount + ")");
+        System.out.println("TEST: merge to " + targetCount + " segs (current count=" + segmentCount + ")");
       }
-      w.optimize(targetCount);
+      w.forceMerge(targetCount);
       assertEquals(targetCount, w.getSegmentCount());
 
       w.close();
@@ -109,16 +107,16 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     }
   }
 
-  public void testExpungeMaxSegSize() throws Exception {
+  public void testForceMergeDeletesMaxSegSize() throws Exception {
     final Directory dir = newDirectory();
     final IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
     final TieredMergePolicy tmp = new TieredMergePolicy();
     tmp.setMaxMergedSegmentMB(0.01);
-    tmp.setExpungeDeletesPctAllowed(0.0);
+    tmp.setForceMergeDeletesPctAllowed(0.0);
     conf.setMergePolicy(tmp);
 
     final RandomIndexWriter w = new RandomIndexWriter(random, dir, conf);
-    w.setDoRandomOptimize(false);
+    w.setDoRandomForceMerge(false);
 
     final int numDocs = atLeast(200);
     for(int i=0;i<numDocs;i++) {
@@ -128,7 +126,7 @@ public class TestTieredMergePolicy extends LuceneTestCase {
       w.addDocument(doc);
     }
 
-    w.optimize();
+    w.forceMerge(1);
     IndexReader r = w.getReader();
     assertEquals(numDocs, r.maxDoc());
     assertEquals(numDocs, r.numDocs());
@@ -141,7 +139,7 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     assertEquals(numDocs-1, r.numDocs());
     r.close();
 
-    w.expungeDeletes();
+    w.forceMergeDeletes();
 
     r = w.getReader();
     assertEquals(numDocs-1, r.maxDoc());

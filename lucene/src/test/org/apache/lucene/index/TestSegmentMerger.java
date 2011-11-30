@@ -17,12 +17,14 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
@@ -74,15 +76,17 @@ public class TestSegmentMerger extends LuceneTestCase {
   }
 
   public void testMerge() throws IOException {
-    SegmentMerger merger = new SegmentMerger(mergedDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL, mergedSegment, null, null, new FieldInfos(), newIOContext(random));
+    final Codec codec = Codec.getDefault();
+    SegmentMerger merger = new SegmentMerger(InfoStream.getDefault(), mergedDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL, mergedSegment, MergeState.CheckAbort.NONE, null, new FieldInfos(new FieldInfos.FieldNumberBiMap()), codec, newIOContext(random));
     merger.add(reader1);
     merger.add(reader2);
-    int docsMerged = merger.merge();
+    MergeState mergeState = merger.merge();
+    int docsMerged = mergeState.mergedDocCount;
     assertTrue(docsMerged == 2);
-    final FieldInfos fieldInfos = merger.fieldInfos();
+    final FieldInfos fieldInfos = mergeState.fieldInfos;
     //Should be able to open a new SegmentReader against the new directory
     SegmentReader mergedReader = SegmentReader.get(false, mergedDir, new SegmentInfo(mergedSegment, docsMerged, mergedDir, false,
-                                                                                     merger.getSegmentCodecs(), fieldInfos),
+                                                                                     codec, fieldInfos),
                                                    true, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random));
     assertTrue(mergedReader != null);
     assertTrue(mergedReader.numDocs() == 2);
@@ -106,23 +110,19 @@ public class TestSegmentMerger extends LuceneTestCase {
     //System.out.println("stored size: " + stored.size());
     assertTrue("We do not have 3 fields that were indexed with term vector",stored.size() == 3);
 
-    TermFreqVector vector = mergedReader.getTermFreqVector(0, DocHelper.TEXT_FIELD_2_KEY);
-    assertTrue(vector != null);
-    BytesRef [] terms = vector.getTerms();
-    assertTrue(terms != null);
-    //System.out.println("Terms size: " + terms.length);
-    assertTrue(terms.length == 3);
-    int [] freqs = vector.getTermFrequencies();
-    assertTrue(freqs != null);
-    //System.out.println("Freqs size: " + freqs.length);
-    assertTrue(vector instanceof TermPositionVector == true);
+    Terms vector = mergedReader.getTermVectors(0).terms(DocHelper.TEXT_FIELD_2_KEY);
+    assertNotNull(vector);
+    assertEquals(3, vector.getUniqueTermCount());
+    TermsEnum termsEnum = vector.iterator(null);
 
-    for (int i = 0; i < terms.length; i++) {
-      String term = terms[i].utf8ToString();
-      int freq = freqs[i];
+    int i = 0;
+    while (termsEnum.next() != null) {
+      String term = termsEnum.term().utf8ToString();
+      int freq = (int) termsEnum.totalTermFreq();
       //System.out.println("Term: " + term + " Freq: " + freq);
       assertTrue(DocHelper.FIELD_2_TEXT.indexOf(term) != -1);
       assertTrue(DocHelper.FIELD_2_FREQS[i] == freq);
+      i++;
     }
 
     TestSegmentReader.checkNorms(mergedReader);
@@ -145,10 +145,10 @@ public class TestSegmentMerger extends LuceneTestCase {
     w.close();
     
     // Assert that SM fails if .del exists
-    SegmentMerger sm = new SegmentMerger(dir, 1, "a", null, null, null, newIOContext(random));
+    SegmentMerger sm = new SegmentMerger(InfoStream.getDefault(), dir, 1, "a", MergeState.CheckAbort.NONE, null, null, Codec.getDefault(), newIOContext(random));
     boolean doFail = false;
     try {
-      sm.createCompoundFile("b1", w.segmentInfos.info(0), newIOContext(random));
+      IndexWriter.createCompoundFile(dir, "b1", MergeState.CheckAbort.NONE, w.segmentInfos.info(0), newIOContext(random));
       doFail = true; // should never get here
     } catch (AssertionError e) {
       // expected
@@ -169,7 +169,7 @@ public class TestSegmentMerger extends LuceneTestCase {
     SegmentInfos sis = new SegmentInfos();
     sis.read(dir);
     try {
-      sm.createCompoundFile("b2", sis.info(0), newIOContext(random));
+      IndexWriter.createCompoundFile(dir, "b2", MergeState.CheckAbort.NONE, sis.info(0), newIOContext(random));
       doFail = true; // should never get here
     } catch (AssertionError e) {
       // expected

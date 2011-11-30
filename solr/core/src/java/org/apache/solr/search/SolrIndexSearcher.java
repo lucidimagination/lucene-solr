@@ -17,10 +17,18 @@
 
 package org.apache.solr.search;
 
+import java.io.IOException;
+import java.net.URL;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.lucene.document.BinaryField;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.FieldSelector;
-import org.apache.lucene.document.FieldSelectorResult;
-import org.apache.lucene.document.FieldSelectorVisitor;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.LazyDocument;
+import org.apache.lucene.document.NumericField;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.*;
 import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.*;
@@ -46,11 +54,6 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.update.SolrIndexConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.net.URL;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
@@ -184,13 +187,20 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
   @Override
   public String toString() {
-    return name;
+    return name + "{" + reader + "}";
   }
 
   public SolrCore getCore() {
     return core;
   }
 
+  public final int maxDoc() {
+    return reader.maxDoc();
+  }
+  
+  public final int docFreq(Term term) throws IOException {
+    return reader.docFreq(term);
+  }
 
   /** Register sub-objects such as caches
    */
@@ -381,16 +391,71 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
    * FieldSelector which loads the specified fields, and load all other
    * field lazily.
    */
-  static class SetNonLazyFieldSelector implements FieldSelector {
+  // TODO: can we just subclass DocumentStoredFieldVisitor?
+  // need to open up access to its Document...
+  static class SetNonLazyFieldSelector extends StoredFieldVisitor {
     private Set<String> fieldsToLoad;
-    SetNonLazyFieldSelector(Set<String> toLoad) {
+    final Document doc = new Document();
+    final LazyDocument lazyDoc;
+
+    SetNonLazyFieldSelector(Set<String> toLoad, IndexReader reader, int docID) {
       fieldsToLoad = toLoad;
+      lazyDoc = new LazyDocument(reader, docID);
     }
-    public FieldSelectorResult accept(String fieldName) { 
-      if(fieldsToLoad.contains(fieldName))
-        return FieldSelectorResult.LOAD; 
-      else
-        return FieldSelectorResult.LAZY_LOAD;
+
+    public Status needsField(FieldInfo fieldInfo) {
+      if (fieldsToLoad.contains(fieldInfo.name)) {
+        return Status.YES;
+      } else {
+        doc.add(lazyDoc.getField(fieldInfo));
+        return Status.NO;
+      }
+    }
+
+    @Override
+    public void binaryField(FieldInfo fieldInfo, byte[] value, int offset, int length) throws IOException {
+      doc.add(new BinaryField(fieldInfo.name, value));
+    }
+
+    @Override
+    public void stringField(FieldInfo fieldInfo, String value) throws IOException {
+      final FieldType ft = new FieldType(TextField.TYPE_STORED);
+      ft.setStoreTermVectors(fieldInfo.storeTermVector);
+      ft.setStoreTermVectorPositions(fieldInfo.storePositionWithTermVector);
+      ft.setStoreTermVectorOffsets(fieldInfo.storeOffsetWithTermVector);
+      ft.setStoreTermVectors(fieldInfo.storeTermVector);
+      ft.setIndexed(fieldInfo.isIndexed);
+      ft.setOmitNorms(fieldInfo.omitNorms);
+      ft.setIndexOptions(fieldInfo.indexOptions);
+      doc.add(new Field(fieldInfo.name, value, ft));
+    }
+
+    @Override
+    public void intField(FieldInfo fieldInfo, int value) {
+      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      ft.setIndexed(fieldInfo.isIndexed);
+      doc.add(new NumericField(fieldInfo.name, ft).setIntValue(value));
+    }
+
+    @Override
+    public void longField(FieldInfo fieldInfo, long value) {
+      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      ft.setIndexed(fieldInfo.isIndexed);
+      doc.add(new NumericField(fieldInfo.name, ft).setLongValue(value));
+    }
+
+    @Override
+    public void floatField(FieldInfo fieldInfo, float value) {
+      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      ft.setIndexed(fieldInfo.isIndexed);
+      doc.add(new NumericField(fieldInfo.name, ft).setFloatValue(value));
+    }
+
+    @Override
+    public void doubleField(FieldInfo fieldInfo, double value) {
+      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      ft.setIndexed(fieldInfo.isIndexed);
+      doc.add(new NumericField(fieldInfo.name, ft).setDoubleValue(value));
     }
   }
 
@@ -429,9 +494,9 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     if(!enableLazyFieldLoading || fields == null) {
       d = getIndexReader().document(i);
     } else {
-      final FieldSelectorVisitor visitor = new FieldSelectorVisitor(new SetNonLazyFieldSelector(fields));
+      final SetNonLazyFieldSelector visitor = new SetNonLazyFieldSelector(fields, getIndexReader(), i);
       getIndexReader().document(i, visitor);
-      d = visitor.getDocument();
+      d = visitor.doc;
     }
 
     if (documentCache != null) {
@@ -490,7 +555,11 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     Terms terms = fields.terms(t.field());
     if (terms == null) return -1;
     BytesRef termBytes = t.bytes();
-    DocsEnum docs = terms.docs(MultiFields.getLiveDocs(reader), termBytes, null);
+    final TermsEnum termsEnum = terms.iterator(null);
+    if (!termsEnum.seekExact(termBytes, false)) {
+      return -1;
+    }
+    DocsEnum docs = termsEnum.docs(MultiFields.getLiveDocs(reader), null);
     if (docs == null) return -1;
     int id = docs.nextDoc();
     return id == DocIdSetIterator.NO_MORE_DOCS ? -1 : id;
@@ -777,7 +846,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     TermQuery key = null;
 
     if (useCache) {
-      key = new TermQuery(new Term(deState.fieldName, new BytesRef(deState.termsEnum.term())));
+      key = new TermQuery(new Term(deState.fieldName, BytesRef.deepCopyOf(deState.termsEnum.term())));
       DocSet result = filterCache.get(key);
       if (result != null) return result;
     }
@@ -803,45 +872,32 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
       for (int subindex = 0; subindex<numSubs; subindex++) {
         MultiDocsEnum.EnumWithSlice sub = subs[subindex];
         if (sub.docsEnum == null) continue;
-        DocsEnum.BulkReadResult bulk = sub.docsEnum.getBulkResult();
         int base = sub.slice.start;
-
-        for (;;) {
-          int nDocs = sub.docsEnum.read();
-          if (nDocs == 0) break;
-          int[] docArr = bulk.docs.ints;
-          int end = bulk.docs.offset + nDocs;
-          if (upto + nDocs > docs.length) {
-            if (obs == null) obs = new OpenBitSet(maxDoc());
-            for (int i=bulk.docs.offset; i<end; i++) {
-              obs.fastSet(docArr[i]+base);
-            }
-            bitsSet += nDocs;
-          } else {
-            for (int i=bulk.docs.offset; i<end; i++) {
-              docs[upto++] = docArr[i]+base;
-            }
+        int docid;
+        
+        if (largestPossible > docs.length) {
+          if (obs == null) obs = new OpenBitSet(maxDoc());
+          while ((docid = sub.docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+            obs.fastSet(docid + base);
+            bitsSet++;
+          }
+        } else {
+          while ((docid = sub.docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+            docs[upto++] = docid + base;
           }
         }
       }
     } else {
-      DocsEnum.BulkReadResult bulk = docsEnum.getBulkResult();
-      for (;;) {
-        int nDocs = docsEnum.read();
-        if (nDocs == 0) break;
-        int[] docArr = bulk.docs.ints;
-        int end = bulk.docs.offset + nDocs;
-
-        if (upto + nDocs > docs.length) {
-          if (obs == null) obs = new OpenBitSet(maxDoc());
-          for (int i=bulk.docs.offset; i<end; i++) {
-            obs.fastSet(docArr[i]);
-          }
-          bitsSet += nDocs;
-        } else {
-          for (int i=bulk.docs.offset; i<end; i++) {
-            docs[upto++] = docArr[i];
-          }
+      int docid;
+      if (largestPossible > docs.length) {
+        if (obs == null) obs = new OpenBitSet(maxDoc());
+        while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+          obs.fastSet(docid);
+          bitsSet++;
+        }
+      } else {
+        while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+          docs[upto++] = docid;
         }
       }
     }
@@ -882,18 +938,18 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
           BytesRef termBytes = t.bytes();
           
           Bits liveDocs = reader.getLiveDocs();
-          DocsEnum docsEnum = terms==null ? null : terms.docs(liveDocs, termBytes, null);
+          DocsEnum docsEnum = null;
+          if (terms != null) {
+            final TermsEnum termsEnum = terms.iterator(null);
+            if (termsEnum.seekExact(termBytes, false)) {
+              docsEnum = termsEnum.docs(MultiFields.getLiveDocs(reader), null);
+            }
+          }
 
           if (docsEnum != null) {
-            DocsEnum.BulkReadResult readResult = docsEnum.getBulkResult();
-            for (;;) {
-              int n = docsEnum.read();
-              if (n==0) break;
-              int[] arr = readResult.docs.ints;
-              int end = readResult.docs.offset + n;
-              for (int j=readResult.docs.offset; j<end; j++) {
-                collector.collect(arr[j]);
-              }
+            int docid;
+            while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+              collector.collect(docid);
             }
           }
         }
@@ -1229,7 +1285,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
       }
       
       if( timeAllowed > 0 ) {
-        collector = new TimeLimitingCollector(collector, timeAllowed);
+        collector = new TimeLimitingCollector(collector, TimeLimitingCollector.getGlobalCounter(), timeAllowed);
       }
       if (pf.postFilter != null) {
         pf.postFilter.setLastDelegate(collector);
@@ -1258,7 +1314,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
       }
       Collector collector = topCollector;
       if( timeAllowed > 0 ) {
-        collector = new TimeLimitingCollector(collector, timeAllowed);
+        collector = new TimeLimitingCollector(collector, TimeLimitingCollector.getGlobalCounter(), timeAllowed);
       }
       if (pf.postFilter != null) {
         pf.postFilter.setLastDelegate(collector);
@@ -1348,7 +1404,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
        }
 
        if( timeAllowed > 0 ) {
-         collector = new TimeLimitingCollector(collector, timeAllowed);
+         collector = new TimeLimitingCollector(collector, TimeLimitingCollector.getGlobalCounter(), timeAllowed);
        }
       if (pf.postFilter != null) {
         pf.postFilter.setLastDelegate(collector);
@@ -1384,7 +1440,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
       Collector collector = setCollector;
 
       if( timeAllowed > 0 ) {
-        collector = new TimeLimitingCollector(collector, timeAllowed );
+        collector = new TimeLimitingCollector(collector, TimeLimitingCollector.getGlobalCounter(), timeAllowed );
       }
       if (pf.postFilter != null) {
         pf.postFilter.setLastDelegate(collector);

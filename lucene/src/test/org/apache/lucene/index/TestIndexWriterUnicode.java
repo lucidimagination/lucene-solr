@@ -135,7 +135,7 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
   }
 
   private void checkTermsOrder(IndexReader r, Set<String> allTerms, boolean isTop) throws IOException {
-    TermsEnum terms = MultiFields.getFields(r).terms("f").iterator();
+    TermsEnum terms = MultiFields.getFields(r).terms("f").iterator(null);
 
     BytesRef last = new BytesRef();
 
@@ -148,7 +148,7 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
       }
 
       assertTrue(last.compareTo(term) < 0);
-      last.copy(term);
+      last.copyBytes(term);
 
       final String s = term.utf8ToString();
       assertTrue("term " + termDesc(s) + " was not added to index (count=" + allTerms.size() + ")", allTerms.contains(s));
@@ -326,9 +326,9 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
     // Test multi segment
     r.close();
 
-    writer.optimize();
+    writer.forceMerge(1);
 
-    // Test optimized single segment
+    // Test single segment
     r = writer.getReader();
     checkTermsOrder(r, allTerms, true);
     r.close();
