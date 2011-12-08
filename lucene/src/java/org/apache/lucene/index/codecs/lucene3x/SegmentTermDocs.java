@@ -23,7 +23,7 @@ import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.codecs.lucene40.DefaultSkipListReader;
+import org.apache.lucene.index.codecs.lucene40.Lucene40SkipListReader;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 
@@ -43,7 +43,7 @@ public class SegmentTermDocs {
 
   private int skipInterval;
   private int maxSkipLevels;
-  private DefaultSkipListReader skipListReader;
+  private Lucene40SkipListReader skipListReader;
   
   private long freqBasePointer;
   private long proxBasePointer;
@@ -112,7 +112,10 @@ public class SegmentTermDocs {
   }
 
   public final int doc() { return doc; }
-  public final int freq() { return freq; }
+  public final int freq() {
+    assert indexOptions != IndexOptions.DOCS_ONLY;
+    return freq;
+  }
 
   protected void skippingDoc() throws IOException {
   }
@@ -125,7 +128,6 @@ public class SegmentTermDocs {
       
       if (indexOptions == IndexOptions.DOCS_ONLY) {
         doc += docCode;
-        freq = 1;
       } else {
         doc += docCode >>> 1;       // shift off low bit
         if ((docCode & 1) != 0)       // if low bit is set
@@ -201,7 +203,7 @@ public class SegmentTermDocs {
     // don't skip if the target is close (within skipInterval docs away)
     if ((target - skipInterval) >= doc && df >= skipInterval) {                      // optimized case
       if (skipListReader == null)
-        skipListReader = new DefaultSkipListReader((IndexInput) freqStream.clone(), maxSkipLevels, skipInterval); // lazily clone
+        skipListReader = new Lucene40SkipListReader((IndexInput) freqStream.clone(), maxSkipLevels, skipInterval); // lazily clone
 
       if (!haveSkipped) {                          // lazily initialize skip stream
         skipListReader.init(skipPointer, freqBasePointer, proxBasePointer, df, currentFieldStoresPayloads);

@@ -31,6 +31,7 @@ import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.StoredFieldsWriter;
 import org.apache.lucene.index.codecs.PerDocConsumer;
 import org.apache.lucene.index.codecs.TermVectorsWriter;
+import org.apache.lucene.index.values.ValueType;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
@@ -175,7 +176,7 @@ final class SegmentMerger {
       }
     }
 
-    if (mergeState.infoStream != null) {
+    if (mergeState.infoStream.isEnabled("SM")) {
       mergeState.infoStream.message("SM", "merge store matchedCount=" + mergeState.matchedCount + " vs " + mergeState.readers.size());
       if (mergeState.matchedCount != mergeState.readers.size()) {
         mergeState.infoStream.message("SM", "" + (mergeState.readers.size() - mergeState.matchedCount) + " non-bulk merges");
@@ -202,7 +203,11 @@ final class SegmentMerger {
         addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.STORES_PAYLOADS), false, false, false, true, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
         addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.INDEXED), false, false, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
         mergeState.fieldInfos.addOrUpdate(reader.getFieldNames(FieldOption.UNINDEXED), false);
-        mergeState.fieldInfos.addOrUpdate(reader.getFieldNames(FieldOption.DOC_VALUES), false);
+        Collection<String> dvNames = reader.getFieldNames(FieldOption.DOC_VALUES);
+        mergeState.fieldInfos.addOrUpdate(dvNames, false);
+        for (String dvName : dvNames) {
+          mergeState.fieldInfos.fieldInfo(dvName).setDocValues(reader.docValues(dvName).type());
+        }
       }
     }
   }

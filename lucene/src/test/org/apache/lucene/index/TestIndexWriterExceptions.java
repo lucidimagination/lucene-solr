@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.Document;
@@ -499,10 +500,12 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
     // Make sure the doc that hit the exception was marked
     // as deleted:
-    DocsEnum tdocs = MultiFields.getTermDocsEnum(reader,
-                                              MultiFields.getLiveDocs(reader),
-                                              t.field(),
-                                              new BytesRef(t.text()));
+    DocsEnum tdocs = _TestUtil.docs(random, reader,
+                                    t.field(),
+                                    new BytesRef(t.text()),
+                                    MultiFields.getLiveDocs(reader),
+                                    null,
+                                    false);
 
     int count = 0;
     while(tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
@@ -916,10 +919,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       } catch (RuntimeException re) {
         // Expected
       }
-      assertTrue(dir.fileExists("_1.fnx"));
       assertTrue(failure.failOnCommit && failure.failOnDeleteFile);
       w.rollback();
-      assertFalse(dir.fileExists("_1.fnx"));
       assertEquals(0, dir.listAll().length);
       dir.close();
     }
@@ -960,18 +961,22 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   // LUCENE-1429
   public void testOutOfMemoryErrorCausesCloseToFail() throws Exception {
 
-    final List<Throwable> thrown = new ArrayList<Throwable>();
+    final AtomicBoolean thrown = new AtomicBoolean(false);
     final Directory dir = newDirectory();
     final IndexWriter writer = new IndexWriter(dir,
         newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setInfoStream(new InfoStream() {
         @Override
         public void message(String component, final String message) {
-          if (message.startsWith("now flush at close") && 0 == thrown.size()) {
-            thrown.add(null);
+          if (message.startsWith("now flush at close") && thrown.compareAndSet(false, true)) {
             throw new OutOfMemoryError("fake OOME at " + message);
           }
         }
 
+        @Override
+        public boolean isEnabled(String component) {
+          return true;
+        }
+        
         @Override
         public void close() throws IOException {}
       }));
