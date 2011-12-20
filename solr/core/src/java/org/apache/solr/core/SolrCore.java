@@ -646,7 +646,13 @@ public final class SolrCore implements SolrInfoMBean {
       factory = (CodecFactory) schema.getResourceLoader().newInstance(info.className);
       factory.init(info.initArgs);
     } else {
-      factory = new DefaultCodecFactory();
+      // XXX: brutal hack, but this is a problem for solr tests too (currently we only test lucene40...)
+      String defaultCodecFactory = System.getProperty("solr.defaultCodecFactory");
+      if (defaultCodecFactory != null) {
+        factory = (CodecFactory) schema.getResourceLoader().newInstance(defaultCodecFactory);
+      } else {
+      	factory = new DefaultCodecFactory();
+      }
     }
     return factory.create(schema);
   }
