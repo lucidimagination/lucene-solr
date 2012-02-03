@@ -291,12 +291,14 @@
          maxTime - Maximum amount of time in ms that is allowed to pass
                    since a document was added before automaticly
                    triggering a new commit. 
+         openSearcher - if false, the commit causes recent index changes
+         to be flushed to stable storage, but does not cause a new
+         searcher to be opened to make those changes visible.
       -->
-    <!--
-       <autoCommit> 
-         <maxTime>60000</maxTime> 
-       </autoCommit>
-      -->
+     <autoCommit> 
+       <maxTime>15000</maxTime> 
+       <openSearcher>false</openSearcher> 
+     </autoCommit>
 
     <!-- softAutoCommit is like autoCommit except it causes a
          'soft' commit which only ensures that changes are visible
@@ -344,11 +346,9 @@
     <!-- Enables a transaction log, currently used for real-time get.
          "dir" - the target directory for transaction logs, defaults to the
             solr data directory.  --> 
-    <!--
-    <updateLog class="solr.FSUpdateLog">
+    <updateLog>
       <str name="dir">${solr.data.dir:}</str>
     </updateLog>
-    -->
    
 
   </updateHandler>
@@ -1072,6 +1072,13 @@
        </lst>
      </requestHandler>
     -->
+    
+    <!-- Solr Replication for SolrCloud Recovery
+    
+         This is the config need for SolrCloud's recovery replication.
+    -->
+	<requestHandler name="/replication" class="solr.ReplicationHandler" startup="lazy" /> 
+
 
   <!-- Search Components
 

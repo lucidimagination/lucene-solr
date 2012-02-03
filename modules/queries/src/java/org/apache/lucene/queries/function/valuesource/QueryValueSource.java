@@ -17,8 +17,8 @@
 
 package org.apache.lucene.queries.function.valuesource;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
 import org.apache.lucene.search.*;
@@ -51,7 +51,7 @@ public class QueryValueSource extends ValueSource {
   }
 
   @Override
-  public DocValues getValues(Map fcontext, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map fcontext, AtomicReaderContext readerContext) throws IOException {
     return new QueryDocValues(this, readerContext, fcontext);
   }
 
@@ -96,7 +96,7 @@ class QueryDocValues extends FloatDocValues {
     super(vs);
 
     this.readerContext = readerContext;
-    this.acceptDocs = readerContext.reader.getLiveDocs();
+    this.acceptDocs = readerContext.reader().getLiveDocs();
     this.defVal = vs.defVal;
     this.q = vs.q;
     this.fcontext = fcontext;
@@ -193,8 +193,8 @@ class QueryDocValues extends FloatDocValues {
   public ValueFiller getValueFiller() {
     //
     // TODO: if we want to support more than one value-filler or a value-filler in conjunction with
-    // the DocValues, then members like "scorer" should be per ValueFiller instance.
-    // Or we can say that the user should just instantiate multiple DocValues.
+    // the FunctionValues, then members like "scorer" should be per ValueFiller instance.
+    // Or we can say that the user should just instantiate multiple FunctionValues.
     //
     return new ValueFiller() {
       private final MutableValueFloat mval = new MutableValueFloat();

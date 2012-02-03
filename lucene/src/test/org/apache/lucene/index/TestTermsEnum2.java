@@ -25,11 +25,11 @@ import java.util.TreeSet;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
-import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.CheckHits;
 import org.apache.lucene.search.IndexSearcher;
@@ -84,7 +84,6 @@ public class TestTermsEnum2 extends LuceneTestCase {
   }
   
   public void tearDown() throws Exception {
-    searcher.close();
     reader.close();
     dir.close();
     super.tearDown();

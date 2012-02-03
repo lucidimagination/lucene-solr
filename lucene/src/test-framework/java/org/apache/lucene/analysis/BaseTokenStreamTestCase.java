@@ -17,6 +17,7 @@ package org.apache.lucene.analysis;
  * limitations under the License.
  */
 
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -135,6 +136,10 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         assertTrue("startOffset must be >= 0", offsetAtt.startOffset() >= 0);
         assertTrue("endOffset must be >= 0", offsetAtt.endOffset() >= 0);
         assertTrue("endOffset must be >= startOffset", offsetAtt.endOffset() >= offsetAtt.startOffset());
+        if (finalOffset != null) {
+          assertTrue("startOffset must be <= finalOffset", offsetAtt.startOffset() <= finalOffset.intValue());
+          assertTrue("endOffset must be <= finalOffset", offsetAtt.endOffset() <= finalOffset.intValue());
+        }
       }
       if (posIncrAtt != null) {
         assertTrue("posIncrement must be >= 0", posIncrAtt.getPositionIncrement() >= 0);
@@ -242,20 +247,66 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
   }
   
   // simple utility method for blasting tokenstreams with data to make sure they don't do anything crazy
-
+  // TODO: add a MockCharStream, and use it here too, to ensure that correctOffset etc is being done by tokenizers.
   public static void checkRandomData(Random random, Analyzer a, int iterations) throws IOException {
     checkRandomData(random, a, iterations, 20);
+    // now test with multiple threads
+    int numThreads = _TestUtil.nextInt(random, 4, 8);
+    Thread threads[] = new Thread[numThreads];
+    for (int i = 0; i < threads.length; i++) {
+      threads[i] = new AnalysisThread(new Random(random.nextLong()), a, iterations);
+    }
+    for (int i = 0; i < threads.length; i++) {
+      threads[i].start();
+    }
+    for (int i = 0; i < threads.length; i++) {
+      try {
+        threads[i].join();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
+  
+  static class AnalysisThread extends Thread {
+    final int iterations;
+    final Random random;
+    final Analyzer a;
+    
+    AnalysisThread(Random random, Analyzer a, int iterations) {
+      this.random = random;
+      this.a = a;
+      this.iterations = iterations;
+    }
+    
+    @Override
+    public void run() {
+      try {
+        // see the part in checkRandomData where it replays the same text again
+        // to verify reproducability/reuse: hopefully this would catch thread hazards.
+        checkRandomData(random, a, iterations, 20);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  };
+  
+  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength) throws IOException {
+    checkRandomData(random, a, iterations, maxWordLength, random.nextBoolean());
   }
 
-  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength) throws IOException {
+  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength, boolean useCharFilter) throws IOException {
     for (int i = 0; i < iterations; i++) {
       String text;
-      switch(_TestUtil.nextInt(random, 0, 3)) {
+      switch(_TestUtil.nextInt(random, 0, 4)) {
         case 0: 
           text = _TestUtil.randomSimpleString(random);
           break;
         case 1:
           text = _TestUtil.randomRealisticUnicodeString(random, maxWordLength);
+          break;
+        case 2:
+          text = _TestUtil.randomHtmlishString(random, maxWordLength);
           break;
         default:
           text = _TestUtil.randomUnicodeString(random, maxWordLength);
@@ -265,7 +316,9 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         System.out.println("NOTE: BaseTokenStreamTestCase: get first token stream now text=" + text);
       }
 
-      TokenStream ts = a.tokenStream("dummy", new StringReader(text));
+      int remainder = random.nextInt(10);
+      Reader reader = new StringReader(text);
+      TokenStream ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(reader, remainder) : reader);
       assertTrue("has no CharTermAttribute", ts.hasAttribute(CharTermAttribute.class));
       CharTermAttribute termAtt = ts.getAttribute(CharTermAttribute.class);
       OffsetAttribute offsetAtt = ts.hasAttribute(OffsetAttribute.class) ? ts.getAttribute(OffsetAttribute.class) : null;
@@ -293,30 +346,38 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("NOTE: BaseTokenStreamTestCase: re-run analysis");
         }
+        reader = new StringReader(text);
+        ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(reader, remainder) : reader);
         if (typeAtt != null && posIncAtt != null && offsetAtt != null) {
           // offset + pos + type
-          assertAnalyzesToReuse(a, text, 
+          assertTokenStreamContents(ts, 
             tokens.toArray(new String[tokens.size()]),
             toIntArray(startOffsets),
             toIntArray(endOffsets),
             types.toArray(new String[types.size()]),
-            toIntArray(positions));
+            toIntArray(positions),
+            text.length());
         } else if (posIncAtt != null && offsetAtt != null) {
           // offset + pos
-          assertAnalyzesToReuse(a, text, 
+          assertTokenStreamContents(ts, 
               tokens.toArray(new String[tokens.size()]),
               toIntArray(startOffsets),
               toIntArray(endOffsets),
-              toIntArray(positions));
+              null,
+              toIntArray(positions),
+              text.length());
         } else if (offsetAtt != null) {
           // offset
-          assertAnalyzesToReuse(a, text, 
+          assertTokenStreamContents(ts, 
               tokens.toArray(new String[tokens.size()]),
               toIntArray(startOffsets),
-              toIntArray(endOffsets));
+              toIntArray(endOffsets),
+              null,
+              null,
+              text.length());
         } else {
           // terms only
-          assertAnalyzesToReuse(a, text, 
+          assertTokenStreamContents(ts, 
               tokens.toArray(new String[tokens.size()]));
         }
       }

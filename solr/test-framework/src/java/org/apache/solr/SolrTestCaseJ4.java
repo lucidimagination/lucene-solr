@@ -27,6 +27,7 @@ import org.apache.noggit.ObjectBuilder;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
+import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
@@ -64,6 +65,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   @BeforeClass
   public static void beforeClassSolrTestCase() throws Exception {
     startTrackingSearchers();
+    startTrackingZkClients();
     ignoreException("ignore_exception");
   }
 
@@ -72,6 +74,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     deleteCore();
     resetExceptionIgnores();
     endTrackingSearchers();
+    endTrackingZkClients();
   }
 
   @Override
@@ -107,25 +110,64 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   static long numOpens;
   static long numCloses;
   public static void startTrackingSearchers() {
-    numOpens = SolrIndexSearcher.numOpens.get();
-    numCloses = SolrIndexSearcher.numCloses.get();
+    numOpens = SolrIndexSearcher.numOpens.getAndSet(0);
+    numCloses = SolrIndexSearcher.numCloses.getAndSet(0);
+    if (numOpens != 0 || numCloses != 0) {
+      // NOTE: some other tests don't use this base class and hence won't reset the counts.
+      log.warn("startTrackingSearchers: numOpens="+numOpens+" numCloses="+numCloses);
+      numOpens = numCloses = 0;
+    }
+  }
+  static long zkClientNumOpens;
+  static long zkClientNumCloses;
+  public static void startTrackingZkClients() {
+    zkClientNumOpens = SolrZkClient.numOpens.get();
+    zkClientNumCloses = SolrZkClient.numCloses.get();
   }
 
   public static void endTrackingSearchers() {
      long endNumOpens = SolrIndexSearcher.numOpens.get();
      long endNumCloses = SolrIndexSearcher.numCloses.get();
 
+     // wait a bit in case any ending threads have anything to release
+     int retries = 0;
+     while (endNumOpens - numOpens != endNumCloses - numCloses) {
+       if (retries++ > 120) {
+         break;
+       }
+       try {
+         Thread.sleep(1000);
+       } catch (InterruptedException e) {}
+       endNumOpens = SolrIndexSearcher.numOpens.get();
+       endNumCloses = SolrIndexSearcher.numCloses.get();
+     }
+
      SolrIndexSearcher.numOpens.getAndSet(0);
      SolrIndexSearcher.numCloses.getAndSet(0);
 
-     
      if (endNumOpens-numOpens != endNumCloses-numCloses) {
        String msg = "ERROR: SolrIndexSearcher opens=" + (endNumOpens-numOpens) + " closes=" + (endNumCloses-numCloses);
        log.error(msg);
-       testsFailed = true;
-       fail(msg);
+        testsFailed = true;
+        fail(msg);
      }
   }
+  
+  public static void endTrackingZkClients() {
+    long endNumOpens = SolrZkClient.numOpens.get();
+    long endNumCloses = SolrZkClient.numCloses.get();
+
+    SolrZkClient.numOpens.getAndSet(0);
+    SolrZkClient.numCloses.getAndSet(0);
+
+    
+    if (endNumOpens-zkClientNumOpens != endNumCloses-zkClientNumCloses) {
+      String msg = "ERROR: SolrZkClient opens=" + (endNumOpens-zkClientNumOpens) + " closes=" + (endNumCloses-zkClientNumCloses);
+      log.error(msg);
+      testsFailed = true;
+      fail(msg);
+    }
+ }
   
   /** Causes an exception matching the regex pattern to not be logged. */
   public static void ignoreException(String pattern) {
@@ -240,15 +282,18 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
     String configFile = getSolrConfigFile();
     if (configFile != null) {
-
-      solrConfig = h.createConfig(getSolrConfigFile());
-      h = new TestHarness( dataDir.getAbsolutePath(),
-              solrConfig,
-              getSchemaFile());
-      lrf = h.getRequestFactory
-              ("standard",0,20,CommonParams.VERSION,"2.2");
+      createCore();
     }
     log.info("####initCore end");
+  }
+
+  public static void createCore() throws Exception {
+    solrConfig = h.createConfig(getSolrConfigFile());
+    h = new TestHarness( dataDir.getAbsolutePath(),
+            solrConfig,
+            getSchemaFile());
+    lrf = h.getRequestFactory
+            ("standard",0,20,CommonParams.VERSION,"2.2");
   }
 
   /** Subclasses that override setUp can optionally call this method
@@ -379,6 +424,30 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     }
   }
 
+  /** Makes a query request and returns the JSON string response */
+  public static String JQ(SolrQueryRequest req) throws Exception {
+    SolrParams params = req.getParams();
+    if (!"json".equals(params.get("wt","xml")) || params.get("indent")==null) {
+      ModifiableSolrParams newParams = new ModifiableSolrParams(params);
+      newParams.set("wt","json");
+      if (params.get("indent")==null) newParams.set("indent","true");
+      req.setParams(newParams);
+    }
+
+    String response;
+    boolean failed=true;
+    try {
+      response = h.query(req);
+      failed = false;
+    } finally {
+      if (failed) {
+        log.error("REQUEST FAILED: " + req.getParamString());
+      }
+    }
+
+    return response;
+  }
+
   /**
    * Validates a query matches some JSON test expressions using the default double delta tollerance.
    * @see JSONTestUtil#DEFAULT_DELTA
@@ -398,7 +467,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
    * matching more than what you want to test.
    * </p>
    * @param req Solr request to execute
-   * @param delta tollerance allowed in comparing float/double values
+   * @param delta tolerance allowed in comparing float/double values
    * @param tests JSON path expression + '==' + expected value
    */
   public static void assertJQ(SolrQueryRequest req, double delta, String... tests) throws Exception {
@@ -647,6 +716,14 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   /** Send JSON update commands */
   public static String updateJ(String json, SolrParams args) throws Exception {
     SolrCore core = h.getCore();
+    if (args == null) {
+      args = params("wt","json","indent","true");
+    } else {
+      ModifiableSolrParams newArgs = new ModifiableSolrParams(args);
+      if (newArgs.get("wt") == null) newArgs.set("wt","json");
+      if (newArgs.get("indent") == null) newArgs.set("indent","true");
+      args = newArgs;
+    }
     DirectSolrConnection connection = new DirectSolrConnection(core);
     SolrRequestHandler handler = core.getRequestHandler("/update/json");
     if (handler == null) {
@@ -656,6 +733,143 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     return connection.request(handler, args, json);
   }
 
+  public static SolrInputDocument sdoc(Object... fieldsAndValues) {
+    SolrInputDocument sd = new SolrInputDocument();
+    for (int i=0; i<fieldsAndValues.length; i+=2) {
+      sd.addField((String)fieldsAndValues[i], fieldsAndValues[i+1]);
+    }
+    return sd;
+  }
+
+  /** Creates JSON from a SolrInputDocument.  Doesn't currently handle boosts. */
+  public static String json(SolrInputDocument doc) {
+     CharArr out = new CharArr();
+    try {
+      out.append('{');
+      boolean firstField = true;
+      for (SolrInputField sfield : doc) {
+        if (firstField) firstField=false;
+        else out.append(',');
+        JSONUtil.writeString(sfield.getName(), 0, sfield.getName().length(), out);
+        out.append(':');
+        if (sfield.getValueCount() > 1) {
+          out.append('[');
+        }
+        boolean firstVal = true;
+        for (Object val : sfield) {
+          if (firstVal) firstVal=false;
+          else out.append(',');
+          out.append(JSONUtil.toJSON(val));
+        }
+        if (sfield.getValueCount() > 1) {
+          out.append(']');
+        }
+      }
+      out.append('}');
+    } catch (IOException e) {
+      // should never happen
+    }
+    return out.toString();
+  }
+
+  /** Creates a JSON add command from a SolrInputDocument list.  Doesn't currently handle boosts. */
+  public static String jsonAdd(SolrInputDocument... docs) {
+    CharArr out = new CharArr();
+    try {
+      out.append('[');
+      boolean firstField = true;
+      for (SolrInputDocument doc : docs) {
+        if (firstField) firstField=false;
+        else out.append(',');
+        out.append(json(doc));
+      }
+      out.append(']');
+    } catch (IOException e) {
+      // should never happen
+    }
+    return out.toString();
+  }
+
+    /** Creates a JSON delete command from an id list */
+  public static String jsonDelId(Object... ids) {
+    CharArr out = new CharArr();
+    try {
+      out.append('{');
+      boolean first = true;
+      for (Object id : ids) {
+        if (first) first=false;
+        else out.append(',');
+        out.append("\"delete\":{\"id\":");
+        out.append(JSONUtil.toJSON(id));
+        out.append('}');
+      }
+      out.append('}');
+    } catch (IOException e) {
+      // should never happen
+    }
+    return out.toString();
+  }
+
+
+  /** Creates a JSON deleteByQuery command */
+  public static String jsonDelQ(String... queries) {
+    CharArr out = new CharArr();
+    try {
+      out.append('{');
+      boolean first = true;
+      for (Object q : queries) {
+        if (first) first=false;
+        else out.append(',');
+        out.append("\"delete\":{\"query\":");
+        out.append(JSONUtil.toJSON(q));
+        out.append('}');
+      }
+      out.append('}');
+    } catch (IOException e) {
+      // should never happen
+    }
+    return out.toString();
+  }
+
+
+  public static Long addAndGetVersion(SolrInputDocument sdoc, SolrParams params) throws Exception {
+    if (params==null || params.get("versions") == null) {
+      ModifiableSolrParams mparams = new ModifiableSolrParams(params);
+      mparams.set("versions","true");
+      params = mparams;
+    }
+    String response = updateJ(jsonAdd(sdoc), params);
+    Map rsp = (Map)ObjectBuilder.fromJSON(response);
+    List lst = (List)rsp.get("adds");
+    if (lst == null || lst.size() == 0) return null;
+    return (Long) lst.get(1);
+  }
+
+  public static Long deleteAndGetVersion(String id, SolrParams params) throws Exception {
+    if (params==null || params.get("versions") == null) {
+      ModifiableSolrParams mparams = new ModifiableSolrParams(params);
+      mparams.set("versions","true");
+      params = mparams;
+    }
+    String response = updateJ(jsonDelId(id), params);
+    Map rsp = (Map)ObjectBuilder.fromJSON(response);
+    List lst = (List)rsp.get("deletes");
+    if (lst == null || lst.size() == 0) return null;
+    return (Long) lst.get(1);
+  }
+
+  public static Long deleteByQueryAndGetVersion(String q, SolrParams params) throws Exception {
+    if (params==null || params.get("versions") == null) {
+      ModifiableSolrParams mparams = new ModifiableSolrParams(params);
+      mparams.set("versions","true");
+      params = mparams;
+    }
+    String response = updateJ(jsonDelQ(q), params);
+    Map rsp = (Map)ObjectBuilder.fromJSON(response);
+    List lst = (List)rsp.get("deleteByQuery");
+    if (lst == null || lst.size() == 0) return null;
+    return (Long) lst.get(1);
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////// random document / index creation ///////////////////////
@@ -745,7 +959,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   public static final IRange ZERO_TWO = new IRange(0,2);
   public static final IRange ONE_ONE = new IRange(1,1);
 
-  public static class Doc implements Comparable{
+  public static class Doc implements Comparable {
     public Comparable id;
     public List<Fld> fields;
     public int order; // the order this document was added to the index
@@ -811,7 +1025,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     }
   }
 
-  class FldType {
+  protected class FldType {
     public String fname;
     public IRange numValues;
     public Vals vals;

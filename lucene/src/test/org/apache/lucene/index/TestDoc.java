@@ -26,14 +26,12 @@ import java.io.StringWriter;
 import java.util.LinkedList;
 import java.util.Collection;
 
-import junit.framework.TestSuite;
-import junit.textui.TestRunner;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -44,11 +42,6 @@ import org.apache.lucene.util._TestUtil;
 
 /** JUnit adaptation of an older test case DocTest. */
 public class TestDoc extends LuceneTestCase {
-
-    /** Main for running test case by itself. */
-    public static void main(String args[]) {
-        TestRunner.run (new TestSuite(TestDoc.class));
-    }
 
     private File workDir;
     private File indexDir;
@@ -114,7 +107,7 @@ public class TestDoc extends LuceneTestCase {
       StringWriter sw = new StringWriter();
       PrintWriter out = new PrintWriter(sw, true);
       
-      Directory directory = newFSDirectory(indexDir);
+      Directory directory = newFSDirectory(indexDir, null);
       IndexWriter writer = new IndexWriter(
           directory,
           newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
@@ -142,13 +135,14 @@ public class TestDoc extends LuceneTestCase {
       directory.close();
       out.close();
       sw.close();
+
       String multiFileOutput = sw.getBuffer().toString();
       //System.out.println(multiFileOutput);
 
       sw = new StringWriter();
       out = new PrintWriter(sw, true);
 
-      directory = newFSDirectory(indexDir);
+      directory = newFSDirectory(indexDir, null);
       writer = new IndexWriter(
           directory,
           newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
@@ -196,8 +190,8 @@ public class TestDoc extends LuceneTestCase {
    private SegmentInfo merge(Directory dir, SegmentInfo si1, SegmentInfo si2, String merged, boolean useCompoundFile)
    throws Exception {
       IOContext context = newIOContext(random);
-      SegmentReader r1 = SegmentReader.get(true, si1, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, context);
-      SegmentReader r2 = SegmentReader.get(true, si2, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, context);
+      SegmentReader r1 = new SegmentReader(si1, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, context);
+      SegmentReader r2 = new SegmentReader(si2, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, context);
 
       final Codec codec = Codec.getDefault();
       SegmentMerger merger = new SegmentMerger(InfoStream.getDefault(), si1.dir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL, merged, MergeState.CheckAbort.NONE, null, new FieldInfos(new FieldInfos.FieldNumberBiMap()), codec, context);
@@ -224,7 +218,7 @@ public class TestDoc extends LuceneTestCase {
 
    private void printSegment(PrintWriter out, SegmentInfo si)
    throws Exception {
-      SegmentReader reader = SegmentReader.get(true, si, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random));
+      SegmentReader reader = new SegmentReader(si, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random));
 
       for (int i = 0; i < reader.numDocs(); i++)
         out.println(reader.document(i));
@@ -240,7 +234,7 @@ public class TestDoc extends LuceneTestCase {
           out.print("  term=" + field + ":" + tis.term());
           out.println("    DF=" + tis.docFreq());
 
-          DocsAndPositionsEnum positions = tis.docsAndPositions(reader.getLiveDocs(), null);
+          DocsAndPositionsEnum positions = tis.docsAndPositions(reader.getLiveDocs(), null, false);
 
           while (positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             out.print(" doc=" + positions.docID());

@@ -267,6 +267,24 @@
 valued. -->
     <fieldType name="location" class="solr.LatLonType" subFieldSuffix="_coordinate"/>
 
+     <!-- These should pass right through and insure that we can declare external field types -->
+    <fieldType name="pfloat" class="solr.FloatField" omitNorms="true"/>
+    <fieldType name="eff_float" keyField="id" defVal="0"
+               stored="false" indexed="true"
+               class="solr.ExternalFileField" valType="float"/>
+
+    <fieldType name="eff_tfloat" keyField="eff_ti" defVal="0"
+               stored="false" indexed="true"
+               class="solr.ExternalFileField" valType="tfloat"/>
+
+    <fieldType name="eff_pfloat" keyField="id" defVal="0"
+               stored="false" indexed="true"
+               class="solr.ExternalFileField" valType="pfloat"/>
+
+    <!-- Be sure that the valType can be optional Since valType has done nothing up until now, this is preferred -->
+    <fieldType name="eff_none" keyField="id" defVal="0"
+               stored="false" indexed="true"
+               class="solr.ExternalFileField"/>
 
  </types>
 
@@ -301,6 +319,8 @@ valued. -->
    <field name="point_hash" type="geohash" indexed="true" stored="true" multiValued="false"/>
 
    <field name="signatureField" type="string" indexed="true" stored="false"/>
+
+   <field name="eff_trie" type="eff_tfloat" />
 
    <!-- Dynamic field definitions.  If a field name is not found, dynamicFields
         will be used if the name matches any of the patterns.

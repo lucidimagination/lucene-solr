@@ -54,7 +54,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
   }
 
   protected void checkMaxDoc(IndexCommit commit, int expectedMaxDoc) throws Exception {
-    IndexReader reader = IndexReader.open(commit, true);
+    IndexReader reader = IndexReader.open(commit);
     try {
       assertEquals(expectedMaxDoc, reader.maxDoc());
     } finally {
@@ -245,14 +245,14 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     assertSnapshotExists(dir, sdp, numSnapshots);
 
     // open a reader on a snapshot - should succeed.
-    IndexReader.open(sdp.getSnapshot("snapshot0"), true).close();
+    IndexReader.open(sdp.getSnapshot("snapshot0")).close();
 
     // open a new IndexWriter w/ no snapshots to keep and assert that all snapshots are gone.
     sdp = getDeletionPolicy();
     writer = new IndexWriter(dir, getConfig(random, sdp));
     writer.deleteUnusedFiles();
     writer.close();
-    assertEquals("no snapshots should exist", 1, IndexReader.listCommits(dir).size());
+    assertEquals("no snapshots should exist", 1, DirectoryReader.listCommits(dir).size());
     
     for (int i = 0; i < numSnapshots; i++) {
       try {
@@ -304,7 +304,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
       sdp.release(t.getName());
       writer.deleteUnusedFiles();
     }
-    assertEquals(1, IndexReader.listCommits(dir).size());
+    assertEquals(1, DirectoryReader.listCommits(dir).size());
     writer.close();
     dir.close();
   }

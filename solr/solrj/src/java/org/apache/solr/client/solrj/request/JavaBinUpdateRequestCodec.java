@@ -145,6 +145,15 @@ public class JavaBinUpdateRequestCodec {
 
 
     codec.unmarshal(is);
+    
+    // NOTE: if the update request contains only delete commands the params
+    // must be loaded now
+    if(updateRequest.getParams()==null) {
+      NamedList params = (NamedList) namedList[0].get("params");
+      if(params!=null) {
+        updateRequest.setParams(new ModifiableSolrParams(SolrParams.toSolrParams(params)));
+      }
+    }
     delById = (List<String>) namedList[0].get("delById");
     delByQ = (List<String>) namedList[0].get("delByQ");
     doclist = (List) namedList[0].get("docs");
@@ -195,7 +204,9 @@ public class JavaBinUpdateRequestCodec {
     NamedList nl = new NamedList();
     while (it.hasNext()) {
       String s = it.next();
-      nl.add(s, params.getParams(s));
+      for(String val: params.getParams(s)) {
+        nl.add(s, val);
+      }
     }
     return nl;
   }

@@ -17,9 +17,12 @@
 
 package org.apache.lucene.queries.function.valuesource;
 
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.CompositeReader;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.IntDocValues;
 import org.apache.lucene.search.FieldCache;
@@ -61,11 +64,15 @@ public class OrdFieldSource extends ValueSource {
   }
 
 
+  // TODO: this is trappy? perhaps this query instead should make you pass a slow reader yourself?
   @Override
-  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
     final int off = readerContext.docBase;
-    final IndexReader topReader = ReaderUtil.getTopLevelContext(readerContext).reader;
-    final FieldCache.DocTermsIndex sindex = FieldCache.DEFAULT.getTermsIndex(topReader, field);
+    final IndexReader topReader = ReaderUtil.getTopLevelContext(readerContext).reader();
+    final AtomicReader r = topReader instanceof CompositeReader 
+        ? new SlowCompositeReaderWrapper((CompositeReader)topReader) 
+        : (AtomicReader) topReader;
+    final FieldCache.DocTermsIndex sindex = FieldCache.DEFAULT.getTermsIndex(r, field);
     return new IntDocValues(this) {
       protected String toTerm(String readableValue) {
         return readableValue;

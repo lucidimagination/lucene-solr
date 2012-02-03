@@ -20,8 +20,8 @@ package org.apache.lucene.search;
 import java.io.IOException;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -98,7 +98,6 @@ public class TestTopDocsCollector extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
     TopDocsCollector<ScoreDoc> tdc = new MyTopsDocCollector(numResults);
     searcher.search(q, tdc);
-    searcher.close();
     return tdc;
   }
   

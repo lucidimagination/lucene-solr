@@ -109,7 +109,6 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
 
       if (VERBOSE) System.out.println(fragment);
     }
-    searcher.close();
   }
   
   public void testHighlightingWithDefaultField() throws Exception {
@@ -387,7 +386,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
     Highlighter highlighter = new Highlighter(this, scorer);
     
     for (int i = 0; i < hits.totalHits; i++) {
-      String text = searcher.doc(hits.scoreDocs[i].doc).get(NUMERIC_FIELD_NAME);
+      String text = searcher.doc(hits.scoreDocs[i].doc).getField(NUMERIC_FIELD_NAME).numericValue().toString();
       TokenStream tokenStream = analyzer.tokenStream(FIELD_NAME, new StringReader(text));
 
       highlighter.setTextFragmenter(new SimpleFragmenter(40));
@@ -1271,7 +1270,6 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       public void run() throws Exception {
         numHighlights = 0;
         // test to show how rewritten query can still be used
-        if (searcher != null) searcher.close();
         searcher = new IndexSearcher(reader);
         Analyzer analyzer = new MockAnalyzer(random, MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET, true);
         
@@ -1664,7 +1662,6 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       if (VERBOSE) System.out.println("result:" +  result);
       assertEquals("more <B>random</B> words for second field", result);
     }
-    searcher.close();
     reader.close();
   }
 
@@ -1677,7 +1674,7 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
    * writer = new IndexWriter(ramDir,bigramAnalyzer , true); Document d = new
    * Document(); Field f = new Field(FIELD_NAME, "java abc def", true, true,
    * true); d.add(f); writer.addDocument(d); writer.close(); IndexReader reader =
-   * IndexReader.open(ramDir, true);
+   * IndexReader.open(ramDir);
    * 
    * IndexSearcher searcher=new IndexSearcher(reader); query =
    * QueryParser.parse("abc", FIELD_NAME, bigramAnalyzer);
@@ -1703,7 +1700,6 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
   }
 
   public void doSearching(Query unReWrittenQuery) throws Exception {
-    if (searcher != null) searcher.close();
     searcher = new IndexSearcher(reader);
     // for any multi-term queries to work (prefix, wildcard, range,fuzzy etc)
     // you must use a rewritten query!
@@ -1742,34 +1738,29 @@ public class HighlighterTest extends BaseTokenStreamTestCase implements Formatte
       addDoc(writer, text);
     }
     Document doc = new Document();
-    NumericField nfield = new NumericField(NUMERIC_FIELD_NAME, NumericField.TYPE_STORED);
-    nfield.setIntValue(1);
-    doc.add(nfield);
+    doc.add(new NumericField(NUMERIC_FIELD_NAME, 1, NumericField.getFieldType(NumericField.DataType.INT, true)));
     writer.addDocument(doc, analyzer);
-    nfield = new NumericField(NUMERIC_FIELD_NAME, NumericField.TYPE_STORED);
-    nfield.setIntValue(3);
+
     doc = new Document();
-    doc.add(nfield);
+    doc.add(new NumericField(NUMERIC_FIELD_NAME, 3, NumericField.getFieldType(NumericField.DataType.INT, true)));
     writer.addDocument(doc, analyzer);
-    nfield = new NumericField(NUMERIC_FIELD_NAME, NumericField.TYPE_STORED);
-    nfield.setIntValue(5);
+
     doc = new Document();
-    doc.add(nfield);
+    doc.add(new NumericField(NUMERIC_FIELD_NAME, 5, NumericField.getFieldType(NumericField.DataType.INT, true)));
     writer.addDocument(doc, analyzer);
-    nfield = new NumericField(NUMERIC_FIELD_NAME, NumericField.TYPE_STORED);
-    nfield.setIntValue(7);
+
     doc = new Document();
-    doc.add(nfield);
+    doc.add(new NumericField(NUMERIC_FIELD_NAME, 7, NumericField.getFieldType(NumericField.DataType.INT, true)));
     writer.addDocument(doc, analyzer);
+
     writer.forceMerge(1);
     writer.close();
-    reader = IndexReader.open(ramDir, true);
+    reader = IndexReader.open(ramDir);
     numHighlights = 0;
   }
 
   @Override
   public void tearDown() throws Exception {
-    if (searcher != null) searcher.close();
     reader.close();
     dir.close();
     ramDir.close();

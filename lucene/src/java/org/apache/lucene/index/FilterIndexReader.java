@@ -17,17 +17,11 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.codecs.PerDocValues;
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.MapBackedSet;
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Map;
 import java.util.Comparator;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**  A <code>FilterIndexReader</code> contains another IndexReader, which it
  * uses as its basic source of data, possibly transforming the data along the
@@ -37,13 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * contained index reader. Subclasses of <code>FilterIndexReader</code> may
  * further override some of these methods and may also provide additional
  * methods and fields.
- * <p><b>Note:</b> The default implementation of {@link FilterIndexReader#doOpenIfChanged}
- * throws {@link UnsupportedOperationException} (like the base class),
- * so it's not possible to reopen a <code>FilterIndexReader</code>.
- * To reopen, you have to first reopen the underlying reader
- * and wrap it again with the custom filter.
  */
-public class FilterIndexReader extends IndexReader {
+public class FilterIndexReader extends AtomicReader {
 
   /** Base class for filtering {@link Fields}
    *  implementations. */
@@ -180,8 +169,8 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse) throws IOException {
-      return in.docsAndPositions(liveDocs, reuse);
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
+      return in.docsAndPositions(liveDocs, reuse, needsOffsets);
     }
 
     @Override
@@ -263,6 +252,16 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
+    public int startOffset() throws IOException {
+      return in.startOffset();
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return in.endOffset();
+    }
+
+    @Override
     public BytesRef getPayload() throws IOException {
       return in.getPayload();
     }
@@ -273,33 +272,29 @@ public class FilterIndexReader extends IndexReader {
     }
   }
 
-  protected IndexReader in;
+  protected AtomicReader in;
 
   /**
    * <p>Construct a FilterIndexReader based on the specified base reader.
-   * Directory locking for delete, undeleteAll, and setNorm operations is
-   * left to the base reader.</p>
    * <p>Note that base reader is closed if this FilterIndexReader is closed.</p>
    * @param in specified base reader.
    */
-  public FilterIndexReader(IndexReader in) {
+  public FilterIndexReader(AtomicReader in) {
     super();
     this.in = in;
-    readerFinishedListeners = new MapBackedSet<ReaderFinishedListener>(new ConcurrentHashMap<ReaderFinishedListener,Boolean>());
   }
 
-  @Override
-  public Directory directory() {
-    ensureOpen();
-    return in.directory();
-  }
-  
   @Override
   public Bits getLiveDocs() {
     ensureOpen();
     return in.getLiveDocs();
   }
   
+  @Override
+  public FieldInfos getFieldInfos() {
+    return in.getFieldInfos();
+  }
+
   @Override
   public Fields getTermVectors(int docID)
           throws IOException {
@@ -332,82 +327,14 @@ public class FilterIndexReader extends IndexReader {
   }
 
   @Override
-  protected void doUndeleteAll() throws CorruptIndexException, IOException {in.undeleteAll();}
-
-  @Override
   public boolean hasNorms(String field) throws IOException {
     ensureOpen();
     return in.hasNorms(field);
   }
 
   @Override
-  public byte[] norms(String f) throws IOException {
-    ensureOpen();
-    return in.norms(f);
-  }
-
-  @Override
-  protected void doSetNorm(int d, String f, byte b) throws CorruptIndexException, IOException {
-    in.setNorm(d, f, b);
-  }
-
-  @Override
-  public int docFreq(Term t) throws IOException {
-    ensureOpen();
-    return in.docFreq(t);
-  }
-
-  @Override
-  public int docFreq(String field, BytesRef t) throws IOException {
-    ensureOpen();
-    return in.docFreq(field, t);
-  }
-
-  @Override
-  protected void doDelete(int n) throws  CorruptIndexException, IOException { in.deleteDocument(n); }
-  
-  @Override
-  protected void doCommit(Map<String,String> commitUserData) throws IOException {
-    in.commit(commitUserData);
-  }
-  
-  @Override
   protected void doClose() throws IOException {
     in.close();
-  }
-
-  @Override
-  public Collection<String> getFieldNames(IndexReader.FieldOption fieldNames) {
-    ensureOpen();
-    return in.getFieldNames(fieldNames);
-  }
-
-  @Override
-  public long getVersion() {
-    ensureOpen();
-    return in.getVersion();
-  }
-
-  @Override
-  public boolean isCurrent() throws CorruptIndexException, IOException {
-    ensureOpen();
-    return in.isCurrent();
-  }
-  
-  @Override
-  public IndexReader[] getSequentialSubReaders() {
-    return in.getSequentialSubReaders();
-  }
-  
-  @Override
-  public ReaderContext getTopReaderContext() {
-    ensureOpen();
-    return in.getTopReaderContext();
-  }
-
-  @Override
-  public Map<String, String> getCommitUserData() { 
-    return in.getCommitUserData();
   }
   
   @Override
@@ -416,38 +343,41 @@ public class FilterIndexReader extends IndexReader {
     return in.fields();
   }
 
-  /** If the subclass of FilteredIndexReader modifies the
-   *  contents of the FieldCache, you must override this
-   *  method to provide a different key */
+  /** {@inheritDoc}
+   * <p>If the subclass of FilteredIndexReader modifies the
+   *  contents (but not liveDocs) of the index, you must override this
+   *  method to provide a different key. */
   @Override
   public Object getCoreCacheKey() {
     return in.getCoreCacheKey();
   }
 
-  /** {@inheritDoc} */
+  /** {@inheritDoc}
+   * <p>If the subclass of FilteredIndexReader modifies the
+   *  liveDocs, you must override this
+   *  method to provide a different key. */
+  @Override
+  public Object getCombinedCoreAndDeletesKey() {
+    return in.getCombinedCoreAndDeletesKey();
+  }
+
   @Override
   public String toString() {
-    final StringBuilder buffer = new StringBuilder("FilterReader(");
+    final StringBuilder buffer = new StringBuilder("FilterIndexReader(");
     buffer.append(in);
     buffer.append(')');
     return buffer.toString();
   }
 
   @Override
-  public void addReaderFinishedListener(ReaderFinishedListener listener) {
-    super.addReaderFinishedListener(listener);
-    in.addReaderFinishedListener(listener);
-  }
-
-  @Override
-  public void removeReaderFinishedListener(ReaderFinishedListener listener) {
-    super.removeReaderFinishedListener(listener);
-    in.removeReaderFinishedListener(listener);
-  }
-
-  @Override
-  public PerDocValues perDocValues() throws IOException {
+  public DocValues docValues(String field) throws IOException {
     ensureOpen();
-    return in.perDocValues();
+    return in.docValues(field);
+  }
+  
+  @Override
+  public DocValues normValues(String field) throws IOException {
+    ensureOpen();
+    return in.normValues(field);
   }
 }

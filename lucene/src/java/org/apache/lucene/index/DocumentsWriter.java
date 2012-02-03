@@ -18,20 +18,18 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.io.PrintStream;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.index.DocumentsWriterFlushQueue.SegmentFlushTicket;
 import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
 import org.apache.lucene.index.DocumentsWriterPerThread.IndexingChain;
 import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
 import org.apache.lucene.index.FieldInfos.FieldNumberBiMap;
-import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.AlreadyClosedException;
@@ -52,7 +50,7 @@ import org.apache.lucene.util.InfoStream;
  * are processing the document).
  *
  * Other consumers, eg {@link FreqProxTermsWriter} and
- * {@link NormsWriter}, buffer bytes in RAM and flush only
+ * {@link NormsConsumer}, buffer bytes in RAM and flush only
  * when a new segment is produced.
 
  * Once we have used our allowed RAM buffer, or the number
@@ -118,7 +116,7 @@ final class DocumentsWriter {
 
   // TODO: cut over to BytesRefHash in BufferedDeletes
   volatile DocumentsWriterDeleteQueue deleteQueue = new DocumentsWriterDeleteQueue();
-  private final TicketQueue ticketQueue = new TicketQueue();
+  private final DocumentsWriterFlushQueue ticketQueue = new DocumentsWriterFlushQueue();
   /*
    * we preserve changes during a full flush since IW might not checkout before
    * we release all changes. NRT Readers otherwise suddenly return true from
@@ -178,12 +176,7 @@ final class DocumentsWriter {
   
   private void applyAllDeletes(DocumentsWriterDeleteQueue deleteQueue) throws IOException {
     if (deleteQueue != null && !flushControl.isFullFlush()) {
-      synchronized (ticketQueue) {
-        ticketQueue.incTicketCount();// first inc the ticket count - freeze opens a window for #anyChanges to fail
-        // Freeze and insert the delete flush ticket in the queue
-        ticketQueue.add(new FlushTicket(deleteQueue.freezeGlobalBuffer(null), false));
-        applyFlushTickets();
-      }
+      ticketQueue.addDeletesAndPurge(this, deleteQueue);
     }
     indexWriter.applyAllDeletes();
     indexWriter.flushCount.incrementAndGet();
@@ -216,7 +209,9 @@ final class DocumentsWriter {
     }
 
     try {
-      infoStream.message("DW", "abort");
+      if (infoStream.isEnabled("DW")) {
+        infoStream.message("DW", "abort");
+      }
 
       final Iterator<ThreadState> threadsIterator = perThreadPool.getActivePerThreadsIterator();
       while (threadsIterator.hasNext()) {
@@ -298,8 +293,10 @@ final class DocumentsWriter {
           maybeMerge |= doFlush(flushingDWPT);
         }
   
-        if (infoStream.isEnabled("DW") && flushControl.anyStalledThreads()) {
-          infoStream.message("DW", "WARNING DocumentsWriter has stalled threads; waiting");
+        if (infoStream.isEnabled("DW")) {
+          if (flushControl.anyStalledThreads()) {
+            infoStream.message("DW", "WARNING DocumentsWriter has stalled threads; waiting");
+          }
         }
         
         flushControl.waitIfStalled(); // block if stalled
@@ -398,7 +395,7 @@ final class DocumentsWriter {
     while (flushingDWPT != null) {
       maybeMerge = true;
       boolean success = false;
-      FlushTicket ticket = null;
+      SegmentFlushTicket ticket = null;
       try {
         assert currentFullFlushDelQueue == null
             || flushingDWPT.deleteQueue == currentFullFlushDelQueue : "expected: "
@@ -419,34 +416,27 @@ final class DocumentsWriter {
          * might miss to deletes documents in 'A'.
          */
         try {
-          synchronized (ticketQueue) {
-            // Each flush is assigned a ticket in the order they acquire the ticketQueue lock
-            ticket =  new FlushTicket(flushingDWPT.prepareFlush(), true);
-            ticketQueue.incrementAndAdd(ticket);
-          }
+          // Each flush is assigned a ticket in the order they acquire the ticketQueue lock
+          ticket = ticketQueue.addFlushTicket(flushingDWPT);
   
           // flush concurrently without locking
           final FlushedSegment newSegment = flushingDWPT.flush();
-          synchronized (ticketQueue) {
-            ticket.segment = newSegment;
-          }
+          ticketQueue.addSegment(ticket, newSegment);
           // flush was successful once we reached this point - new seg. has been assigned to the ticket!
           success = true;
         } finally {
           if (!success && ticket != null) {
-            synchronized (ticketQueue) {
-              // In the case of a failure make sure we are making progress and
-              // apply all the deletes since the segment flush failed since the flush
-              // ticket could hold global deletes see FlushTicket#canPublish()
-              ticket.isSegmentFlush = false;
-            }
+            // In the case of a failure make sure we are making progress and
+            // apply all the deletes since the segment flush failed since the flush
+            // ticket could hold global deletes see FlushTicket#canPublish()
+            ticketQueue.markTicketFailed(ticket);
           }
         }
         /*
          * Now we are done and try to flush the ticket queue if the head of the
          * queue has already finished the flush.
          */
-        applyFlushTickets();
+        ticketQueue.tryPurge(this);
       } finally {
         flushControl.doAfterFlush(flushingDWPT);
         flushingDWPT.checkAndResetHasAborted();
@@ -473,25 +463,7 @@ final class DocumentsWriter {
     return maybeMerge;
   }
 
-  private void applyFlushTickets() throws IOException {
-    synchronized (ticketQueue) {
-      while (true) {
-        // Keep publishing eligible flushed segments:
-        final FlushTicket head = ticketQueue.peek();
-        if (head != null && head.canPublish()) {
-          try {
-            finishFlush(head.segment, head.frozenDeletes);
-          } finally {
-            ticketQueue.poll();
-          }
-        } else {
-          break;
-        }
-      }
-    }
-  }
-
-  private void finishFlush(FlushedSegment newSegment, FrozenBufferedDeletes bufferedDeletes)
+  void finishFlush(FlushedSegment newSegment, FrozenBufferedDeletes bufferedDeletes)
       throws IOException {
     // Finish the flushed segment and publish it to IndexWriter
     if (newSegment == null) {
@@ -587,13 +559,11 @@ final class DocumentsWriter {
         if (infoStream.isEnabled("DW")) {
           infoStream.message("DW", Thread.currentThread().getName() + ": flush naked frozen global deletes");
         }
-        synchronized (ticketQueue) {
-          ticketQueue.incTicketCount(); // first inc the ticket count - freeze opens a window for #anyChanges to fail
-          ticketQueue.add(new FlushTicket(flushingDeleteQueue.freezeGlobalBuffer(null), false));
-        }
-        applyFlushTickets();
+        ticketQueue.addDeletesAndPurge(this, flushingDeleteQueue);
+      } else {
+        ticketQueue.forcePurge(this);
       }
-      assert !flushingDeleteQueue.anyChanges();
+      assert !flushingDeleteQueue.anyChanges() && !ticketQueue.hasTickets();
     } finally {
       assert flushingDeleteQueue == currentFullFlushDelQueue;
     }
@@ -618,61 +588,8 @@ final class DocumentsWriter {
     
   }
 
-  static final class FlushTicket {
-    final FrozenBufferedDeletes frozenDeletes;
-    /* access to non-final members must be synchronized on DW#ticketQueue */
-    FlushedSegment segment;
-    boolean isSegmentFlush;
-    
-    FlushTicket(FrozenBufferedDeletes frozenDeletes, boolean isSegmentFlush) {
-      this.frozenDeletes = frozenDeletes;
-      this.isSegmentFlush = isSegmentFlush;
-    }
-    
-    boolean canPublish() {
-      return (!isSegmentFlush || segment != null);  
-    }
-  }
   
-  static final class TicketQueue {
-    private final Queue<FlushTicket> queue = new LinkedList<FlushTicket>();
-    final AtomicInteger ticketCount = new AtomicInteger();
-    
-    void incTicketCount() {
-      ticketCount.incrementAndGet();
-    }
-    
-    public boolean hasTickets() {
-      assert ticketCount.get() >= 0;
-      return ticketCount.get() != 0;
-    }
-
-    void incrementAndAdd(FlushTicket ticket) {
-      incTicketCount();
-      add(ticket);
-    }
-    
-    void add(FlushTicket ticket) {
-      queue.add(ticket);
-    }
-    
-    FlushTicket peek() {
-      return queue.peek();
-    }
-    
-    FlushTicket poll() {
-      try {
-        return queue.poll();
-      } finally {
-        ticketCount.decrementAndGet();
-      }
-    }
-    
-    void clear() {
-      queue.clear();
-      ticketCount.set(0);
-    }
-  }
+ 
   
   // use by IW during close to assert all DWPT are inactive after final flush
   boolean assertNoActiveDWPT() {

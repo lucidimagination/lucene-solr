@@ -7,8 +7,8 @@ import org.apache.lucene.util.LuceneTestCase;
 import java.util.BitSet;
 import java.io.IOException;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
@@ -323,7 +323,6 @@ public class TestScorerPerf extends LuceneTestCase {
     sets=randBitSets(atLeast(1000), atLeast(10));
     doConjunctions(atLeast(10000), atLeast(5));
     doNestedConjunctions(atLeast(10000), atLeast(3), atLeast(3));
-    s.close();
     r.close();
     d.close();
   }

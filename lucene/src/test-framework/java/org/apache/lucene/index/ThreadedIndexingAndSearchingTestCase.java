@@ -455,7 +455,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
     conf.setMergedSegmentWarmer(new IndexWriter.IndexReaderWarmer() {
       @Override
-      public void warm(IndexReader reader) throws IOException {
+      public void warm(AtomicReader reader) throws IOException {
         if (VERBOSE) {
           System.out.println("TEST: now warm merged reader=" + reader);
         }
@@ -472,7 +472,6 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
         IndexSearcher searcher = newSearcher(reader);
         sum += searcher.search(new TermQuery(new Term("body", "united")), 10).totalHits;
-        searcher.close();
 
         if (VERBOSE) {
           System.out.println("TEST: warm visited " + sum + " fields");

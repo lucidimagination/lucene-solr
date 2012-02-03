@@ -153,12 +153,15 @@ public final class SynonymFilter extends TokenFilter {
   // Holds pending output synonyms for one future position:
   private static class PendingOutputs {
     CharsRef[] outputs;
+    int[] endOffsets;
     int upto;
     int count;
     int posIncr = 1;
+    int lastEndOffset;
 
     public PendingOutputs() {
       outputs = new CharsRef[1];
+      endOffsets = new int[1];
     }
 
     public void reset() {
@@ -168,6 +171,7 @@ public final class SynonymFilter extends TokenFilter {
 
     public CharsRef pullNext() {
       assert upto < count;
+      lastEndOffset = endOffsets[upto];
       final CharsRef result = outputs[upto++];
       posIncr = 0;
       if (upto == count) {
@@ -176,16 +180,29 @@ public final class SynonymFilter extends TokenFilter {
       return result;
     }
 
-    public void add(char[] output, int offset, int len) {
+    public int getLastEndOffset() {
+      return lastEndOffset;
+    }
+
+    public void add(char[] output, int offset, int len, int endOffset) {
       if (count == outputs.length) {
         final CharsRef[] next = new CharsRef[ArrayUtil.oversize(1+count, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
         System.arraycopy(outputs, 0, next, 0, count);
         outputs = next;
       }
+      if (count == endOffsets.length) {
+        final int[] next = new int[ArrayUtil.oversize(1+count, RamUsageEstimator.NUM_BYTES_INT)];
+        System.arraycopy(endOffsets, 0, next, 0, count);
+        endOffsets = next;
+      }
       if (outputs[count] == null) {
         outputs[count] = new CharsRef();
       }
       outputs[count].copyChars(output, offset, len);
+      // endOffset can be -1, in which case we should simply
+      // use the endOffset of the input token, or X >= 0, in
+      // which case we use X as the endOffset for this output
+      endOffsets[count] = endOffset;
       count++;
     }
   };
@@ -209,6 +226,9 @@ public final class SynonymFilter extends TokenFilter {
 
   private final FST<BytesRef> fst;
 
+  private final FST.BytesReader fstReader;
+
+
   private final BytesRef scratchBytes = new BytesRef();
   private final CharsRef scratchChars = new CharsRef();
 
@@ -224,7 +244,7 @@ public final class SynonymFilter extends TokenFilter {
     this.synonyms = synonyms;
     this.ignoreCase = ignoreCase;
     this.fst = synonyms.fst;
-
+    this.fstReader = fst.getBytesReader(0);
     if (fst == null) {
       throw new IllegalArgumentException("fst must be non-null");
     }
@@ -270,6 +290,8 @@ public final class SynonymFilter extends TokenFilter {
    capture the state if no further tokens were checked.  So
    caller must then forward state to our caller, or capture:
   */
+  private int lastStartOffset;
+  private int lastEndOffset;
 
   private void parse() throws IOException {
     //System.out.println("\nS: parse");
@@ -281,6 +303,7 @@ public final class SynonymFilter extends TokenFilter {
     // Holds the longest match we've seen so far:
     BytesRef matchOutput = null;
     int matchInputLength = 0;
+    int matchEndOffset = -1;
 
     BytesRef pendingOutput = fst.outputs.getNoOutput();
     fst.getFirstArc(scratchArc);
@@ -296,6 +319,8 @@ public final class SynonymFilter extends TokenFilter {
       final char[] buffer;
       final int bufferLen;
       //System.out.println("  cycle nextRead=" + curNextRead + " nextWrite=" + nextWrite);
+
+      int inputEndOffset = 0;
 
       if (curNextRead == nextWrite) {
 
@@ -315,8 +340,9 @@ public final class SynonymFilter extends TokenFilter {
             buffer = termAtt.buffer();
             bufferLen = termAtt.length();
             final PendingInput input = futureInputs[nextWrite];
-            input.startOffset = offsetAtt.startOffset();
-            input.endOffset = offsetAtt.endOffset();
+            lastStartOffset = input.startOffset = offsetAtt.startOffset();
+            lastEndOffset = input.endOffset = offsetAtt.endOffset();
+            inputEndOffset = input.endOffset;
             //System.out.println("  new token=" + new String(buffer, 0, bufferLen));
             if (nextRead != nextWrite) {
               capture();
@@ -335,6 +361,7 @@ public final class SynonymFilter extends TokenFilter {
         // Still in our lookahead
         buffer = futureInputs[curNextRead].term.chars;
         bufferLen = futureInputs[curNextRead].term.length;
+        inputEndOffset = futureInputs[curNextRead].endOffset;
         //System.out.println("  old token=" + new String(buffer, 0, bufferLen));
       }
 
@@ -344,7 +371,7 @@ public final class SynonymFilter extends TokenFilter {
       int bufUpto = 0;
       while(bufUpto < bufferLen) {
         final int codePoint = Character.codePointAt(buffer, bufUpto, bufferLen);
-        if (fst.findTargetArc(ignoreCase ? Character.toLowerCase(codePoint) : codePoint, scratchArc, scratchArc) == null) {
+        if (fst.findTargetArc(ignoreCase ? Character.toLowerCase(codePoint) : codePoint, scratchArc, scratchArc, fstReader) == null) {
           //System.out.println("    stop");
           break byToken;
         }
@@ -360,12 +387,13 @@ public final class SynonymFilter extends TokenFilter {
       if (scratchArc.isFinal()) {
         matchOutput = fst.outputs.add(pendingOutput, scratchArc.nextFinalOutput);
         matchInputLength = tokenCount;
+        matchEndOffset = inputEndOffset;
         //System.out.println("  found matchLength=" + matchInputLength + " output=" + matchOutput);
       }
 
       // See if the FST wants to continue matching (ie, needs to
       // see the next input token):
-      if (fst.findTargetArc(SynonymMap.WORD_SEPARATOR, scratchArc, scratchArc) == null) {
+      if (fst.findTargetArc(SynonymMap.WORD_SEPARATOR, scratchArc, scratchArc, fstReader) == null) {
         // No further rules can match here; we're done
         // searching for matching rules starting at the
         // current input position.
@@ -390,7 +418,7 @@ public final class SynonymFilter extends TokenFilter {
     if (matchOutput != null) {
       //System.out.println("  add matchLength=" + matchInputLength + " output=" + matchOutput);
       inputSkipCount = matchInputLength;
-      addOutput(matchOutput, matchInputLength);
+      addOutput(matchOutput, matchInputLength, matchEndOffset);
     } else if (nextRead != nextWrite) {
       // Even though we had no match here, we set to 1
       // because we need to skip current input token before
@@ -404,7 +432,7 @@ public final class SynonymFilter extends TokenFilter {
   }
 
   // Interleaves all output tokens onto the futureOutputs:
-  private void addOutput(BytesRef bytes, int matchInputLength) {
+  private void addOutput(BytesRef bytes, int matchInputLength, int matchEndOffset) {
     bytesReader.reset(bytes.bytes, bytes.offset, bytes.length);
 
     final int code = bytesReader.readVInt();
@@ -425,7 +453,21 @@ public final class SynonymFilter extends TokenFilter {
           // Caller is not allowed to have empty string in
           // the output:
           assert outputLen > 0: "output contains empty string: " + scratchChars;
-          futureOutputs[outputUpto].add(scratchChars.chars, lastStart, outputLen);
+          final int endOffset;
+          if (chIDX == chEnd && lastStart == scratchChars.offset) {
+            // This rule had a single output token, so, we set
+            // this output's endOffset to the current
+            // endOffset (ie, endOffset of the last input
+            // token it matched):
+            endOffset = matchEndOffset;
+          } else {
+            // This rule has more than one output token; we
+            // can't pick any particular endOffset for this
+            // case, so, we inherit the endOffset for the
+            // input token which this output overlaps:
+            endOffset = -1;
+          }
+          futureOutputs[outputUpto].add(scratchChars.chars, lastStart, outputLen, endOffset);
           //System.out.println("      " + new String(scratchChars.chars, lastStart, outputLen) + " outputUpto=" + outputUpto);
           lastStart = 1+chIDX;
           //System.out.println("  slot=" + outputUpto + " keepOrig=" + keepOrig);
@@ -507,7 +549,11 @@ public final class SynonymFilter extends TokenFilter {
           clearAttributes();
           termAtt.copyBuffer(output.chars, output.offset, output.length);
           typeAtt.setType(TYPE_SYNONYM);
-          offsetAtt.setOffset(input.startOffset, input.endOffset);
+          int endOffset = outputs.getLastEndOffset();
+          if (endOffset == -1) {
+            endOffset = input.endOffset;
+          }
+          offsetAtt.setOffset(input.startOffset, endOffset);
           posIncrAtt.setPositionIncrement(posIncr);
           if (outputs.count == 0) {
             // Done with the buffered input and all outputs at
@@ -538,6 +584,8 @@ public final class SynonymFilter extends TokenFilter {
             nextWrite = nextRead = rollIncr(nextRead);
           }
           clearAttributes();
+          // Keep offset from last input token:
+          offsetAtt.setOffset(lastStartOffset, lastEndOffset);
           termAtt.copyBuffer(output.chars, output.offset, output.length);
           typeAtt.setType(TYPE_SYNONYM);
           //System.out.println("  set posIncr=" + outputs.posIncr + " outputs=" + outputs);

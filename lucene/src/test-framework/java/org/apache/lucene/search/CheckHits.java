@@ -25,9 +25,10 @@ import java.util.Random;
 
 import junit.framework.Assert;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.LuceneTestCase;
 
 public class CheckHits {
   
@@ -115,8 +116,7 @@ public class CheckHits {
       Assert.assertEquals("Wrap Reader " + i + ": " +
                           query.toString(defaultFieldName),
                           correct, actual);
-      FieldCache.DEFAULT.purge(s.getIndexReader()); // our wrapping can create insanity otherwise
-      s.close();
+      QueryUtils.purgeFieldCache(s.getIndexReader()); // our wrapping can create insanity otherwise
     }
   }
 
@@ -178,7 +178,7 @@ public class CheckHits {
 
     Assert.assertEquals(query.toString(defaultFieldName), correct, actual);
 
-    QueryUtils.check(random, query,searcher);
+    QueryUtils.check(random, query,searcher, LuceneTestCase.rarely(random));
   }
 
   /** Tests that a Hits has an expected order of documents */

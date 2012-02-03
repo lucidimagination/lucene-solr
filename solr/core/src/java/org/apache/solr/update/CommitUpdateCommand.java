@@ -24,9 +24,11 @@ import org.apache.solr.request.SolrQueryRequest;
  */
 public class CommitUpdateCommand extends UpdateCommand {
   public boolean optimize;
+  public boolean openSearcher=true;     // open a new searcher as part of a hard commit
   public boolean waitSearcher=true;
   public boolean expungeDeletes = false;
   public boolean softCommit = false;
+  public boolean prepareCommit = false;
 
   /**
    * During optimize, optimize down to <= this many segments.  Must be >= 1
@@ -36,15 +38,22 @@ public class CommitUpdateCommand extends UpdateCommand {
   public int maxOptimizeSegments = 1;
 
   public CommitUpdateCommand(SolrQueryRequest req, boolean optimize) {
-    super("commit", req);
+    super(req);
     this.optimize=optimize;
   }
+
+  @Override
+  public String name() {
+    return "commit";
+  }
+
   @Override
   public String toString() {
-    return "commit(optimize="+optimize
+    return super.toString() + ",optimize="+optimize
+            +",openSearcher="+openSearcher
             +",waitSearcher="+waitSearcher
             +",expungeDeletes="+expungeDeletes
             +",softCommit="+softCommit
-            +')';
+            +'}';
   }
 }

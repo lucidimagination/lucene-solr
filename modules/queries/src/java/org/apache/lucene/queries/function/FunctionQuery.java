@@ -17,8 +17,8 @@ package org.apache.lucene.queries.function;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.*;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.util.Bits;
@@ -96,7 +96,7 @@ public class FunctionQuery extends Query {
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      return ((AllScorer)scorer(context, true, true, context.reader.getLiveDocs())).explain(doc);
+      return ((AllScorer)scorer(context, true, true, context.reader().getLiveDocs())).explain(doc);
     }
   }
 
@@ -106,16 +106,16 @@ public class FunctionQuery extends Query {
     final int maxDoc;
     final float qWeight;
     int doc=-1;
-    final DocValues vals;
-    final Bits liveDocs;
+    final FunctionValues vals;
+    final Bits acceptDocs;
 
     public AllScorer(AtomicReaderContext context, Bits acceptDocs, FunctionWeight w, float qWeight) throws IOException {
       super(w);
       this.weight = w;
       this.qWeight = qWeight;
-      this.reader = context.reader;
+      this.reader = context.reader();
       this.maxDoc = reader.maxDoc();
-      this.liveDocs = acceptDocs;
+      this.acceptDocs = acceptDocs;
       vals = func.getValues(weight.context, context);
     }
 
@@ -135,7 +135,7 @@ public class FunctionQuery extends Query {
         if (doc>=maxDoc) {
           return doc=NO_MORE_DOCS;
         }
-        if (liveDocs != null && !liveDocs.get(doc)) continue;
+        if (acceptDocs != null && !acceptDocs.get(doc)) continue;
         return doc;
       }
     }

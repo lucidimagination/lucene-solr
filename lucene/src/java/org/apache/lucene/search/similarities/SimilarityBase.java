@@ -19,8 +19,10 @@ package org.apache.lucene.search.similarities;
 
 import java.io.IOException;
 
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.FieldInvertState;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.Norm;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.TermStatistics;
@@ -68,26 +70,28 @@ public abstract class SimilarityBase extends Similarity {
   }
   
   @Override
-  public final Stats computeStats(CollectionStatistics collectionStats, float queryBoost, TermStatistics... termStats) {
+  public final SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
     BasicStats stats[] = new BasicStats[termStats.length];
     for (int i = 0; i < termStats.length; i++) {
-      stats[i] = newStats(queryBoost);
+      stats[i] = newStats(collectionStats.field(), queryBoost);
       fillBasicStats(stats[i], collectionStats, termStats[i]);
     }
     return stats.length == 1 ? stats[0] : new MultiSimilarity.MultiStats(stats);
   }
   
   /** Factory method to return a custom stats object */
-  protected BasicStats newStats(float queryBoost) {
-    return new BasicStats(queryBoost);
+  protected BasicStats newStats(String field, float queryBoost) {
+    return new BasicStats(field, queryBoost);
   }
   
   /** Fills all member fields defined in {@code BasicStats} in {@code stats}. 
    *  Subclasses can override this method to fill additional stats. */
   protected void fillBasicStats(BasicStats stats, CollectionStatistics collectionStats, TermStatistics termStats) {
-    int numberOfDocuments = collectionStats.maxDoc();
+    // #positions(field) must be >= #positions(term)
+    assert collectionStats.sumTotalTermFreq() == -1 || collectionStats.sumTotalTermFreq() >= termStats.totalTermFreq();
+    long numberOfDocuments = collectionStats.maxDoc();
     
-    int docFreq = termStats.docFreq();
+    long docFreq = termStats.docFreq();
     long totalTermFreq = termStats.totalTermFreq();
 
     // codec does not supply totalTermFreq: substitute docFreq
@@ -175,40 +179,38 @@ public abstract class SimilarityBase extends Similarity {
   }
   
   @Override
-  public ExactDocScorer exactDocScorer(Stats stats, String fieldName,
-      AtomicReaderContext context) throws IOException {
-    byte norms[] = context.reader.norms(fieldName);
-    
+  public ExactSimScorer exactSimScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
     if (stats instanceof MultiSimilarity.MultiStats) {
       // a multi term query (e.g. phrase). return the summation, 
       // scoring almost as if it were boolean query
-      Stats subStats[] = ((MultiSimilarity.MultiStats) stats).subStats;
-      ExactDocScorer subScorers[] = new ExactDocScorer[subStats.length];
+      SimWeight subStats[] = ((MultiSimilarity.MultiStats) stats).subStats;
+      ExactSimScorer subScorers[] = new ExactSimScorer[subStats.length];
       for (int i = 0; i < subScorers.length; i++) {
-        subScorers[i] = new BasicExactDocScorer((BasicStats)subStats[i], norms);
+        BasicStats basicstats = (BasicStats) subStats[i];
+        subScorers[i] = new BasicExactDocScorer(basicstats, context.reader().normValues(basicstats.field));
       }
       return new MultiSimilarity.MultiExactDocScorer(subScorers);
     } else {
-      return new BasicExactDocScorer((BasicStats) stats, norms);
+      BasicStats basicstats = (BasicStats) stats;
+      return new BasicExactDocScorer(basicstats, context.reader().normValues(basicstats.field));
     }
   }
   
   @Override
-  public SloppyDocScorer sloppyDocScorer(Stats stats, String fieldName,
-      AtomicReaderContext context) throws IOException {
-    byte norms[] = context.reader.norms(fieldName);
-    
+  public SloppySimScorer sloppySimScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
     if (stats instanceof MultiSimilarity.MultiStats) {
       // a multi term query (e.g. phrase). return the summation, 
       // scoring almost as if it were boolean query
-      Stats subStats[] = ((MultiSimilarity.MultiStats) stats).subStats;
-      SloppyDocScorer subScorers[] = new SloppyDocScorer[subStats.length];
+      SimWeight subStats[] = ((MultiSimilarity.MultiStats) stats).subStats;
+      SloppySimScorer subScorers[] = new SloppySimScorer[subStats.length];
       for (int i = 0; i < subScorers.length; i++) {
-        subScorers[i] = new BasicSloppyDocScorer((BasicStats)subStats[i], norms);
+        BasicStats basicstats = (BasicStats) subStats[i];
+        subScorers[i] = new BasicSloppyDocScorer(basicstats, context.reader().normValues(basicstats.field));
       }
       return new MultiSimilarity.MultiSloppyDocScorer(subScorers);
     } else {
-      return new BasicSloppyDocScorer((BasicStats) stats, norms);
+      BasicStats basicstats = (BasicStats) stats;
+      return new BasicSloppyDocScorer(basicstats, context.reader().normValues(basicstats.field));
     }
   }
   
@@ -233,13 +235,13 @@ public abstract class SimilarityBase extends Similarity {
 
   /** Encodes the document length in the same way as {@link TFIDFSimilarity}. */
   @Override
-  public byte computeNorm(FieldInvertState state) {
+  public void computeNorm(FieldInvertState state, Norm norm) {
     final float numTerms;
     if (discountOverlaps)
       numTerms = state.getLength() - state.getNumOverlap();
     else
       numTerms = state.getLength() / state.getBoost();
-    return encodeNormValue(state.getBoost(), numTerms);
+    norm.setByte(encodeNormValue(state.getBoost(), numTerms));
   }
   
   /** Decodes a normalization factor (document length) stored in an index.
@@ -270,13 +272,13 @@ public abstract class SimilarityBase extends Similarity {
    * {@link SimilarityBase#explain(BasicStats, int, Explanation, int)},
    * respectively.
    */
-  private class BasicExactDocScorer extends ExactDocScorer {
+  private class BasicExactDocScorer extends ExactSimScorer {
     private final BasicStats stats;
     private final byte[] norms;
     
-    BasicExactDocScorer(BasicStats stats, byte norms[]) {
+    BasicExactDocScorer(BasicStats stats, DocValues norms) throws IOException {
       this.stats = stats;
-      this.norms = norms;
+      this.norms = norms == null ? null : (byte[])norms.getSource().getArray();
     }
     
     @Override
@@ -299,13 +301,13 @@ public abstract class SimilarityBase extends Similarity {
    * {@link SimilarityBase#explain(BasicStats, int, Explanation, int)},
    * respectively.
    */
-  private class BasicSloppyDocScorer extends SloppyDocScorer {
+  private class BasicSloppyDocScorer extends SloppySimScorer {
     private final BasicStats stats;
     private final byte[] norms;
     
-    BasicSloppyDocScorer(BasicStats stats, byte norms[]) {
+    BasicSloppyDocScorer(BasicStats stats, DocValues norms) throws IOException {
       this.stats = stats;
-      this.norms = norms;
+      this.norms = norms == null ? null : (byte[])norms.getSource().getArray();
     }
     
     @Override

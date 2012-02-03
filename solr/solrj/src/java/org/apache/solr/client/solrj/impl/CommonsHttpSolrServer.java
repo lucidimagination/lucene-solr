@@ -47,7 +47,9 @@ import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.params.*;
+import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.NamedList;
 import org.slf4j.Logger;
@@ -137,6 +139,8 @@ public class CommonsHttpSolrServer extends SolrServer
    * with single-part requests.
    */
   private boolean useMultiPartPost;
+
+  private boolean shutdownHttpClient = false;
   
   /**  
    * @param solrServerUrl The URL of the Solr server.  For 
@@ -202,6 +206,7 @@ public class CommonsHttpSolrServer extends SolrServer
     }
 
     if (client == null) {
+      shutdownHttpClient  = true;
       _httpClient = new HttpClient(new MultiThreadedHttpConnectionManager()) ;
 
       // prevent retries  (note: this didn't work when set on mgr.. needed to be set on client)
@@ -266,16 +271,8 @@ public class CommonsHttpSolrServer extends SolrServer
     ModifiableSolrParams wparams = new ModifiableSolrParams();
     wparams.set( CommonParams.WT, parser.getWriterType() );
     wparams.set( CommonParams.VERSION, parser.getVersion());
-    if( params == null ) {
-      params = wparams;
-    }
-    else {
-      params = new DefaultSolrParams( wparams, params );
-    }
-    
-    if( _invariantParams != null ) {
-      params = new DefaultSolrParams( _invariantParams, params );
-    }
+    params = SolrParams.wrapDefaults(wparams, params);
+    params = SolrParams.wrapDefaults(_invariantParams, params);
 
     int tries = _maxRetries + 1;
     try {
@@ -433,7 +430,7 @@ public class CommonsHttpSolrServer extends SolrServer
         msg.append( method.getStatusText() );
         msg.append( "\n\n" );
         msg.append( "request: "+method.getURI() );
-        throw new SolrException(statusCode, java.net.URLDecoder.decode(msg.toString(), "UTF-8") );
+        throw new SolrException(SolrException.ErrorCode.getErrorCode(statusCode), java.net.URLDecoder.decode(msg.toString(), "UTF-8") );
       }
 
       // Read the contents
@@ -478,10 +475,10 @@ public class CommonsHttpSolrServer extends SolrServer
       return processor.processResponse(respBody, charset);
     }
     catch (HttpException e) {
-      throw new SolrServerException( e );
+      throw new SolrServerException(getBaseURL(), e);
     }
     catch (IOException e) {
-      throw new SolrServerException( e );
+      throw new SolrServerException(getBaseURL(), e);
     }
     finally {
       method.releaseConnection();
@@ -674,5 +671,13 @@ public class CommonsHttpSolrServer extends SolrServer
     });
     req.setCommitWithin(commitWithinMs);
     return req.process(this);
+  }
+  
+  public void shutdown() {
+    if (shutdownHttpClient && _httpClient != null
+        && _httpClient.getHttpConnectionManager() instanceof MultiThreadedHttpConnectionManager) {
+      ((MultiThreadedHttpConnectionManager) _httpClient
+          .getHttpConnectionManager()).shutdown();
+    }
   }
 }

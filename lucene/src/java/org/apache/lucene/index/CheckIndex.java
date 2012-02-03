@@ -17,33 +17,33 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.document.FieldType; // for javadocs
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.codecs.Codec;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.lang.reflect.Array;
 import java.text.NumberFormat;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.index.codecs.BlockTreeTermsReader;
-import org.apache.lucene.index.codecs.PerDocValues;
-import org.apache.lucene.index.values.IndexDocValues;
-import org.apache.lucene.index.values.IndexDocValues.Source;
+import org.apache.lucene.codecs.BlockTreeTermsReader;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.FieldType; // for javadocs
+import org.apache.lucene.index.DocValues.SortedSource;
+import org.apache.lucene.index.DocValues.Source;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.CommandLineUtil;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.StringHelper;
 
@@ -174,8 +174,8 @@ public class CheckIndex {
       /** True if this segment has pending deletions. */
       public boolean hasDeletions;
 
-      /** Name of the current deletions file name. */
-      public String deletionsFileName;
+      /** Current deletions generation. */
+      public long deletionsGen;
     
       /** Number of deleted documents. */
       public int numDeleted;
@@ -287,6 +287,20 @@ public class CheckIndex {
   public CheckIndex(Directory dir) {
     this.dir = dir;
     infoStream = null;
+  }
+
+  private boolean crossCheckTermVectors;
+
+  /** If true, term vectors are compared against postings to
+   *  make sure they are the same.  This will likely
+   *  drastically increase time it takes to run CheckIndex! */
+  public void setCrossCheckTermVectors(boolean v) {
+    crossCheckTermVectors = v;
+  }
+
+  /** See {@link #setCrossCheckTermVectors}. */
+  public boolean getCrossCheckTermVectors() {
+    return crossCheckTermVectors;
   }
 
   private boolean verbose;
@@ -512,30 +526,29 @@ public class CheckIndex {
           segInfoStat.docStoreCompoundFile = info.getDocStoreIsCompoundFile();
         }
 
-        final String delFileName = info.getDelFileName();
-        if (delFileName == null){
+        if (info.hasDeletions()) {
           msg("    no deletions");
           segInfoStat.hasDeletions = false;
         }
         else{
-          msg("    has deletions [delFileName=" + delFileName + "]");
+          msg("    has deletions [delGen=" + info.getDelGen() + "]");
           segInfoStat.hasDeletions = true;
-          segInfoStat.deletionsFileName = delFileName;
+          segInfoStat.deletionsGen = info.getDelGen();
         }
         if (infoStream != null)
           infoStream.print("    test: open reader.........");
-        reader = SegmentReader.get(true, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.DEFAULT);
+        reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.DEFAULT);
 
         segInfoStat.openReaderPassed = true;
 
         final int numDocs = reader.numDocs();
         toLoseDocCount = numDocs;
         if (reader.hasDeletions()) {
-          if (reader.liveDocs.count() != info.docCount - info.getDelCount()) {
-            throw new RuntimeException("delete count mismatch: info=" + (info.docCount - info.getDelCount()) + " vs reader=" + reader.liveDocs.count());
+          if (reader.numDocs() != info.docCount - info.getDelCount()) {
+            throw new RuntimeException("delete count mismatch: info=" + (info.docCount - info.getDelCount()) + " vs reader=" + reader.numDocs());
           }
-          if ((info.docCount-reader.liveDocs.count()) > reader.maxDoc()) {
-            throw new RuntimeException("too many deleted docs: maxDoc()=" + reader.maxDoc() + " vs del count=" + (info.docCount-reader.liveDocs.count()));
+          if ((info.docCount-reader.numDocs()) > reader.maxDoc()) {
+            throw new RuntimeException("too many deleted docs: maxDoc()=" + reader.maxDoc() + " vs del count=" + (info.docCount-reader.numDocs()));
           }
           if (info.docCount - numDocs != info.getDelCount()) {
             throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs reader=" + (info.docCount - numDocs));
@@ -551,19 +564,19 @@ public class CheckIndex {
         if (reader.maxDoc() != info.docCount)
           throw new RuntimeException("SegmentReader.maxDoc() " + reader.maxDoc() + " != SegmentInfos.docCount " + info.docCount);
 
-        // Test getFieldNames()
+        // Test getFieldInfos()
         if (infoStream != null) {
           infoStream.print("    test: fields..............");
         }         
-        Collection<String> fieldNames = reader.getFieldNames(IndexReader.FieldOption.ALL);
-        msg("OK [" + fieldNames.size() + " fields]");
-        segInfoStat.numFields = fieldNames.size();
+        FieldInfos fieldInfos = reader.getFieldInfos();
+        msg("OK [" + fieldInfos.size() + " fields]");
+        segInfoStat.numFields = fieldInfos.size();
         
         // Test Field Norms
-        segInfoStat.fieldNormStatus = testFieldNorms(fieldNames, reader);
+        segInfoStat.fieldNormStatus = testFieldNorms(fieldInfos, reader);
 
         // Test the Term Index
-        segInfoStat.termIndexStatus = testTermIndex(reader);
+        segInfoStat.termIndexStatus = testPostings(reader);
 
         // Test Stored Fields
         segInfoStat.storedFieldStatus = testStoredFields(info, reader, nf);
@@ -630,7 +643,7 @@ public class CheckIndex {
   /**
    * Test field norms.
    */
-  private Status.FieldNormStatus testFieldNorms(Collection<String> fieldNames, SegmentReader reader) {
+  private Status.FieldNormStatus testFieldNorms(FieldInfos fieldInfos, SegmentReader reader) {
     final Status.FieldNormStatus status = new Status.FieldNormStatus();
 
     try {
@@ -638,11 +651,28 @@ public class CheckIndex {
       if (infoStream != null) {
         infoStream.print("    test: field norms.........");
       }
-      byte[] b;
-      for (final String fieldName : fieldNames) {
-        if (reader.hasNorms(fieldName)) {
-          b = reader.norms(fieldName);
+      DocValues dv;
+      for (FieldInfo info : fieldInfos) {
+        if (reader.hasNorms(info.name)) {
+          dv = reader.normValues(info.name);
+          assert dv != null;
+          if (dv.getSource().hasArray()) {
+            Object array = dv.getSource().getArray();
+            if (Array.getLength(array) != reader.maxDoc()) {
+              throw new RuntimeException("norms for field: " + info.name + " are of the wrong size");
+            }
+          }
+          if (!info.isIndexed || info.omitNorms) {
+            throw new RuntimeException("field: " + info.name + " should omit norms but has them!");
+          }
           ++status.totFields;
+        } else {
+          if (reader.normValues(info.name) != null) {
+            throw new RuntimeException("field: " + info.name + " should omit norms but has them!");
+          }
+          if (info.normsPresent()) {
+            throw new RuntimeException("field: " + info.name + " should have norms but omits them!");
+          }
         }
       }
 
@@ -661,7 +691,11 @@ public class CheckIndex {
   /**
    * Test the term index.
    */
-  private Status.TermIndexStatus testTermIndex(SegmentReader reader) {
+  private Status.TermIndexStatus testPostings(SegmentReader reader) {
+
+    // TODO: we should go and verify term vectors match, if
+    // crossCheckTermVectors is on...
+
     final Status.TermIndexStatus status = new Status.TermIndexStatus();
 
     final int maxDoc = reader.maxDoc();
@@ -743,7 +777,7 @@ public class CheckIndex {
 
           docs = termsEnum.docs(liveDocs, docs, false);
           docsAndFreqs = termsEnum.docs(liveDocs, docsAndFreqs, true);
-          postings = termsEnum.docsAndPositions(liveDocs, postings);
+          postings = termsEnum.docsAndPositions(liveDocs, postings, false);
 
           if (hasOrd) {
             long ord = -1;
@@ -873,7 +907,7 @@ public class CheckIndex {
           if (hasPositions) {
             for(int idx=0;idx<7;idx++) {
               final int skipDocID = (int) (((idx+1)*(long) maxDoc)/8);
-              postings = termsEnum.docsAndPositions(liveDocs, postings);
+              postings = termsEnum.docsAndPositions(liveDocs, postings, false);
               final int docID = postings.advance(skipDocID);
               if (docID == DocsEnum.NO_MORE_DOCS) {
                 break;
@@ -1132,38 +1166,91 @@ public class CheckIndex {
       for (FieldInfo fieldInfo : fieldInfos) {
         if (fieldInfo.hasDocValues()) {
           status.totalValueFields++;
-          final PerDocValues perDocValues = reader.perDocValues();
-          final IndexDocValues docValues = perDocValues.docValues(fieldInfo.name);
+          final DocValues docValues = reader.docValues(fieldInfo.name);
           if (docValues == null) {
-            continue;
+            throw new RuntimeException("field: " + fieldInfo.name + " omits docvalues but should have them!");
+          }
+          DocValues.Type type = docValues.type();
+          if (type != fieldInfo.getDocValuesType()) {
+            throw new RuntimeException("field: " + fieldInfo.name + " has type: " + type + " but fieldInfos says:" + fieldInfo.getDocValuesType());
           }
           final Source values = docValues.getDirectSource();
           final int maxDoc = reader.maxDoc();
+          int size = docValues.getValueSize();
           for (int i = 0; i < maxDoc; i++) {
-            switch (fieldInfo.docValues) {
+            switch (fieldInfo.getDocValuesType()) {
             case BYTES_FIXED_SORTED:
             case BYTES_VAR_SORTED:
             case BYTES_FIXED_DEREF:
             case BYTES_FIXED_STRAIGHT:
             case BYTES_VAR_DEREF:
             case BYTES_VAR_STRAIGHT:
-              values.getBytes(i, new BytesRef());
+              BytesRef bytes = new BytesRef();
+              values.getBytes(i, bytes);
+              if (size != -1 && size != bytes.length) {
+                throw new RuntimeException("field: " + fieldInfo.name + " returned wrongly sized bytes, was: " + bytes.length + " should be: " + size);
+              }
               break;
             case FLOAT_32:
+              assert size == 4;
+              values.getFloat(i);
+              break;
             case FLOAT_64:
+              assert size == 8;
               values.getFloat(i);
               break;
             case VAR_INTS:
+              assert size == -1;
+              values.getInt(i);
+              break;
             case FIXED_INTS_16:
+              assert size == 2;
+              values.getInt(i);
+              break;
             case FIXED_INTS_32:
+              assert size == 4;
+              values.getInt(i);
+              break;
             case FIXED_INTS_64:
+              assert size == 8;
+              values.getInt(i);
+              break;
             case FIXED_INTS_8:
+              assert size == 1;
               values.getInt(i);
               break;
             default:
               throw new IllegalArgumentException("Field: " + fieldInfo.name
-                  + " - no such DocValues type: " + fieldInfo.docValues);
+                          + " - no such DocValues type: " + fieldInfo.getDocValuesType());
             }
+          }
+          if (type == DocValues.Type.BYTES_FIXED_SORTED || type == DocValues.Type.BYTES_VAR_SORTED) {
+            // check sorted bytes
+            SortedSource sortedValues = values.asSortedSource();
+            Comparator<BytesRef> comparator = sortedValues.getComparator();
+            int lastOrd = -1;
+            BytesRef lastBytes = new BytesRef();
+            for (int i = 0; i < maxDoc; i++) {
+              int ord = sortedValues.ord(i);
+              if (ord < 0 || ord > maxDoc) {
+                throw new RuntimeException("field: " + fieldInfo.name + " ord is out of bounds: " + ord);
+              }
+              BytesRef bytes = new BytesRef();
+              sortedValues.getByOrd(ord, bytes);
+              if (lastOrd != -1) {
+                int ordComp = Integer.signum(new Integer(ord).compareTo(new Integer(lastOrd)));
+                int bytesComp = Integer.signum(comparator.compare(bytes, lastBytes));
+                if (ordComp != bytesComp) {
+                  throw new RuntimeException("field: " + fieldInfo.name + " ord comparison is wrong: " + ordComp + " comparator claims: " + bytesComp);
+                }
+              }
+              lastOrd = ord;
+              lastBytes = bytes;
+            }
+          }
+        } else {
+          if (reader.docValues(fieldInfo.name) != null) {
+            throw new RuntimeException("field: " + fieldInfo.name + " has docvalues but should omit them!");
           }
         }
       }
@@ -1186,7 +1273,10 @@ public class CheckIndex {
   private Status.TermVectorStatus testTermVectors(SegmentInfo info, SegmentReader reader, NumberFormat format) {
     final Status.TermVectorStatus status = new Status.TermVectorStatus();
     
-    TermsEnum termsEnum = null;
+    // TODO: in theory we could test that term vectors have
+    // same terms/pos/offsets as the postings, but it'd be
+    // very slow...
+
     try {
       if (infoStream != null) {
         infoStream.print("    test: term vectors........");
@@ -1194,9 +1284,25 @@ public class CheckIndex {
 
       // TODO: maybe we can factor out testTermIndex and reuse here?
       DocsEnum docs = null;
-      DocsEnum docsAndFreqs = null;
       DocsAndPositionsEnum postings = null;
+
+      // Only used if crossCheckTermVectors is true:
+      DocsEnum postingsDocs = null;
+      DocsAndPositionsEnum postingsPostings = null;
+
       final Bits liveDocs = reader.getLiveDocs();
+
+      final Fields postingsFields;
+      // TODO: testTermsIndex
+      if (crossCheckTermVectors) {
+        postingsFields = reader.fields();
+      } else {
+        postingsFields = null;
+      }
+
+      TermsEnum termsEnum = null;
+      TermsEnum postingsTermsEnum = null;
+
       for (int j = 0; j < info.docCount; ++j) {
         if (liveDocs == null || liveDocs.get(j)) {
           status.docCount++;
@@ -1220,13 +1326,36 @@ public class CheckIndex {
               
               Terms terms = tfv.terms(field);
               termsEnum = terms.iterator(termsEnum);
+
+              if (crossCheckTermVectors) {
+                Terms postingsTerms = postingsFields.terms(field);
+                if (postingsTerms == null) {
+                  throw new RuntimeException("vector field=" + field + " does not exist in postings; doc=" + j);
+                }
+                postingsTermsEnum = postingsTerms.iterator(postingsTermsEnum);
+              } else {
+                postingsTermsEnum = null;
+              }
               
               long tfvComputedTermCountForField = 0;
               long tfvComputedSumTotalTermFreq = 0;
               
+              BytesRef lastTerm = null;
+              Comparator<BytesRef> termComp = terms.getComparator();
               BytesRef term = null;
               while ((term = termsEnum.next()) != null) {
                 tfvComputedTermCountForField++;
+                
+                // make sure terms arrive in order according to
+                // the comp
+                if (lastTerm == null) {
+                  lastTerm = BytesRef.deepCopyOf(term);
+                } else {
+                  if (termComp.compare(lastTerm, term) >= 0) {
+                    throw new RuntimeException("vector terms out of order for doc " + j + ": lastTerm=" + lastTerm + " term=" + term);
+                  }
+                  lastTerm.copyBytes(term);
+                }
                 
                 if (termsEnum.docFreq() != 1) {
                   throw new RuntimeException("vector docFreq for doc " + j + ", field " + field + ", term" + term + " != 1");
@@ -1238,52 +1367,171 @@ public class CheckIndex {
                   throw new RuntimeException("totalTermFreq: " + totalTermFreq + " is out of bounds");
                 }
 
-                postings = termsEnum.docsAndPositions(null, postings);
+                final boolean hasPositions;
+                final boolean hasOffsets;
+                final boolean hasFreqs;
+
+                // TODO: really we need a reflection/query
+                // API so we can just ask what was indexed
+                // instead of "probing"...
+
+                // Try offsets:
+                postings = termsEnum.docsAndPositions(null, postings, true);
                 if (postings == null) {
-                  docsAndFreqs = termsEnum.docs(null, docsAndFreqs, true);
-                  if (docsAndFreqs == null) {
-                    docs = termsEnum.docs(null, docs, false);
+                  hasOffsets = false;
+                  // Try only positions:
+                  postings = termsEnum.docsAndPositions(null, postings, false);
+                  if (postings == null) {
+                    hasPositions = false;
+                    // Try docIDs & freqs:
+                    docs = termsEnum.docs(null, docs, true);
+                    if (docs == null) {
+                      // OK, only docIDs:
+                      hasFreqs = false;
+                      docs = termsEnum.docs(null, docs, false);
+                    } else {
+                      hasFreqs = true;
+                    }
                   } else {
-                    docs = docsAndFreqs;
+                    hasPositions = true;
+                    hasFreqs = true;
                   }
                 } else {
-                  docs = docsAndFreqs = postings;
+                  hasOffsets = true;
+                  // NOTE: may be a lie... but we accept -1 below
+                  hasPositions = true;
+                  hasFreqs = true;
                 }
 
-                final int doc = docs.nextDoc();
+                final DocsEnum docs2;
+                if (hasPositions || hasOffsets) {
+                  assert postings != null;
+                  docs2 = postings;
+                } else {
+                  assert docs != null;
+                  docs2 = docs;
+                }
+
+                final DocsEnum postingsDocs2;
+                final boolean postingsHasFreq;
+                if (crossCheckTermVectors) {
+                  if (!postingsTermsEnum.seekExact(term, true)) {
+                    throw new RuntimeException("vector term=" + term + " field=" + field + " does not exist in postings; doc=" + j);
+                  }
+                  postingsPostings = postingsTermsEnum.docsAndPositions(null, postingsPostings, true);
+                  if (postingsPostings == null) {
+                    // Term vectors were indexed w/ offsets but postings were not
+                    postingsPostings = postingsTermsEnum.docsAndPositions(null, postingsPostings, false);
+                    if (postingsPostings == null) {
+                      postingsDocs = postingsTermsEnum.docs(null, postingsDocs, true);
+                      if (postingsDocs == null) {
+                        postingsHasFreq = false;
+                        postingsDocs = postingsTermsEnum.docs(null, postingsDocs, false);
+                        if (postingsDocs == null) {
+                          throw new RuntimeException("vector term=" + term + " field=" + field + " does not exist in postings; doc=" + j);
+                        }
+                      } else {
+                        postingsHasFreq = true;
+                      }
+                    } else {
+                      postingsHasFreq = true;
+                    }
+                  } else {
+                    postingsHasFreq = true;
+                  }
+
+                  if (postingsPostings != null) {
+                    postingsDocs2 = postingsPostings;
+                  } else {
+                    postingsDocs2 = postingsDocs;
+                  }
+                  
+                  final int advanceDoc = postingsDocs2.advance(j);
+                  if (advanceDoc != j) {
+                    throw new RuntimeException("vector term=" + term + " field=" + field + ": doc=" + j + " was not found in postings (got: " + advanceDoc + ")");
+                  }
+                } else {
+                  postingsDocs2 = null;
+                  postingsHasFreq = false;
+                }
+
+                final int doc = docs2.nextDoc();
                   
                 if (doc != 0) {
                   throw new RuntimeException("vector for doc " + j + " didn't return docID=0: got docID=" + doc);
                 }
 
-                if (docsAndFreqs != null) {
-                  final int tf = docsAndFreqs.freq();
+                if (hasFreqs) {
+                  final int tf = docs2.freq();
                   if (tf <= 0) {
                     throw new RuntimeException("vector freq " + tf + " is out of bounds");
                   }
                   if (totalTermFreq != -1 && totalTermFreq != tf) {
                     throw new RuntimeException("vector totalTermFreq " + totalTermFreq + " != tf " + tf);
                   }
+                  if (crossCheckTermVectors && postingsHasFreq) {
+                    if (postingsDocs2.freq() != tf) {
+                      throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": freq=" + tf + " differs from postings freq=" + postingsDocs2.freq());
+                    }
+                  }
                   tfvComputedSumTotalTermFreq += tf;
                 
-                  if (postings != null) {
+                  if (hasPositions || hasOffsets) {
                     int lastPosition = -1;
+                    //int lastStartOffset = -1;
                     for (int i = 0; i < tf; i++) {
                       int pos = postings.nextPosition();
-                      if (pos != -1 && pos < 0) {
-                        throw new RuntimeException("vector position " + pos + " is out of bounds");
-                      }
+                      if (hasPositions) {
+                        if (pos != -1 && pos < 0) {
+                          throw new RuntimeException("vector position " + pos + " is out of bounds");
+                        }
+                        if (pos < lastPosition) {
+                          throw new RuntimeException("vector position " + pos + " < lastPos " + lastPosition);
+                        }
                     
-                      if (pos < lastPosition) {
-                        throw new RuntimeException("vector position " + pos + " < lastPos " + lastPosition);
+                        lastPosition = pos;
                       }
-                    
-                      lastPosition = pos;
+
+                      if (crossCheckTermVectors && postingsPostings != null) {
+                        int postingsPos = postingsPostings.nextPosition();
+                        if (pos != -1 && postingsPos != -1 && pos != postingsPos) {
+                          throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": pos=" + pos + " differs from postings pos=" + postingsPos);
+                        }
+                      }
+
+                      if (hasOffsets) {
+                        // Call the methods to at least make
+                        // sure they don't throw exc:
+                        final int startOffset = postings.startOffset();
+                        final int endOffset = postings.endOffset();
+                        // TODO: these are too anal...?
+                        /*
+                        if (endOffset < startOffset) {
+                          throw new RuntimeException("vector startOffset=" + startOffset + " is > endOffset=" + endOffset);
+                        }
+                        if (startOffset < lastStartOffset) {
+                          throw new RuntimeException("vector startOffset=" + startOffset + " is < prior startOffset=" + lastStartOffset);
+                        }
+                        lastStartOffset = startOffset;
+                        */
+
+                        if (crossCheckTermVectors && postingsPostings != null) {
+                          final int postingsStartOffset = postingsPostings.startOffset();
+
+                          final int postingsEndOffset = postingsPostings.endOffset();
+                          if (startOffset != -1 && postingsStartOffset != -1 && startOffset != postingsStartOffset) {
+                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": startOffset=" + startOffset + " differs from postings startOffset=" + postingsStartOffset);
+                          }
+                          if (endOffset != -1 && postingsEndOffset != -1 && endOffset != postingsEndOffset) {
+                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": endOffset=" + endOffset + " differs from postings endOffset=" + postingsEndOffset);
+                          }
+                        }
+                      }
                     }
                   }
                 }
                   
-                if (docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+                if (docs2.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
                   throw new RuntimeException("vector for doc " + j + " references multiple documents!");
                 }
               }
@@ -1404,53 +1652,65 @@ public class CheckIndex {
   public static void main(String[] args) throws IOException, InterruptedException {
 
     boolean doFix = false;
+    boolean doCrossCheckTermVectors = false;
     Codec codec = Codec.getDefault(); // only used when fixing
     boolean verbose = false;
     List<String> onlySegments = new ArrayList<String>();
     String indexPath = null;
+    String dirImpl = null;
     int i = 0;
     while(i < args.length) {
-      if (args[i].equals("-fix")) {
+      String arg = args[i];
+      if ("-fix".equals(arg)) {
         doFix = true;
-        i++;
-      } else if (args[i].equals("-codec")) {
+      } else if ("-crossCheckTermVectors".equals(arg)) {
+        doCrossCheckTermVectors = true;
+      } else if ("-codec".equals(arg)) {
         if (i == args.length-1) {
           System.out.println("ERROR: missing name for -codec option");
           System.exit(1);
         }
-        codec = Codec.forName(args[i+1]);
-        i+=2;
-      } else if (args[i].equals("-verbose")) {
-        verbose = true;
         i++;
-      } else if (args[i].equals("-segment")) {
+        codec = Codec.forName(args[i]);
+      } else if (arg.equals("-verbose")) {
+        verbose = true;
+      } else if (arg.equals("-segment")) {
         if (i == args.length-1) {
           System.out.println("ERROR: missing name for -segment option");
           System.exit(1);
         }
-        onlySegments.add(args[i+1]);
-        i += 2;
+        i++;
+        onlySegments.add(args[i]);
+      } else if ("-dir-impl".equals(arg)) {
+        if (i == args.length - 1) {
+          System.out.println("ERROR: missing value for -dir-impl option");
+          System.exit(1);
+        }
+        i++;
+        dirImpl = args[i];
       } else {
         if (indexPath != null) {
           System.out.println("ERROR: unexpected extra argument '" + args[i] + "'");
           System.exit(1);
         }
         indexPath = args[i];
-        i++;
       }
+      i++;
     }
 
     if (indexPath == null) {
       System.out.println("\nERROR: index path not specified");
-      System.out.println("\nUsage: java org.apache.lucene.index.CheckIndex pathToIndex [-fix] [-segment X] [-segment Y]\n" +
+      System.out.println("\nUsage: java org.apache.lucene.index.CheckIndex pathToIndex [-fix] [-crossCheckTermVectors] [-segment X] [-segment Y] [-dir-impl X]\n" +
                          "\n" +
                          "  -fix: actually write a new segments_N file, removing any problematic segments\n" +
+                         "  -crossCheckTermVectors: verifies that term vectors match postings; THIS IS VERY SLOW!\n" +
                          "  -codec X: when fixing, codec to write the new segments_N file with\n" +
                          "  -verbose: print additional details\n" +
                          "  -segment X: only check the specified segments.  This can be specified multiple\n" + 
                          "              times, to check more than one segment, eg '-segment _2 -segment _a'.\n" +
                          "              You can't use this with the -fix option\n" +
-                         "\n" + 
+                         "  -dir-impl X: use a specific " + FSDirectory.class.getSimpleName() + " implementation. " +
+                         		"If no package is specified the " + FSDirectory.class.getPackage().getName() + " package will be used.\n" +
                          "**WARNING**: -fix should only be used on an emergency basis as it will cause\n" +
                          "documents (perhaps many) to be permanently removed from the index.  Always make\n" +
                          "a backup copy of your index before running this!  Do not run this tool on an index\n" +
@@ -1480,7 +1740,11 @@ public class CheckIndex {
     System.out.println("\nOpening index @ " + indexPath + "\n");
     Directory dir = null;
     try {
-      dir = FSDirectory.open(new File(indexPath));
+      if (dirImpl == null) {
+        dir = FSDirectory.open(new File(indexPath));
+      } else {
+        dir = CommandLineUtil.newFSDirectory(dirImpl, new File(indexPath));
+      }
     } catch (Throwable t) {
       System.out.println("ERROR: could not open directory \"" + indexPath + "\"; exiting");
       t.printStackTrace(System.out);
@@ -1488,6 +1752,7 @@ public class CheckIndex {
     }
 
     CheckIndex checker = new CheckIndex(dir);
+    checker.setCrossCheckTermVectors(doCrossCheckTermVectors);
     checker.setInfoStream(System.out, verbose);
 
     Status result = checker.checkIndex(onlySegments);

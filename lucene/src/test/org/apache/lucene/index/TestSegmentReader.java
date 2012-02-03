@@ -19,7 +19,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
 
 import org.apache.lucene.document.Document;
@@ -41,7 +41,7 @@ public class TestSegmentReader extends LuceneTestCase {
     dir = newDirectory();
     DocHelper.setupDoc(testDoc);
     SegmentInfo info = DocHelper.writeDoc(random, dir, testDoc);
-    reader = SegmentReader.get(true, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.READ);
+    reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.READ);
   }
   
   @Override
@@ -73,48 +73,43 @@ public class TestSegmentReader extends LuceneTestCase {
     }
   }
   
-  public void testDelete() throws IOException {
-    Document docToDelete = new Document();
-    DocHelper.setupDoc(docToDelete);
-    SegmentInfo info = DocHelper.writeDoc(random, dir, docToDelete);
-    SegmentReader deleteReader = SegmentReader.get(false, info, IndexReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random));
-    assertTrue(deleteReader != null);
-    assertTrue(deleteReader.numDocs() == 1);
-    deleteReader.deleteDocument(0);
-    assertFalse(deleteReader.getLiveDocs().get(0));
-    assertTrue(deleteReader.hasDeletions() == true);
-    assertTrue(deleteReader.numDocs() == 0);
-    deleteReader.close();
-  }    
-  
   public void testGetFieldNameVariations() {
-    Collection<String> result = reader.getFieldNames(IndexReader.FieldOption.ALL);
-    assertTrue(result != null);
-    assertTrue(result.size() == DocHelper.all.size());
-    for (Iterator<String> iter = result.iterator(); iter.hasNext();) {
-      String s =  iter.next();
-      //System.out.println("Name: " + s);
+    Collection<String> allFieldNames = new HashSet<String>();
+    Collection<String> indexedFieldNames = new HashSet<String>();
+    Collection<String> notIndexedFieldNames = new HashSet<String>();
+    Collection<String> tvFieldNames = new HashSet<String>();
+    Collection<String> noTVFieldNames = new HashSet<String>();
+
+    for(FieldInfo fieldInfo : reader.getFieldInfos()) {
+      final String name = fieldInfo.name;
+      allFieldNames.add(name);
+      if (fieldInfo.isIndexed) {
+        indexedFieldNames.add(name);
+      } else {
+        notIndexedFieldNames.add(name);
+      }
+      if (fieldInfo.storeTermVector) {
+        tvFieldNames.add(name);
+      } else if (fieldInfo.isIndexed) {
+        noTVFieldNames.add(name);
+      }
+    }
+
+    assertTrue(allFieldNames.size() == DocHelper.all.size());
+    for (String s : allFieldNames) {
       assertTrue(DocHelper.nameValues.containsKey(s) == true || s.equals(""));
     }                                                                               
-    result = reader.getFieldNames(IndexReader.FieldOption.INDEXED);
-    assertTrue(result != null);
-    assertTrue(result.size() == DocHelper.indexed.size());
-    for (Iterator<String> iter = result.iterator(); iter.hasNext();) {
-      String s = iter.next();
+
+    assertTrue(indexedFieldNames.size() == DocHelper.indexed.size());
+    for (String s : indexedFieldNames) {
       assertTrue(DocHelper.indexed.containsKey(s) == true || s.equals(""));
     }
     
-    result = reader.getFieldNames(IndexReader.FieldOption.UNINDEXED);
-    assertTrue(result != null);
-    assertTrue(result.size() == DocHelper.unindexed.size());
+    assertTrue(notIndexedFieldNames.size() == DocHelper.unindexed.size());
     //Get all indexed fields that are storing term vectors
-    result = reader.getFieldNames(IndexReader.FieldOption.INDEXED_WITH_TERMVECTOR);
-    assertTrue(result != null);
-    assertTrue(result.size() == DocHelper.termvector.size());
-    
-    result = reader.getFieldNames(IndexReader.FieldOption.INDEXED_NO_TERMVECTOR);
-    assertTrue(result != null);
-    assertTrue(result.size() == DocHelper.notermvector.size());
+    assertTrue(tvFieldNames.size() == DocHelper.termvector.size());
+
+    assertTrue(noTVFieldNames.size() == DocHelper.notermvector.size());
   } 
   
   public void testTerms() throws IOException {
@@ -153,7 +148,8 @@ public class TestSegmentReader extends LuceneTestCase {
     DocsAndPositionsEnum positions = MultiFields.getTermPositionsEnum(reader,
                                                                       MultiFields.getLiveDocs(reader),
                                                                       DocHelper.TEXT_FIELD_1_KEY,
-                                                                      new BytesRef("field"));
+                                                                      new BytesRef("field"),
+                                                                      false);
     // NOTE: prior rev of this test was failing to first
     // call next here:
     assertTrue(positions.nextDoc() != DocsEnum.NO_MORE_DOCS);
@@ -177,7 +173,7 @@ public class TestSegmentReader extends LuceneTestCase {
     checkNorms(reader);
   }
 
-  public static void checkNorms(IndexReader reader) throws IOException {
+  public static void checkNorms(AtomicReader reader) throws IOException {
         // test omit norms
     for (int i=0; i<DocHelper.fields.length; i++) {
       IndexableField f = DocHelper.fields[i];
@@ -186,7 +182,7 @@ public class TestSegmentReader extends LuceneTestCase {
         assertEquals(reader.hasNorms(f.name()), !DocHelper.noNorms.containsKey(f.name()));
         if (!reader.hasNorms(f.name())) {
           // test for norms of null
-          byte [] norms = MultiNorms.norms(reader, f.name());
+          DocValues norms = MultiDocValues.getNormDocValues(reader, f.name());
           assertNull(norms);
         }
       }

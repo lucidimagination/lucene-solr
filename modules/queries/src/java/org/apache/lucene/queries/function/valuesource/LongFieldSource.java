@@ -20,9 +20,9 @@ package org.apache.lucene.queries.function.valuesource;
 import java.io.IOException;
 import java.util.Map;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSourceScorer;
 import org.apache.lucene.queries.function.docvalues.LongDocValues;
 import org.apache.lucene.search.FieldCache;
@@ -65,9 +65,9 @@ public class LongFieldSource extends FieldCacheSource {
   }
 
   @Override
-  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
-    final long[] arr = cache.getLongs(readerContext.reader, field, parser, true);
-    final Bits valid = cache.getDocsWithField(readerContext.reader, field);
+  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final long[] arr = cache.getLongs(readerContext.reader(), field, parser, true);
+    final Bits valid = cache.getDocsWithField(readerContext.reader(), field);
     
     return new LongDocValues(this) {
       @Override

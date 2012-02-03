@@ -17,12 +17,12 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader.ReaderContext;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.search.similarities.Similarity.SloppyDocScorer;
+import org.apache.lucene.search.similarities.Similarity.SloppySimScorer;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.TermContext;
 
@@ -38,7 +38,7 @@ public class SpanWeight extends Weight {
   protected Similarity similarity;
   protected Map<Term,TermContext> termContexts;
   protected SpanQuery query;
-  protected Similarity.Stats stats;
+  protected Similarity.SimWeight stats;
 
   public SpanWeight(SpanQuery query, IndexSearcher searcher)
     throws IOException {
@@ -48,7 +48,7 @@ public class SpanWeight extends Weight {
     termContexts = new HashMap<Term,TermContext>();
     TreeSet<Term> terms = new TreeSet<Term>();
     query.extractTerms(terms);
-    final ReaderContext context = searcher.getTopReaderContext();
+    final IndexReaderContext context = searcher.getTopReaderContext();
     final TermStatistics termStats[] = new TermStatistics[terms.size()];
     int i = 0;
     for (Term term : terms) {
@@ -57,9 +57,8 @@ public class SpanWeight extends Weight {
       termContexts.put(term, state);
       i++;
     }
-    stats = similarity.computeStats(
+    stats = similarity.computeWeight(query.getBoost(), 
         searcher.collectionStatistics(query.getField()), 
-        query.getBoost(), 
         termStats);
   }
 
@@ -79,17 +78,17 @@ public class SpanWeight extends Weight {
   @Override
   public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
       boolean topScorer, Bits acceptDocs) throws IOException {
-    return new SpanScorer(query.getSpans(context, acceptDocs, termContexts), this, similarity.sloppyDocScorer(stats, query.getField(), context));
+    return new SpanScorer(query.getSpans(context, acceptDocs, termContexts), this, similarity.sloppySimScorer(stats, context));
   }
 
   @Override
   public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-    Scorer scorer = scorer(context, true, false, context.reader.getLiveDocs());
+    Scorer scorer = scorer(context, true, false, context.reader().getLiveDocs());
     if (scorer != null) {
       int newDoc = scorer.advance(doc);
       if (newDoc == doc) {
         float freq = scorer.freq();
-        SloppyDocScorer docScorer = similarity.sloppyDocScorer(stats, query.getField(), context);
+        SloppySimScorer docScorer = similarity.sloppySimScorer(stats, context);
         ComplexExplanation result = new ComplexExplanation();
         result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
         Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));

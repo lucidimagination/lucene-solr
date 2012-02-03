@@ -27,13 +27,12 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.FieldInfosReader;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.FieldInfosReader;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Constants;
-import org.apache.lucene.util.StringHelper;
 
 /**
  * Information about a segment such as it's name, directory, and files related
@@ -48,7 +47,7 @@ public final class SegmentInfo implements Cloneable {
   // TODO: remove these from this class, for now this is the representation
   public static final int NO = -1;          // e.g. no norms; no deletes;
   public static final int YES = 1;          // e.g. have norms; have deletes;
-  static final int WITHOUT_GEN = 0;  // a file name that has no GEN in it.
+  public static final int WITHOUT_GEN = 0;  // a file name that has no GEN in it.
 
   public String name;				  // unique name in dir
   public int docCount;				  // number of docs in seg
@@ -74,8 +73,7 @@ public final class SegmentInfo implements Cloneable {
   private volatile List<String> files;                     // cached list of files that this segment uses
                                                   // in the Directory
 
-  private volatile long sizeInBytesNoStore = -1;           // total byte size of all but the store files (computed on demand)
-  private volatile long sizeInBytesWithStore = -1;         // total byte size of all of our files (computed on demand)
+  private volatile long sizeInBytes = -1;           // total byte size of all files (computed on demand)
 
   //TODO: LUCENE-2555: remove once we don't need to support shared doc stores (pre 4.0)
   private int docStoreOffset;                     // if this segment shares stored fields & vectors, this
@@ -213,63 +211,12 @@ public final class SegmentInfo implements Cloneable {
    * Returns total size in bytes of all of files used by this segment
    */
   public long sizeInBytes() throws IOException {
-    return sizeInBytes(true);
-  }
-  
-  /**
-   * Returns total size in bytes of all of files used by this segment (if
-   * {@code includeDocStores} is true), or the size of all files except the
-   * store files otherwise.
-   * <p>
-   * NOTE: includeDocStores=false should only be used for debugging.
-   * Theoretically a codec could combine its files however it wants (after-
-   * the-fact or something), and this calculation is not particularly
-   * efficient.
-   */
-  long sizeInBytes(boolean includeDocStores) throws IOException {
-    // TODO: based on how this is used, can't we just forget about all this docstore crap?
-    // its really an abstraction violation into the codec
-    if (includeDocStores) {
-      if (sizeInBytesWithStore != -1) {
-        return sizeInBytesWithStore;
-      }
       long sum = 0;
       for (final String fileName : files()) {
-        // We don't count bytes used by a shared doc store
-        // against this segment
-        if (docStoreOffset == -1 || !isDocStoreFile(fileName)) {
-          sum += dir.fileLength(fileName);
-        }
-      }
-      sizeInBytesWithStore = sum;
-      return sizeInBytesWithStore;
-    } else {
-      if (sizeInBytesNoStore != -1) {
-        return sizeInBytesNoStore;
-      }
-      long sum = 0;
-      for (final String fileName : files()) {
-        if (isDocStoreFile(fileName)) {
-          continue;
-        }
         sum += dir.fileLength(fileName);
       }
-      sizeInBytesNoStore = sum;
-      return sizeInBytesNoStore;
-    }
-  }
-  
-  Set<String> codecDocStoreFiles() throws IOException {
-    Set<String> docStoreFiles = new HashSet<String>();
-    codec.storedFieldsFormat().files(dir, this, docStoreFiles);
-    codec.termVectorsFormat().files(dir, this, docStoreFiles);
-    return docStoreFiles;
-  }
-
-  // TODO: a little messy, but sizeInBytes above that uses this is the real problem.
-  private boolean isDocStoreFile(String fileName) throws IOException {
-    Set<String> docStoreFiles = codecDocStoreFiles();
-    return fileName.endsWith(IndexFileNames.COMPOUND_FILE_STORE_EXTENSION) || docStoreFiles.contains(fileName);
+      sizeInBytes = sum;
+      return sizeInBytes;
   }
 
   public boolean getHasVectors() throws IOException {
@@ -326,34 +273,11 @@ public final class SegmentInfo implements Cloneable {
     return si;
   }
 
-  public String getDelFileName() {
-    if (delGen == NO) {
-      // In this case we know there is no deletion filename
-      // against this segment
-      return null;
-    } else {
-      return IndexFileNames.fileNameFromGeneration(name, IndexFileNames.DELETES_EXTENSION, delGen);
-    }
-  }
-
   /**
-   * Returns true if this field for this segment has saved a separate norms file (_<segment>_N.sX).
-   *
-   * @param fieldNumber the field index to check
+   * @deprecated separate norms are not supported in >= 4.0
    */
-  public boolean hasSeparateNorms(int fieldNumber) {
-    if (normGen == null) {
-      return false;
-    }
-
-    Long gen = normGen.get(fieldNumber);
-    return gen != null && gen.longValue() != NO;
-  }
-
-  /**
-   * Returns true if any fields in this segment have separate norms.
-   */
-  public boolean hasSeparateNorms() {
+  @Deprecated
+  boolean hasSeparateNorms() {
     if (normGen == null) {
       return false;
     } else {
@@ -365,42 +289,6 @@ public final class SegmentInfo implements Cloneable {
     }
 
     return false;
-  }
-
-  void initNormGen() {
-    if (normGen == null) { // normGen is null if this segments file hasn't had any norms set against it yet
-      normGen = new HashMap<Integer, Long>();
-    }
-  }
-
-  /**
-   * Increment the generation count for the norms file for
-   * this field.
-   *
-   * @param fieldIndex field whose norm file will be rewritten
-   */
-  void advanceNormGen(int fieldIndex) {
-    Long gen = normGen.get(fieldIndex);
-    if (gen == null || gen.longValue() == NO) {
-      normGen.put(fieldIndex, new Long(YES));
-    } else {
-      normGen.put(fieldIndex, gen+1);
-    }
-    clearFilesCache();
-  }
-
-  /**
-   * Get the file name for the norms file for this field.
-   *
-   * @param number field index
-   */
-  public String getNormFileName(int number) {
-    if (hasSeparateNorms(number)) {
-      return IndexFileNames.fileNameFromGeneration(name, IndexFileNames.SEPARATE_NORMS_EXTENSION + number, normGen.get(number));
-    } else {
-      // single file for all norms
-      return IndexFileNames.fileNameFromGeneration(name, IndexFileNames.NORMS_EXTENSION, WITHOUT_GEN);
-    }
   }
 
   /**
@@ -516,11 +404,6 @@ public final class SegmentInfo implements Cloneable {
     return codec;
   }
 
-  private void addIfExists(Set<String> files, String fileName) throws IOException {
-    if (dir.fileExists(fileName))
-      files.add(fileName);
-  }
-
   /*
    * Return all files referenced by this SegmentInfo.  The
    * returns List is a locally cached List so you should not
@@ -537,45 +420,7 @@ public final class SegmentInfo implements Cloneable {
     }
     final Set<String> fileSet = new HashSet<String>();
 
-    boolean useCompoundFile = getUseCompoundFile();
-
-    if (useCompoundFile) {
-      fileSet.add(IndexFileNames.segmentFileName(name, "", IndexFileNames.COMPOUND_FILE_EXTENSION));
-      if (version != null && StringHelper.getVersionComparator().compare("4.0", version) <= 0) {
-        fileSet.add(IndexFileNames.segmentFileName(name, "",
-            IndexFileNames.COMPOUND_FILE_ENTRIES_EXTENSION));
-      }
-    } else {
-      for(String ext : IndexFileNames.NON_STORE_INDEX_EXTENSIONS) {
-        addIfExists(fileSet, IndexFileNames.segmentFileName(name, "", ext));
-      }
-      codec.files(dir, this, fileSet);
-    }
-
-    if (docStoreOffset != -1) {
-      // We are sharing doc stores (stored fields, term
-      // vectors) with other segments
-      assert docStoreSegment != null;
-      // TODO: push this out into preflex fieldsFormat?
-      if (docStoreIsCompoundFile) {
-        fileSet.add(IndexFileNames.segmentFileName(docStoreSegment, "", IndexFileNames.COMPOUND_FILE_STORE_EXTENSION));
-      }
-    }
-
-    String delFileName = IndexFileNames.fileNameFromGeneration(name, IndexFileNames.DELETES_EXTENSION, delGen);
-    if (delFileName != null && (delGen >= YES || dir.fileExists(delFileName))) {
-      fileSet.add(delFileName);
-    }
-   
-    if (normGen != null) {
-      for (Entry<Integer,Long> entry : normGen.entrySet()) {
-        long gen = entry.getValue();
-        if (gen >= YES) {
-          // Definitely a separate norm file, with generation:
-          fileSet.add(IndexFileNames.fileNameFromGeneration(name, IndexFileNames.SEPARATE_NORMS_EXTENSION + entry.getKey(), gen));
-        }
-      }
-    }
+    codec.files(this, fileSet);
 
     files = new ArrayList<String>(fileSet);
 
@@ -586,8 +431,7 @@ public final class SegmentInfo implements Cloneable {
    * files this segment has. */
   private void clearFilesCache() {
     files = null;
-    sizeInBytesNoStore = -1;
-    sizeInBytesWithStore = -1;
+    sizeInBytes = -1;
   }
 
   /** {@inheritDoc} */

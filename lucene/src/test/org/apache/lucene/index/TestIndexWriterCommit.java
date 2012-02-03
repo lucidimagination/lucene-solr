@@ -51,25 +51,23 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       writer.close();
 
       Term searchTerm = new Term("content", "aaa");
-      IndexReader reader = IndexReader.open(dir, false);
+      DirectoryReader reader = IndexReader.open(dir);
       IndexSearcher searcher = new IndexSearcher(reader);
       ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("first number of hits", 14, hits.length);
-      searcher.close();
       reader.close();
 
-      reader = IndexReader.open(dir, true);
+      reader = IndexReader.open(dir);
 
       writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
       for(int i=0;i<3;i++) {
         for(int j=0;j<11;j++) {
           TestIndexWriter.addDoc(writer);
         }
-        IndexReader r = IndexReader.open(dir, false);
+        IndexReader r = IndexReader.open(dir);
         searcher = new IndexSearcher(r);
         hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
         assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
-        searcher.close();
         r.close();
         assertTrue("reader should have still been current", reader.isCurrent());
       }
@@ -78,11 +76,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       writer.close();
       assertFalse("reader should not be current now", reader.isCurrent());
 
-      IndexReader r = IndexReader.open(dir, false);
+      IndexReader r = IndexReader.open(dir);
       searcher = new IndexSearcher(r);
       hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("reader did not see changes after writer was closed", 47, hits.length);
-      searcher.close();
       r.close();
       reader.close();
       dir.close();
@@ -105,11 +102,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.close();
 
     Term searchTerm = new Term("content", "aaa");
-    IndexReader reader = IndexReader.open(dir, false);
+    IndexReader reader = IndexReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
     ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("first number of hits", 14, hits.length);
-    searcher.close();
     reader.close();
 
     writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random))
@@ -120,11 +116,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     // Delete all docs:
     writer.deleteDocuments(searchTerm);
 
-    reader = IndexReader.open(dir, false);
+    reader = IndexReader.open(dir);
     searcher = new IndexSearcher(reader);
     hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
-    searcher.close();
     reader.close();
 
     // Now, close the writer:
@@ -132,11 +127,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     TestIndexWriter.assertNoUnreferencedFiles(dir, "unreferenced files remain after rollback()");
 
-    reader = IndexReader.open(dir, false);
+    reader = IndexReader.open(dir);
     searcher = new IndexSearcher(reader);
     hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("saw changes after writer.abort", 14, hits.length);
-    searcher.close();
     reader.close();
 
     // Now make sure we can re-open the index, add docs,
@@ -152,20 +146,18 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       for(int j=0;j<17;j++) {
         TestIndexWriter.addDoc(writer);
       }
-      IndexReader r = IndexReader.open(dir, false);
+      IndexReader r = IndexReader.open(dir);
       searcher = new IndexSearcher(r);
       hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
       assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
-      searcher.close();
       r.close();
     }
 
     writer.close();
-    IndexReader r = IndexReader.open(dir, false);
+    IndexReader r = IndexReader.open(dir);
     searcher = new IndexSearcher(r);
     hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
     assertEquals("didn't see changes after close", 218, hits.length);
-    searcher.close();
     r.close();
 
     dir.close();
@@ -243,7 +235,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
 
-    IndexReader.open(dir, true).close();
+    IndexReader.open(dir).close();
 
     long endDiskUsage = dir.getMaxUsedSizeInBytes();
 
@@ -287,7 +279,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.forceMerge(1);
 
     // Open a reader before closing (commiting) the writer:
-    IndexReader reader = IndexReader.open(dir, true);
+    DirectoryReader reader = IndexReader.open(dir);
 
     // Reader should see index as multi-seg at this
     // point:
@@ -299,7 +291,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     TestIndexWriter.assertNoUnreferencedFiles(dir, "aborted writer after forceMerge");
 
     // Open a reader after aborting writer:
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
 
     // Reader should still see index as multi-segment
     assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().length > 1);
@@ -318,7 +310,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     TestIndexWriter.assertNoUnreferencedFiles(dir, "aborted writer after forceMerge");
 
     // Open a reader after aborting writer:
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
 
     // Reader should see index as one segment
     assertEquals("Reader incorrectly sees more than one segment", 1, reader.getSequentialSubReaders().length);
@@ -347,7 +339,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
           public void run() {
             try {
               final Document doc = new Document();
-              IndexReader r = IndexReader.open(dir);
+              DirectoryReader r = IndexReader.open(dir);
               Field f = newField("f", "", StringField.TYPE_UNSTORED);
               doc.add(f);
               int count = 0;
@@ -358,7 +350,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
                   f.setValue(s);
                   w.addDocument(doc);
                   w.commit();
-                  IndexReader r2 = IndexReader.openIfChanged(r);
+                  DirectoryReader r2 = DirectoryReader.openIfChanged(r);
                   assertNotNull(r2);
                   assertTrue(r2 != r);
                   r.close();
@@ -398,10 +390,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     for (int i = 0; i < 23; i++)
       TestIndexWriter.addDoc(writer);
 
-    IndexReader reader = IndexReader.open(dir, true);
+    DirectoryReader reader = IndexReader.open(dir);
     assertEquals(0, reader.numDocs());
     writer.commit();
-    IndexReader reader2 = IndexReader.openIfChanged(reader);
+    DirectoryReader reader2 = DirectoryReader.openIfChanged(reader);
     assertNotNull(reader2);
     assertEquals(0, reader.numDocs());
     assertEquals(23, reader2.numDocs());
@@ -411,12 +403,12 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       TestIndexWriter.addDoc(writer);
     assertEquals(23, reader2.numDocs());
     reader2.close();
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(23, reader.numDocs());
     reader.close();
     writer.commit();
 
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(40, reader.numDocs());
     reader.close();
     writer.close();
@@ -443,7 +435,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     // open "first" with IndexWriter
     IndexCommit commit = null;
-    for(IndexCommit c : IndexReader.listCommits(dir)) {
+    for(IndexCommit c : DirectoryReader.listCommits(dir)) {
       if (c.getUserData().get("tag").equals("first")) {
         commit = c;
         break;
@@ -464,7 +456,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     // make sure "second" commit is still there
     commit = null;
-    for(IndexCommit c : IndexReader.listCommits(dir)) {
+    for(IndexCommit c : DirectoryReader.listCommits(dir)) {
       if (c.getUserData().get("tag").equals("second")) {
         commit = c;
         break;
@@ -473,47 +465,24 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     assertNotNull(commit);
 
-    IndexReader r = IndexReader.open(commit, true);
-    assertEquals(2, r.numDocs());
-    r.close();
-
-    // open "second", w/ writeable IndexReader & commit
-    r = IndexReader.open(commit, NoDeletionPolicy.INSTANCE, false);
-    assertEquals(2, r.numDocs());
-    r.deleteDocument(0);
-    r.deleteDocument(1);
-    commitData.put("tag", "fourth");
-    r.commit(commitData);
-    r.close();
-
-    // make sure "third" commit is still there
-    commit = null;
-    for(IndexCommit c : IndexReader.listCommits(dir)) {
-      if (c.getUserData().get("tag").equals("third")) {
-        commit = c;
-        break;
-      }
-    }
-    assertNotNull(commit);
-
     dir.close();
   }
   
-  public void testNoCommits() throws Exception {
+  public void testZeroCommits() throws Exception {
     // Tests that if we don't call commit(), the directory has 0 commits. This has
     // changed since LUCENE-2386, where before IW would always commit on a fresh
     // new index.
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
     try {
-      IndexReader.listCommits(dir);
+      DirectoryReader.listCommits(dir);
       fail("listCommits should have thrown an exception over empty index");
     } catch (IndexNotFoundException e) {
       // that's expected !
     }
     // No changes still should generate a commit, because it's a new index.
     writer.close();
-    assertEquals("expected 1 commits!", 1, IndexReader.listCommits(dir).size());
+    assertEquals("expected 1 commits!", 1, DirectoryReader.listCommits(dir).size());
     dir.close();
   }
   
@@ -532,17 +501,17 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     for (int i = 0; i < 23; i++)
       TestIndexWriter.addDoc(writer);
 
-    IndexReader reader = IndexReader.open(dir, true);
+    DirectoryReader reader = IndexReader.open(dir);
     assertEquals(0, reader.numDocs());
 
     writer.prepareCommit();
 
-    IndexReader reader2 = IndexReader.open(dir, true);
+    IndexReader reader2 = IndexReader.open(dir);
     assertEquals(0, reader2.numDocs());
 
     writer.commit();
 
-    IndexReader reader3 = IndexReader.openIfChanged(reader);
+    IndexReader reader3 = DirectoryReader.openIfChanged(reader);
     assertNotNull(reader3);
     assertEquals(0, reader.numDocs());
     assertEquals(0, reader2.numDocs());
@@ -555,18 +524,18 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     assertEquals(23, reader3.numDocs());
     reader3.close();
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(23, reader.numDocs());
     reader.close();
 
     writer.prepareCommit();
 
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(23, reader.numDocs());
     reader.close();
 
     writer.commit();
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(40, reader.numDocs());
     reader.close();
     writer.close();
@@ -589,17 +558,17 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     for (int i = 0; i < 23; i++)
       TestIndexWriter.addDoc(writer);
 
-    IndexReader reader = IndexReader.open(dir, true);
+    DirectoryReader reader = IndexReader.open(dir);
     assertEquals(0, reader.numDocs());
 
     writer.prepareCommit();
 
-    IndexReader reader2 = IndexReader.open(dir, true);
+    IndexReader reader2 = IndexReader.open(dir);
     assertEquals(0, reader2.numDocs());
 
     writer.rollback();
 
-    IndexReader reader3 = IndexReader.openIfChanged(reader);
+    IndexReader reader3 = DirectoryReader.openIfChanged(reader);
     assertNull(reader3);
     assertEquals(0, reader.numDocs());
     assertEquals(0, reader2.numDocs());
@@ -610,18 +579,18 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     for (int i = 0; i < 17; i++)
       TestIndexWriter.addDoc(writer);
 
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(0, reader.numDocs());
     reader.close();
 
     writer.prepareCommit();
 
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(0, reader.numDocs());
     reader.close();
 
     writer.commit();
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     assertEquals(17, reader.numDocs());
     reader.close();
     writer.close();
@@ -637,7 +606,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.commit();
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir, true);
+    IndexReader reader = IndexReader.open(dir);
     assertEquals(0, reader.numDocs());
     reader.close();
     dir.close();
@@ -651,9 +620,9 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       TestIndexWriter.addDoc(w);
     w.close();
 
-    assertEquals(0, IndexReader.getCommitUserData(dir).size());
+    assertEquals(0, DirectoryReader.getCommitUserData(dir).size());
 
-    IndexReader r = IndexReader.open(dir, true);
+    DirectoryReader r = IndexReader.open(dir);
     // commit(Map) never called for this index
     assertEquals(0, r.getCommitUserData().size());
     r.close();
@@ -666,9 +635,9 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     w.commit(data);
     w.close();
 
-    assertEquals("test1", IndexReader.getCommitUserData(dir).get("label"));
+    assertEquals("test1", DirectoryReader.getCommitUserData(dir).get("label"));
 
-    r = IndexReader.open(dir, true);
+    r = IndexReader.open(dir);
     assertEquals("test1", r.getCommitUserData().get("label"));
     r.close();
 
@@ -676,7 +645,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     w.forceMerge(1);
     w.close();
 
-    assertEquals("test1", IndexReader.getCommitUserData(dir).get("label"));
+    assertEquals("test1", DirectoryReader.getCommitUserData(dir).get("label"));
 
     dir.close();
   }

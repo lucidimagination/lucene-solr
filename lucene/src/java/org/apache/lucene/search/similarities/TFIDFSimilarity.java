@@ -20,15 +20,14 @@ package org.apache.lucene.search.similarities;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.Term;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.TermContext;
 import org.apache.lucene.util.SmallFloat;
 
 
@@ -334,13 +333,13 @@ import org.apache.lucene.util.SmallFloat;
  *      <i>idf(t)</i> appears for <i>t</i> in both the query and the document,
  *      hence it is squared in the equation.
  *      The default computation for <i>idf(t)</i> in
- *      {@link org.apache.lucene.search.similarities.DefaultSimilarity#idf(int, int) DefaultSimilarity} is:
+ *      {@link org.apache.lucene.search.similarities.DefaultSimilarity#idf(long, long) DefaultSimilarity} is:
  *
  *      <br>&nbsp;<br>
  *      <table cellpadding="2" cellspacing="2" border="0" align="center">
  *        <tr>
  *          <td valign="middle" align="right">
- *            {@link org.apache.lucene.search.similarities.DefaultSimilarity#idf(int, int) idf(t)}&nbsp; = &nbsp;
+ *            {@link org.apache.lucene.search.similarities.DefaultSimilarity#idf(long, long) idf(t)}&nbsp; = &nbsp;
  *          </td>
  *          <td valign="middle" align="center">
  *            1 + log <big>(</big>
@@ -527,7 +526,7 @@ import org.apache.lucene.util.SmallFloat;
 public abstract class TFIDFSimilarity extends Similarity {
   
   /** Computes a score factor based on a term or phrase's frequency in a
-   * document.  This value is multiplied by the {@link #idf(int, int)}
+   * document.  This value is multiplied by the {@link #idf(long, long)}
    * factor for each term in the query and these products are then summed to
    * form the initial score for a document.
    *
@@ -546,7 +545,7 @@ public abstract class TFIDFSimilarity extends Similarity {
   }
 
   /** Computes a score factor based on a term or phrase's frequency in a
-   * document.  This value is multiplied by the {@link #idf(int, int)}
+   * document.  This value is multiplied by the {@link #idf(long, long)}
    * factor for each term in the query and these products are then summed to
    * form the initial score for a document.
    *
@@ -584,8 +583,8 @@ public abstract class TFIDFSimilarity extends Similarity {
    * @throws IOException
    */
   public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats) {
-    final int df = termStats.docFreq();
-    final int max = collectionStats.maxDoc();
+    final long df = termStats.docFreq();
+    final long max = collectionStats.maxDoc();
     final float idf = idf(df, max);
     return new Explanation(idf, "idf(docFreq=" + df + ", maxDocs=" + max + ")");
   }
@@ -605,12 +604,12 @@ public abstract class TFIDFSimilarity extends Similarity {
    * @throws IOException
    */
   public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats[]) {
-    final int max = collectionStats.maxDoc();
+    final long max = collectionStats.maxDoc();
     float idf = 0.0f;
     final Explanation exp = new Explanation();
     exp.setDescription("idf(), sum of:");
     for (final TermStatistics stat : termStats ) {
-      final int df = stat.docFreq();
+      final long df = stat.docFreq();
       final float termIdf = idf(df, max);
       exp.addDetail(new Explanation(termIdf, "idf(docFreq=" + df + ", maxDocs=" + max + ")"));
       idf += termIdf;
@@ -632,7 +631,7 @@ public abstract class TFIDFSimilarity extends Similarity {
    * @param numDocs the total number of documents in the collection
    * @return a score factor based on the term's document frequency
    */
-  public abstract float idf(int docFreq, int numDocs);
+  public abstract float idf(long docFreq, long numDocs);
 
   /** Cache of decoded bytes. */
   private static final float[] NORM_TABLE = new float[256];
@@ -695,36 +694,38 @@ public abstract class TFIDFSimilarity extends Similarity {
   public abstract float scorePayload(int doc, int start, int end, BytesRef payload);
 
   @Override
-  public final Stats computeStats(CollectionStatistics collectionStats, float queryBoost, TermStatistics... termStats) {
+  public final SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
     final Explanation idf = termStats.length == 1
     ? idfExplain(collectionStats, termStats[0])
     : idfExplain(collectionStats, termStats);
-    return new IDFStats(idf, queryBoost);
+    return new IDFStats(collectionStats.field(), idf, queryBoost);
   }
 
   @Override
-  public final ExactDocScorer exactDocScorer(Stats stats, String fieldName, AtomicReaderContext context) throws IOException {
-    return new ExactTFIDFDocScorer((IDFStats)stats, context.reader.norms(fieldName));
+  public final ExactSimScorer exactSimScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
+    IDFStats idfstats = (IDFStats) stats;
+    return new ExactTFIDFDocScorer(idfstats, context.reader().normValues(idfstats.field));
   }
 
   @Override
-  public final SloppyDocScorer sloppyDocScorer(Stats stats, String fieldName, AtomicReaderContext context) throws IOException {
-    return new SloppyTFIDFDocScorer((IDFStats)stats, context.reader.norms(fieldName));
+  public final SloppySimScorer sloppySimScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
+    IDFStats idfstats = (IDFStats) stats;
+    return new SloppyTFIDFDocScorer(idfstats, context.reader().normValues(idfstats.field));
   }
   
   // TODO: we can specialize these for omitNorms up front, but we should test that it doesn't confuse stupid hotspot.
 
-  private final class ExactTFIDFDocScorer extends ExactDocScorer {
+  private final class ExactTFIDFDocScorer extends ExactSimScorer {
     private final IDFStats stats;
     private final float weightValue;
     private final byte[] norms;
     private static final int SCORE_CACHE_SIZE = 32;
     private float[] scoreCache = new float[SCORE_CACHE_SIZE];
     
-    ExactTFIDFDocScorer(IDFStats stats, byte norms[]) {
+    ExactTFIDFDocScorer(IDFStats stats, DocValues norms) throws IOException {
       this.stats = stats;
       this.weightValue = stats.value;
-      this.norms = norms;
+      this.norms = norms == null ? null : (byte[])norms.getSource().getArray(); 
       for (int i = 0; i < SCORE_CACHE_SIZE; i++)
         scoreCache[i] = tf(i) * weightValue;
     }
@@ -745,15 +746,15 @@ public abstract class TFIDFSimilarity extends Similarity {
     }
   }
   
-  private final class SloppyTFIDFDocScorer extends SloppyDocScorer {
+  private final class SloppyTFIDFDocScorer extends SloppySimScorer {
     private final IDFStats stats;
     private final float weightValue;
     private final byte[] norms;
     
-    SloppyTFIDFDocScorer(IDFStats stats, byte norms[]) {
+    SloppyTFIDFDocScorer(IDFStats stats, DocValues norms) throws IOException {
       this.stats = stats;
       this.weightValue = stats.value;
-      this.norms = norms;
+      this.norms = norms == null ? null : (byte[])norms.getSource().getArray();
     }
     
     @Override
@@ -781,7 +782,8 @@ public abstract class TFIDFSimilarity extends Similarity {
   
   /** Collection statistics for the TF-IDF model. The only statistic of interest
    * to this model is idf. */
-  private static class IDFStats extends Stats {
+  private static class IDFStats extends SimWeight {
+    private final String field;
     /** The idf and its explanation */
     private final Explanation idf;
     private float queryNorm;
@@ -789,8 +791,9 @@ public abstract class TFIDFSimilarity extends Similarity {
     private final float queryBoost;
     private float value;
     
-    public IDFStats(Explanation idf, float queryBoost) {
+    public IDFStats(String field, Explanation idf, float queryBoost) {
       // TODO: Validate?
+      this.field = field;
       this.idf = idf;
       this.queryBoost = queryBoost;
       this.queryWeight = idf.getValue() * queryBoost; // compute query weight

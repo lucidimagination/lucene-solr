@@ -19,7 +19,7 @@ package org.apache.lucene.index;
 
 import java.util.List;
 
-import org.apache.lucene.index.PayloadProcessorProvider.DirPayloadProcessor;
+import org.apache.lucene.index.PayloadProcessorProvider.ReaderPayloadProcessor;
 import org.apache.lucene.index.PayloadProcessorProvider.PayloadProcessor;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
@@ -31,20 +31,20 @@ import org.apache.lucene.util.InfoStream;
 public class MergeState {
 
   public static class IndexReaderAndLiveDocs {
-    public final IndexReader reader;
+    public final AtomicReader reader;
     public final Bits liveDocs;
 
-    public IndexReaderAndLiveDocs(IndexReader reader, Bits liveDocs) {
+    public IndexReaderAndLiveDocs(AtomicReader reader, Bits liveDocs) {
       this.reader = reader;
       this.liveDocs = liveDocs;
     }
   }
 
   public FieldInfos fieldInfos;
-  public List<IndexReaderAndLiveDocs> readers;    // Readers & liveDocs being merged
-  public int[][] docMaps;                         // Maps docIDs around deletions
-  public int[] docBase;                           // New docID base per reader
-  public int mergedDocCount;                      // Total # merged docs
+  public List<IndexReaderAndLiveDocs> readers;        // Readers & liveDocs being merged
+  public int[][] docMaps;                             // Maps docIDs around deletions
+  public int[] docBase;                               // New docID base per reader
+  public int mergedDocCount;                          // Total # merged docs
   public CheckAbort checkAbort;
   public InfoStream infoStream;
 
@@ -55,7 +55,7 @@ public class MergeState {
   // TODO: this is a FactoryFactory here basically
   // and we could make a codec(wrapper) to do all of this privately so IW is uninvolved
   public PayloadProcessorProvider payloadProcessorProvider;
-  public DirPayloadProcessor[] dirPayloadProcessor;
+  public ReaderPayloadProcessor[] readerPayloadProcessor;
   public PayloadProcessor[] currentPayloadProcessor;
 
   // TODO: get rid of this? it tells you which segments are 'aligned' (e.g. for bulk merging)

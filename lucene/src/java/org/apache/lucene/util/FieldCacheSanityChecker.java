@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.CompositeReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.FieldCache.CacheEntry;
@@ -278,8 +280,8 @@ public final class FieldCacheSanityChecker {
     all.add(seed);
     for (int i = 0; i < all.size(); i++) {
       Object obj = all.get(i);
-      if (obj instanceof IndexReader) {
-        IndexReader[] subs = ((IndexReader)obj).getSequentialSubReaders();
+      if (obj instanceof CompositeReader) {
+        IndexReader[] subs = ((CompositeReader)obj).getSequentialSubReaders();
         for (int j = 0; (null != subs) && (j < subs.length); j++) {
           all.add(subs[j].getCoreCacheKey());
         }

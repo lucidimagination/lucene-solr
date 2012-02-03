@@ -17,15 +17,14 @@ package org.apache.lucene.queries.function;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.FieldComparatorSource;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.index.MultiFields;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -33,7 +32,7 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * Instantiates {@link DocValues} for a particular reader.
+ * Instantiates {@link FunctionValues} for a particular reader.
  * <br>
  * Often used when creating a {@link FunctionQuery}.
  *
@@ -45,7 +44,7 @@ public abstract class ValueSource implements Serializable {
    * Gets the values for this reader and the context that was previously
    * passed to createWeight()
    */
-  public abstract DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException;
+  public abstract FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException;
 
   @Override
   public abstract boolean equals(Object o);
@@ -89,7 +88,7 @@ public abstract class ValueSource implements Serializable {
   /**
    * EXPERIMENTAL: This method is subject to change.
    * <p>
-   * Get the SortField for this ValueSource.  Uses the {@link #getValues(java.util.Map, IndexReader.AtomicReaderContext)}
+   * Get the SortField for this ValueSource.  Uses the {@link #getValues(java.util.Map, AtomicReaderContext)}
    * to populate the SortField.
    *
    * @param reverse true if this is a reverse sort.
@@ -129,12 +128,12 @@ public abstract class ValueSource implements Serializable {
 
   /**
    * Implement a {@link org.apache.lucene.search.FieldComparator} that works
-   * off of the {@link DocValues} for a ValueSource
+   * off of the {@link FunctionValues} for a ValueSource
    * instead of the normal Lucene FieldComparator that works off of a FieldCache.
    */
   class ValueSourceComparator extends FieldComparator<Double> {
     private final double[] values;
-    private DocValues docVals;
+    private FunctionValues docVals;
     private double bottom;
     private Map fcontext;
 

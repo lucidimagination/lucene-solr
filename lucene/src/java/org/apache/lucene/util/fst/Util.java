@@ -31,132 +31,208 @@ public final class Util {
   }
 
   /** Looks up the output for this input, or null if the
-   *  input is not accepted. FST must be
-   *  INPUT_TYPE.BYTE4. */
+   *  input is not accepted. */
   public static<T> T get(FST<T> fst, IntsRef input) throws IOException {
-    assert fst.inputType == FST.INPUT_TYPE.BYTE4;
 
     // TODO: would be nice not to alloc this on every lookup
     final FST.Arc<T> arc = fst.getFirstArc(new FST.Arc<T>());
 
+    final FST.BytesReader fstReader = fst.getBytesReader(0);
+
     // Accumulate output as we go
-    final T NO_OUTPUT = fst.outputs.getNoOutput();
-    T output = NO_OUTPUT;
+    T output = fst.outputs.getNoOutput();
     for(int i=0;i<input.length;i++) {
-      if (fst.findTargetArc(input.ints[input.offset + i], arc, arc) == null) {
+      if (fst.findTargetArc(input.ints[input.offset + i], arc, arc, fstReader) == null) {
         return null;
-      } else if (arc.output != NO_OUTPUT) {
-        output = fst.outputs.add(output, arc.output);
       }
+      output = fst.outputs.add(output, arc.output);
     }
 
-    if (fst.findTargetArc(FST.END_LABEL, arc, arc) == null) {
-      return null;
-    } else if (arc.output != NO_OUTPUT) {
-      return fst.outputs.add(output, arc.output);
+    if (arc.isFinal()) {
+      return fst.outputs.add(output, arc.nextFinalOutput);
     } else {
-      return output;
+      return null;
     }
   }
 
-  /** Logically casts input to UTF32 ints then looks up the output
-   *  or null if the input is not accepted.  FST must be
-   *  INPUT_TYPE.BYTE4.  */
-  public static<T> T get(FST<T> fst, char[] input, int offset, int length) throws IOException {
-    assert fst.inputType == FST.INPUT_TYPE.BYTE4;
-
-    // TODO: would be nice not to alloc this on every lookup
-    final FST.Arc<T> arc = fst.getFirstArc(new FST.Arc<T>());
-
-    int charIdx = offset;
-    final int charLimit = offset + length;
-
-    // Accumulate output as we go
-    final T NO_OUTPUT = fst.outputs.getNoOutput();
-    T output = NO_OUTPUT;
-    while(charIdx < charLimit) {
-      final int utf32 = Character.codePointAt(input, charIdx);
-      charIdx += Character.charCount(utf32);
-
-      if (fst.findTargetArc(utf32, arc, arc) == null) {
-        return null;
-      } else if (arc.output != NO_OUTPUT) {
-        output = fst.outputs.add(output, arc.output);
-      }
-    }
-
-    if (fst.findTargetArc(FST.END_LABEL, arc, arc) == null) {
-      return null;
-    } else if (arc.output != NO_OUTPUT) {
-      return fst.outputs.add(output, arc.output);
-    } else {
-      return output;
-    }
-  }
-
-
-  /** Logically casts input to UTF32 ints then looks up the output
-   *  or null if the input is not accepted.  FST must be
-   *  INPUT_TYPE.BYTE4.  */
-  public static<T> T get(FST<T> fst, CharSequence input) throws IOException {
-    assert fst.inputType == FST.INPUT_TYPE.BYTE4;
-    
-    // TODO: would be nice not to alloc this on every lookup
-    final FST.Arc<T> arc = fst.getFirstArc(new FST.Arc<T>());
-
-    int charIdx = 0;
-    final int charLimit = input.length();
-
-    // Accumulate output as we go
-    final T NO_OUTPUT = fst.outputs.getNoOutput();
-    T output = NO_OUTPUT;
-
-    while(charIdx < charLimit) {
-      final int utf32 = Character.codePointAt(input, charIdx);
-      charIdx += Character.charCount(utf32);
-
-      if (fst.findTargetArc(utf32, arc, arc) == null) {
-        return null;
-      } else if (arc.output != NO_OUTPUT) {
-        output = fst.outputs.add(output, arc.output);
-      }
-    }
-
-    if (fst.findTargetArc(FST.END_LABEL, arc, arc) == null) {
-      return null;
-    } else if (arc.output != NO_OUTPUT) {
-      return fst.outputs.add(output, arc.output);
-    } else {
-      return output;
-    }
-  }
+  // TODO: maybe a CharsRef version for BYTE2
 
   /** Looks up the output for this input, or null if the
    *  input is not accepted */
   public static<T> T get(FST<T> fst, BytesRef input) throws IOException {
     assert fst.inputType == FST.INPUT_TYPE.BYTE1;
 
+    final FST.BytesReader fstReader = fst.getBytesReader(0);
+
     // TODO: would be nice not to alloc this on every lookup
     final FST.Arc<T> arc = fst.getFirstArc(new FST.Arc<T>());
 
     // Accumulate output as we go
-    final T NO_OUTPUT = fst.outputs.getNoOutput();
-    T output = NO_OUTPUT;
+    T output = fst.outputs.getNoOutput();
     for(int i=0;i<input.length;i++) {
-      if (fst.findTargetArc(input.bytes[i+input.offset] & 0xFF, arc, arc) == null) {
+      if (fst.findTargetArc(input.bytes[i+input.offset] & 0xFF, arc, arc, fstReader) == null) {
         return null;
-      } else if (arc.output != NO_OUTPUT) {
-        output = fst.outputs.add(output, arc.output);
       }
+      output = fst.outputs.add(output, arc.output);
     }
 
-    if (fst.findTargetArc(FST.END_LABEL, arc, arc) == null) {
-      return null;
-    } else if (arc.output != NO_OUTPUT) {
-      return fst.outputs.add(output, arc.output);
+    if (arc.isFinal()) {
+      return fst.outputs.add(output, arc.nextFinalOutput);
     } else {
-      return output;
+      return null;
     }
+  }
+
+  // TODO: parameterize the FST type <T> and allow passing in a
+  // comparator; eg maybe your output is a PairOutput and
+  // one of the outputs in the pair is monotonic so you
+  // compare by that
+
+  /** Reverse lookup (lookup by output instead of by input),
+   *  in the special case when your FSTs outputs are
+   *  strictly ascending.  This locates the input/output
+   *  pair where the output is equal to the target, and will
+   *  return null if that output does not exist.
+   *
+   *  <p>NOTE: this only works with FST<Long>, only
+   *  works when the outputs are ascending in order with
+   *  the inputs and only works when you shared
+   *  the outputs (pass doShare=true to {@link
+   *  PositiveIntOutputs#getSingleton}).
+   *  For example, simple ordinals (0, 1,
+   *  2, ...), or file offets (when appending to a file)
+   *  fit this. */
+  public static IntsRef getByOutput(FST<Long> fst, long targetOutput) throws IOException {
+
+    final FST.BytesReader in = fst.getBytesReader(0);
+
+    // TODO: would be nice not to alloc this on every lookup
+    FST.Arc<Long> arc = fst.getFirstArc(new FST.Arc<Long>());
+    
+    FST.Arc<Long> scratchArc = new FST.Arc<Long>();
+
+    final IntsRef result = new IntsRef();
+
+    long output = arc.output;
+    int upto = 0;
+
+    //System.out.println("reverseLookup output=" + targetOutput);
+
+    while(true) {
+      //System.out.println("loop: output=" + output + " upto=" + upto + " arc=" + arc);
+      if (arc.isFinal()) {
+        final long finalOutput = output + arc.nextFinalOutput;
+        //System.out.println("  isFinal finalOutput=" + finalOutput);
+        if (finalOutput == targetOutput) {
+          result.length = upto;
+          //System.out.println("    found!");
+          return result;
+        } else if (finalOutput > targetOutput) {
+          //System.out.println("    not found!");
+          return null;
+        }
+      }
+
+      if (fst.targetHasArcs(arc)) {
+        //System.out.println("  targetHasArcs");
+        if (result.ints.length == upto) {
+          result.grow(1+upto);
+        }
+        
+        fst.readFirstRealTargetArc(arc.target, arc, in);
+
+        if (arc.bytesPerArc != 0) {
+
+          int low = 0;
+          int high = arc.numArcs-1;
+          int mid = 0;
+          //System.out.println("bsearch: numArcs=" + arc.numArcs + " target=" + targetOutput + " output=" + output);
+          boolean exact = false;
+          while (low <= high) {
+            mid = (low + high) >>> 1;
+            in.pos = arc.posArcsStart;
+            in.skip(arc.bytesPerArc*mid);
+            final byte flags = in.readByte();
+            fst.readLabel(in);
+            final long minArcOutput;
+            if ((flags & fst.BIT_ARC_HAS_OUTPUT) != 0) {
+              final long arcOutput = fst.outputs.read(in);
+              minArcOutput = output + arcOutput;
+            } else {
+              minArcOutput = output;
+            }
+            //System.out.println("  cycle mid=" + mid + " label=" + (char) label + " output=" + minArcOutput);
+            if (minArcOutput == targetOutput) {
+              exact = true;
+              break;
+            } else if (minArcOutput < targetOutput) {
+              low = mid + 1;
+            } else {
+              high = mid - 1;
+            }
+          }
+
+          if (high == -1) {
+            return null;
+          } else if (exact) {
+            arc.arcIdx = mid-1;
+          } else {
+            arc.arcIdx = low-2;
+          }
+
+          fst.readNextRealArc(arc, in);
+          result.ints[upto++] = arc.label;
+          output += arc.output;
+
+        } else {
+
+          FST.Arc<Long> prevArc = null;
+
+          while(true) {
+            //System.out.println("    cycle label=" + arc.label + " output=" + arc.output);
+
+            // This is the min output we'd hit if we follow
+            // this arc:
+            final long minArcOutput = output + arc.output;
+
+            if (minArcOutput == targetOutput) {
+              // Recurse on this arc:
+              //System.out.println("  match!  break");
+              output = minArcOutput;
+              result.ints[upto++] = arc.label;
+              break;
+            } else if (minArcOutput > targetOutput) {
+              if (prevArc == null) {
+                // Output doesn't exist
+                return null;
+              } else {
+                // Recurse on previous arc:
+                arc.copyFrom(prevArc);
+                result.ints[upto++] = arc.label;
+                output += arc.output;
+                //System.out.println("    recurse prev label=" + (char) arc.label + " output=" + output);
+                break;
+              }
+            } else if (arc.isLast()) {
+              // Recurse on this arc:
+              output = minArcOutput;
+              //System.out.println("    recurse last label=" + (char) arc.label + " output=" + output);
+              result.ints[upto++] = arc.label;
+              break;
+            } else {
+              // Read next arc in this node:
+              prevArc = scratchArc;
+              prevArc.copyFrom(arc);
+              //System.out.println("      after copy label=" + (char) prevArc.label + " vs " + (char) arc.label);
+              fst.readNextRealArc(arc, in);
+            }
+          }
+        }
+      } else {
+        //System.out.println("  no target arcs; not found!");
+        return null;
+      }
+    }    
   }
   
   /**
@@ -203,6 +279,7 @@ public final class Util {
     // A queue of transitions to consider when processing the next level.
     final List<FST.Arc<T>> nextLevelQueue = new ArrayList<FST.Arc<T>>();
     nextLevelQueue.add(startArc);
+    //System.out.println("toDot: startArc: " + startArc);
     
     // A list of states on the same level (for ranking).
     final List<Integer> sameLevelStates = new ArrayList<Integer>();
@@ -254,8 +331,11 @@ public final class Util {
 
     int level = 0;
 
+    final FST.BytesReader r = fst.getBytesReader(0);
+
     while (!nextLevelQueue.isEmpty()) {
       // we could double buffer here, but it doesn't matter probably.
+      //System.out.println("next level=" + level);
       thisLevelQueue.addAll(nextLevelQueue);
       nextLevelQueue.clear();
 
@@ -263,19 +343,19 @@ public final class Util {
       out.write("\n  // Transitions and states at level: " + level + "\n");
       while (!thisLevelQueue.isEmpty()) {
         final FST.Arc<T> arc = thisLevelQueue.remove(thisLevelQueue.size() - 1);
+        //System.out.println("  pop: " + arc);
         if (fst.targetHasArcs(arc)) {
-          // scan all arcs
+          // scan all target arcs
+          //System.out.println("  readFirstTarget...");
           final int node = arc.target;
-          fst.readFirstTargetArc(arc, arc);
 
-          if (arc.label == FST.END_LABEL) {
-            // Skip it -- prior recursion took this into account already
-            assert !arc.isLast();
-            fst.readNextArc(arc);
-          }
+          fst.readFirstRealTargetArc(arc.target, arc, r);
+
+          //System.out.println("    firstTarget: " + arc);
 
           while (true) {
 
+            //System.out.println("  cycle arc=" + arc);
             // Emit the unseen state and add it to the queue for the next level.
             if (arc.target >= 0 && !seen.get(arc.target)) {
 
@@ -294,7 +374,7 @@ public final class Util {
               if (fst.isExpandedTarget(arc)) {
                 stateColor = expandedNodeColor;
               } else {
-               stateColor = null;
+                stateColor = null;
               }
 
               final String finalOutput;
@@ -304,7 +384,9 @@ public final class Util {
                 finalOutput = "";
               }
 
-              emitDotState(out, Integer.toString(arc.target), arc.isFinal() ? finalStateShape : stateShape, stateColor, finalOutput);
+              emitDotState(out, Integer.toString(arc.target), stateShape, stateColor, finalOutput);
+              // To see the node address, use this instead:
+              //emitDotState(out, Integer.toString(arc.target), stateShape, stateColor, String.valueOf(arc.target));
               seen.set(arc.target);
               nextLevelQueue.add(new FST.Arc<T>().copyFrom(arc));
               sameLevelStates.add(arc.target);
@@ -327,14 +409,22 @@ public final class Util {
               outs = outs + "/[" + fst.outputs.outputToString(arc.nextFinalOutput) + "]";
             }
 
+            final String arcColor;
+            if (arc.flag(FST.BIT_TARGET_NEXT)) {
+              arcColor = "red";
+            } else {
+              arcColor = "black";
+            }
+
             assert arc.label != FST.END_LABEL;
-            out.write("  " + node + " -> " + arc.target + " [label=\"" + printableLabel(arc.label) + outs + "\"]\n");
+            out.write("  " + node + " -> " + arc.target + " [label=\"" + printableLabel(arc.label) + outs + "\"" + (arc.isFinal() ? " style=\"bold\"" : "" ) + " color=\"" + arcColor + "\"]\n");
                    
             // Break the loop if we're on the last arc of this state.
             if (arc.isLast()) {
+              //System.out.println("    break");
               break;
             }
-            fst.readNextArc(arc);
+            fst.readNextRealArc(arc, r);
           }
         }
       }
@@ -380,5 +470,63 @@ public final class Util {
     } else {
       return "0x" + Integer.toHexString(label);
     }
+  }
+
+  /** Decodes the Unicode codepoints from the provided
+   *  CharSequence and places them in the provided scratch
+   *  IntsRef, which must not be null, returning it. */
+  public static IntsRef toUTF32(CharSequence s, IntsRef scratch) {
+    int charIdx = 0;
+    int intIdx = 0;
+    final int charLimit = s.length();
+    while(charIdx < charLimit) {
+      scratch.grow(intIdx+1);
+      final int utf32 = Character.codePointAt(s, charIdx);
+      scratch.ints[intIdx] = utf32;
+      charIdx += Character.charCount(utf32);
+      intIdx++;
+    }
+    scratch.length = intIdx;
+    return scratch;
+  }
+
+  /** Decodes the Unicode codepoints from the provided
+   *  char[] and places them in the provided scratch
+   *  IntsRef, which must not be null, returning it. */
+  public static IntsRef toUTF32(char[] s, int offset, int length, IntsRef scratch) {
+    int charIdx = offset;
+    int intIdx = 0;
+    final int charLimit = offset + length;
+    while(charIdx < charLimit) {
+      scratch.grow(intIdx+1);
+      final int utf32 = Character.codePointAt(s, charIdx);
+      scratch.ints[intIdx] = utf32;
+      charIdx += Character.charCount(utf32);
+      intIdx++;
+    }
+    scratch.length = intIdx;
+    return scratch;
+  }
+
+  /** Just takes unsigned byte values from the BytesRef and
+   *  converts into an IntsRef. */
+  public static IntsRef toIntsRef(BytesRef input, IntsRef scratch) {
+    scratch.grow(input.length);
+    for(int i=0;i<input.length;i++) {
+      scratch.ints[i] = input.bytes[i+input.offset] & 0xFF;
+    }
+    scratch.length = input.length;
+    return scratch;
+  }
+
+  /** Just converts IntsRef to BytesRef; you must ensure the
+   *  int values fit into a byte. */
+  public static BytesRef toBytesRef(IntsRef input, BytesRef scratch) {
+    scratch.grow(input.length);
+    for(int i=0;i<input.length;i++) {
+      scratch.bytes[i] = (byte) input.ints[i+input.offset];
+    }
+    scratch.length = input.length;
+    return scratch;
   }
 }

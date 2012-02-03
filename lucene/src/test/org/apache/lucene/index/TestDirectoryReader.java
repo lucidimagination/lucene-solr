@@ -64,7 +64,7 @@ public class TestDirectoryReader extends LuceneTestCase {
 
   protected IndexReader openReader() throws IOException {
     IndexReader reader;
-    reader = IndexReader.open(dir, false);
+    reader = IndexReader.open(dir);
     assertTrue(reader instanceof DirectoryReader);
 
     assertTrue(dir != null);
@@ -74,12 +74,7 @@ public class TestDirectoryReader extends LuceneTestCase {
     return reader;
   }
 
-  public void test() throws Exception {
-    doTestDocument();
-    doTestUndeleteAll();
-  }    
-
-  public void doTestDocument() throws IOException {
+  public void testDocument() throws IOException {
     sis.read(dir);
     IndexReader reader = openReader();
     assertTrue(reader != null);
@@ -91,68 +86,19 @@ public class TestDirectoryReader extends LuceneTestCase {
     assertTrue(DocHelper.numFields(newDoc2) == DocHelper.numFields(doc2) - DocHelper.unstored.size());
     Terms vector = reader.getTermVectors(0).terms(DocHelper.TEXT_FIELD_2_KEY);
     assertNotNull(vector);
-    TestSegmentReader.checkNorms(reader);
-    reader.close();
-  }
-
-  public void doTestUndeleteAll() throws IOException {
-    sis.read(dir);
-    IndexReader reader = openReader();
-    assertTrue(reader != null);
-    assertEquals( 2, reader.numDocs() );
-    reader.deleteDocument(0);
-    assertEquals( 1, reader.numDocs() );
-    reader.undeleteAll();
-    assertEquals( 2, reader.numDocs() );
-
-    // Ensure undeleteAll survives commit/close/reopen:
-    reader.commit();
-    reader.close();
-
-    if (reader instanceof MultiReader)
-      // MultiReader does not "own" the directory so it does
-      // not write the changes to sis on commit:
-      sis.commit(dir, sis.codecFormat());
-
-    sis.read(dir);
-    reader = openReader();
-    assertEquals( 2, reader.numDocs() );
-
-    reader.deleteDocument(0);
-    assertEquals( 1, reader.numDocs() );
-    reader.commit();
-    reader.close();
-    if (reader instanceof MultiReader)
-      // MultiReader does not "own" the directory so it does
-      // not write the changes to sis on commit:
-      sis.commit(dir, sis.codecFormat());
-    sis.read(dir);
-    reader = openReader();
-    assertEquals( 1, reader.numDocs() );
+    // TODO: pretty sure this check makes zero sense TestSegmentReader.checkNorms(reader);
     reader.close();
   }
         
   public void testIsCurrent() throws IOException {
-    Directory ramDir1=newDirectory();
-    addDoc(random, ramDir1, "test foo", true);
-    Directory ramDir2=newDirectory();
-    addDoc(random, ramDir2, "test blah", true);
-    IndexReader[] readers = new IndexReader[]{IndexReader.open(ramDir1, false), IndexReader.open(ramDir2, false)};
-    MultiReader mr = new MultiReader(readers);
-    assertTrue(mr.isCurrent());   // just opened, must be current
-    addDoc(random, ramDir1, "more text", false);
-    assertFalse(mr.isCurrent());   // has been modified, not current anymore
-    addDoc(random, ramDir2, "even more text", false);
-    assertFalse(mr.isCurrent());   // has been modified even more, not current anymore
-    try {
-      mr.getVersion();
-      fail();
-    } catch (UnsupportedOperationException e) {
-      // expected exception
-    }
-    mr.close();
-    ramDir1.close();
-    ramDir2.close();
+    Directory ramDir=newDirectory();
+    addDoc(random, ramDir, "test foo", true);
+    DirectoryReader reader = DirectoryReader.open(ramDir);
+    assertTrue(reader.isCurrent());   // just opened, must be current
+    addDoc(random, ramDir, "more text", false);
+    assertFalse(reader.isCurrent());   // has been modified, not current anymore
+    reader.close();
+    ramDir.close();
   }
 
   public void testMultiTermDocs() throws IOException {
@@ -163,8 +109,8 @@ public class TestDirectoryReader extends LuceneTestCase {
     Directory ramDir3=newDirectory();
     addDoc(random, ramDir3, "test wow", true);
 
-    IndexReader[] readers1 = new IndexReader[]{IndexReader.open(ramDir1, false), IndexReader.open(ramDir3, false)};
-    IndexReader[] readers2 = new IndexReader[]{IndexReader.open(ramDir1, false), IndexReader.open(ramDir2, false), IndexReader.open(ramDir3, false)};
+    IndexReader[] readers1 = new IndexReader[]{IndexReader.open(ramDir1), IndexReader.open(ramDir3)};
+    IndexReader[] readers2 = new IndexReader[]{IndexReader.open(ramDir1), IndexReader.open(ramDir2), IndexReader.open(ramDir3)};
     MultiReader mr2 = new MultiReader(readers1);
     MultiReader mr3 = new MultiReader(readers2);
 

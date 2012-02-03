@@ -21,12 +21,12 @@ import java.io.*;
 import java.util.*;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.FieldInfosReader;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.FieldInfosReader;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
@@ -68,14 +68,14 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     writer.close();
 
     // Delete one doc so we get a .del file:
-    IndexReader reader = IndexReader.open(dir, false);
+    writer = new IndexWriter(
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
+            setMergePolicy(NoMergePolicy.NO_COMPOUND_FILES)
+    );
     Term searchTerm = new Term("id", "7");
-    int delCount = reader.deleteDocuments(searchTerm);
-    assertEquals("didn't delete the right number of documents", 1, delCount);
-    DefaultSimilarity sim = new DefaultSimilarity();
-    // Set one norm so we get a .s0 file:
-    reader.setNorm(21, "content", sim.encodeNormValue(1.5f));
-    reader.close();
+    writer.deleteDocuments(searchTerm);
+    writer.close();
 
     // Now, artificially create an extra .del file & extra
     // .s0 file:
@@ -87,58 +87,20 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     }
     */
 
-    // The numbering of fields can vary depending on which
-    // JRE is in use.  On some JREs we see content bound to
-    // field 0; on others, field 1.  So, here we have to
-    // figure out which field number corresponds to
-    // "content", and then set our expected file names below
-    // accordingly:
-    CompoundFileDirectory cfsReader = new CompoundFileDirectory(dir, "_2.cfs", newIOContext(random), false);
-    FieldInfosReader infosReader = Codec.getDefault().fieldInfosFormat().getFieldInfosReader();
-    FieldInfos fieldInfos = infosReader.read(cfsReader, "2", IOContext.READONCE);
-    int contentFieldIndex = -1;
-    for (FieldInfo fi : fieldInfos) {
-      if (fi.name.equals("content")) {
-        contentFieldIndex = fi.number;
-        break;
-      }
-    }
-    cfsReader.close();
-    assertTrue("could not locate the 'content' field number in the _2.cfs segment", contentFieldIndex != -1);
-
-    String normSuffix = "s" + contentFieldIndex;
-
-    // Create a bogus separate norms file for a
-    // segment/field that actually has a separate norms file
-    // already:
-    copyFile(dir, "_2_1." + normSuffix, "_2_2." + normSuffix);
-
-    // Create a bogus separate norms file for a
-    // segment/field that actually has a separate norms file
-    // already, using the "not compound file" extension:
-    copyFile(dir, "_2_1." + normSuffix, "_2_2.f" + contentFieldIndex);
-
-    // Create a bogus separate norms file for a
-    // segment/field that does not have a separate norms
-    // file already:
-    copyFile(dir, "_2_1." + normSuffix, "_1_1." + normSuffix);
-
-    // Create a bogus separate norms file for a
-    // segment/field that does not have a separate norms
-    // file already using the "not compound file" extension:
-    copyFile(dir, "_2_1." + normSuffix, "_1_1.f" + contentFieldIndex);
-
+    // TODO: fix this test better
+    String ext = Codec.getDefault().getName().equals("SimpleText") ? ".liv" : ".del";
+    
     // Create a bogus separate del file for a
     // segment that already has a separate del file: 
-    copyFile(dir, "_0_1.del", "_0_2.del");
+    copyFile(dir, "_0_1" + ext, "_0_2" + ext);
 
     // Create a bogus separate del file for a
     // segment that does not yet have a separate del file:
-    copyFile(dir, "_0_1.del", "_1_1.del");
+    copyFile(dir, "_0_1" + ext, "_1_1" + ext);
 
     // Create a bogus separate del file for a
     // non-existent segment:
-    copyFile(dir, "_0_1.del", "_188_1.del");
+    copyFile(dir, "_0_1" + ext, "_188_1" + ext);
 
     // Create a bogus segment file:
     copyFile(dir, "_0.cfs", "_188.cfs");

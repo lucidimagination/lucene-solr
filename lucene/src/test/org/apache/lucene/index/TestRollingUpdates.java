@@ -18,9 +18,9 @@ package org.apache.lucene.index;
  */
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.memory.MemoryPostingsFormat;
 import org.apache.lucene.document.*;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.memory.MemoryPostingsFormat;
 import org.apache.lucene.store.*;
 import org.apache.lucene.util.*;
 import org.junit.Test;
@@ -38,14 +38,17 @@ public class TestRollingUpdates extends LuceneTestCase {
 
     //provider.register(new MemoryCodec());
     if ( (!"Lucene3x".equals(Codec.getDefault().getName())) && random.nextBoolean()) {
-      Codec.setDefault(_TestUtil.alwaysPostingsFormat(new MemoryPostingsFormat()));
+      Codec.setDefault(_TestUtil.alwaysPostingsFormat(new MemoryPostingsFormat(random.nextBoolean())));
     }
 
     final IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-    final int SIZE = atLeast(TEST_NIGHTLY ? 100 : 20);
+    final int SIZE = atLeast(20);
     int id = 0;
     IndexReader r = null;
-    final int numUpdates = (int) (SIZE * (2+random.nextDouble()));
+    final int numUpdates = (int) (SIZE * (2+(TEST_NIGHTLY ? 200*random.nextDouble() : 5*random.nextDouble())));
+    if (VERBOSE) {
+      System.out.println("TEST: numUpdates=" + numUpdates);
+    }
     for(int docIter=0;docIter<numUpdates;docIter++) {
       final Document doc = docs.nextDoc();
       final String myID = ""+id;
@@ -125,7 +128,7 @@ public class TestRollingUpdates extends LuceneTestCase {
 
     public void run() {
       try {
-        IndexReader open = null;
+        DirectoryReader open = null;
         for (int i = 0; i < num; i++) {
           Document doc = new Document();// docs.nextDoc();
           doc.add(newField("id", "test", StringField.TYPE_UNSTORED));
@@ -134,7 +137,7 @@ public class TestRollingUpdates extends LuceneTestCase {
             if (open == null) {
               open = IndexReader.open(writer, true);
             }
-            IndexReader reader = IndexReader.openIfChanged(open);
+            DirectoryReader reader = DirectoryReader.openIfChanged(open);
             if (reader != null) {
               open.close();
               open = reader;

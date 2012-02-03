@@ -66,7 +66,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     
     // TODO: verify equals using IW.getReader
     DocsAndWriter dw = indexRandomIWReader(5, 3, 100, dir);
-    IndexReader reader = dw.writer.getReader();
+    DirectoryReader reader = dw.writer.getReader();
     dw.writer.commit();
     verifyEquals(random, reader, dir, "id");
     reader.close();
@@ -265,24 +265,25 @@ public class TestStressIndexing2 extends LuceneTestCase {
     w.close();
   }
   
-  public static void verifyEquals(Random r, IndexReader r1, Directory dir2, String idField) throws Throwable {
-    IndexReader r2 = IndexReader.open(dir2);
+  public static void verifyEquals(Random r, DirectoryReader r1, Directory dir2, String idField) throws Throwable {
+    DirectoryReader r2 = IndexReader.open(dir2);
     verifyEquals(r1, r2, idField);
     r2.close();
   }
 
   public static void verifyEquals(Directory dir1, Directory dir2, String idField) throws Throwable {
-    IndexReader r1 = IndexReader.open(dir1, true);
-    IndexReader r2 = IndexReader.open(dir2, true);
+    DirectoryReader r1 = IndexReader.open(dir1);
+    DirectoryReader r2 = IndexReader.open(dir2);
     verifyEquals(r1, r2, idField);
     r1.close();
     r2.close();
   }
 
-  private static void printDocs(IndexReader r) throws Throwable {
+  private static void printDocs(DirectoryReader r) throws Throwable {
     IndexReader[] subs = r.getSequentialSubReaders();
     for(IndexReader sub : subs) {
-      Bits liveDocs = sub.getLiveDocs();
+      // TODO: improve this
+      Bits liveDocs = ((AtomicReader)sub).getLiveDocs();
       System.out.println("  " + ((SegmentReader) sub).getSegmentInfo());
       for(int docID=0;docID<sub.maxDoc();docID++) {
         Document doc = sub.document(docID);
@@ -296,7 +297,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
   }
 
 
-  public static void verifyEquals(IndexReader r1, IndexReader r2, String idField) throws Throwable {
+  public static void verifyEquals(DirectoryReader r1, DirectoryReader r2, String idField) throws Throwable {
     if (VERBOSE) {
       System.out.println("\nr1 docs:");
       printDocs(r1);
@@ -406,7 +407,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
             BytesRef term2;
             while((term2 = termsEnum3.next()) != null) {
               System.out.println("      " + term2.utf8ToString() + ": freq=" + termsEnum3.totalTermFreq());
-              dpEnum = termsEnum3.docsAndPositions(null, dpEnum);
+              dpEnum = termsEnum3.docsAndPositions(null, dpEnum, false);
               if (dpEnum != null) {
                 assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
                 final int freq = dpEnum.freq();
@@ -440,7 +441,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
             BytesRef term2;
             while((term2 = termsEnum3.next()) != null) {
               System.out.println("      " + term2.utf8ToString() + ": freq=" + termsEnum3.totalTermFreq());
-              dpEnum = termsEnum3.docsAndPositions(null, dpEnum);
+              dpEnum = termsEnum3.docsAndPositions(null, dpEnum, false);
               if (dpEnum != null) {
                 assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
                 final int freq = dpEnum.freq();
@@ -630,8 +631,8 @@ public class TestStressIndexing2 extends LuceneTestCase {
         assertEquals(termsEnum1.totalTermFreq(),
                      termsEnum2.totalTermFreq());
         
-        dpEnum1 = termsEnum1.docsAndPositions(null, dpEnum1);
-        dpEnum2 = termsEnum2.docsAndPositions(null, dpEnum2);
+        dpEnum1 = termsEnum1.docsAndPositions(null, dpEnum1, false);
+        dpEnum2 = termsEnum2.docsAndPositions(null, dpEnum2, false);
         if (dpEnum1 != null) {
           assertNotNull(dpEnum2);
           int docID1 = dpEnum1.nextDoc();

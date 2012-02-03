@@ -19,24 +19,24 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.document.DocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.IndexDocValuesField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues.Source;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Norm;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.values.IndexDocValues.Source;
-import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TermContext;
 
 /**
  * Tests the use of indexdocvalues in scoring.
@@ -48,7 +48,7 @@ public class TestDocValuesScoring extends LuceneTestCase {
   private static final float SCORE_EPSILON = 0.001f; /* for comparing floats */
 
   public void testSimple() throws Exception {
-    assumeFalse("PreFlex codec cannot work with IndexDocValues!", 
+    assumeFalse("PreFlex codec cannot work with DocValues!", 
         "Lucene3x".equals(Codec.getDefault().getName()));
     
     Directory dir = newDirectory();
@@ -56,18 +56,18 @@ public class TestDocValuesScoring extends LuceneTestCase {
     Document doc = new Document();
     Field field = newField("foo", "", TextField.TYPE_UNSTORED);
     doc.add(field);
-    IndexDocValuesField dvField = new IndexDocValuesField("foo_boost");
+    DocValuesField dvField = new DocValuesField("foo_boost", 0.0f, DocValues.Type.FLOAT_32);
     doc.add(dvField);
     Field field2 = newField("bar", "", TextField.TYPE_UNSTORED);
     doc.add(field2);
     
     field.setValue("quick brown fox");
     field2.setValue("quick brown fox");
-    dvField.setFloat(2f); // boost x2
+    dvField.setValue(2f); // boost x2
     iw.addDocument(doc);
     field.setValue("jumps over lazy brown dog");
     field2.setValue("jumps over lazy brown dog");
-    dvField.setFloat(4f); // boost x4
+    dvField.setValue(4f); // boost x4
     iw.addDocument(doc);
     IndexReader ir = iw.getReader();
     iw.close();
@@ -133,9 +133,6 @@ public class TestDocValuesScoring extends LuceneTestCase {
     
     assertEquals(boost.scoreDocs[0].score, noboost.scoreDocs[0].score, SCORE_EPSILON);
 
-    
-    searcher1.close();
-    searcher2.close();
     ir.close();
     dir.close();
   }
@@ -156,21 +153,21 @@ public class TestDocValuesScoring extends LuceneTestCase {
     }
     
     @Override
-    public byte computeNorm(FieldInvertState state) {
-      return sim.computeNorm(state);
+    public void computeNorm(FieldInvertState state, Norm norm) {
+      sim.computeNorm(state, norm);
     }
 
     @Override
-    public Stats computeStats(CollectionStatistics collectionStats, float queryBoost, TermStatistics... termStats) {
-      return sim.computeStats(collectionStats, queryBoost, termStats);
+    public SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+      return sim.computeWeight(queryBoost, collectionStats, termStats);
     }
 
     @Override
-    public ExactDocScorer exactDocScorer(Stats stats, String fieldName, AtomicReaderContext context) throws IOException {
-      final ExactDocScorer sub = sim.exactDocScorer(stats, fieldName, context);
-      final Source values = context.reader.docValues(boostField).getSource();
+    public ExactSimScorer exactSimScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
+      final ExactSimScorer sub = sim.exactSimScorer(stats, context);
+      final Source values = context.reader().docValues(boostField).getSource();
 
-      return new ExactDocScorer() {
+      return new ExactSimScorer() {
         @Override
         public float score(int doc, int freq) {
           return (float) values.getFloat(doc) * sub.score(doc, freq);
@@ -189,11 +186,11 @@ public class TestDocValuesScoring extends LuceneTestCase {
     }
 
     @Override
-    public SloppyDocScorer sloppyDocScorer(Stats stats, String fieldName, AtomicReaderContext context) throws IOException {
-      final SloppyDocScorer sub = sim.sloppyDocScorer(stats, fieldName, context);
-      final Source values = context.reader.docValues(boostField).getSource();
+    public SloppySimScorer sloppySimScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
+      final SloppySimScorer sub = sim.sloppySimScorer(stats, context);
+      final Source values = context.reader().docValues(boostField).getSource();
       
-      return new SloppyDocScorer() {
+      return new SloppySimScorer() {
         @Override
         public float score(int doc, float freq) {
           return (float) values.getFloat(doc) * sub.score(doc, freq);

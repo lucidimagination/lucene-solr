@@ -27,6 +27,7 @@ import org.apache.lucene.document.DocumentStoredFieldVisitor;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.NumericField;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
@@ -80,24 +81,18 @@ public class TestFieldsReader extends LuceneTestCase {
     assertTrue(field != null);
     assertTrue(field.fieldType().storeTermVectors());
 
-    assertTrue(field.fieldType().storeTermVectorOffsets());
-    assertTrue(field.fieldType().storeTermVectorPositions());
     assertFalse(field.fieldType().omitNorms());
     assertTrue(field.fieldType().indexOptions() == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
 
     field = (Field) doc.getField(DocHelper.TEXT_FIELD_3_KEY);
     assertTrue(field != null);
     assertFalse(field.fieldType().storeTermVectors());
-    assertFalse(field.fieldType().storeTermVectorOffsets());
-    assertFalse(field.fieldType().storeTermVectorPositions());
     assertTrue(field.fieldType().omitNorms());
     assertTrue(field.fieldType().indexOptions() == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
 
     field = (Field) doc.getField(DocHelper.NO_TF_KEY);
     assertTrue(field != null);
     assertFalse(field.fieldType().storeTermVectors());
-    assertFalse(field.fieldType().storeTermVectorOffsets());
-    assertFalse(field.fieldType().storeTermVectorPositions());
     assertFalse(field.fieldType().omitNorms());
     assertTrue(field.fieldType().indexOptions() == IndexOptions.DOCS_ONLY);
 
@@ -129,10 +124,6 @@ public class TestFieldsReader extends LuceneTestCase {
     @Override
     public boolean fileExists(String name) throws IOException {
       return fsDir.fileExists(name);
-    }
-    @Override
-    public long fileModified(String name) throws IOException {
-      return fsDir.fileModified(name);
     }
     @Override
     public void deleteFile(String name) throws IOException {
@@ -206,7 +197,7 @@ public class TestFieldsReader extends LuceneTestCase {
       writer.forceMerge(1);
       writer.close();
 
-      IndexReader reader = IndexReader.open(dir, true);
+      IndexReader reader = IndexReader.open(dir);
 
       FaultyIndexInput.doFail = true;
 
@@ -243,56 +234,56 @@ public class TestFieldsReader extends LuceneTestCase {
     final NumericField.DataType[] typeAnswers = new NumericField.DataType[numDocs];
     for(int id=0;id<numDocs;id++) {
       Document doc = new Document();
-      NumericField nf = new NumericField("nf", NumericField.TYPE_STORED);
-      doc.add(nf);
+      final NumericField nf;
       final Number answer;
       final NumericField.DataType typeAnswer;
       if (random.nextBoolean()) {
         // float/double
         if (random.nextBoolean()) {
           final float f = random.nextFloat();
-          nf.setFloatValue(f);
           answer = Float.valueOf(f);
+          nf = new NumericField("nf", answer, NumericField.getFieldType(NumericField.DataType.FLOAT, true));
           typeAnswer = NumericField.DataType.FLOAT;
         } else {
           final double d = random.nextDouble();
-          nf.setDoubleValue(d);
           answer = Double.valueOf(d);
+          nf = new NumericField("nf", answer, NumericField.getFieldType(NumericField.DataType.DOUBLE, true));
           typeAnswer = NumericField.DataType.DOUBLE;
         }
       } else {
         // int/long
         if (random.nextBoolean()) {
           final int i = random.nextInt();
-          nf.setIntValue(i);
           answer = Integer.valueOf(i);
+          nf = new NumericField("nf", answer, NumericField.getFieldType(NumericField.DataType.INT, true));
           typeAnswer = NumericField.DataType.INT;
         } else {
           final long l = random.nextLong();
-          nf.setLongValue(l);
           answer = Long.valueOf(l);
+          nf = new NumericField("nf", answer, NumericField.getFieldType(NumericField.DataType.LONG, true));
           typeAnswer = NumericField.DataType.LONG;
         }
       }
+      doc.add(nf);
       answers[id] = answer;
       typeAnswers[id] = typeAnswer;
-      doc.add(new NumericField("id", Integer.MAX_VALUE).setIntValue(id));
+      FieldType ft = new FieldType(NumericField.getFieldType(NumericField.DataType.INT, false));
+      ft.setNumericPrecisionStep(Integer.MAX_VALUE);
+      doc.add(new NumericField("id", id, ft));
       w.addDocument(doc);
     }
-    final IndexReader r = w.getReader();
+    final DirectoryReader r = w.getReader();
     w.close();
     
     assertEquals(numDocs, r.numDocs());
 
     for(IndexReader sub : r.getSequentialSubReaders()) {
-      final int[] ids = FieldCache.DEFAULT.getInts(sub, "id", false);
+      final int[] ids = FieldCache.DEFAULT.getInts((AtomicReader) sub, "id", false);
       for(int docID=0;docID<sub.numDocs();docID++) {
         final Document doc = sub.document(docID);
         final Field f = (Field) doc.getField("nf");
-        assertTrue("got f=" + f, f instanceof NumericField);
-        final NumericField nf = (NumericField) f;
-        assertEquals(answers[ids[docID]], nf.numericValue());
-        assertSame(typeAnswers[ids[docID]], nf.numericDataType());
+        assertTrue("got f=" + f, f instanceof StoredField);
+        assertEquals(answers[ids[docID]], f.numericValue());
       }
     }
     r.close();

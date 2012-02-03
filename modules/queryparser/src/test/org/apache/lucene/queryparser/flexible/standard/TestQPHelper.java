@@ -38,7 +38,7 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.messages.MessageImpl;
+import org.apache.lucene.queryparser.flexible.messages.MessageImpl;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.messages.QueryParserMessages;
 import org.apache.lucene.queryparser.flexible.core.nodes.FuzzyQueryNode;
@@ -1269,7 +1269,6 @@ public class TestQPHelper extends LuceneTestCase {
     Query q = new StandardQueryParser(new CannedAnalyzer()).parse("\"a\"", "field");
     assertTrue(q instanceof MultiPhraseQuery);
     assertEquals(1, s.search(q, 10).totalHits);
-    s.close();
     r.close();
     w.close();
     dir.close();

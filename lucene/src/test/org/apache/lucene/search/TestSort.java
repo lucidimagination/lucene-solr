@@ -25,24 +25,22 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.document.IndexDocValuesField;
+import org.apache.lucene.document.DocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.SlowMultiReaderWrapper;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.values.ValueType;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.FieldValueHitQueue.Entry;
 import org.apache.lucene.store.Directory;
@@ -80,7 +78,7 @@ public class TestSort extends LuceneTestCase {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    NUM_STRINGS = atLeast(6000);
+    NUM_STRINGS = atLeast(500);
   }
 
   // document data:
@@ -121,18 +119,18 @@ public class TestSort extends LuceneTestCase {
     dirs.add(indexStore);
     RandomIndexWriter writer = new RandomIndexWriter(random, indexStore, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
 
-    final ValueType stringDVType;
+    final DocValues.Type stringDVType;
     if (dvStringSorted) {
       // Index sorted
-      stringDVType = random.nextBoolean() ? ValueType.BYTES_VAR_SORTED : ValueType.BYTES_FIXED_SORTED;
+      stringDVType = random.nextBoolean() ? DocValues.Type.BYTES_VAR_SORTED : DocValues.Type.BYTES_FIXED_SORTED;
     } else {
       // Index non-sorted
       if (random.nextBoolean()) {
         // Fixed
-        stringDVType = random.nextBoolean() ? ValueType.BYTES_FIXED_STRAIGHT : ValueType.BYTES_FIXED_DEREF;
+        stringDVType = random.nextBoolean() ? DocValues.Type.BYTES_FIXED_STRAIGHT : DocValues.Type.BYTES_FIXED_DEREF;
       } else {
         // Var
-        stringDVType = random.nextBoolean() ? ValueType.BYTES_VAR_STRAIGHT : ValueType.BYTES_VAR_DEREF;
+        stringDVType = random.nextBoolean() ? DocValues.Type.BYTES_VAR_STRAIGHT : DocValues.Type.BYTES_VAR_DEREF;
       }
     }
 
@@ -146,35 +144,31 @@ public class TestSort extends LuceneTestCase {
         doc.add (new Field ("tracer", data[i][0], ft1));
         doc.add (new TextField ("contents", data[i][1]));
         if (data[i][2] != null) {
-          Field f = new StringField ("int", data[i][2]);
+          doc.add(new StringField ("int", data[i][2]));
           if (supportsDocValues) {
-            f = IndexDocValuesField.build(f, ValueType.VAR_INTS);
+            doc.add(new DocValuesField("int", Integer.parseInt(data[i][2]), DocValues.Type.VAR_INTS));
           }
-          doc.add(f);
         }
         if (data[i][3] != null) {
-          Field f = new StringField ("float", data[i][3]);
+          doc.add(new StringField ("float", data[i][3]));
           if (supportsDocValues) {
-            f = IndexDocValuesField.build(f, ValueType.FLOAT_32);
+            doc.add(new DocValuesField("float", Float.parseFloat(data[i][3]), DocValues.Type.FLOAT_32));
           }
-          doc.add(f);
         }
         if (data[i][4] != null) {
-          Field f = new StringField ("string", data[i][4]);
+          doc.add(new StringField ("string", data[i][4]));
           if (supportsDocValues) {
-            f = IndexDocValuesField.build(f, stringDVType);
+            doc.add(new DocValuesField("string", new BytesRef(data[i][4]), stringDVType));
           }
-          doc.add(f);
         }
         if (data[i][5] != null) doc.add (new StringField ("custom",   data[i][5]));
         if (data[i][6] != null) doc.add (new StringField ("i18n",     data[i][6]));
         if (data[i][7] != null) doc.add (new StringField ("long",     data[i][7]));
         if (data[i][8] != null) {
-          Field f = new StringField ("double", data[i][8]);
+          doc.add(new StringField ("double", data[i][8]));
           if (supportsDocValues) {
-            f = IndexDocValuesField.build(f, ValueType.FLOAT_64);
+            doc.add(new DocValuesField("double", Double.parseDouble(data[i][8]), DocValues.Type.FLOAT_64));
           }
-          doc.add(f);
         }
         if (data[i][9] != null) doc.add (new StringField ("short",     data[i][9]));
         if (data[i][10] != null) doc.add (new StringField ("byte",     data[i][10]));
@@ -204,8 +198,7 @@ public class TestSort extends LuceneTestCase {
     dirs.add(indexStore);
     IndexWriter writer = new IndexWriter(
         indexStore,
-        new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
-            setMaxBufferedDocs(4).
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
             setMergePolicy(newLogMergePolicy(97))
     );
     FieldType onlyStored = new FieldType();
@@ -217,17 +210,15 @@ public class TestSort extends LuceneTestCase {
       String num = getRandomCharString(getRandomNumber(2, 8), 48, 52);
       doc.add (new Field ("tracer", num, onlyStored));
       //doc.add (new Field ("contents", Integer.toString(i), Field.Store.NO, Field.Index.ANALYZED));
-      Field f = new StringField("string", num);
+      doc.add(new StringField("string", num));
       if (supportsDocValues) {
-        f = IndexDocValuesField.build(f, ValueType.BYTES_VAR_SORTED);
+        doc.add(new DocValuesField("string", new BytesRef(num), DocValues.Type.BYTES_VAR_SORTED));
       }
-      doc.add (f);
       String num2 = getRandomCharString(getRandomNumber(1, 4), 48, 50);
-      f = new StringField ("string2", num2);
+      doc.add(new StringField ("string2", num2));
       if (supportsDocValues) {
-        f = IndexDocValuesField.build(f, ValueType.BYTES_VAR_SORTED);
+        doc.add(new DocValuesField("string2", new BytesRef(num2), DocValues.Type.BYTES_VAR_SORTED));
       }
-      doc.add (f);
       doc.add (new Field ("tracer2", num2, onlyStored));
       for(IndexableField f2 : doc.getFields()) {
         ((Field) f2).setBoost(2.0f);
@@ -236,17 +227,15 @@ public class TestSort extends LuceneTestCase {
       String numFixed = getRandomCharString(fixedLen, 48, 52);
       doc.add (new Field ("fixed_tracer", numFixed, onlyStored));
       //doc.add (new Field ("contents", Integer.toString(i), Field.Store.NO, Field.Index.ANALYZED));
-      f = new StringField("string_fixed", numFixed);
+      doc.add(new StringField("string_fixed", numFixed));
       if (supportsDocValues) {
-        f = IndexDocValuesField.build(f, ValueType.BYTES_FIXED_SORTED);
+        doc.add(new DocValuesField("string_fixed", new BytesRef(numFixed), DocValues.Type.BYTES_FIXED_SORTED));
       }
-      doc.add (f);
       String num2Fixed = getRandomCharString(fixedLen2, 48, 52);
-      f = new StringField ("string2_fixed", num2Fixed);
+      doc.add(new StringField ("string2_fixed", num2Fixed));
       if (supportsDocValues) {
-        f = IndexDocValuesField.build(f, ValueType.BYTES_FIXED_SORTED);
+        doc.add(new DocValuesField("string2_fixed", new BytesRef(num2Fixed), DocValues.Type.BYTES_FIXED_SORTED));
       }
-      doc.add (f);
       doc.add (new Field ("tracer2_fixed", num2Fixed, onlyStored));
 
       for(IndexableField f2 : doc.getFields()) {
@@ -259,7 +248,7 @@ public class TestSort extends LuceneTestCase {
     //System.out.println(writer.getSegmentCount());
     writer.close();
     IndexReader reader = IndexReader.open(indexStore);
-    return new IndexSearcher (reader);
+    return newSearcher(reader);
   }
   
   public String getRandomNumberString(int num, int low, int high) {
@@ -334,9 +323,6 @@ public class TestSort extends LuceneTestCase {
     full.reader.close();
     searchX.reader.close();
     searchY.reader.close();
-    full.close();
-    searchX.close();
-    searchY.close();
     for (Directory dir : dirs)
       dir.close();
     super.tearDown();
@@ -391,7 +377,7 @@ public class TestSort extends LuceneTestCase {
       sort.setSort (useDocValues(new SortField ("int", SortField.Type.INT)), SortField.FIELD_DOC );
       assertMatches (full, queryX, sort, "IGAEC");
       assertMatches (full, queryY, sort, "DHFJB");
-      
+
       sort.setSort (useDocValues(new SortField ("float", SortField.Type.FLOAT)), SortField.FIELD_DOC );
       assertMatches (full, queryX, sort, "GCIEA");
       assertMatches (full, queryY, sort, "DHJFB");
@@ -559,7 +545,6 @@ public class TestSort extends LuceneTestCase {
     }
     assertFalse("Found sort results out of order", fail);
     searcher.getIndexReader().close();
-    searcher.close();
   }
   
   /** 
@@ -703,7 +688,7 @@ public class TestSort extends LuceneTestCase {
 
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
-      docValues = FieldCache.DEFAULT.getInts(context.reader, "parser", testIntParser, false);
+      docValues = FieldCache.DEFAULT.getInts(context.reader(), "parser", testIntParser, false);
       return this;
     }
 
@@ -816,7 +801,6 @@ public class TestSort extends LuceneTestCase {
                   new SortField ("string", SortField.Type.STRING),
                   new SortField ("float", SortField.Type.FLOAT, true) );
     assertMatches (parallelSearcher, queryG, sort, "ZYXW");
-    parallelSearcher.close();
     exec.shutdown();
     exec.awaitTermination(1000, TimeUnit.MILLISECONDS);
   }
@@ -851,11 +835,9 @@ public class TestSort extends LuceneTestCase {
   public void testParallelMultiSort() throws Exception {
     ExecutorService exec = Executors.newFixedThreadPool(_TestUtil.nextInt(random, 2, 8));
     IndexSearcher searcher = new IndexSearcher(
-                                  new MultiReader(
-                                       new IndexReader[] {searchX.getIndexReader(),
-                                                          searchY.getIndexReader()}), exec);
+                                  new MultiReader(searchX.getIndexReader(),
+                                                  searchY.getIndexReader()), exec);
     runMultiSorts(searcher, false);
-    searcher.close();
     exec.shutdown();
     exec.awaitTermination(1000, TimeUnit.MILLISECONDS);
   }
@@ -876,8 +858,8 @@ public class TestSort extends LuceneTestCase {
       @Override
       public DocIdSet getDocIdSet (AtomicReaderContext context, Bits acceptDocs) {
         assertNull("acceptDocs should be null, as we have no deletions", acceptDocs);
-        BitSet bs = new BitSet(context.reader.maxDoc());
-        bs.set(0, context.reader.maxDoc());
+        BitSet bs = new BitSet(context.reader().maxDoc());
+        bs.set(0, context.reader().maxDoc());
         bs.set(docs1.scoreDocs[0].doc);
         return new DocIdBitSet(bs);
       }
@@ -1218,34 +1200,10 @@ public class TestSort extends LuceneTestCase {
     assertMatches( null, searcher, query, sort, expectedResult );
   }
 
-  private static boolean hasSlowMultiReaderWrapper(IndexReader r) {
-    if (r instanceof SlowMultiReaderWrapper) {
-      return true;
-    } else {
-      IndexReader[] subReaders = r.getSequentialSubReaders();
-      if (subReaders != null) {
-        for (IndexReader subReader : subReaders) {
-          if (hasSlowMultiReaderWrapper(subReader)) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
 
   // make sure the documents returned by the search match the expected list
   private void assertMatches(String msg, IndexSearcher searcher, Query query, Sort sort,
       String expectedResult) throws IOException {
-
-    for(SortField sortField : sort.getSort()) {
-      if (sortField.getUseIndexValues() && sortField.getType() == SortField.Type.STRING) {
-        if (hasSlowMultiReaderWrapper(searcher.getIndexReader())) {
-          // Cannot use STRING DocValues sort with SlowMultiReaderWrapper
-          return;
-        }
-      }
-    }
 
     //ScoreDoc[] result = searcher.search (query, null, 1000, sort).scoreDocs;
     TopDocs hits = searcher.search(query, null, Math.max(1, expectedResult.length()), sort);
@@ -1284,7 +1242,6 @@ public class TestSort extends LuceneTestCase {
     // null sorts first
     assertEquals(1, hits.scoreDocs[0].doc);
     assertEquals(0, hits.scoreDocs[1].doc);
-    s.close();
     r.close();
     dir.close();
   }
@@ -1308,7 +1265,6 @@ public class TestSort extends LuceneTestCase {
     IndexReader reader = IndexReader.open(indexStore);
     IndexSearcher searcher = new IndexSearcher(reader);
     searcher.search(new MatchAllDocsQuery(), null, 500, sort);
-    searcher.close();
     reader.close();
     indexStore.close();
   }
@@ -1329,7 +1285,6 @@ public class TestSort extends LuceneTestCase {
     TotalHitCountCollector c = new TotalHitCountCollector();
     searcher.search(new MatchAllDocsQuery(), null, c);
     assertEquals(5, c.getTotalHits());
-    searcher.close();
     reader.close();
     indexStore.close();
   }

@@ -18,14 +18,17 @@
 package org.apache.lucene.analysis.pattern;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.util.regex.Pattern;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.CharReader;
 import org.apache.lucene.analysis.CharStream;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 
 /**
  * Tests {@link PatternReplaceCharFilter}
@@ -43,7 +46,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "this", "is", "test." },
         new int[] { 0, 5, 8 },
-        new int[] { 4, 7, 13 });
+        new int[] { 4, 7, 13 }, 
+        BLOCK.length());
   }
   
   // 012345678
@@ -67,7 +71,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa#bb#cc" },
         new int[] { 0 },
-        new int[] { 8 });
+        new int[] { 8 }, 
+        BLOCK.length());
   }
 
   //           11111
@@ -82,7 +87,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa##bb###cc", "dd" },
         new int[] { 0, 9 },
-        new int[] { 8, 11 });
+        new int[] { 8, 11 },
+        BLOCK.length());
   }
 
   // 01234567
@@ -96,7 +102,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa", "aa" },
         new int[] { 1, 4 },
-        new int[] { 2, 5 });
+        new int[] { 2, 5 },
+        BLOCK.length());
   }
 
   //           11111
@@ -111,7 +118,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa#bb", "dd" },
         new int[] { 0, 12 },
-        new int[] { 11, 14 });
+        new int[] { 11, 14 },
+        BLOCK.length());
   }
 
   //           111111111122222222223333
@@ -126,7 +134,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa", "bb", "cc", "---", "aa", "bb", "aa", "bb", "cc" },
         new int[] { 2, 6, 9, 11, 15, 18, 21, 25, 29 },
-        new int[] { 4, 8, 10, 14, 17, 20, 23, 27, 33 });
+        new int[] { 4, 8, 10, 14, 17, 20, 23, 27, 33 },
+        BLOCK.length());
   }
 
   //           11111111112222222222333333333
@@ -141,7 +150,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa##bb", "cc", "---", "aa##bb", "aa.", "bb", "aa##bb", "cc" },
         new int[] { 2, 8, 11, 15, 21, 25, 28, 36 },
-        new int[] { 7, 10, 14, 20, 24, 27, 35, 38 });
+        new int[] { 7, 10, 14, 20, 24, 27, 35, 38 },
+        BLOCK.length());
   }
 
   //           11111111112222222222333333333
@@ -158,10 +168,28 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts,
         new String[] { "aa", "b", "-", "c", ".", "---", "b", "aa", ".", "c", "c", "b" },
         new int[] { 1, 3, 6, 8, 12, 14, 18, 21, 23, 25, 29, 33 },
-        new int[] { 2, 5, 7, 11, 13, 17, 20, 22, 24, 28, 32, 35 });
+        new int[] { 2, 5, 7, 11, 13, 17, 20, 22, 24, 28, 32, 35 },
+        BLOCK.length());
   }
   
   private Pattern pattern( String p ){
     return Pattern.compile( p );
+  }
+  
+  /** blast some random strings through the analyzer */
+  public void testRandomStrings() throws Exception {
+    Analyzer a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        return new TokenStreamComponents(tokenizer, tokenizer);
+      }
+
+      @Override
+      protected Reader initReader(Reader reader) {
+        return new PatternReplaceCharFilter(Pattern.compile("a"), "b", CharReader.get(reader));
+      }
+    };
+    checkRandomData(random, a, 10000*RANDOM_MULTIPLIER);
   }
 }

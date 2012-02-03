@@ -20,8 +20,8 @@ package org.apache.lucene.queries.function.valuesource;
 import java.io.IOException;
 import java.util.Map;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.Bits;
@@ -54,9 +54,9 @@ public class FloatFieldSource extends FieldCacheSource {
   }
 
   @Override
-  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
-    final float[] arr = cache.getFloats(readerContext.reader, field, parser, true);
-    final Bits valid = cache.getDocsWithField(readerContext.reader, field);
+  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final float[] arr = cache.getFloats(readerContext.reader(), field, parser, true);
+    final Bits valid = cache.getDocsWithField(readerContext.reader(), field);
 
     return new FloatDocValues(this) {
       @Override

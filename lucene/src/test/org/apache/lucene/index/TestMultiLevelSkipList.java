@@ -23,9 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
+import org.apache.lucene.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
@@ -80,13 +80,14 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
 
-    IndexReader reader = getOnlySegmentReader(IndexReader.open(dir));
+    AtomicReader reader = getOnlySegmentReader(IndexReader.open(dir));
     
     for (int i = 0; i < 2; i++) {
       counter = 0;
       DocsAndPositionsEnum tp = reader.termPositionsEnum(reader.getLiveDocs(),
                                                          term.field(),
-                                                         new BytesRef(term.text()));
+                                                         new BytesRef(term.text()),
+                                                         false);
 
       checkSkipTo(tp, 14, 185); // no skips
       checkSkipTo(tp, 17, 190); // one skip on level 0

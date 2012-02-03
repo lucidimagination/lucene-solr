@@ -116,7 +116,7 @@ public class TestConfig extends SolrTestCaseJ4 {
 
   @Test
   public void testTermIndexInterval() throws Exception {
-    IndexWriter writer = ((DirectUpdateHandler2)h.getCore().getUpdateHandler()).getIndexWriterProvider().getIndexWriter(h.getCore());
+    IndexWriter writer = ((DirectUpdateHandler2)h.getCore().getUpdateHandler()).getSolrCoreState().getIndexWriter(h.getCore());
     int interval = writer.getConfig().getTermIndexInterval();
     assertEquals(256, interval);
   }
@@ -126,9 +126,6 @@ public class TestConfig extends SolrTestCaseJ4 {
     IndexReaderFactory irf = h.getCore().getIndexReaderFactory();
     StandardIndexReaderFactory sirf = (StandardIndexReaderFactory) irf;
     assertEquals(12, sirf.termInfosIndexDivisor);
-    SolrQueryRequest req = req();
-    assertEquals(12, req.getSearcher().getIndexReader().getTermInfosIndexDivisor());
-    req.close();
   }
 
 

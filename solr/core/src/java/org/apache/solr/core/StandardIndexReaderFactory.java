@@ -18,23 +18,19 @@ package org.apache.solr.core;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.store.Directory;
 
 /**
  * Default IndexReaderFactory implementation. Returns a standard Lucene
- * IndexReader.
+ * {@link DirectoryReader}.
  * 
- * @see IndexReader#open(Directory)
+ * @see DirectoryReader#open(Directory)
  */
 public class StandardIndexReaderFactory extends IndexReaderFactory {
   
-  /* (non-Javadoc)
-   * @see org.apache.solr.core.IndexReaderFactory#newReader(org.apache.lucene.store.Directory, boolean)
-   */
   @Override
-  public IndexReader newReader(Directory indexDir, boolean readOnly)
-      throws IOException {
-    return IndexReader.open(indexDir, null, readOnly, termInfosIndexDivisor);
+  public DirectoryReader newReader(Directory indexDir) throws IOException {
+    return DirectoryReader.open(indexDir, termInfosIndexDivisor);
   }
 }

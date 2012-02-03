@@ -17,13 +17,13 @@
 
 package org.apache.solr.common;
 
-import org.slf4j.Logger;
-
 import java.io.CharArrayWriter;
 import java.io.PrintWriter;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
 
 /**
  *
@@ -54,59 +54,27 @@ public class SolrException extends RuntimeException {
       return UNKNOWN;
     }
   };
-  
-  public boolean logged=false;
 
   public SolrException(ErrorCode code, String msg) {
-    super(msg);
-    this.code=code.code;
+    this(code, msg, null);
   }
-  
-  public SolrException(ErrorCode code, String msg, boolean alreadyLogged) {
-    super(msg);
-    this.code=code.code;
-    this.logged=alreadyLogged;
-  }
-
-  public SolrException(ErrorCode code, String msg, Throwable th, boolean alreadyLogged) {
-    super(msg,th);
-    this.code=code.code;
-    logged=alreadyLogged;
-  }
-
   public SolrException(ErrorCode code, String msg, Throwable th) {
-    this(code,msg,th,true);
+    super(msg, th);
+    this.code = code.code;
   }
 
   public SolrException(ErrorCode code, Throwable th) {
-    super(th);
-    this.code=code.code;
-    logged=true;
+    this(code, null, th);
   }
   
-  /**
-   * @deprecated Use {@link #SolrException(ErrorCode,String)}.
-   */
-  @Deprecated
-  public SolrException(int code, String msg) {
-    super(msg);
-    this.code=code;
-  }
-  
-
   int code=0;
   public int code() { return code; }
 
 
-
-
   public void log(Logger log) { log(log,this); }
   public static void log(Logger log, Throwable e) {
-    if (e instanceof SolrException) {
-      ((SolrException)e).logged = true;
-    }
     String stackTrace = toStr(e);
-    String ignore = doIgnore(stackTrace);
+    String ignore = doIgnore(e, stackTrace);
     if (ignore != null) {
       log.info(ignore);
       return;
@@ -116,26 +84,24 @@ public class SolrException extends RuntimeException {
   }
 
   public static void log(Logger log, String msg, Throwable e) {
-    if (e instanceof SolrException) {
-      ((SolrException)e).logged = true;
-    }
     String stackTrace = msg + ':' + toStr(e);
-    String ignore = doIgnore(stackTrace);
+    String ignore = doIgnore(e, stackTrace);
     if (ignore != null) {
       log.info(ignore);
       return;
     }
     log.error(stackTrace);
   }
-
-  public static void logOnce(Logger log, String msg, Throwable e) {
-    if (e instanceof SolrException) {
-      if(((SolrException)e).logged) return;
+  
+  public static void log(Logger log, String msg) {
+    String stackTrace = msg;
+    String ignore = doIgnore(null, stackTrace);
+    if (ignore != null) {
+      log.info(ignore);
+      return;
     }
-    if (msg!=null) log(log,msg,e);
-    else log(log,e);
+    log.error(stackTrace);
   }
-
 
   // public String toString() { return toStr(this); }  // oops, inf loop
   @Override
@@ -163,17 +129,30 @@ public class SolrException extends RuntimeException {
   public static Set<String> ignorePatterns;
 
   /** Returns null if this exception does not match any ignore patterns, or a message string to use if it does. */
-  public static String doIgnore(String m) {
+  public static String doIgnore(Throwable t, String m) {
     if (ignorePatterns == null || m == null) return null;
+    if (t != null && t instanceof AssertionError) return null;
 
     for (String regex : ignorePatterns) {
       Pattern pattern = Pattern.compile(regex);
       Matcher matcher = pattern.matcher(m);
+      
       if (matcher.find()) return "Ignoring exception matching " + regex;
     }
 
     return null;
   }
-
+  
+  public static Throwable getRootCause(Throwable t) {
+    while (true) {
+      Throwable cause = t.getCause();
+      if (cause!=null) {
+        t = cause;
+      } else {
+        break;
+      }
+    }
+    return t;
+  }
 
 }

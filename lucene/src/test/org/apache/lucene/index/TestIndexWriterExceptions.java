@@ -37,6 +37,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MockDirectoryWrapper;
@@ -254,7 +255,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     }
 
     // Confirm that when doc hits exception partway through tokenization, it's deleted:
-    IndexReader r2 = IndexReader.open(dir, true);
+    IndexReader r2 = IndexReader.open(dir);
     final int count = r2.docFreq(new Term("content4", "aaa"));
     final int count2 = r2.docFreq(new Term("content4", "ddd"));
     assertEquals(count, count2);
@@ -300,7 +301,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     }
 
     // Confirm that when doc hits exception partway through tokenization, it's deleted:
-    IndexReader r2 = IndexReader.open(dir, true);
+    IndexReader r2 = IndexReader.open(dir);
     final int count = r2.docFreq(new Term("content4", "aaa"));
     final int count2 = r2.docFreq(new Term("content4", "ddd"));
     assertEquals(count, count2);
@@ -494,7 +495,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     writer.addDocument(doc);
 
     writer.close();
-    IndexReader reader = IndexReader.open(dir, true);
+    IndexReader reader = IndexReader.open(dir);
     final Term t = new Term("content", "aa");
     assertEquals(3, reader.docFreq(t));
 
@@ -576,7 +577,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     }
     assertTrue(hitError);
     writer.close();
-    IndexReader reader = IndexReader.open(dir, true);
+    IndexReader reader = IndexReader.open(dir);
     assertEquals(198, reader.docFreq(new Term("content", "aa")));
     reader.close();
     dir.close();
@@ -631,7 +632,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("TEST: open reader");
       }
-      IndexReader reader = IndexReader.open(dir, true);
+      IndexReader reader = IndexReader.open(dir);
       if (i == 0) { 
         int expected = 5;
         assertEquals(expected, reader.docFreq(new Term("contents", "here")));
@@ -660,7 +661,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       writer.forceMerge(1);
       writer.close();
 
-      reader = IndexReader.open(dir, true);
+      reader = IndexReader.open(dir);
       int expected = 19+(1-i)*2;
       assertEquals(expected, reader.docFreq(new Term("contents", "here")));
       assertEquals(expected, reader.maxDoc());
@@ -694,12 +695,12 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       MockDirectoryWrapper dir = newDirectory();
 
       {
-        final  IndexWriter writer = new IndexWriter(
-            dir,
-            newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).
-                setMaxBufferedDocs(-1).
-                setMergePolicy(newLogMergePolicy(10))
-        );
+        final IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
+            TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(-1)
+            .setMergePolicy(
+                random.nextBoolean() ? NoMergePolicy.COMPOUND_FILES
+                    : NoMergePolicy.NO_COMPOUND_FILES));
+        // don't use a merge policy here they depend on the DWPThreadPool and its max thread states etc.
         final int finalI = i;
 
         Thread[] threads = new Thread[NUM_THREAD];
@@ -746,7 +747,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         writer.close();
       }
 
-      IndexReader reader = IndexReader.open(dir, true);
+      IndexReader reader = IndexReader.open(dir);
       int expected = (3+(1-i)*2)*NUM_THREAD*NUM_ITER;
       assertEquals("i=" + i, expected, reader.docFreq(new Term("contents", "here")));
       assertEquals(expected, reader.maxDoc());
@@ -774,7 +775,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       writer.forceMerge(1);
       writer.close();
 
-      reader = IndexReader.open(dir, true);
+      reader = IndexReader.open(dir);
       expected += 17-NUM_THREAD*NUM_ITER;
       assertEquals(expected, reader.docFreq(new Term("contents", "here")));
       assertEquals(expected, reader.maxDoc());
@@ -845,7 +846,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     failure.clearDoFail();
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir, true);
+    IndexReader reader = IndexReader.open(dir);
     assertEquals(23, reader.numDocs());
     reader.close();
     dir.close();
@@ -935,7 +936,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       addDoc(w);
     w.close();
 
-    int iter = TEST_NIGHTLY ? 200 : 20;
+    int iter = TEST_NIGHTLY ? 200 : 10;
     for(int i=0;i<iter;i++) {
       if (VERBOSE) {
         System.out.println("TEST: iter " + i);
@@ -1058,7 +1059,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
     IndexReader reader = null;
     try {
-      reader = IndexReader.open(dir, true);
+      reader = IndexReader.open(dir);
     } catch (IOException e) {
       e.printStackTrace(System.out);
       fail("segmentInfos failed to retry fallback to correct segments_N file");
@@ -1105,7 +1106,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
       IndexReader reader = null;
       try {
-        reader = IndexReader.open(dir, true);
+        reader = IndexReader.open(dir);
         fail("reader did not hit IOException on opening a corrupt index");
       } catch (Exception e) {
       }
@@ -1154,7 +1155,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
       IndexReader reader = null;
       try {
-        reader = IndexReader.open(dir, true);
+        reader = IndexReader.open(dir);
         fail("reader did not hit IOException on opening a corrupt index");
       } catch (Exception e) {
       }
@@ -1205,7 +1206,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
       IndexReader reader = null;
       try {
-        reader = IndexReader.open(dir, true);
+        reader = IndexReader.open(dir);
       } catch (Exception e) {
         fail("reader failed to open on a crashed index");
       }
@@ -1232,7 +1233,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     FailOnTermVectors[] failures = new FailOnTermVectors[] {
         new FailOnTermVectors(FailOnTermVectors.AFTER_INIT_STAGE),
         new FailOnTermVectors(FailOnTermVectors.INIT_STAGE), };
-    int num = atLeast(3);
+    int num = atLeast(1);
     for (int j = 0; j < num; j++) {
       for (FailOnTermVectors failure : failures) {
         MockDirectoryWrapper dir = newDirectory();
@@ -1458,5 +1459,39 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     assertEquals(numDocs1+numDocs3+numDocs4, s.search(pq, 1).totalHits);
     r.close();
     dir.close();
+  }
+  
+  static class UOEDirectory extends RAMDirectory {
+    boolean doFail = false;
+
+    @Override
+    public IndexInput openInput(String name, IOContext context) throws IOException {
+      if (doFail && name.startsWith("segments_")) {
+        StackTraceElement[] trace = new Exception().getStackTrace();
+        for (int i = 0; i < trace.length; i++) {
+          if ("indexExists".equals(trace[i].getMethodName())) {
+            throw new UnsupportedOperationException("expected UOE");
+          }
+        }
+      }
+      return super.openInput(name, context);
+    }
+  }
+  
+  public void testExceptionOnCtor() throws Exception {
+    UOEDirectory uoe = new UOEDirectory();
+    Directory d = new MockDirectoryWrapper(random, uoe);
+    IndexWriter iw = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    iw.addDocument(new Document());
+    iw.close();
+    uoe.doFail = true;
+    try {
+      new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+      fail("should have gotten a UOE");
+    } catch (UnsupportedOperationException expected) {
+      
+    }
+    uoe.doFail = false;
+    d.close();
   }
 }

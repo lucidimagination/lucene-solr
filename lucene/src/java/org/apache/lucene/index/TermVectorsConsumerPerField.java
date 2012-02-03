@@ -20,7 +20,7 @@ package org.apache.lucene.index;
 import java.io.IOException;
 
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.index.codecs.TermVectorsWriter;
+import org.apache.lucene.codecs.TermVectorsWriter;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
@@ -38,7 +38,7 @@ final class TermVectorsConsumerPerField extends TermsHashConsumerPerField {
   boolean doVectorOffsets;
 
   int maxNumPostings;
-  OffsetAttribute offsetAttribute = null;
+  OffsetAttribute offsetAttribute;
 
   public TermVectorsConsumerPerField(TermsHashPerField termsHashPerField, TermVectorsConsumer termsWriter, FieldInfo fieldInfo) {
     this.termsHashPerField = termsHashPerField;
@@ -113,15 +113,12 @@ final class TermVectorsConsumerPerField extends TermsHashConsumerPerField {
     // of a given field in the doc.  At this point we flush
     // our hash into the DocWriter.
 
-    assert fieldInfo.storeTermVector;
     assert termsWriter.vectorFieldsInOrder(fieldInfo);
 
     TermVectorsPostingsArray postings = (TermVectorsPostingsArray) termsHashPerField.postingsArray;
     final TermVectorsWriter tv = termsWriter.writer;
 
-    // TODO: we may want to make this sort in same order
-    // as Codec's terms dict?
-    final int[] termIDs = termsHashPerField.sortPostings(BytesRef.getUTF8SortedAsUnicodeComparator());
+    final int[] termIDs = termsHashPerField.sortPostings(tv.getComparator());
 
     tv.startField(fieldInfo, numPostings, doVectorPositions, doVectorOffsets);
     
@@ -150,8 +147,9 @@ final class TermVectorsConsumerPerField extends TermsHashConsumerPerField {
     }
 
     termsHashPerField.reset();
+
     // commit the termVectors once successful success - FI will otherwise reset them
-    fieldInfo.commitVectors();
+    fieldInfo.setStoreTermVectors();
   }
 
   void shrinkHash() {

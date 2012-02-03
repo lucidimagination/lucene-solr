@@ -17,11 +17,16 @@ package org.apache.lucene.analysis.ngram;
  * limitations under the License.
  */
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
+import org.apache.lucene.analysis.miscellaneous.ASCIIFoldingFilter;
 
+import java.io.Reader;
 import java.io.StringReader;
 
 /**
@@ -103,5 +108,48 @@ public class EdgeNGramTokenFilterTest extends BaseTokenStreamTestCase {
     assertTokenStreamContents(filter, new String[]{"a","ab","abc"}, new int[]{0,0,0}, new int[]{1,2,3});
     tokenizer.reset(new StringReader("abcde"));
     assertTokenStreamContents(filter, new String[]{"a","ab","abc"}, new int[]{0,0,0}, new int[]{1,2,3});
+  }
+  
+  // LUCENE-3642
+  // EdgeNgram blindly adds term length to offset, but this can take things out of bounds
+  // wrt original text if a previous filter increases the length of the word (in this case æ -> ae)
+  // so in this case we behave like WDF, and preserve any modified offsets
+  public void testInvalidOffsets() throws Exception {
+    Analyzer analyzer = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        TokenFilter filters = new ASCIIFoldingFilter(tokenizer);
+        filters = new EdgeNGramTokenFilter(filters, EdgeNGramTokenFilter.Side.FRONT, 2, 15);
+        return new TokenStreamComponents(tokenizer, filters);
+      }
+    };
+    assertAnalyzesTo(analyzer, "mosfellsbær",
+        new String[] { "mo", "mos", "mosf", "mosfe", "mosfel", "mosfell", "mosfells", "mosfellsb", "mosfellsba", "mosfellsbae", "mosfellsbaer" },
+        new int[]    {    0,     0,      0,       0,        0,         0,          0,           0,            0,             0,              0 },
+        new int[]    {   11,    11,     11,      11,       11,        11,         11,          11,           11,            11,             11 });
+  }
+  
+  /** blast some random strings through the analyzer */
+  public void testRandomStrings() throws Exception {
+    Analyzer a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        return new TokenStreamComponents(tokenizer, 
+            new EdgeNGramTokenFilter(tokenizer, EdgeNGramTokenFilter.Side.FRONT, 2, 15));
+      }    
+    };
+    checkRandomData(random, a, 10000*RANDOM_MULTIPLIER);
+    
+    Analyzer b = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        return new TokenStreamComponents(tokenizer, 
+            new EdgeNGramTokenFilter(tokenizer, EdgeNGramTokenFilter.Side.BACK, 2, 15));
+      }    
+    };
+    checkRandomData(random, b, 10000*RANDOM_MULTIPLIER);
   }
 }

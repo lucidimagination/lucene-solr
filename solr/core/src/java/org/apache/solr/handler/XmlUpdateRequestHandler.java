@@ -33,8 +33,6 @@ public class XmlUpdateRequestHandler extends ContentStreamHandlerBase {
   public static Logger log = LoggerFactory.getLogger(XmlUpdateRequestHandler.class);
   private static final XMLErrorLogger xmllog = new XMLErrorLogger(log);
 
-  public static final String UPDATE_PROCESSOR = "update.processor";
-
   // XML Constants
   public static final String ADD = "add";
   public static final String DELETE = "delete";
@@ -45,6 +43,8 @@ public class XmlUpdateRequestHandler extends ContentStreamHandlerBase {
   public static final String SOFT_COMMIT = "softCommit";
 
   public static final String OVERWRITE = "overwrite";
+  
+  public static final String VERSION = "version";
   
   // NOTE: This constant is for use with the <add> XML tag, not the HTTP param with same name
   public static final String COMMIT_WITHIN = "commitWithin";

@@ -18,14 +18,12 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -46,9 +44,7 @@ public class TestParallelReader extends LuceneTestCase {
   @Override
   public void tearDown() throws Exception {
     single.getIndexReader().close();
-    single.close();
     parallel.getIndexReader().close();
-    parallel.close();
     dir.close();
     dir1.close();
     dir2.close();
@@ -75,14 +71,14 @@ public class TestParallelReader extends LuceneTestCase {
     Directory dir1 = getDir1(random);
     Directory dir2 = getDir2(random);
     ParallelReader pr = new ParallelReader();
-    pr.add(IndexReader.open(dir1, false));
-    pr.add(IndexReader.open(dir2, false));
-    Collection<String> fieldNames = pr.getFieldNames(IndexReader.FieldOption.ALL);
-    assertEquals(4, fieldNames.size());
-    assertTrue(fieldNames.contains("f1"));
-    assertTrue(fieldNames.contains("f2"));
-    assertTrue(fieldNames.contains("f3"));
-    assertTrue(fieldNames.contains("f4"));
+    pr.add(SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir1)));
+    pr.add(SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir2)));
+    FieldInfos fieldInfos = pr.getFieldInfos();
+    assertEquals(4, fieldInfos.size());
+    assertNotNull(fieldInfos.fieldInfo("f1"));
+    assertNotNull(fieldInfos.fieldInfo("f2"));
+    assertNotNull(fieldInfos.fieldInfo("f3"));
+    assertNotNull(fieldInfos.fieldInfo("f4"));
     pr.close();
     dir1.close();
     dir2.close();
@@ -102,44 +98,16 @@ public class TestParallelReader extends LuceneTestCase {
     w2.close();
     
     ParallelReader pr = new ParallelReader();
-    pr.add(IndexReader.open(dir1, false));
-    IndexReader ir = IndexReader.open(dir2, false);
+    pr.add(SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir1)));
+    DirectoryReader ir = DirectoryReader.open(dir2);
     try {
-      pr.add(ir);
+      pr.add(SlowCompositeReaderWrapper.wrap(ir));
       fail("didn't get exptected exception: indexes don't have same number of documents");
     } catch (IllegalArgumentException e) {
       // expected exception
     }
     pr.close();
     ir.close();
-    dir1.close();
-    dir2.close();
-  }
-  
-  public void testIsCurrent() throws IOException {
-    Directory dir1 = getDir1(random);
-    Directory dir2 = getDir2(random);
-    ParallelReader pr = new ParallelReader();
-    pr.add(IndexReader.open(dir1, false));
-    pr.add(IndexReader.open(dir2, false));
-    
-    assertTrue(pr.isCurrent());
-    IndexReader modifier = IndexReader.open(dir1, false);
-    DefaultSimilarity sim = new DefaultSimilarity();
-    modifier.setNorm(0, "f1", sim.encodeNormValue(100f));
-    modifier.close();
-    
-    // one of the two IndexReaders which ParallelReader is using
-    // is not current anymore
-    assertFalse(pr.isCurrent());
-    
-    modifier = IndexReader.open(dir2, false);
-    modifier.setNorm(0, "f3", sim.encodeNormValue(100f));
-    modifier.close();
-    
-    // now both are not current anymore
-    assertFalse(pr.isCurrent());
-    pr.close();
     dir1.close();
     dir2.close();
   }
@@ -177,7 +145,7 @@ public class TestParallelReader extends LuceneTestCase {
     w.addDocument(d2);
     w.close();
 
-    IndexReader ir = IndexReader.open(dir, false);
+    DirectoryReader ir = DirectoryReader.open(dir);
     return newSearcher(ir);
   }
 
@@ -186,8 +154,8 @@ public class TestParallelReader extends LuceneTestCase {
     dir1 = getDir1(random);
     dir2 = getDir2(random);
     ParallelReader pr = new ParallelReader();
-    pr.add(IndexReader.open(dir1, false));
-    pr.add(IndexReader.open(dir2, false));
+    pr.add(SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir1)));
+    pr.add(SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir2)));
     return newSearcher(pr);
   }
 

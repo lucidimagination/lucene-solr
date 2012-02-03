@@ -33,7 +33,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.util.LuceneTestCase;
@@ -68,6 +68,7 @@ public class MockDirectoryWrapper extends Directory {
   boolean noDeleteOpenFile = true;
   boolean preventDoubleWrite = true;
   boolean checkIndexOnClose = true;
+  boolean crossCheckTermVectorsOnClose = true;
   boolean trackDiskUsage = false;
   private Set<String> unSyncedFiles;
   private Set<String> createdFiles;
@@ -156,7 +157,10 @@ public class MockDirectoryWrapper extends Directory {
     if (crashed)
       throw new IOException("cannot sync after crash");
     unSyncedFiles.removeAll(names);
-    delegate.sync(names);
+    if (LuceneTestCase.rarely(randomState) || delegate instanceof NRTCachingDirectory) {
+      // don't wear out our hardware so much in tests.
+      delegate.sync(names);
+    }
   }
   
   @Override
@@ -220,9 +224,31 @@ public class MockDirectoryWrapper extends Directory {
       } else if (damage == 2) {
         action = "partially truncated";
         // Partially Truncate the file:
-        IndexOutput out = delegate.createOutput(name, LuceneTestCase.newIOContext(randomState));
-        out.setLength(fileLength(name)/2);
+
+        // First, make temp file and copy only half this
+        // file over:
+        String tempFileName;
+        while (true) {
+          tempFileName = ""+randomState.nextInt();
+          if (!delegate.fileExists(tempFileName)) {
+            break;
+          }
+        }
+        final IndexOutput tempOut = delegate.createOutput(tempFileName, LuceneTestCase.newIOContext(randomState));
+        IndexInput in = delegate.openInput(name, LuceneTestCase.newIOContext(randomState));
+        tempOut.copyBytes(in, in.length()/2);
+        tempOut.close();
+        in.close();
+
+        // Delete original and copy bytes back:
+        deleteFile(name, true);
+        
+        final IndexOutput out = delegate.createOutput(name, LuceneTestCase.newIOContext(randomState));
+        in = delegate.openInput(tempFileName, LuceneTestCase.newIOContext(randomState));
+        out.copyBytes(in, in.length());
         out.close();
+        in.close();
+        deleteFile(tempFileName, true);
       } else if (damage == 3) {
         // The file survived intact:
         action = "didn't change";
@@ -285,6 +311,15 @@ public class MockDirectoryWrapper extends Directory {
   public boolean getCheckIndexOnClose() {
     return checkIndexOnClose;
   }
+
+  public void setCrossCheckTermVectorsOnClose(boolean value) {
+    this.crossCheckTermVectorsOnClose = value;
+  }
+
+  public boolean getCrossCheckTermVectorsOnClose() {
+    return crossCheckTermVectorsOnClose;
+  }
+
   /**
    * If 0.0, no exceptions will be thrown.  Else this should
    * be a double 0.0 - 1.0.  We will randomly throw an
@@ -524,16 +559,15 @@ public class MockDirectoryWrapper extends Directory {
     }
     open = false;
     if (checkIndexOnClose) {
-      if (IndexReader.indexExists(this)) {
+      if (DirectoryReader.indexExists(this)) {
         if (LuceneTestCase.VERBOSE) {
           System.out.println("\nNOTE: MockDirectoryWrapper: now crash");
         }
-        unSyncedFiles.remove("segments.gen"); // otherwise we add minutes to the tests: LUCENE-3605
         crash(); // corrumpt any unsynced-files
         if (LuceneTestCase.VERBOSE) {
           System.out.println("\nNOTE: MockDirectoryWrapper: now run CheckIndex");
         } 
-        _TestUtil.checkIndex(this);
+        _TestUtil.checkIndex(this, crossCheckTermVectorsOnClose);
 
         if (assertNoUnreferencedFilesOnClose) {
           // now look for unreferenced files:
@@ -548,11 +582,11 @@ public class MockDirectoryWrapper extends Directory {
             assert false : "unreferenced files: before delete:\n    " + Arrays.toString(startFiles) + "\n  after delete:\n    " + Arrays.toString(endFiles);
           }
 
-          IndexReader ir1 = IndexReader.open(this);
+          DirectoryReader ir1 = DirectoryReader.open(this);
           int numDocs1 = ir1.numDocs();
           ir1.close();
           new IndexWriter(this, new IndexWriterConfig(LuceneTestCase.TEST_VERSION_CURRENT, null)).close();
-          IndexReader ir2 = IndexReader.open(this);
+          DirectoryReader ir2 = DirectoryReader.open(this);
           int numDocs2 = ir2.numDocs();
           ir2.close();
           assert numDocs1 == numDocs2 : "numDocs changed after opening/closing IW: before=" + numDocs1 + " after=" + numDocs2;
@@ -666,12 +700,6 @@ public class MockDirectoryWrapper extends Directory {
   public synchronized boolean fileExists(String name) throws IOException {
     maybeYield();
     return delegate.fileExists(name);
-  }
-
-  @Override
-  public synchronized long fileModified(String name) throws IOException {
-    maybeYield();
-    return delegate.fileModified(name);
   }
 
   @Override

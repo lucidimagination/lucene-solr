@@ -21,7 +21,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.FieldValueHitQueue.Entry;
 import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
 import org.apache.lucene.store.*;
@@ -61,7 +60,6 @@ public class TestElevationComparator extends LuceneTestCase {
     runTest(searcher, true);
     runTest(searcher, false);
 
-    searcher.close();
     r.close();
     directory.close();
   }
@@ -182,7 +180,7 @@ class ElevationComparatorSource extends FieldComparatorSource {
 
      @Override
      public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
-       idIndex = FieldCache.DEFAULT.getTermsIndex(context.reader, fieldname);
+       idIndex = FieldCache.DEFAULT.getTermsIndex(context.reader(), fieldname);
        return this;
      }
 

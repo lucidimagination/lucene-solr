@@ -24,14 +24,14 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DocTermOrds.TermOrdsIterator;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.PostingsFormat;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
@@ -66,7 +66,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     final IndexReader r = w.getReader();
     w.close();
 
-    final DocTermOrds dto = new DocTermOrds(r, "field");
+    final DocTermOrds dto = new DocTermOrds(SlowCompositeReaderWrapper.wrap(r), "field");
 
     TermOrdsIterator iter = dto.lookup(0, null);
     final int[] buffer = new int[5];
@@ -124,8 +124,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     for(int id=0;id<NUM_DOCS;id++) {
       Document doc = new Document();
 
-      NumericField idField = new NumericField("id");
-      doc.add(idField.setIntValue(id));
+      doc.add(new NumericField("id", id));
       
       final int termCount = _TestUtil.nextInt(random, 0, 20*RANDOM_MULTIPLIER);
       while(ordsForDocSet.size() < termCount) {
@@ -150,7 +149,7 @@ public class TestDocTermOrds extends LuceneTestCase {
       w.addDocument(doc);
     }
     
-    final IndexReader r = w.getReader();
+    final DirectoryReader r = w.getReader();
     w.close();
 
     if (VERBOSE) {
@@ -161,7 +160,7 @@ public class TestDocTermOrds extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("\nTEST: sub=" + subR);
       }
-      verify(subR, idToOrds, termsArray, null);
+      verify((AtomicReader) subR, idToOrds, termsArray, null);
     }
 
     // Also test top-level reader: its enum does not support
@@ -169,9 +168,10 @@ public class TestDocTermOrds extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("TEST: top reader");
     }
-    verify(r, idToOrds, termsArray, null);
+    AtomicReader slowR = SlowCompositeReaderWrapper.wrap(r);
+    verify(slowR, idToOrds, termsArray, null);
 
-    FieldCache.DEFAULT.purge(r);
+    FieldCache.DEFAULT.purge(slowR);
 
     r.close();
     dir.close();
@@ -221,8 +221,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     for(int id=0;id<NUM_DOCS;id++) {
       Document doc = new Document();
 
-      NumericField idField = new NumericField("id");
-      doc.add(idField.setIntValue(id));
+      doc.add(new NumericField("id", id));
       
       final int termCount = _TestUtil.nextInt(random, 0, 20*RANDOM_MULTIPLIER);
       while(ordsForDocSet.size() < termCount) {
@@ -247,13 +246,14 @@ public class TestDocTermOrds extends LuceneTestCase {
       w.addDocument(doc);
     }
     
-    final IndexReader r = w.getReader();
+    final DirectoryReader r = w.getReader();
     w.close();
 
     if (VERBOSE) {
       System.out.println("TEST: reader=" + r);
     }
     
+    AtomicReader slowR = SlowCompositeReaderWrapper.wrap(r);
     for(String prefix : prefixesArray) {
 
       final BytesRef prefixRef = prefix == null ? null : new BytesRef(prefix);
@@ -279,7 +279,7 @@ public class TestDocTermOrds extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("\nTEST: sub=" + subR);
         }
-        verify(subR, idToOrdsPrefix, termsArray, prefixRef);
+        verify((AtomicReader) subR, idToOrdsPrefix, termsArray, prefixRef);
       }
 
       // Also test top-level reader: its enum does not support
@@ -287,16 +287,16 @@ public class TestDocTermOrds extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("TEST: top reader");
       }
-      verify(r, idToOrdsPrefix, termsArray, prefixRef);
+      verify(slowR, idToOrdsPrefix, termsArray, prefixRef);
     }
 
-    FieldCache.DEFAULT.purge(r);
+    FieldCache.DEFAULT.purge(slowR);
 
     r.close();
     dir.close();
   }
 
-  private void verify(IndexReader r, int[][] idToOrds, BytesRef[] termsArray, BytesRef prefixRef) throws Exception {
+  private void verify(AtomicReader r, int[][] idToOrds, BytesRef[] termsArray, BytesRef prefixRef) throws Exception {
 
     final DocTermOrds dto = new DocTermOrds(r,
                                             "field",

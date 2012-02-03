@@ -20,9 +20,11 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.search.FieldCache;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.FieldCacheSanityChecker.Insanity;
 import org.apache.lucene.util.FieldCacheSanityChecker.InsanityType;
@@ -31,9 +33,10 @@ import java.io.IOException;
 
 public class TestFieldCacheSanityChecker extends LuceneTestCase {
 
-  protected IndexReader readerA;
-  protected IndexReader readerB;
-  protected IndexReader readerX;
+  protected AtomicReader readerA;
+  protected AtomicReader readerB;
+  protected AtomicReader readerX;
+  protected AtomicReader readerAclone;
   protected Directory dirA, dirB;
   private static final int NUM_DOCS = 1000;
 
@@ -68,14 +71,18 @@ public class TestFieldCacheSanityChecker extends LuceneTestCase {
     }
     wA.close();
     wB.close();
-    readerA = IndexReader.open(dirA, true);
-    readerB = IndexReader.open(dirB, true);
-    readerX = new MultiReader(readerA, readerB);
+    DirectoryReader rA = DirectoryReader.open(dirA);
+    readerA = SlowCompositeReaderWrapper.wrap(rA);
+    readerAclone = SlowCompositeReaderWrapper.wrap(rA);
+    readerA = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dirA));
+    readerB = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dirB));
+    readerX = SlowCompositeReaderWrapper.wrap(new MultiReader(readerA, readerB));
   }
 
   @Override
   public void tearDown() throws Exception {
     readerA.close();
+    readerAclone.close();
     readerB.close();
     readerX.close();
     dirA.close();
@@ -89,6 +96,7 @@ public class TestFieldCacheSanityChecker extends LuceneTestCase {
 
     cache.getDoubles(readerA, "theDouble", false);
     cache.getDoubles(readerA, "theDouble", FieldCache.DEFAULT_DOUBLE_PARSER, false);
+    cache.getDoubles(readerAclone, "theDouble", FieldCache.DEFAULT_DOUBLE_PARSER, false);
     cache.getDoubles(readerB, "theDouble", FieldCache.DEFAULT_DOUBLE_PARSER, false);
 
     cache.getInts(readerX, "theInt", false);
@@ -155,11 +163,6 @@ public class TestFieldCacheSanityChecker extends LuceneTestCase {
 
     // we expect bad things, don't let tearDown complain about them
     cache.purgeAllCaches();
-  }
-  
-  public void testInsanity3() throws IOException {
-
-    // :TODO: subreader tree walking is really hairy ... add more crazy tests.
   }
 
 }

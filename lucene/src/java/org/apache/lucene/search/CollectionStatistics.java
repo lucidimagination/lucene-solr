@@ -26,12 +26,16 @@ import org.apache.lucene.index.Terms;       // javadocs
  */
 public class CollectionStatistics {
   private final String field;
-  private final int maxDoc;
-  private final int docCount;
+  private final long maxDoc;
+  private final long docCount;
   private final long sumTotalTermFreq;
   private final long sumDocFreq;
   
-  public CollectionStatistics(String field, int maxDoc, int docCount, long sumTotalTermFreq, long sumDocFreq) {
+  public CollectionStatistics(String field, long maxDoc, long docCount, long sumTotalTermFreq, long sumDocFreq) {
+    assert maxDoc >= 0;
+    assert docCount >= -1 && docCount <= maxDoc; // #docs with field must be <= #docs
+    assert sumDocFreq >= -1;
+    assert sumTotalTermFreq == -1 || sumTotalTermFreq >= sumDocFreq; // #positions must be >= #postings
     this.field = field;
     this.maxDoc = maxDoc;
     this.docCount = docCount;
@@ -47,14 +51,14 @@ public class CollectionStatistics {
   /** returns the total number of documents, regardless of 
    * whether they all contain values for this field. 
    * @see IndexReader#maxDoc() */
-  public final int maxDoc() {
+  public final long maxDoc() {
     return maxDoc;
   }
   
   /** returns the total number of documents that
    * have at least one term for this field. 
    * @see Terms#getDocCount() */
-  public final int docCount() {
+  public final long docCount() {
     return docCount;
   }
   

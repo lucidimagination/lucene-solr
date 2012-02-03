@@ -28,11 +28,13 @@ import org.apache.solr.common.util.FileUtils;
 import org.apache.solr.common.util.JavaBinCodec;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.core.IndexDeletionPolicyWrapper;
 import static org.apache.solr.handler.ReplicationHandler.*;
 
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.util.RefCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -158,7 +160,7 @@ public class SnapPuller {
         }
         try {
           executorStartTime = System.currentTimeMillis();
-          replicationHandler.doFetch(null);
+          replicationHandler.doFetch(null, false);
         } catch (Exception e) {
           LOG.error("Exception in fetching index", e);
         }
@@ -209,10 +211,10 @@ public class SnapPuller {
   /**
    * Fetches the list of files in a given index commit point
    */
-  void fetchFileList(long version) throws IOException {
+  void fetchFileList(long gen) throws IOException {
     PostMethod post = new PostMethod(masterUrl);
     post.addParameter(COMMAND, CMD_GET_FILE_LIST);
-    post.addParameter(CMD_INDEX_VERSION, String.valueOf(version));
+    post.addParameter(GENERATION, String.valueOf(gen));
     post.addParameter("wt", "javabin");
 
     @SuppressWarnings("unchecked")
@@ -224,7 +226,7 @@ public class SnapPuller {
       filesToDownload = Collections.synchronizedList(f);
     else {
       filesToDownload = Collections.emptyList();
-      LOG.error("No files to download for indexversion: "+ version);
+      LOG.error("No files to download for index generation: "+ gen);
     }
 
     f = nl.get(CONF_FILES);
@@ -243,7 +245,8 @@ public class SnapPuller {
   @SuppressWarnings("unchecked")
   boolean successfulInstall = false;
 
-  boolean fetchLatestIndex(SolrCore core) throws IOException {
+  boolean fetchLatestIndex(SolrCore core, boolean force) throws IOException, InterruptedException {
+    successfulInstall = false;
     replicationStartTime = System.currentTimeMillis();
     try {
       //get the current 'replicateable' index version in the master
@@ -256,29 +259,47 @@ public class SnapPuller {
       }
       long latestVersion = (Long) response.get(CMD_INDEX_VERSION);
       long latestGeneration = (Long) response.get(GENERATION);
-      if (latestVersion == 0L) {
-        //there is nothing to be replicated
-        return false;
-      }
+
       IndexCommit commit;
       RefCounted<SolrIndexSearcher> searcherRefCounted = null;
       try {
         searcherRefCounted = core.getNewestSearcher(false);
+        if (searcherRefCounted == null) {
+          SolrException.log(LOG, "No open searcher found - fetch aborted");
+          return false;
+        }
         commit = searcherRefCounted.get().getIndexReader().getIndexCommit();
       } finally {
         if (searcherRefCounted != null)
           searcherRefCounted.decref();
       }
-      if (commit.getVersion() == latestVersion && commit.getGeneration() == latestGeneration) {
-        //master and slave are alsready in sync just return
-        LOG.info("Slave in sync with master.");
-        return false;
+      
+      if (latestVersion == 0L) {
+        if (force && commit.getGeneration() != 0) {
+          // since we won't get the files for an empty index,
+          // we just clear ours and commit
+          core.getUpdateHandler().getSolrCoreState().getIndexWriter(core).deleteAll();
+          SolrQueryRequest req = new LocalSolrQueryRequest(core,
+              new ModifiableSolrParams());
+          core.getUpdateHandler().commit(new CommitUpdateCommand(req, false));
+        }
+        
+        //there is nothing to be replicated
+        successfulInstall = true;
+        return true;
       }
-      LOG.info("Master's version: " + latestVersion + ", generation: " + latestGeneration);
-      LOG.info("Slave's version: " + commit.getVersion() + ", generation: " + commit.getGeneration());
+      
+      if (!force && IndexDeletionPolicyWrapper.getCommitTimestamp(commit) == latestVersion) {
+        //master and slave are already in sync just return
+        LOG.info("Slave in sync with master.");
+        successfulInstall = true;
+        return true;
+      }
+      LOG.info("Master's generation: " + latestGeneration);
+      LOG.info("Slave's generation: " + commit.getGeneration());
       LOG.info("Starting replication process");
       // get the list of files first
-      fetchFileList(latestVersion);
+      fetchFileList(latestGeneration);
       // this can happen if the commit point is deleted before we fetch the file list.
       if(filesToDownload.isEmpty()) return false;
       LOG.info("Number of files in latest index in master: " + filesToDownload.size());
@@ -289,7 +310,7 @@ public class SnapPuller {
       filesDownloaded = Collections.synchronizedList(new ArrayList<Map<String, Object>>());
       // if the generateion of master is older than that of the slave , it means they are not compatible to be copied
       // then a new index direcory to be created and all the files need to be copied
-      boolean isFullCopyNeeded = commit.getGeneration() >= latestGeneration;
+      boolean isFullCopyNeeded = IndexDeletionPolicyWrapper.getCommitTimestamp(commit) >= latestVersion || force;
       File tmpIndexDir = createTempindexDir(core);
       if (isIndexStale())
         isFullCopyNeeded = true;
@@ -298,11 +319,11 @@ public class SnapPuller {
       File indexDir = null ;
       try {
         indexDir = new File(core.getIndexDir());
-        downloadIndexFiles(isFullCopyNeeded, tmpIndexDir, latestVersion);
+        downloadIndexFiles(isFullCopyNeeded, tmpIndexDir, latestGeneration);
         LOG.info("Total time taken for download : " + ((System.currentTimeMillis() - replicationStartTime) / 1000) + " secs");
         Collection<Map<String, Object>> modifiedConfFiles = getModifiedConfFiles(confFilesToDownload);
         if (!modifiedConfFiles.isEmpty()) {
-          downloadConfFiles(confFilesToDownload, latestVersion);
+          downloadConfFiles(confFilesToDownload, latestGeneration);
           if (isFullCopyNeeded) {
             successfulInstall = modifyIndexProps(tmpIndexDir.getName());
             deleteTmpIdxDir =  false;
@@ -331,15 +352,17 @@ public class SnapPuller {
         return successfulInstall;
       } catch (ReplicationHandlerException e) {
         LOG.error("User aborted Replication");
+        return false;
       } catch (SolrException e) {
         throw e;
+      } catch (InterruptedException e) {
+        throw new InterruptedException("Index fetch interrupted");
       } catch (Exception e) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Index fetch failed : ", e);
       } finally {
         if (deleteTmpIdxDir) delTree(tmpIndexDir);
         else delTree(indexDir);
       }
-      return successfulInstall;
     } finally {
       if (!successfulInstall) {
         logReplicationTimeAndConfFiles(null, successfulInstall);
@@ -476,9 +499,9 @@ public class SnapPuller {
       
       // reboot the writer on the new index and get a new searcher
       solrCore.getUpdateHandler().newIndexWriter();
-      solrCore.getSearcher(true, false, null);
-      
-      replicationHandler.refreshCommitpoint();
+      // update our commit point to the right dir
+      solrCore.getUpdateHandler().commit(new CommitUpdateCommand(req, false));
+
     } finally {
       req.close();
     }
@@ -508,7 +531,7 @@ public class SnapPuller {
     }.start();
   }
 
-  private void downloadConfFiles(List<Map<String, Object>> confFilesToDownload, long latestVersion) throws Exception {
+  private void downloadConfFiles(List<Map<String, Object>> confFilesToDownload, long latestGeneration) throws Exception {
     LOG.info("Starting download of configuration files from master: " + confFilesToDownload);
     confFilesDownloaded = Collections.synchronizedList(new ArrayList<Map<String, Object>>());
     File tmpconfDir = new File(solrCore.getResourceLoader().getConfigDir(), "conf." + getDateAsStr(new Date()));
@@ -520,7 +543,7 @@ public class SnapPuller {
       }
       for (Map<String, Object> file : confFilesToDownload) {
         String saveAs = (String) (file.get(ALIAS) == null ? file.get(NAME) : file.get(ALIAS));
-        fileFetcher = new FileFetcher(tmpconfDir, file, saveAs, true, latestVersion);
+        fileFetcher = new FileFetcher(tmpconfDir, file, saveAs, true, latestGeneration);
         currentFile = file;
         fileFetcher.fetchFile();
         confFilesDownloaded.add(new HashMap<String, Object>(file));
@@ -539,13 +562,13 @@ public class SnapPuller {
    *
    * @param downloadCompleteIndex is it a fresh index copy
    * @param tmpIdxDir               the directory to which files need to be downloadeed to
-   * @param latestVersion         the version number
+   * @param latestGeneration         the version number
    */
-  private void downloadIndexFiles(boolean downloadCompleteIndex, File tmpIdxDir, long latestVersion) throws Exception {
+  private void downloadIndexFiles(boolean downloadCompleteIndex, File tmpIdxDir, long latestGeneration) throws Exception {
     for (Map<String, Object> file : filesToDownload) {
       File localIndexFile = new File(solrCore.getIndexDir(), (String) file.get(NAME));
       if (!localIndexFile.exists() || downloadCompleteIndex) {
-        fileFetcher = new FileFetcher(tmpIdxDir, file, (String) file.get(NAME), false, latestVersion);
+        fileFetcher = new FileFetcher(tmpIdxDir, file, (String) file.get(NAME), false, latestGeneration);
         currentFile = file;
         fileFetcher.fetchFile();
         filesDownloaded.add(new HashMap<String, Object>(file));
@@ -556,7 +579,7 @@ public class SnapPuller {
   }
 
   /**
-   * All the files which are common between master and slave must have same timestamp and size else we assume they are
+   * All the files which are common between master and slave must have same size else we assume they are
    * not compatible (stale).
    *
    * @return true if the index stale and we need to download a fresh copy, false otherwise.
@@ -874,10 +897,10 @@ public class SnapPuller {
 
     private boolean aborted = false;
 
-    private Long indexVersion;
+    private Long indexGen;
 
     FileFetcher(File dir, Map<String, Object> fileDetails, String saveAs,
-                boolean isConf, long latestVersion) throws IOException {
+                boolean isConf, long latestGen) throws IOException {
       this.copy2Dir = dir;
       this.fileName = (String) fileDetails.get(NAME);
       this.size = (Long) fileDetails.get(SIZE);
@@ -886,7 +909,7 @@ public class SnapPuller {
       if(fileDetails.get(LAST_MODIFIED) != null){
         lastmodified = (Long)fileDetails.get(LAST_MODIFIED);
       }
-      indexVersion = latestVersion;
+      indexGen = latestGen;
 
       this.file = new File(copy2Dir, saveAs);
       
@@ -1055,7 +1078,7 @@ public class SnapPuller {
       //the method is command=filecontent
       post.addParameter(COMMAND, CMD_GET_FILE);
       //add the version to download. This is used to reserve the download
-      post.addParameter(CMD_INDEX_VERSION, indexVersion.toString());
+      post.addParameter(GENERATION, indexGen.toString());
       if (isConf) {
         //set cf instead of file for config file
         post.addParameter(CONF_FILE_SHORT, fileName);

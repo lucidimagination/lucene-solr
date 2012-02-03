@@ -32,6 +32,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.UnicodeUtil;
 
 public class TestIndexWriterUnicode extends LuceneTestCase {
@@ -260,7 +261,7 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader ir = IndexReader.open(dir, true);
+    IndexReader ir = IndexReader.open(dir);
     Document doc2 = ir.document(0);
     for(int i=0;i<count;i++) {
       assertEquals("field " + i + " was not indexed correctly", 1, ir.docFreq(new Term("f"+i, utf8Data[2*i+1])));
@@ -317,10 +318,12 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
     IndexReader r = writer.getReader();
 
     // Test each sub-segment
-    final IndexReader[] subs = r.getSequentialSubReaders();
-    for(int i=0;i<subs.length;i++) {
-      checkTermsOrder(subs[i], allTerms, false);
-    }
+    new ReaderUtil.Gather(r) {
+      @Override
+      protected void add(int base, AtomicReader r) throws IOException {
+        checkTermsOrder(r, allTerms, false);
+      }
+    }.run();
     checkTermsOrder(r, allTerms, true);
 
     // Test multi segment

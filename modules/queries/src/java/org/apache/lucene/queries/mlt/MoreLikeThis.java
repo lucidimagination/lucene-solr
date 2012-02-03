@@ -25,6 +25,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -569,7 +570,7 @@ public final class MoreLikeThis {
   public Query like(int docNum) throws IOException {
     if (fieldNames == null) {
       // gather list of valid fields from lucene
-      Collection<String> fields = ir.getFieldNames(IndexReader.FieldOption.INDEXED);
+      Collection<String> fields = MultiFields.getIndexedFields(ir);
       fieldNames = fields.toArray(new String[fields.size()]);
     }
 

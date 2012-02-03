@@ -17,13 +17,13 @@ package org.apache.lucene.misc;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.FieldReaderException;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.FSDirectory;
@@ -78,7 +78,7 @@ public class HighFreqTerms {
       }
     }
     
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     TermStats[] terms = getHighFreqTerms(reader, numTerms, field);
     if (!IncludeTermFreqs) {
       //default HighFreqTerms behavior
@@ -117,7 +117,7 @@ public class HighFreqTerms {
     if (field != null) {
       Fields fields = MultiFields.getFields(reader);
       if (fields == null) {
-        throw new FieldReaderException("field " + field + " not found");
+        throw new RuntimeException("field " + field + " not found");
       }
       Terms terms = fields.terms(field);
       if (terms != null) {
@@ -128,7 +128,7 @@ public class HighFreqTerms {
     } else {
       Fields fields = MultiFields.getFields(reader);
       if (fields == null) {
-        throw new FieldReaderException("no fields found for this index");
+        throw new RuntimeException("no fields found for this index");
       }
       tiq = new TermStatsQueue(numTerms);
       FieldsEnum fieldsEnum = fields.iterator();
@@ -188,7 +188,7 @@ public class HighFreqTerms {
     new ReaderUtil.Gather(reader) {
 
       @Override
-      protected void add(int base, IndexReader r) throws IOException {
+      protected void add(int base, AtomicReader r) throws IOException {
         Bits liveDocs = r.getLiveDocs();
         if (liveDocs == null) {
           // TODO: we could do this up front, during the scan

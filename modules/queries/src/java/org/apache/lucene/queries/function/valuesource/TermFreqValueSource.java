@@ -18,8 +18,7 @@
 package org.apache.lucene.queries.function.valuesource;
 
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.docvalues.IntDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.BytesRef;
@@ -38,8 +37,8 @@ public class TermFreqValueSource extends DocFreqValueSource {
   }
 
   @Override
-  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
-    Fields fields = readerContext.reader.fields();
+  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    Fields fields = readerContext.reader().fields();
     final Terms terms = fields.terms(field);
 
     return new IntDocValues(this) {

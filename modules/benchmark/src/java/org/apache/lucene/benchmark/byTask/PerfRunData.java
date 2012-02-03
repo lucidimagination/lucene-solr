@@ -20,6 +20,7 @@ package org.apache.lucene.benchmark.byTask;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
@@ -28,6 +29,7 @@ import org.apache.lucene.benchmark.byTask.feeds.DocMaker;
 import org.apache.lucene.benchmark.byTask.feeds.FacetSource;
 import org.apache.lucene.benchmark.byTask.feeds.QueryMaker;
 import org.apache.lucene.benchmark.byTask.stats.Points;
+import org.apache.lucene.benchmark.byTask.tasks.PerfTask;
 import org.apache.lucene.benchmark.byTask.tasks.ReadTask;
 import org.apache.lucene.benchmark.byTask.tasks.SearchTask;
 import org.apache.lucene.benchmark.byTask.utils.Config;
@@ -35,6 +37,7 @@ import org.apache.lucene.benchmark.byTask.utils.FileUtils;
 import org.apache.lucene.benchmark.byTask.tasks.NewAnalyzerTask;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.IndexSearcher;
@@ -88,12 +91,13 @@ public class PerfRunData implements Closeable {
   private HashMap<Class<? extends ReadTask>,QueryMaker> readTaskQueryMaker;
   private Class<? extends QueryMaker> qmkrClass;
 
-  private IndexReader indexReader;
+  private DirectoryReader indexReader;
   private IndexSearcher indexSearcher;
   private IndexWriter indexWriter;
   private Config config;
   private long startTimeMillis;
 
+  private final HashMap<String, Object> perfObjects = new HashMap<String, Object>();
   
   // constructor
   public PerfRunData (Config config) throws Exception {
@@ -126,9 +130,18 @@ public class PerfRunData implements Closeable {
   }
   
   public void close() throws IOException {
-    IOUtils.close(indexWriter, indexReader, indexSearcher, directory, 
+    IOUtils.close(indexWriter, indexReader, directory, 
                   taxonomyWriter, taxonomyReader, taxonomyDir, 
                   docMaker, facetSource);
+    
+    // close all perf objects that are closeable.
+    ArrayList<Closeable> perfObjectsToClose = new ArrayList<Closeable>();
+    for (Object obj : perfObjects.values()) {
+      if (obj instanceof Closeable) {
+        perfObjectsToClose.add((Closeable) obj);
+      }
+    }
+    IOUtils.close(perfObjectsToClose);
   }
 
   // clean old stuff, reopen 
@@ -171,6 +184,20 @@ public class PerfRunData implements Closeable {
     } 
 
     return new RAMDirectory();
+  }
+  
+  /** Returns an object that was previously set by {@link #setPerfObject(String, Object)}. */
+  public synchronized Object getPerfObject(String key) {
+    return perfObjects.get(key);
+  }
+  
+  /**
+   * Sets an object that is required by {@link PerfTask}s, keyed by the given
+   * {@code key}. If the object implements {@link Closeable}, it will be closed
+   * by {@link #close()}.
+   */
+  public synchronized void setPerfObject(String key, Object obj) {
+    perfObjects.put(key, obj);
   }
   
   public long setStartTimeMillis() {
@@ -262,7 +289,7 @@ public class PerfRunData implements Closeable {
    * reference.  You must call IndexReader.decRef() when
    * you're done.
    */
-  public synchronized IndexReader getIndexReader() {
+  public synchronized DirectoryReader getIndexReader() {
     if (indexReader != null) {
       indexReader.incRef();
     }
@@ -288,7 +315,7 @@ public class PerfRunData implements Closeable {
    * the reader will remain open). 
    * @param indexReader The indexReader to set.
    */
-  public synchronized void setIndexReader(IndexReader indexReader) throws IOException {
+  public synchronized void setIndexReader(DirectoryReader indexReader) throws IOException {
     if (indexReader == this.indexReader) {
       return;
     }

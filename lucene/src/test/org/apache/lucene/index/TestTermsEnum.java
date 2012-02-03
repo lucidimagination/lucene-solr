@@ -164,7 +164,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
   private void addDoc(RandomIndexWriter w, Collection<String> terms, Map<BytesRef,Integer> termToID, int id) throws IOException {
     Document doc = new Document();
-    doc.add(new NumericField("id").setIntValue(id));
+    doc.add(new NumericField("id", id));
     if (VERBOSE) {
       System.out.println("TEST: addDoc id:" + id + " terms=" + terms);
     }
@@ -232,7 +232,7 @@ public class TestTermsEnum extends LuceneTestCase {
     w.close();
 
     // NOTE: intentional insanity!!
-    final int[] docIDToID = FieldCache.DEFAULT.getInts(r, "id", false);
+    final int[] docIDToID = FieldCache.DEFAULT.getInts(SlowCompositeReaderWrapper.wrap(r), "id", false);
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
 
@@ -377,7 +377,6 @@ public class TestTermsEnum extends LuceneTestCase {
   }
 
   private void close() throws Exception {
-    final Directory d = ((SegmentReader) r.getSequentialSubReaders()[0]).directory();
     r.close();
     d.close();
   }

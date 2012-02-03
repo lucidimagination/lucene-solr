@@ -141,7 +141,10 @@
       <arr name="env"> <str>MYVAR=val1</str> </arr>
     </listener>
     -->
-
+    
+    <updateLog enable="${enable.update.log:false}">
+  	  <str name="dir">${solr.data.dir:}</str>
+    </updateLog> 
 
   </updateHandler>
 
@@ -234,7 +237,11 @@
 
 
   </query>
+  
+  <queryResponseWriter name="xml" default="true"
+                       class="solr.XMLResponseWriter" />
 
+  <requestHandler name="/replication" class="solr.ReplicationHandler" startup="lazy" /> 
 
   <!-- An alternate set representation that uses an integer hash to store filters (sets of docids).
        If the set cardinality <= maxSize elements, then HashDocSet will be used instead of the bitset
@@ -424,7 +431,6 @@
 				<str>spellcheck</str>
 			</arr>
  </requestHandler>
-
 
   <searchComponent name="tvComponent" class="org.apache.solr.handler.component.TermVectorComponent"/>
 

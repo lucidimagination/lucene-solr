@@ -18,17 +18,22 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.PostingsFormat;
-import org.apache.lucene.index.codecs.FieldsProducer;
-import org.apache.lucene.index.codecs.StoredFieldsReader;
-import org.apache.lucene.index.codecs.PerDocValues;
-import org.apache.lucene.index.codecs.TermVectorsReader;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.FieldsProducer;
+import org.apache.lucene.codecs.PerDocProducer;
+import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.StoredFieldsReader;
+import org.apache.lucene.codecs.TermVectorsReader;
+import org.apache.lucene.index.SegmentReader.CoreClosedListener;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
+import org.apache.lucene.util.CloseableThreadLocal;
 import org.apache.lucene.util.IOUtils;
 
 /** Holds core readers that are shared (unchanged) when
@@ -43,25 +48,37 @@ final class SegmentCoreReaders {
   // SegmentReaders:
   private final AtomicInteger ref = new AtomicInteger(1);
   
-  final String segment;
   final FieldInfos fieldInfos;
   
   final FieldsProducer fields;
-  final PerDocValues perDocProducer;
+  final PerDocProducer perDocProducer;
+  final PerDocProducer norms;
 
-  final Directory dir;
-  final Directory cfsDir;
-  final IOContext context;
   final int termsIndexDivisor;
   
   private final SegmentReader owner;
   
-  StoredFieldsReader fieldsReaderOrig;
-  TermVectorsReader termVectorsReaderOrig;
-  CompoundFileDirectory cfsReader;
-  CompoundFileDirectory storeCFSReader;
+  final StoredFieldsReader fieldsReaderOrig;
+  final TermVectorsReader termVectorsReaderOrig;
+  final CompoundFileDirectory cfsReader;
 
+  final CloseableThreadLocal<StoredFieldsReader> fieldsReaderLocal = new CloseableThreadLocal<StoredFieldsReader>() {
+    @Override
+    protected StoredFieldsReader initialValue() {
+      return fieldsReaderOrig.clone();
+    }
+  };
   
+  final CloseableThreadLocal<TermVectorsReader> termVectorsLocal = new CloseableThreadLocal<TermVectorsReader>() {
+    @Override
+    protected TermVectorsReader initialValue() {
+      return (termVectorsReaderOrig == null) ?
+        null : termVectorsReaderOrig.clone();
+    }
+  };
+  
+  private final Set<CoreClosedListener> coreClosedListeners = 
+      Collections.synchronizedSet(new LinkedHashSet<CoreClosedListener>());
   
   SegmentCoreReaders(SegmentReader owner, Directory dir, SegmentInfo si, IOContext context, int termsIndexDivisor) throws IOException {
     
@@ -69,20 +86,18 @@ final class SegmentCoreReaders {
       throw new IllegalArgumentException("indexDivisor must be < 0 (don't load terms index) or greater than 0 (got 0)");
     }
     
-    segment = si.name;
     final Codec codec = si.getCodec();
-    this.context = context;
-    this.dir = dir;
-    
+    final Directory cfsDir; // confusing name: if (cfs) its the cfsdir, otherwise its the segment's directory.
+
     boolean success = false;
     
     try {
-      Directory dir0 = dir;
       if (si.getUseCompoundFile()) {
-        cfsReader = new CompoundFileDirectory(dir, IndexFileNames.segmentFileName(segment, "", IndexFileNames.COMPOUND_FILE_EXTENSION), context, false);
-        dir0 = cfsReader;
+        cfsDir = cfsReader = new CompoundFileDirectory(dir, IndexFileNames.segmentFileName(si.name, "", IndexFileNames.COMPOUND_FILE_EXTENSION), context, false);
+      } else {
+        cfsReader = null;
+        cfsDir = dir;
       }
-      cfsDir = dir0;
       si.loadFieldInfos(cfsDir, false); // prevent opening the CFS to load fieldInfos
       fieldInfos = si.getFieldInfos();
       
@@ -92,7 +107,20 @@ final class SegmentCoreReaders {
       // Ask codec for its Fields
       fields = format.fieldsProducer(segmentReadState);
       assert fields != null;
+      // ask codec for its Norms: 
+      // TODO: since we don't write any norms file if there are no norms,
+      // kinda jaky to assume the codec handles the case of no norms file at all gracefully?!
+      norms = codec.normsFormat().docsProducer(segmentReadState);
       perDocProducer = codec.docValuesFormat().docsProducer(segmentReadState);
+  
+      fieldsReaderOrig = si.getCodec().storedFieldsFormat().fieldsReader(cfsDir, si, fieldInfos, context);
+ 
+      if (si.getHasVectors()) { // open term vector files only as needed
+        termVectorsReaderOrig = si.getCodec().termVectorsFormat().vectorsReader(cfsDir, si, fieldInfos, context);
+      } else {
+        termVectorsReaderOrig = null;
+      }
+
       success = true;
     } finally {
       if (!success) {
@@ -107,71 +135,33 @@ final class SegmentCoreReaders {
     this.owner = owner;
   }
   
-  synchronized TermVectorsReader getTermVectorsReaderOrig() {
-    return termVectorsReaderOrig;
-  }
-  
-  synchronized StoredFieldsReader getFieldsReaderOrig() {
-    return fieldsReaderOrig;
-  }
-  
-  synchronized void incRef() {
+  void incRef() {
     ref.incrementAndGet();
   }
   
-  synchronized Directory getCFSReader() {
-    return cfsReader;
-  }
-  
-  synchronized void decRef() throws IOException {
+  void decRef() throws IOException {
+    //System.out.println("core.decRef seg=" + owner.getSegmentInfo() + " rc=" + ref);
     if (ref.decrementAndGet() == 0) {
-      IOUtils.close(fields, perDocProducer, termVectorsReaderOrig,
-          fieldsReaderOrig, cfsReader, storeCFSReader);
-      // Now, notify any ReaderFinished listeners:
-      if (owner != null) {
-        owner.notifyReaderFinishedListeners();
-      }
+      IOUtils.close(termVectorsLocal, fieldsReaderLocal, fields, perDocProducer,
+        termVectorsReaderOrig, fieldsReaderOrig, cfsReader, norms);
+      notifyCoreClosedListeners();
     }
   }
   
-  synchronized void openDocStores(SegmentInfo si) throws IOException {
-    
-    assert si.name.equals(segment);
-    
-    if (fieldsReaderOrig == null) {
-      final Directory storeDir;
-      if (si.getDocStoreOffset() != -1) {
-        if (si.getDocStoreIsCompoundFile()) {
-          assert storeCFSReader == null;
-          storeCFSReader = new CompoundFileDirectory(dir,
-              IndexFileNames.segmentFileName(si.getDocStoreSegment(), "", IndexFileNames.COMPOUND_FILE_STORE_EXTENSION),
-              context, false);
-          storeDir = storeCFSReader;
-          assert storeDir != null;
-        } else {
-          storeDir = dir;
-          assert storeDir != null;
-        }
-      } else if (si.getUseCompoundFile()) {
-        // In some cases, we were originally opened when CFS
-        // was not used, but then we are asked to open doc
-        // stores after the segment has switched to CFS
-        if (cfsReader == null) {
-          cfsReader = new CompoundFileDirectory(dir,IndexFileNames.segmentFileName(segment, "", IndexFileNames.COMPOUND_FILE_EXTENSION), context, false);
-        }
-        storeDir = cfsReader;
-        assert storeDir != null;
-      } else {
-        storeDir = dir;
-        assert storeDir != null;
-      }
-      
-      fieldsReaderOrig = si.getCodec().storedFieldsFormat().fieldsReader(storeDir, si, fieldInfos, context);
- 
-      if (si.getHasVectors()) { // open term vector files only as needed
-        termVectorsReaderOrig = si.getCodec().termVectorsFormat().vectorsReader(storeDir, si, fieldInfos, context);
+  private final void notifyCoreClosedListeners() {
+    synchronized(coreClosedListeners) {
+      for (CoreClosedListener listener : coreClosedListeners) {
+        listener.onClose(owner);
       }
     }
+  }
+
+  void addCoreClosedListener(CoreClosedListener listener) {
+    coreClosedListeners.add(listener);
+  }
+  
+  void removeCoreClosedListener(CoreClosedListener listener) {
+    coreClosedListeners.remove(listener);
   }
 
   @Override

@@ -19,11 +19,9 @@ package org.apache.lucene.queries.function;
 
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.queries.function.valuesource.OrdFieldSource;
 import org.apache.lucene.queries.function.valuesource.ReverseOrdFieldSource;
 import org.apache.lucene.search.*;
-import org.apache.lucene.util.ReaderUtil;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -92,7 +90,6 @@ public class TestOrdValues extends FunctionTestSetup {
       }
       prevID = resID;
     }
-    s.close();
     r.close();
   }
 
@@ -139,7 +136,6 @@ public class TestOrdValues extends FunctionTestSetup {
               : id2String(i + 1);     // reverse  ==> smaller values first
       assertTrue("id of result " + i + " shuould be " + expectedId + " != " + score, expectedId.equals(id));
     }
-    s.close();
     r.close();
   }
   

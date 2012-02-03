@@ -25,8 +25,7 @@ import org.apache.lucene.store.DataOutput;
 /**
  * Output is a long, for each input term.  NOTE: the
  * resulting FST is not guaranteed to be minimal!  See
- * {@link Builder}.  You cannot store 0 output with this
- * (that's reserved to mean "no output")!
+ * {@link Builder}.
  *
  * @lucene.experimental
  */
@@ -46,14 +45,6 @@ public final class PositiveIntOutputs extends Outputs<Long> {
 
   public static PositiveIntOutputs getSingleton(boolean doShare) {
     return doShare ? singletonShare : singletonNoShare;
-  }
-
-  public Long get(long v) {
-    if (v == 0) {
-      return NO_OUTPUT;
-    } else {
-      return Long.valueOf(v);
-    }
   }
 
   @Override
@@ -132,5 +123,10 @@ public final class PositiveIntOutputs extends Outputs<Long> {
   @Override
   public String outputToString(Long output) {
     return output.toString();
+  }
+
+  @Override
+  public String toString() {
+    return "PositiveIntOutputs(doShare=" + doShare + ")";
   }
 }

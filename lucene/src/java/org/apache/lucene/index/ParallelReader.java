@@ -17,18 +17,14 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.codecs.PerDocValues;
-import org.apache.lucene.index.values.IndexDocValues;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.MapBackedSet;
-
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 
 
-/** An IndexReader which reads multiple, parallel indexes.  Each index added
+/** An AtomicIndexReader which reads multiple, parallel indexes.  Each index added
  * must have the same number of documents, but typically each contains
  * different fields.  Each document contains the union of the fields of all
  * documents with the same document number.  When searching, matches for a
@@ -45,21 +41,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * same order to the other indexes. <em>Failure to do so will result in
  * undefined behavior</em>.
  */
-public class ParallelReader extends IndexReader {
-  private List<IndexReader> readers = new ArrayList<IndexReader>();
+public class ParallelReader extends AtomicReader {
+  private List<AtomicReader> readers = new ArrayList<AtomicReader>();
   private List<Boolean> decrefOnClose = new ArrayList<Boolean>(); // remember which subreaders to decRef on close
   boolean incRefReaders = false;
-  private SortedMap<String,IndexReader> fieldToReader = new TreeMap<String,IndexReader>();
-  private Map<IndexReader,Collection<String>> readerToFields = new HashMap<IndexReader,Collection<String>>();
-  private List<IndexReader> storedFieldReaders = new ArrayList<IndexReader>();
-  private Map<String,byte[]> normsCache = new HashMap<String,byte[]>();
-  private final ReaderContext topLevelReaderContext = new AtomicReaderContext(this);
+  private SortedMap<String,AtomicReader> fieldToReader = new TreeMap<String,AtomicReader>();
+  private Map<AtomicReader,Collection<String>> readerToFields = new HashMap<AtomicReader,Collection<String>>();
+  private List<AtomicReader> storedFieldReaders = new ArrayList<AtomicReader>();
+  private Map<String, DocValues> normsCache = new HashMap<String,DocValues>();
   private int maxDoc;
   private int numDocs;
   private boolean hasDeletions;
+  private final FieldInfos fieldInfos;
 
   private final ParallelFields fields = new ParallelFields();
-  private final ParallelPerDocs perDocs = new ParallelPerDocs();
 
  /** Construct a ParallelReader. 
   * <p>Note that all subreaders are closed if this ParallelReader is closed.</p>
@@ -73,14 +68,14 @@ public class ParallelReader extends IndexReader {
   public ParallelReader(boolean closeSubReaders) throws IOException {
     super();
     this.incRefReaders = !closeSubReaders;
-    readerFinishedListeners = new MapBackedSet<ReaderFinishedListener>(new ConcurrentHashMap<ReaderFinishedListener,Boolean>());
+    fieldInfos = new FieldInfos();
   }
 
   /** {@inheritDoc} */
   @Override
   public String toString() {
     final StringBuilder buffer = new StringBuilder("ParallelReader(");
-    final Iterator<IndexReader> iter = readers.iterator();
+    final Iterator<AtomicReader> iter = readers.iterator();
     if (iter.hasNext()) {
       buffer.append(iter.next());
     }
@@ -91,25 +86,25 @@ public class ParallelReader extends IndexReader {
     return buffer.toString();
   }
   
- /** Add an IndexReader.
+ /** Add an AtomicIndexReader.
   * @throws IOException if there is a low-level IO error
   */
-  public void add(IndexReader reader) throws IOException {
+  public void add(AtomicReader reader) throws IOException {
     ensureOpen();
     add(reader, false);
   }
 
- /** Add an IndexReader whose stored fields will not be returned.  This can
+ /** Add an AtomicIndexReader whose stored fields will not be returned.  This can
   * accelerate search when stored fields are only needed from a subset of
   * the IndexReaders.
   *
   * @throws IllegalArgumentException if not all indexes contain the same number
   *     of documents
   * @throws IllegalArgumentException if not all indexes have the same value
-  *     of {@link IndexReader#maxDoc()}
+  *     of {@link AtomicReader#maxDoc()}
   * @throws IOException if there is a low-level IO error
   */
-  public void add(IndexReader reader, boolean ignoreStoredFields)
+  public void add(AtomicReader reader, boolean ignoreStoredFields)
     throws IOException {
 
     ensureOpen();
@@ -126,13 +121,13 @@ public class ParallelReader extends IndexReader {
       throw new IllegalArgumentException
         ("All readers must have same numDocs: "+numDocs+"!="+reader.numDocs());
 
-    Collection<String> fields = reader.getFieldNames(IndexReader.FieldOption.ALL);
-    readerToFields.put(reader, fields);
-    for (final String field : fields) {               // update fieldToReader map
-      if (fieldToReader.get(field) == null) {
-        fieldToReader.put(field, reader);
-        this.fields.addField(field, MultiFields.getFields(reader).terms(field));
-        this.perDocs.addField(field, reader);
+    final FieldInfos readerFieldInfos = MultiFields.getMergedFieldInfos(reader);
+    for(FieldInfo fieldInfo : readerFieldInfos) {   // update fieldToReader map
+      // NOTE: first reader having a given field "wins":
+      if (fieldToReader.get(fieldInfo.name) == null) {
+        fieldInfos.add(fieldInfo);
+        fieldToReader.put(fieldInfo.name, reader);
+        this.fields.addField(fieldInfo.name, reader.terms(fieldInfo.name));
       }
     }
 
@@ -199,11 +194,16 @@ public class ParallelReader extends IndexReader {
       return fields.size();
     }
   }
+
+  @Override
+  public FieldInfos getFieldInfos() {
+    return fieldInfos;
+  }
   
   @Override
   public Bits getLiveDocs() {
     ensureOpen();
-    return MultiFields.getLiveDocs(readers.get(0));
+    return readers.get(0).getLiveDocs();
   }
 
   @Override
@@ -212,108 +212,6 @@ public class ParallelReader extends IndexReader {
     return fields;
   }
   
-  @Override
-  public synchronized Object clone() {
-    // doReopen calls ensureOpen
-    try {
-      return doReopen(true);
-    } catch (Exception ex) {
-      throw new RuntimeException(ex);
-    }
-  }
-  
-  /**
-   * Tries to reopen the subreaders.
-   * <br>
-   * If one or more subreaders could be re-opened (i. e. subReader.reopen() 
-   * returned a new instance != subReader), then a new ParallelReader instance 
-   * is returned, otherwise null is returned.
-   * <p>
-   * A re-opened instance might share one or more subreaders with the old 
-   * instance. Index modification operations result in undefined behavior
-   * when performed before the old instance is closed.
-   * (see {@link IndexReader#openIfChanged}).
-   * <p>
-   * If subreaders are shared, then the reference count of those
-   * readers is increased to ensure that the subreaders remain open
-   * until the last referring reader is closed.
-   * 
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws IOException if there is a low-level IO error 
-   */
-  @Override
-  protected synchronized IndexReader doOpenIfChanged() throws CorruptIndexException, IOException {
-    // doReopen calls ensureOpen
-    return doReopen(false);
-  }
-    
-  protected IndexReader doReopen(boolean doClone) throws CorruptIndexException, IOException {
-    ensureOpen();
-    
-    boolean reopened = false;
-    List<IndexReader> newReaders = new ArrayList<IndexReader>();
-    
-    boolean success = false;
-    
-    try {
-      for (final IndexReader oldReader : readers) {
-        IndexReader newReader = null;
-        if (doClone) {
-          newReader = (IndexReader) oldReader.clone();
-          reopened = true;
-        } else {
-          newReader = IndexReader.openIfChanged(oldReader);
-          if (newReader != null) {
-            reopened = true;
-          } else {
-            newReader = oldReader;
-          }
-        }
-        newReaders.add(newReader);
-      }
-      success = true;
-    } finally {
-      if (!success && reopened) {
-        for (int i = 0; i < newReaders.size(); i++) {
-          IndexReader r = newReaders.get(i);
-          if (r != readers.get(i)) {
-            try {
-              r.close();
-            } catch (IOException ignore) {
-              // keep going - we want to clean up as much as possible
-            }
-          }
-        }
-      }
-    }
-
-    if (reopened) {
-      List<Boolean> newDecrefOnClose = new ArrayList<Boolean>();
-      // TODO: maybe add a special reopen-ctor for norm-copying?
-      ParallelReader pr = new ParallelReader();
-      for (int i = 0; i < readers.size(); i++) {
-        IndexReader oldReader = readers.get(i);
-        IndexReader newReader = newReaders.get(i);
-        if (newReader == oldReader) {
-          newDecrefOnClose.add(Boolean.TRUE);
-          newReader.incRef();
-        } else {
-          // this is a new subreader instance, so on close() we don't
-          // decRef but close it 
-          newDecrefOnClose.add(Boolean.FALSE);
-        }
-        pr.add(newReader, !storedFieldReaders.contains(oldReader));
-      }
-      pr.decrefOnClose = newDecrefOnClose;
-      pr.incRefReaders = incRefReaders;
-      return pr;
-    } else {
-      // No subreader was refreshed
-      return null;
-    }
-  }
-
-
   @Override
   public int numDocs() {
     // Don't call ensureOpen() here (it could affect performance)
@@ -332,28 +230,10 @@ public class ParallelReader extends IndexReader {
     return hasDeletions;
   }
 
-  // delete in all readers
-  @Override
-  protected void doDelete(int n) throws CorruptIndexException, IOException {
-    for (final IndexReader reader : readers) {
-      reader.deleteDocument(n);
-    }
-    hasDeletions = true;
-  }
-
-  // undeleteAll in all readers
-  @Override
-  protected void doUndeleteAll() throws CorruptIndexException, IOException {
-    for (final IndexReader reader : readers) {
-      reader.undeleteAll();
-    }
-    hasDeletions = false;
-  }
-
   @Override
   public void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
     ensureOpen();
-    for (final IndexReader reader: storedFieldReaders) {
+    for (final AtomicReader reader: storedFieldReaders) {
       reader.document(docID, visitor);
     }
   }
@@ -363,7 +243,7 @@ public class ParallelReader extends IndexReader {
   public Fields getTermVectors(int docID) throws IOException {
     ensureOpen();
     ParallelFields fields = new ParallelFields();
-    for (Map.Entry<String,IndexReader> ent : fieldToReader.entrySet()) {
+    for (Map.Entry<String,AtomicReader> ent : fieldToReader.entrySet()) {
       String fieldName = ent.getKey();
       Terms vector = ent.getValue().getTermVector(docID, fieldName);
       if (vector != null) {
@@ -377,90 +257,13 @@ public class ParallelReader extends IndexReader {
   @Override
   public boolean hasNorms(String field) throws IOException {
     ensureOpen();
-    IndexReader reader = fieldToReader.get(field);
+    AtomicReader reader = fieldToReader.get(field);
     return reader==null ? false : reader.hasNorms(field);
   }
 
-  @Override
-  public synchronized byte[] norms(String field) throws IOException {
-    ensureOpen();
-    IndexReader reader = fieldToReader.get(field);
-
-    if (reader==null)
-      return null;
-    
-    byte[] bytes = normsCache.get(field);
-    if (bytes != null)
-      return bytes;
-    if (!hasNorms(field))
-      return null;
-    if (normsCache.containsKey(field)) // cached omitNorms, not missing key
-      return null;
-
-    bytes = MultiNorms.norms(reader, field);
-    normsCache.put(field, bytes);
-    return bytes;
-  }
-
-  @Override
-  protected void doSetNorm(int n, String field, byte value)
-    throws CorruptIndexException, IOException {
-    IndexReader reader = fieldToReader.get(field);
-    if (reader!=null) {
-      synchronized(normsCache) {
-        normsCache.remove(field);
-      }
-      reader.doSetNorm(n, field, value);
-    }
-  }
-
-  @Override
-  public int docFreq(Term term) throws IOException {
-    ensureOpen();
-    IndexReader reader = fieldToReader.get(term.field());
-    return reader==null ? 0 : reader.docFreq(term);
-  }
-
-  @Override
-  public int docFreq(String field, BytesRef term) throws IOException {
-    ensureOpen();
-    IndexReader reader = fieldToReader.get(field);
-    return reader == null? 0 : reader.docFreq(field, term);
-  }
-
-  /**
-   * Checks recursively if all subreaders are up to date. 
-   */
-  @Override
-  public boolean isCurrent() throws CorruptIndexException, IOException {
-    ensureOpen();
-    for (final IndexReader reader : readers) {
-      if (!reader.isCurrent()) {
-        return false;
-      }
-    }
-    
-    // all subreaders are up to date
-    return true;
-  }
-
-  /** Not implemented.
-   * @throws UnsupportedOperationException
-   */
-  @Override
-  public long getVersion() {
-    throw new UnsupportedOperationException("ParallelReader does not support this method.");
-  }
-
   // for testing
-  IndexReader[] getSubReaders() {
-    return readers.toArray(new IndexReader[readers.size()]);
-  }
-
-  @Override
-  protected void doCommit(Map<String,String> commitUserData) throws IOException {
-    for (final IndexReader reader : readers)
-      reader.commit(commitUserData);
+  AtomicReader[] getSubReaders() {
+    return readers.toArray(new AtomicReader[readers.size()]);
   }
 
   @Override
@@ -474,74 +277,22 @@ public class ParallelReader extends IndexReader {
     }
   }
 
+  // TODO: I suspect this is completely untested!!!!!
   @Override
-  public Collection<String> getFieldNames (IndexReader.FieldOption fieldNames) {
-    ensureOpen();
-    Set<String> fieldSet = new HashSet<String>();
-    for (final IndexReader reader : readers) {
-      Collection<String> names = reader.getFieldNames(fieldNames);
-      fieldSet.addAll(names);
-    }
-    return fieldSet;
-  }
-
-  @Override
-  public ReaderContext getTopReaderContext() {
-    ensureOpen();
-    return topLevelReaderContext;
-  }
-
-  @Override
-  public void addReaderFinishedListener(ReaderFinishedListener listener) {
-    super.addReaderFinishedListener(listener);
-    for (IndexReader reader : readers) {
-      reader.addReaderFinishedListener(listener);
-    }
-  }
-
-  @Override
-  public void removeReaderFinishedListener(ReaderFinishedListener listener) {
-    super.removeReaderFinishedListener(listener);
-    for (IndexReader reader : readers) {
-      reader.removeReaderFinishedListener(listener);
-    }
-  }
-
-  @Override
-  public PerDocValues perDocValues() throws IOException {
-    ensureOpen();
-    return perDocs;
+  public DocValues docValues(String field) throws IOException {
+    AtomicReader reader = fieldToReader.get(field);
+    return reader == null ? null : reader.docValues(field);
   }
   
-  // Single instance of this, per ParallelReader instance
-  private static final class ParallelPerDocs extends PerDocValues {
-    final TreeMap<String,IndexDocValues> fields = new TreeMap<String,IndexDocValues>();
-
-    void addField(String field, IndexReader r) throws IOException {
-      PerDocValues perDocs = MultiPerDocValues.getPerDocs(r);
-      if (perDocs != null) {
-        fields.put(field, perDocs.docValues(field));
-      }
-    }
-
-    @Override
-    public void close() throws IOException {
-      // nothing to do here
-    }
-
-    @Override
-    public IndexDocValues docValues(String field) throws IOException {
-      return fields.get(field);
-    }
-
-    @Override
-    public Collection<String> fields() {
-      return fields.keySet();
-    }
+  // TODO: I suspect this is completely untested!!!!!
+  @Override
+  public synchronized DocValues normValues(String field) throws IOException {
+    DocValues values = normsCache.get(field);
+    if (values == null) {
+      AtomicReader reader = fieldToReader.get(field);
+      values = reader == null ? null : reader.normValues(field);
+      normsCache.put(field, values);
+    } 
+    return values;
   }
 }
-
-
-
-
-

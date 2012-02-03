@@ -24,8 +24,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 
 import org.apache.lucene.util.LuceneTestCase;
-import junit.framework.TestSuite;
-import junit.textui.TestRunner;
 
 import org.apache.lucene.store.*;
 import org.apache.lucene.document.*;
@@ -35,11 +33,6 @@ import org.apache.lucene.search.*;
 
 /** JUnit adaptation of an older test case SearchTest. */
 public class TestSearch extends LuceneTestCase {
-
-    /** Main for running test case by itself. */
-    public static void main(String args[]) {
-        TestRunner.run (new TestSuite(TestSearch.class));
-    }
 
     /** This test performs a number of searches. It also compares output
      *  of searches using multi-file index segments with single-file
@@ -104,9 +97,8 @@ public class TestSearch extends LuceneTestCase {
 
       ScoreDoc[] hits = null;
 
-      Sort sort = new Sort(new SortField[] {
-          SortField.FIELD_SCORE,
-          new SortField("id", SortField.Type.INT)});
+      Sort sort = new Sort(SortField.FIELD_SCORE,
+                           new SortField("id", SortField.Type.INT));
 
       for (Query query : buildQueries()) {
         out.println("Query: " + query.toString("contents"));
@@ -122,7 +114,6 @@ public class TestSearch extends LuceneTestCase {
           out.println(i + " " + hits[i].score + " " + d.get("contents"));
         }
       }
-      searcher.close();
       reader.close();
       directory.close();
   }

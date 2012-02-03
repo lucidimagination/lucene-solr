@@ -17,8 +17,9 @@ package org.apache.lucene.search.grouping.function;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.grouping.AbstractAllGroupsCollector;
 import org.apache.lucene.util.mutable.MutableValue;
@@ -36,7 +37,7 @@ import java.util.TreeSet;
  * the most relevant document of a group.
  *
  * <p/>
- * Implementation detail: Uses {@link ValueSource} and {@link DocValues} to retrieve the
+ * Implementation detail: Uses {@link ValueSource} and {@link FunctionValues} to retrieve the
  * field values to group by.
  *
  * @lucene.experimental
@@ -47,7 +48,7 @@ public class FunctionAllGroupsCollector extends AbstractAllGroupsCollector<Mutab
   private final ValueSource groupBy;
   private final SortedSet<MutableValue> groups = new TreeSet<MutableValue>();
 
-  private DocValues.ValueFiller filler;
+  private FunctionValues.ValueFiller filler;
   private MutableValue mval;
 
   /**
@@ -78,8 +79,8 @@ public class FunctionAllGroupsCollector extends AbstractAllGroupsCollector<Mutab
   /**
    * {@inheritDoc}
    */
-  public void setNextReader(IndexReader.AtomicReaderContext context) throws IOException {
-    DocValues docValues = groupBy.getValues(vsContext, context);
+  public void setNextReader(AtomicReaderContext context) throws IOException {
+    FunctionValues docValues = groupBy.getValues(vsContext, context);
     filler = docValues.getValueFiller();
     mval = filler.getValue();
   }

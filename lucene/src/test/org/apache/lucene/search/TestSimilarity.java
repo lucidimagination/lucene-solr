@@ -21,9 +21,10 @@ import org.apache.lucene.util.LuceneTestCase;
 
 import java.io.IOException;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.Norm;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
@@ -45,10 +46,10 @@ public class TestSimilarity extends LuceneTestCase {
     public float coord(int overlap, int maxOverlap) { return 1.0f; }
     public Similarity get(String field) {
       return new DefaultSimilarity() {
-        @Override public byte computeNorm(FieldInvertState state) { return encodeNormValue(state.getBoost()); }
+        @Override public void computeNorm(FieldInvertState state, Norm norm) { norm.setByte(encodeNormValue(state.getBoost())); }
         @Override public float tf(float freq) { return freq; }
         @Override public float sloppyFreq(int distance) { return 2.0f; }
-        @Override public float idf(int docFreq, int numDocs) { return 1.0f; }
+        @Override public float idf(long docFreq, long numDocs) { return 1.0f; }
         @Override public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics[] stats) {
           return new Explanation(1.0f, "Inexplicable"); 
         }
@@ -169,7 +170,6 @@ public class TestSimilarity extends LuceneTestCase {
       }
     });
 
-    searcher.close();
     reader.close();
     store.close();
   }

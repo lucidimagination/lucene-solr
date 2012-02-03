@@ -26,10 +26,10 @@ import java.text.DateFormat;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.PrintStreamInfoStream;
@@ -49,6 +49,11 @@ public class SolrIndexWriter extends IndexWriter {
   // These should *only* be used for debugging or monitoring purposes
   public static final AtomicLong numOpens = new AtomicLong();
   public static final AtomicLong numCloses = new AtomicLong();
+
+
+  /** Stored into each Lucene commit to record the
+   *  System.currentTimeMillis() when commit was called. */
+  public static final String COMMIT_TIME_MSEC_KEY = "commitTimeMSec";
 
   String name;
   private DirectoryFactory directoryFactory;

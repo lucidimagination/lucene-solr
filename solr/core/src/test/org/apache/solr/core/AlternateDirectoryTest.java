@@ -19,7 +19,7 @@ package org.apache.solr.core;
 import java.io.File;
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.store.Directory;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
@@ -61,10 +61,9 @@ public class AlternateDirectoryTest extends SolrTestCaseJ4 {
     static volatile boolean newReaderCalled = false;
 
     @Override
-    public IndexReader newReader(Directory indexDir, boolean readOnly)
-        throws IOException {
+    public DirectoryReader newReader(Directory indexDir) throws IOException {
       TestIndexReaderFactory.newReaderCalled = true;
-      return IndexReader.open(indexDir, readOnly);
+      return DirectoryReader.open(indexDir);
     }
   }
 

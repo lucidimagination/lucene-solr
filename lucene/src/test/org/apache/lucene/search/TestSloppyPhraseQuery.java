@@ -26,8 +26,8 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
@@ -149,7 +149,6 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
 
     //QueryUtils.check(query,searcher);
     writer.close();
-    searcher.close();
     reader.close();
     ramDir.close();
 
@@ -262,7 +261,6 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
     assertEquals(3, is.search(pq, 4).totalHits);
     pq.setSlop(2);
     assertEquals(4, is.search(pq, 4).totalHits);
-    is.close();
     ir.close();
     dir.close();
   }
@@ -286,7 +284,6 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
     pq.add(new Term("lyrics", "drug"), 3);
     pq.setSlop(1);
     assertSaneScoring(pq, is);
-    is.close();
     ir.close();
     dir.close();
   }
@@ -341,7 +338,6 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
      pq.add(new Term("lyrics", "drug"), 3);
      pq.setSlop(5);
      assertSaneScoring(pq, is);
-     is.close();
      ir.close();
      dir.close();
   }

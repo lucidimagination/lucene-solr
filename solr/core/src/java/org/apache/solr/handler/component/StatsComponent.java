@@ -246,12 +246,13 @@ class SimpleStats {
     return res;
   }
   
+  // why does this use a top-level field cache?
   public NamedList<?> getFieldCacheStats(String fieldName, String[] facet ) {
     SchemaField sf = searcher.getSchema().getField(fieldName);
     
     FieldCache.DocTermsIndex si;
     try {
-      si = FieldCache.DEFAULT.getTermsIndex(searcher.getIndexReader(), fieldName);
+      si = FieldCache.DEFAULT.getTermsIndex(searcher.getAtomicReader(), fieldName);
     } 
     catch (IOException e) {
       throw new RuntimeException( "failed to open field cache for: "+fieldName, e );
@@ -273,7 +274,7 @@ class SimpleStats {
           + "[" + facetFieldType + "]");
         }
       try {
-        facetTermsIndex = FieldCache.DEFAULT.getTermsIndex(searcher.getIndexReader(), facetField);
+        facetTermsIndex = FieldCache.DEFAULT.getTermsIndex(searcher.getAtomicReader(), facetField);
       }
       catch (IOException e) {
         throw new RuntimeException( "failed to open field cache for: "

@@ -28,7 +28,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 
@@ -174,11 +174,11 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
 
     @Override
     protected CustomScoreProvider getCustomScoreProvider(AtomicReaderContext context) throws IOException {
-      final int[] values = FieldCache.DEFAULT.getInts(context.reader, INT_FIELD, false);
+      final int[] values = FieldCache.DEFAULT.getInts(context.reader(), INT_FIELD, false);
       return new CustomScoreProvider(context) {
         @Override
         public float customScore(int doc, float subScore, float valSrcScore) throws IOException {
-          assertTrue(doc <= context.reader.maxDoc());
+          assertTrue(doc <= context.reader().maxDoc());
           return values[doc];
         }
       };
@@ -208,7 +208,6 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
       final float score = hits.scoreDocs[i].score;
       assertEquals("doc=" + doc, (float) 1+(4*doc) % N_DOCS, score, 0.0001);
     }
-    s.close();
     r.close();
   }
   
@@ -232,7 +231,6 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     assertEquals(s.search(q,1).totalHits, s.search(original,1).totalHits);
     assertEquals(s.search(q,1).totalHits, s.search(rewritten,1).totalHits);
     
-    s.close();
     r.close();
   }
   
@@ -290,7 +288,6 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     verifyResults(boost, s, 
         h1, h2CustomNeutral, h3CustomMul, h4CustomAdd, h5CustomMulAdd,
         q1, q2CustomNeutral, q3CustomMul, q4CustomAdd, q5CustomMulAdd);
-    s.close();
     r.close();
   }
 
@@ -306,11 +303,11 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     assertEquals("queries should have same #hits",h1.size(),h4CustomAdd.size());
     assertEquals("queries should have same #hits",h1.size(),h5CustomMulAdd.size());
 
-    QueryUtils.check(random, q1,s);
-    QueryUtils.check(random, q2,s);
-    QueryUtils.check(random, q3,s);
-    QueryUtils.check(random, q4,s);
-    QueryUtils.check(random, q5,s);
+    QueryUtils.check(random, q1, s, rarely());
+    QueryUtils.check(random, q2, s, rarely());
+    QueryUtils.check(random, q3, s, rarely());
+    QueryUtils.check(random, q4, s, rarely());
+    QueryUtils.check(random, q5, s, rarely());
 
     // verify scores ratios
     for (final Integer doc : h1.keySet()) {

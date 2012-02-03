@@ -20,14 +20,14 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.Set;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader.ReaderContext;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.similarities.Similarity.ExactDocScorer;
+import org.apache.lucene.search.similarities.Similarity.ExactSimScorer;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -45,7 +45,7 @@ public class TermQuery extends Query {
 
   final class TermWeight extends Weight {
     private final Similarity similarity;
-    private final Similarity.Stats stats;
+    private final Similarity.SimWeight stats;
     private final TermContext termStates;
 
     public TermWeight(IndexSearcher searcher, TermContext termStates)
@@ -53,9 +53,9 @@ public class TermQuery extends Query {
       assert termStates != null : "TermContext must not be null";
       this.termStates = termStates;
       this.similarity = searcher.getSimilarityProvider().get(term.field());
-      this.stats = similarity.computeStats(
-          searcher.collectionStatistics(term.field()), 
+      this.stats = similarity.computeWeight(
           getBoost(), 
+          searcher.collectionStatistics(term.field()), 
           searcher.termStatistics(term, termStates));
     }
 
@@ -95,10 +95,10 @@ public class TermQuery extends Query {
     }
     
     /**
-     * Creates an {@link ExactDocScorer} for this {@link TermWeight}*/
-    ExactDocScorer createDocScorer(AtomicReaderContext context)
+     * Creates an {@link ExactSimScorer} for this {@link TermWeight}*/
+    ExactSimScorer createDocScorer(AtomicReaderContext context)
         throws IOException {
-      return similarity.exactDocScorer(stats, term.field(), context);
+      return similarity.exactSimScorer(stats, context);
     }
     
     /**
@@ -108,16 +108,16 @@ public class TermQuery extends Query {
     TermsEnum getTermsEnum(AtomicReaderContext context) throws IOException {
       final TermState state = termStates.get(context.ord);
       if (state == null) { // term is not present in that reader
-        assert termNotInReader(context.reader, term.field(), term.bytes()) : "no termstate found but term exists in reader term=" + term;
+        assert termNotInReader(context.reader(), term.field(), term.bytes()) : "no termstate found but term exists in reader term=" + term;
         return null;
       }
       //System.out.println("LD=" + reader.getLiveDocs() + " set?=" + (reader.getLiveDocs() != null ? reader.getLiveDocs().get(0) : "null"));
-      final TermsEnum termsEnum = context.reader.terms(term.field()).iterator(null);
+      final TermsEnum termsEnum = context.reader().terms(term.field()).iterator(null);
       termsEnum.seekExact(term.bytes(), state);
       return termsEnum;
     }
     
-    private boolean termNotInReader(IndexReader reader, String field, BytesRef bytes) throws IOException {
+    private boolean termNotInReader(AtomicReader reader, String field, BytesRef bytes) throws IOException {
       // only called from assert
       //System.out.println("TQ.termNotInReader reader=" + reader + " term=" + field + ":" + bytes.utf8ToString());
       return reader.docFreq(field, bytes) == 0;
@@ -125,12 +125,12 @@ public class TermQuery extends Query {
     
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, true, false, context.reader.getLiveDocs());
+      Scorer scorer = scorer(context, true, false, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
           float freq = scorer.freq();
-          ExactDocScorer docScorer = similarity.exactDocScorer(stats, term.field(), context);
+          ExactSimScorer docScorer = similarity.exactSimScorer(stats, context);
           ComplexExplanation result = new ComplexExplanation();
           result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
           Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "termFreq=" + freq));
@@ -173,7 +173,7 @@ public class TermQuery extends Query {
 
   @Override
   public Weight createWeight(IndexSearcher searcher) throws IOException {
-    final ReaderContext context = searcher.getTopReaderContext();
+    final IndexReaderContext context = searcher.getTopReaderContext();
     final TermContext termState;
     if (perReaderTermState == null || perReaderTermState.topReaderContext != context) {
       // make TermQuery single-pass if we don't have a PRTS or if the context differs!

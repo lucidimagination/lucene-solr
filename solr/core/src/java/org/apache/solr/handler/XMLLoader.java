@@ -16,6 +16,7 @@ package org.apache.solr.handler;
  * limitations under the License.
  */
 
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.CommitUpdateCommand;
@@ -112,6 +113,7 @@ class XMLLoader extends ContentStreamLoader {
 
             // First look for commitWithin parameter on the request, will be overwritten for individual <add>'s
             addCmd.commitWithin = params.getInt(UpdateParams.COMMIT_WITHIN, -1);
+            addCmd.overwrite = params.getBool(UpdateParams.OVERWRITE, true);
             
             for (int i = 0; i < parser.getAttributeCount(); i++) {
               String attrName = parser.getAttributeLocalName(i);
@@ -138,22 +140,17 @@ class XMLLoader extends ContentStreamLoader {
             XmlUpdateRequestHandler.log.trace("parsing " + currTag);
 
             CommitUpdateCommand cmd = new CommitUpdateCommand(req, XmlUpdateRequestHandler.OPTIMIZE.equals(currTag));
-
+            ModifiableSolrParams mp = new ModifiableSolrParams();
+            
             for (int i = 0; i < parser.getAttributeCount(); i++) {
               String attrName = parser.getAttributeLocalName(i);
               String attrVal = parser.getAttributeValue(i);
-              if (XmlUpdateRequestHandler.WAIT_SEARCHER.equals(attrName)) {
-                cmd.waitSearcher = StrUtils.parseBoolean(attrVal);
-              } else if (XmlUpdateRequestHandler.SOFT_COMMIT.equals(attrName)) {
-                cmd.softCommit = StrUtils.parseBoolean(attrVal);
-              } else if (UpdateParams.MAX_OPTIMIZE_SEGMENTS.equals(attrName)) {
-                cmd.maxOptimizeSegments = Integer.parseInt(attrVal);
-              } else if (UpdateParams.EXPUNGE_DELETES.equals(attrName)) {
-                cmd.expungeDeletes = StrUtils.parseBoolean(attrVal);
-              } else {
-                XmlUpdateRequestHandler.log.warn("unexpected attribute commit/@" + attrName);
-              }
+              mp.set(attrName, attrVal);
             }
+
+            RequestHandlerUtils.validateCommitParams(mp);
+            SolrParams p = SolrParams.wrapDefaults(mp, req.getParams());   // default to the normal request params for commit options
+            RequestHandlerUtils.updateCommit(cmd, p);
 
             processor.processCommit(cmd);
           } // end commit
@@ -180,6 +177,10 @@ class XMLLoader extends ContentStreamLoader {
     // Parse the command
     DeleteUpdateCommand deleteCmd = new DeleteUpdateCommand(req);
 
+    // First look for commitWithin parameter on the request, will be overwritten for individual <delete>'s
+    SolrParams params = req.getParams();
+    deleteCmd.commitWithin = params.getInt(UpdateParams.COMMIT_WITHIN, -1);
+
     for (int i = 0; i < parser.getAttributeCount(); i++) {
       String attrName = parser.getAttributeLocalName(i);
       String attrVal = parser.getAttributeValue(i);
@@ -187,6 +188,8 @@ class XMLLoader extends ContentStreamLoader {
         // deprecated
       } else if ("fromCommitted".equals(attrName)) {
         // deprecated
+      } else if (XmlUpdateRequestHandler.COMMIT_WITHIN.equals(attrName)) {
+        deleteCmd.commitWithin = Integer.parseInt(attrVal);
       } else {
         XmlUpdateRequestHandler.log.warn("unexpected attribute delete/@" + attrName);
       }
@@ -204,14 +207,24 @@ class XMLLoader extends ContentStreamLoader {
                     "unexpected XML tag /delete/" + mode);
           }
           text.setLength(0);
+          
+          if ("id".equals(mode)) {
+            for (int i = 0; i < parser.getAttributeCount(); i++) {
+              String attrName = parser.getAttributeLocalName(i);
+              String attrVal = parser.getAttributeValue(i);
+              if (XmlUpdateRequestHandler.VERSION.equals(attrName)) {
+                deleteCmd.setVersion(Long.parseLong(attrVal));
+              }
+            }
+          }
           break;
 
         case XMLStreamConstants.END_ELEMENT:
           String currTag = parser.getLocalName();
           if ("id".equals(currTag)) {
-            deleteCmd.id = text.toString();
+            deleteCmd.setId(text.toString());         
           } else if ("query".equals(currTag)) {
-            deleteCmd.query = text.toString();
+            deleteCmd.setQuery(text.toString());
           } else if ("delete".equals(currTag)) {
             return;
           } else {

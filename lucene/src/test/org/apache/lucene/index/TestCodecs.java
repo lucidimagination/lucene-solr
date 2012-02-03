@@ -22,18 +22,18 @@ import java.util.Arrays;
 import java.util.HashSet;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.FieldsConsumer;
+import org.apache.lucene.codecs.FieldsProducer;
+import org.apache.lucene.codecs.PostingsConsumer;
+import org.apache.lucene.codecs.TermStats;
+import org.apache.lucene.codecs.TermsConsumer;
+import org.apache.lucene.codecs.lucene3x.Lucene3xCodec;
+import org.apache.lucene.codecs.mocksep.MockSepPostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.FieldsConsumer;
-import org.apache.lucene.index.codecs.FieldsProducer;
-import org.apache.lucene.index.codecs.PostingsConsumer;
-import org.apache.lucene.index.codecs.TermStats;
-import org.apache.lucene.index.codecs.TermsConsumer;
-import org.apache.lucene.index.codecs.lucene3x.Lucene3xCodec;
-import org.apache.lucene.index.codecs.mocksep.MockSepPostingsFormat;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
@@ -166,7 +166,7 @@ public class TestCodecs extends LuceneTestCase {
           totTF += positions[i].length;
           for(int j=0;j<positions[i].length;j++) {
             final PositionData pos = positions[i][j];
-            postingsConsumer.addPosition(pos.pos, pos.payload);
+            postingsConsumer.addPosition(pos.pos, pos.payload, -1, -1);
           }
           postingsConsumer.finishDoc();
         }
@@ -260,7 +260,7 @@ public class TestCodecs extends LuceneTestCase {
     Codec codec = Codec.getDefault();
     final SegmentInfo si = new SegmentInfo(SEGMENT, 10000, dir, false, codec, clonedFieldInfos);
 
-    final FieldsProducer reader = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random), IndexReader.DEFAULT_TERMS_INDEX_DIVISOR));
+    final FieldsProducer reader = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random), DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR));
 
     final FieldsEnum fieldsEnum = reader.iterator();
     assertNotNull(fieldsEnum.next());
@@ -319,7 +319,7 @@ public class TestCodecs extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("TEST: now read postings");
     }
-    final FieldsProducer terms = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random), IndexReader.DEFAULT_TERMS_INDEX_DIVISOR));
+    final FieldsProducer terms = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random), DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR));
 
     final Verify[] threads = new Verify[NUM_TEST_THREADS-1];
     for(int i=0;i<NUM_TEST_THREADS-1;i++) {
@@ -393,7 +393,6 @@ public class TestCodecs extends LuceneTestCase {
       return searcher.search(q, null, n).scoreDocs;
     }
     finally {
-      searcher.close();
       reader.close();
     }
   }
@@ -481,7 +480,7 @@ public class TestCodecs extends LuceneTestCase {
         if (field.omitTF) {
           this.verifyDocs(term.docs, term.positions, _TestUtil.docs(random, termsEnum, null, null, false), false);
         } else {
-          this.verifyDocs(term.docs, term.positions, termsEnum.docsAndPositions(null, null), true);
+          this.verifyDocs(term.docs, term.positions, termsEnum.docsAndPositions(null, null, false), true);
         }
 
         // Test random seek by ord:
@@ -501,7 +500,7 @@ public class TestCodecs extends LuceneTestCase {
           if (field.omitTF) {
             this.verifyDocs(term.docs, term.positions, _TestUtil.docs(random, termsEnum, null, null, false), false);
           } else {
-            this.verifyDocs(term.docs, term.positions, termsEnum.docsAndPositions(null, null), true);
+            this.verifyDocs(term.docs, term.positions, termsEnum.docsAndPositions(null, null, false), true);
           }
         }
 
@@ -553,7 +552,7 @@ public class TestCodecs extends LuceneTestCase {
             final DocsEnum docsAndFreqs;
             final DocsAndPositionsEnum postings;
             if (!field.omitTF) {
-              postings = termsEnum.docsAndPositions(null, null);
+              postings = termsEnum.docsAndPositions(null, null, false);
               if (postings != null) {
                 docs = docsAndFreqs = postings;
               } else {

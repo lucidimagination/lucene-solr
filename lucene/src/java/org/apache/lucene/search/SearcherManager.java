@@ -17,12 +17,13 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import java.io.Closeable;
 import java.io.IOException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.NRTManager; // javadocs
 import org.apache.lucene.search.IndexSearcher; // javadocs
@@ -61,80 +62,62 @@ import org.apache.lucene.store.Directory;
  * {@link NRTManager} since that class pulls near-real-time readers from the
  * IndexWriter.
  * 
+ * @see SearcherFactory
+ * 
  * @lucene.experimental
  */
 
-public final class SearcherManager {
+public final class SearcherManager implements Closeable {
 
   private volatile IndexSearcher currentSearcher;
-  private final ExecutorService es;
-  private final SearcherWarmer warmer;
+  private final SearcherFactory searcherFactory;
   private final Semaphore reopenLock = new Semaphore(1);
   
   /**
    * Creates and returns a new SearcherManager from the given {@link IndexWriter}. 
    * @param writer the IndexWriter to open the IndexReader from.
    * @param applyAllDeletes If <code>true</code>, all buffered deletes will
-   *        be applied (made visible) in the {@link IndexSearcher} / {@link IndexReader}.
+   *        be applied (made visible) in the {@link IndexSearcher} / {@link DirectoryReader}.
    *        If <code>false</code>, the deletes may or may not be applied, but remain buffered 
    *        (in IndexWriter) so that they will be applied in the future.
    *        Applying deletes can be costly, so if your app can tolerate deleted documents
    *        being returned you might gain some performance by passing <code>false</code>.
-   *        See {@link IndexReader#openIfChanged(IndexReader, IndexWriter, boolean)}.
-   * @param warmer An optional {@link SearcherWarmer}. Pass
-   *        <code>null</code> if you don't require the searcher to warmed
-   *        before going live.  If this is  <code>non-null</code> then a
-   *        merged segment warmer is installed on the
-   *        provided IndexWriter's config.
-   * @param es An optional {@link ExecutorService} so different segments can
-   *        be searched concurrently (see {@link
-   *        IndexSearcher#IndexSearcher(IndexReader,ExecutorService)}.  Pass <code>null</code>
-   *        to search segments sequentially.
+   *        See {@link DirectoryReader#openIfChanged(DirectoryReader, IndexWriter, boolean)}.
+   * @param searcherFactory An optional {@link SearcherFactory}. Pass
+   *        <code>null</code> if you don't require the searcher to be warmed
+   *        before going live or other custom behavior.
    *        
    * @throws IOException
    */
-  public SearcherManager(IndexWriter writer, boolean applyAllDeletes,
-      final SearcherWarmer warmer, final ExecutorService es) throws IOException {
-    this.es = es;
-    this.warmer = warmer;
-    currentSearcher = new IndexSearcher(IndexReader.open(writer, applyAllDeletes));
-    if (warmer != null) {
-      writer.getConfig().setMergedSegmentWarmer(
-          new IndexWriter.IndexReaderWarmer() {
-            @Override
-            public void warm(IndexReader reader) throws IOException {
-              warmer.warm(new IndexSearcher(reader, es));
-            }
-          });
+  public SearcherManager(IndexWriter writer, boolean applyAllDeletes, SearcherFactory searcherFactory) throws IOException {
+    if (searcherFactory == null) {
+      searcherFactory = new SearcherFactory();
     }
+    this.searcherFactory = searcherFactory;
+    currentSearcher = searcherFactory.newSearcher(DirectoryReader.open(writer, applyAllDeletes));
   }
 
   /**
    * Creates and returns a new SearcherManager from the given {@link Directory}. 
-   * @param dir the directory to open the IndexReader on.
-   * @param warmer An optional {@link SearcherWarmer}.  Pass
-   *        <code>null</code> if you don't require the searcher to warmed
-   *        before going live.  If this is  <code>non-null</code> then a
-   *        merged segment warmer is installed on the
-   *        provided IndexWriter's config.
-   * @param es And optional {@link ExecutorService} so different segments can
-   *        be searched concurrently (see {@link
-   *        IndexSearcher#IndexSearcher(IndexReader,ExecutorService)}.  Pass <code>null</code>
-   *        to search segments sequentially.
+   * @param dir the directory to open the DirectoryReader on.
+   * @param searcherFactory An optional {@link SearcherFactory}. Pass
+   *        <code>null</code> if you don't require the searcher to be warmed
+   *        before going live or other custom behavior.
    *        
    * @throws IOException
    */
-  public SearcherManager(Directory dir, SearcherWarmer warmer,
-      ExecutorService es) throws IOException {
-    this.es = es;
-    this.warmer = warmer;
-    currentSearcher = new IndexSearcher(IndexReader.open(dir, true), es);
+  public SearcherManager(Directory dir, SearcherFactory searcherFactory) throws IOException {
+    if (searcherFactory == null) {
+      searcherFactory = new SearcherFactory();
+    }
+    this.searcherFactory = searcherFactory;
+    currentSearcher = searcherFactory.newSearcher(DirectoryReader.open(dir));
   }
 
   /**
    * You must call this, periodically, to perform a reopen. This calls
-   * {@link IndexReader#openIfChanged(IndexReader)} with the underlying reader, and if that returns a
-   * new reader, it's warmed (if you provided a {@link SearcherWarmer} and then
+   * {@link DirectoryReader#openIfChanged(DirectoryReader)} with the underlying reader, and if that returns a
+   * new reader, it's warmed (if you provided a {@link SearcherFactory} and then
    * swapped into production.
    * 
    * <p>
@@ -162,17 +145,17 @@ public final class SearcherManager {
         final IndexReader newReader;
         final IndexSearcher searcherToReopen = acquire();
         try {
-          newReader = IndexReader.openIfChanged(searcherToReopen.getIndexReader());
+          final IndexReader r = searcherToReopen.getIndexReader();
+          newReader = (r instanceof DirectoryReader) ?
+            DirectoryReader.openIfChanged((DirectoryReader) r) :
+            null;
         } finally {
           release(searcherToReopen);
         }
         if (newReader != null) {
-          final IndexSearcher newSearcher = new IndexSearcher(newReader, es);
+          final IndexSearcher newSearcher = searcherFactory.newSearcher(newReader);
           boolean success = false;
           try {
-            if (warmer != null) {
-              warmer.warm(newSearcher);
-            }
             swapSearcher(newSearcher);
             success = true;
           } finally {
@@ -193,13 +176,16 @@ public final class SearcherManager {
   /**
    * Returns <code>true</code> if no changes have occured since this searcher
    * ie. reader was opened, otherwise <code>false</code>.
-   * @see IndexReader#isCurrent() 
+   * @see DirectoryReader#isCurrent() 
    */
   public boolean isSearcherCurrent() throws CorruptIndexException,
       IOException {
     final IndexSearcher searcher = acquire();
     try {
-      return searcher.getIndexReader().isCurrent();
+      final IndexReader r = searcher.getIndexReader();
+      return r instanceof DirectoryReader ?
+        ((DirectoryReader ) r).isCurrent() :
+        true;
     } finally {
       release(searcher);
     }
@@ -260,5 +246,4 @@ public final class SearcherManager {
     currentSearcher = newSearcher;
     release(oldSearcher);
   }
- 
 }

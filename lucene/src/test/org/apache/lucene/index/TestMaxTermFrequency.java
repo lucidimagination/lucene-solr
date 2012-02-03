@@ -75,7 +75,7 @@ public class TestMaxTermFrequency extends LuceneTestCase {
   }
   
   public void test() throws Exception {
-    byte fooNorms[] = MultiNorms.norms(reader, "foo");
+    byte fooNorms[] = (byte[])MultiDocValues.getNormDocValues(reader, "foo").getSource().getArray();
     for (int i = 0; i < reader.maxDoc(); i++)
       assertEquals(expected.get(i).intValue(), fooNorms[i] & 0xff);
   }
@@ -117,8 +117,8 @@ public class TestMaxTermFrequency extends LuceneTestCase {
     }
 
     @Override
-    public byte computeNorm(FieldInvertState state) {
-      return encodeNormValue((float) state.getMaxTermFrequency());
+    public void computeNorm(FieldInvertState state, Norm norm) {
+      norm.setByte(encodeNormValue((float) state.getMaxTermFrequency()));
     }
   }
 }

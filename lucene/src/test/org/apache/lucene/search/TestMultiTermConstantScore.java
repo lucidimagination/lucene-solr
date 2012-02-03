@@ -22,8 +22,8 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
@@ -161,7 +161,6 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
           result[i].score, SCORE_COMP_THRESH);
     }
 
-    search.close();
   }
 
   @Test
@@ -247,7 +246,6 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     Assert.assertEquals(0, hits[0].doc);
     Assert.assertEquals(1, hits[1].doc);
     assertTrue(hits[0].score > hits[1].score);
-    search.close();
   }
 
   @Test
@@ -278,8 +276,6 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
       assertEquals("mismatch in docid for hit#" + i, expected[i].doc,
           actual[i].doc);
     }
-
-    search.close();
   }
 
   @Test
@@ -412,8 +408,6 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
     result = search.search(csrq("id", medIP, medIP, T, T, MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT), null, numDocs).scoreDocs;
     assertEquals("med,med,T,T", 1, result.length);
-    
-    search.close();
   }
 
   @Test
@@ -476,7 +470,5 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     assertEquals("max,max,T,T", 1, result.length);
     result = search.search(csrq("rand", maxRP, null, T, F), null, numDocs).scoreDocs;
     assertEquals("max,nul,T,T", 1, result.length);
-
-    search.close();
   }
 }

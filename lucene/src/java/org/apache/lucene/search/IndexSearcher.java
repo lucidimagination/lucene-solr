@@ -17,10 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
@@ -31,19 +31,18 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader.ReaderContext;
+import org.apache.lucene.index.DirectoryReader; // javadocs
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.search.similarities.DefaultSimilarityProvider;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.NIOFSDirectory;    // javadoc
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.TermContext;
 import org.apache.lucene.util.ThreadInterruptedException;
@@ -58,10 +57,11 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * multiple searches instead of creating a new one
  * per-search.  If your index has changed and you wish to
  * see the changes reflected in searching, you should
- * use {@link IndexReader#openIfChanged} to obtain a new reader and
+ * use {@link DirectoryReader#openIfChanged(DirectoryReader)}
+ * to obtain a new reader and
  * then create a new IndexSearcher from that.  Also, for
  * low-latency turnaround it's best to use a near-real-time
- * reader ({@link IndexReader#open(IndexWriter,boolean)}).
+ * reader ({@link DirectoryReader#open(IndexWriter,boolean)}).
  * Once you have a new {@link IndexReader}, it's relatively
  * cheap to create a new IndexSearcher from it.
  * 
@@ -73,12 +73,12 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * synchronize on the <code>IndexSearcher</code> instance;
  * use your own (non-Lucene) objects instead.</p>
  */
-public class IndexSearcher implements Closeable {
+public class IndexSearcher {
   final IndexReader reader; // package private for testing!
   
   // NOTE: these members might change in incompatible ways
   // in the next release
-  protected final ReaderContext readerContext;
+  protected final IndexReaderContext readerContext;
   protected final AtomicReaderContext[] leafContexts;
   // used with executor - each slice holds a set of leafs executed within one thread
   protected final LeafSlice[] leafSlices;
@@ -124,7 +124,7 @@ public class IndexSearcher implements Closeable {
   }
 
   /**
-   * Creates a searcher searching the provided top-level {@link ReaderContext}.
+   * Creates a searcher searching the provided top-level {@link IndexReaderContext}.
    * <p>
    * Given a non-<code>null</code> {@link ExecutorService} this method runs
    * searches for each segment separately, using the provided ExecutorService.
@@ -135,13 +135,13 @@ public class IndexSearcher implements Closeable {
    * silently close file descriptors (see <a
    * href="https://issues.apache.org/jira/browse/LUCENE-2239">LUCENE-2239</a>).
    * 
-   * @see ReaderContext
+   * @see IndexReaderContext
    * @see IndexReader#getTopReaderContext()
    * @lucene.experimental
    */
-  public IndexSearcher(ReaderContext context, ExecutorService executor) {
-    assert context.isTopLevel: "IndexSearcher's ReaderContext must be topLevel for reader" + context.reader;
-    reader = context.reader;
+  public IndexSearcher(IndexReaderContext context, ExecutorService executor) {
+    assert context.isTopLevel: "IndexSearcher's ReaderContext must be topLevel for reader" + context.reader();
+    reader = context.reader();
     this.executor = executor;
     this.readerContext = context;
     leafContexts = ReaderUtil.leaves(context);
@@ -149,13 +149,13 @@ public class IndexSearcher implements Closeable {
   }
 
   /**
-   * Creates a searcher searching the provided top-level {@link ReaderContext}.
+   * Creates a searcher searching the provided top-level {@link IndexReaderContext}.
    *
-   * @see ReaderContext
+   * @see IndexReaderContext
    * @see IndexReader#getTopReaderContext()
    * @lucene.experimental
    */
-  public IndexSearcher(ReaderContext context) {
+  public IndexSearcher(IndexReaderContext context) {
     this(context, null);
   }
   
@@ -178,14 +178,19 @@ public class IndexSearcher implements Closeable {
     return reader;
   }
 
-  /* Sugar for <code>.getIndexReader().document(docID)</code> */
+  /** Sugar for <code>.getIndexReader().document(docID)</code> */
   public Document doc(int docID) throws CorruptIndexException, IOException {
     return reader.document(docID);
   }
 
-  /* Sugar for <code>.getIndexReader().document(docID, fieldVisitor)</code> */
+  /** Sugar for <code>.getIndexReader().document(docID, fieldVisitor)</code> */
   public void doc(int docID, StoredFieldVisitor fieldVisitor) throws CorruptIndexException, IOException {
     reader.document(docID, fieldVisitor);
+  }
+
+  /** Sugar for <code>.getIndexReader().document(docID, fieldsToLoad)</code> */
+  public final Document document(int docID, Set<String> fieldsToLoad) throws CorruptIndexException, IOException {
+    return reader.document(docID, fieldsToLoad);
   }
 
   /** Expert: Set the SimilarityProvider implementation used by this Searcher.
@@ -197,10 +202,6 @@ public class IndexSearcher implements Closeable {
 
   public SimilarityProvider getSimilarityProvider() {
     return similarityProvider;
-  }
-
-  @Override
-  public void close() throws IOException {
   }
   
   /** @lucene.internal */
@@ -403,7 +404,7 @@ public class IndexSearcher implements Closeable {
    * <p>NOTE: this does not compute scores by default.  If you
    * need scores, create a {@link TopFieldCollector}
    * instance by calling {@link TopFieldCollector#create} and
-   * then pass that to {@link #search(IndexReader.AtomicReaderContext[], Weight,
+   * then pass that to {@link #search(AtomicReaderContext[], Weight,
    * Collector)}.</p>
    */
   protected TopFieldDocs search(Weight weight, int nDocs,
@@ -452,7 +453,7 @@ public class IndexSearcher implements Closeable {
    * <p>NOTE: this does not compute scores by default.  If you
    * need scores, create a {@link TopFieldCollector}
    * instance by calling {@link TopFieldCollector#create} and
-   * then pass that to {@link #search(IndexReader.AtomicReaderContext[], Weight, 
+   * then pass that to {@link #search(AtomicReaderContext[], Weight, 
    * Collector)}.</p>
    */
   protected TopFieldDocs search(AtomicReaderContext[] leaves, Weight weight, int nDocs,
@@ -502,7 +503,7 @@ public class IndexSearcher implements Closeable {
     // always use single thread:
     for (int i = 0; i < leaves.length; i++) { // search each subreader
       collector.setNextReader(leaves[i]);
-      Scorer scorer = weight.scorer(leaves[i], !collector.acceptsDocsOutOfOrder(), true, leaves[i].reader.getLiveDocs());
+      Scorer scorer = weight.scorer(leaves[i], !collector.acceptsDocsOutOfOrder(), true, leaves[i].reader().getLiveDocs());
       if (scorer != null) {
         scorer.score(collector);
       }
@@ -590,11 +591,11 @@ public class IndexSearcher implements Closeable {
   }
   
   /**
-   * Returns this searchers the top-level {@link ReaderContext}.
+   * Returns this searchers the top-level {@link IndexReaderContext}.
    * @see IndexReader#getTopReaderContext()
    */
   /* sugar for #getReader().getTopReaderContext() */
-  public ReaderContext getTopReaderContext() {
+  public IndexReaderContext getTopReaderContext() {
     return readerContext;
   }
 
@@ -790,7 +791,10 @@ public class IndexSearcher implements Closeable {
   }
   
   /**
-   * Returns {@link TermStatistics} for a term
+   * Returns {@link TermStatistics} for a term.
+   * 
+   * This can be overridden for example, to return a term's statistics
+   * across a distributed collection.
    * @lucene.experimental
    */
   public TermStatistics termStatistics(Term term, TermContext context) throws IOException {
@@ -798,7 +802,10 @@ public class IndexSearcher implements Closeable {
   };
   
   /**
-   * Returns {@link CollectionStatistics} for a field
+   * Returns {@link CollectionStatistics} for a field.
+   * 
+   * This can be overridden for example, to return a field's statistics
+   * across a distributed collection.
    * @lucene.experimental
    */
   public CollectionStatistics collectionStatistics(String field) throws IOException {

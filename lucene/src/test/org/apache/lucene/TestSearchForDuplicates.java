@@ -28,17 +28,8 @@ import org.apache.lucene.analysis.*;
 import org.apache.lucene.index.*;
 import org.apache.lucene.search.*;
 import org.apache.lucene.util.LuceneTestCase;
-import junit.framework.TestSuite;
-import junit.textui.TestRunner;
 
 public class TestSearchForDuplicates extends LuceneTestCase {
-
-    /** Main for running test case by itself. */
-    public static void main(String args[]) {
-        TestRunner.run (new TestSuite(TestSearchForDuplicates.class));
-    }
-
-
 
   static final String PRIORITY_FIELD ="priority";
   static final String ID_FIELD ="id";
@@ -107,15 +98,12 @@ public class TestSearchForDuplicates extends LuceneTestCase {
         System.out.println("TEST: search query=" + query);
       }
 
-      final Sort sort = new Sort(new SortField[] {
-          SortField.FIELD_SCORE,
-          new SortField(ID_FIELD, SortField.Type.INT)});
+      final Sort sort = new Sort(SortField.FIELD_SCORE,
+                                 new SortField(ID_FIELD, SortField.Type.INT));
 
       ScoreDoc[] hits = searcher.search(query, null, MAX_DOCS, sort).scoreDocs;
       printHits(out, hits, searcher);
       checkHits(hits, MAX_DOCS, searcher);
-
-      searcher.close();
 
       // try a new search with OR
       searcher = new IndexSearcher(reader);
@@ -130,7 +118,6 @@ public class TestSearchForDuplicates extends LuceneTestCase {
       printHits(out, hits, searcher);
       checkHits(hits, MAX_DOCS, searcher);
 
-      searcher.close();
       reader.close();
       directory.close();
   }

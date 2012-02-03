@@ -20,16 +20,17 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.*;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader.ReaderContext;
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.similarities.Similarity.SloppyDocScorer;
+import org.apache.lucene.search.similarities.Similarity.SloppySimScorer;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
@@ -136,13 +137,13 @@ public class MultiPhraseQuery extends Query {
 
   private class MultiPhraseWeight extends Weight {
     private final Similarity similarity;
-    private final Similarity.Stats stats;
+    private final Similarity.SimWeight stats;
     private final Map<Term,TermContext> termContexts = new HashMap<Term,TermContext>();
 
     public MultiPhraseWeight(IndexSearcher searcher)
       throws IOException {
       this.similarity = searcher.getSimilarityProvider().get(field);
-      final ReaderContext context = searcher.getTopReaderContext();
+      final IndexReaderContext context = searcher.getTopReaderContext();
       
       // compute idf
       ArrayList<TermStatistics> allTermStats = new ArrayList<TermStatistics>();
@@ -156,8 +157,9 @@ public class MultiPhraseQuery extends Query {
           allTermStats.add(searcher.termStatistics(term, termContext));
         }
       }
-      stats = similarity.computeStats(searcher.collectionStatistics(field), 
-          getBoost(), allTermStats.toArray(new TermStatistics[allTermStats.size()]));
+      stats = similarity.computeWeight(getBoost(),
+          searcher.collectionStatistics(field), 
+          allTermStats.toArray(new TermStatistics[allTermStats.size()]));
     }
 
     @Override
@@ -177,7 +179,7 @@ public class MultiPhraseQuery extends Query {
     public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
         boolean topScorer, Bits acceptDocs) throws IOException {
       assert !termArrays.isEmpty();
-      final IndexReader reader = context.reader;
+      final AtomicReader reader = context.reader();
       final Bits liveDocs = acceptDocs;
       
       PhraseQuery.PostingsAndFreq[] postingsFreqs = new PhraseQuery.PostingsAndFreq[termArrays.size()];
@@ -225,7 +227,7 @@ public class MultiPhraseQuery extends Query {
             return null;
           }
           termsEnum.seekExact(term.bytes(), termState);
-          postingsEnum = termsEnum.docsAndPositions(liveDocs, null);
+          postingsEnum = termsEnum.docsAndPositions(liveDocs, null, false);
 
           if (postingsEnum == null) {
             // term does exist, but has no positions
@@ -245,25 +247,25 @@ public class MultiPhraseQuery extends Query {
       }
 
       if (slop == 0) {
-        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.exactDocScorer(stats, field, context));
+        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.exactSimScorer(stats, context));
         if (s.noDocs) {
           return null;
         } else {
           return s;
         }
       } else {
-        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.sloppyDocScorer(stats, field, context));
+        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.sloppySimScorer(stats, context));
       }
     }
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, true, false, context.reader.getLiveDocs());
+      Scorer scorer = scorer(context, true, false, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
           float freq = scorer.freq();
-          SloppyDocScorer docScorer = similarity.sloppyDocScorer(stats, field, context);
+          SloppySimScorer docScorer = similarity.sloppySimScorer(stats, context);
           ComplexExplanation result = new ComplexExplanation();
           result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
           Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));
@@ -475,7 +477,7 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
         continue;
       }
       termsEnum.seekExact(term.bytes(), termState);
-      DocsAndPositionsEnum postings = termsEnum.docsAndPositions(liveDocs, null);
+      DocsAndPositionsEnum postings = termsEnum.docsAndPositions(liveDocs, null, false);
       if (postings == null) {
         // term does exist, but has no positions
         throw new IllegalStateException("field \"" + term.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + term.text() + ")");
@@ -525,6 +527,16 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
   @Override
   public int nextPosition() {
     return _posList.next();
+  }
+
+  @Override
+  public int startOffset() {
+    return -1;
+  }
+
+  @Override
+  public int endOffset() {
+    return -1;
   }
 
   @Override

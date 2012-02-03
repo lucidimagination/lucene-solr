@@ -216,7 +216,7 @@ public final class CompoundFileDirectory extends Directory {
     final String id = IndexFileNames.stripSegmentName(name);
     final FileEntry entry = entries.get(id);
     if (entry == null) {
-      throw new IOException("No sub-file with id " + id + " found (fileName=" + name + " files: " + entries.keySet() + ")");
+      throw new FileNotFoundException("No sub-file with id " + id + " found (fileName=" + name + " files: " + entries.keySet() + ")");
     }
     return handle.openSlice(name, entry.offset, entry.length);
   }
@@ -247,14 +247,6 @@ public final class CompoundFileDirectory extends Directory {
       return writer.fileExists(name);
     }
     return entries.containsKey(IndexFileNames.stripSegmentName(name));
-  }
-  
-  
-  /** Returns the time the compound file was last modified. */
-  @Override
-  public long fileModified(String name) throws IOException {
-    ensureOpen();
-    return directory.fileModified(fileName);
   }
   
   /** Not implemented
@@ -310,7 +302,7 @@ public final class CompoundFileDirectory extends Directory {
     final String id = IndexFileNames.stripSegmentName(name);
     final FileEntry entry = entries.get(id);
     if (entry == null) {
-      throw new IOException("No sub-file with id " + id + " found (fileName=" + name + " files: " + entries.keySet() + ")");
+      throw new FileNotFoundException("No sub-file with id " + id + " found (fileName=" + name + " files: " + entries.keySet() + ")");
     }
     return new IndexInputSlicer() {
       @Override

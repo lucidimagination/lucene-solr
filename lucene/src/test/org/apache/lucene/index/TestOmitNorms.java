@@ -66,8 +66,8 @@ public class TestOmitNorms extends LuceneTestCase {
     // flush
     writer.close();
 
-    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
-    FieldInfos fi = reader.fieldInfos();
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram));
+    FieldInfos fi = reader.getFieldInfos();
     assertTrue("OmitNorms field bit should be set.", fi.fieldInfo("f1").omitNorms);
     assertTrue("OmitNorms field bit should be set.", fi.fieldInfo("f2").omitNorms);
         
@@ -120,8 +120,8 @@ public class TestOmitNorms extends LuceneTestCase {
     // flush
     writer.close();
 
-    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
-    FieldInfos fi = reader.fieldInfos();
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram));
+    FieldInfos fi = reader.getFieldInfos();
     assertTrue("OmitNorms field bit should be set.", fi.fieldInfo("f1").omitNorms);
     assertTrue("OmitNorms field bit should be set.", fi.fieldInfo("f2").omitNorms);
         
@@ -168,8 +168,8 @@ public class TestOmitNorms extends LuceneTestCase {
     // flush
     writer.close();
 
-    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
-    FieldInfos fi = reader.fieldInfos();
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram));
+    FieldInfos fi = reader.getFieldInfos();
     assertTrue("OmitNorms field bit should not be set.", !fi.fieldInfo("f1").omitNorms);
     assertTrue("OmitNorms field bit should be set.", fi.fieldInfo("f2").omitNorms);
         
@@ -180,7 +180,8 @@ public class TestOmitNorms extends LuceneTestCase {
   private void assertNoNrm(Directory dir) throws Throwable {
     final String[] files = dir.listAll();
     for (int i = 0; i < files.length; i++) {
-      assertFalse(files[i].endsWith(".nrm"));
+      // TODO: this relies upon filenames
+      assertFalse(files[i].endsWith(".nrm") || files[i].endsWith(".len"));
     }
   }
 
@@ -288,12 +289,15 @@ public class TestOmitNorms extends LuceneTestCase {
     }
 
     IndexReader ir1 = riw.getReader();
-    byte[] norms1 = MultiNorms.norms(ir1, field);
+    // todo: generalize
+    DocValues dv1 = MultiDocValues.getNormDocValues(ir1, field);
+    byte[] norms1 = dv1 == null ? null : (byte[]) dv1.getSource().getArray();
     
     // fully merge and validate MultiNorms against single segment.
     riw.forceMerge(1);
-    IndexReader ir2 = riw.getReader();
-    byte[] norms2 = ir2.getSequentialSubReaders()[0].norms(field);
+    DirectoryReader ir2 = riw.getReader();
+    DocValues dv2 = getOnlySegmentReader(ir2).normValues(field);
+    byte[] norms2 = dv2 == null ? null : (byte[]) dv2.getSource().getArray();
     
     assertArrayEquals(norms1, norms2);
     ir1.close();

@@ -19,9 +19,9 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -119,7 +119,6 @@ public class TestScoreCachingWrappingScorer extends LuceneTestCase {
     for (int i = 0; i < scores.length; i++) {
       assertEquals(scores[i], scc.mscores[i], 0f);
     }
-    searcher.close();
     ir.close();
     directory.close();
   }

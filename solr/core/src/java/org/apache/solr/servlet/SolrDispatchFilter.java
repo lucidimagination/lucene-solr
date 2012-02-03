@@ -62,10 +62,10 @@ public class SolrDispatchFilter implements Filter
 {
   final Logger log = LoggerFactory.getLogger(SolrDispatchFilter.class);
 
-  protected CoreContainer cores;
+  protected volatile CoreContainer cores;
+
   protected String pathPrefix = null; // strip this from the beginning of a path
   protected String abortErrorMessage = null;
-  protected String solrConfigFilename = null;
   protected final Map<SolrConfig, SolrRequestParsers> parsers = new WeakHashMap<SolrConfig, SolrRequestParsers>();
   protected final SolrRequestParsers adminRequestParser;
   
@@ -84,45 +84,25 @@ public class SolrDispatchFilter implements Filter
   {
     log.info("SolrDispatchFilter.init()");
 
-    boolean abortOnConfigurationError = true;
     CoreContainer.Initializer init = createInitializer();
     try {
       // web.xml configuration
       this.pathPrefix = config.getInitParameter( "path-prefix" );
 
       this.cores = init.initialize();
-      abortOnConfigurationError = init.isAbortOnConfigurationError();
       log.info("user.dir=" + System.getProperty("user.dir"));
     }
     catch( Throwable t ) {
       // catch this so our filter still works
-      log.error( "Could not start Solr. Check solr/home property and the logs", t);
-      SolrConfig.severeErrors.add( t );
+      log.error( "Could not start Solr. Check solr/home property and the logs");
       SolrCore.log( t );
     }
 
-    // Optionally abort if we found a sever error
-    if( abortOnConfigurationError && SolrConfig.severeErrors.size() > 0 ) {
-      StringWriter sw = new StringWriter();
-      PrintWriter out = new PrintWriter( sw );
-      out.println( "Severe errors in solr configuration.\n" );
-      out.println( "Check your log files for more detailed information on what may be wrong.\n" );
-      for( Throwable t : SolrConfig.severeErrors ) {
-        out.println( "-------------------------------------------------------------" );
-        t.printStackTrace( out );
-      }
-      out.flush();
-
-      // Servlet containers behave slightly differently if you throw an exception during 
-      // initialization.  Resin will display that error for every page, jetty prints it in
-      // the logs, but continues normally.  (We will see a 404 rather then the real error)
-      // rather then leave the behavior undefined, lets cache the error and spit it out 
-      // for every request.
-      abortErrorMessage = sw.toString();
-      //throw new ServletException( abortErrorMessage );
-    }
-
     log.info("SolrDispatchFilter.init() done");
+  }
+  
+  public CoreContainer getCores() {
+    return cores;
   }
 
   /** Method to override to change how CoreContainer initialization is performed. */
@@ -142,7 +122,13 @@ public class SolrDispatchFilter implements Filter
       ((HttpServletResponse)response).sendError( 500, abortErrorMessage );
       return;
     }
-
+    
+    if (this.cores == null) {
+      ((HttpServletResponse)response).sendError( 403, "Server is shutting down" );
+      return;
+    }
+    CoreContainer cores = this.cores;
+    
     if( request instanceof HttpServletRequest) {
       HttpServletRequest req = (HttpServletRequest)request;
       HttpServletResponse resp = (HttpServletResponse)response;
@@ -360,13 +346,19 @@ public class SolrDispatchFilter implements Filter
       code = ((SolrException)ex).code();
     }
 
+    String msg = null;
+    for (Throwable th = ex; th != null; th = th.getCause()) {
+      msg = th.getMessage();
+      if (msg != null) break;
+    }
+
     // For any regular code, don't include the stack trace
     if( code == 500 || code < 100 ) {
       StringWriter sw = new StringWriter();
       ex.printStackTrace(new PrintWriter(sw));
       trace = "\n\n"+sw.toString();
 
-      SolrException.logOnce(log,null,ex );
+      SolrException.log(log, null, ex);
 
       // non standard codes have undefined results with various servers
       if( code < 100 ) {
@@ -374,7 +366,8 @@ public class SolrDispatchFilter implements Filter
         code = 500;
       }
     }
-    res.sendError( code, ex.getMessage() + trace );
+
+    res.sendError( code, msg + trace );
   }
 
   //---------------------------------------------------------------------

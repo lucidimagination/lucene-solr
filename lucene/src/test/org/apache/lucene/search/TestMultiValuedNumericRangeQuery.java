@@ -52,7 +52,7 @@ public class TestMultiValuedNumericRangeQuery extends LuceneTestCase {
       for (int m=0, c=random.nextInt(10); m<=c; m++) {
         int value = random.nextInt(Integer.MAX_VALUE);
         doc.add(newField("asc", format.format(value), StringField.TYPE_UNSTORED));
-        doc.add(new NumericField("trie").setIntValue(value));
+        doc.add(new NumericField("trie", value));
       }
       writer.addDocument(doc);
     }
@@ -73,7 +73,6 @@ public class TestMultiValuedNumericRangeQuery extends LuceneTestCase {
       TopDocs nrTopDocs = searcher.search(tq, 1);
       assertEquals("Returned count for NumericRangeQuery and TermRangeQuery must be equal", trTopDocs.totalHits, nrTopDocs.totalHits );
     }
-    searcher.close();
     reader.close();
     directory.close();
   }

@@ -20,15 +20,15 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.*;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.ConjunctionTermScorer.DocsAndFreqs;
 import org.apache.lucene.search.TermQuery.TermWeight;
-import org.apache.lucene.search.similarities.Similarity.ExactDocScorer;
+import org.apache.lucene.search.similarities.Similarity.ExactSimScorer;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
@@ -240,7 +240,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       for (Iterator<Weight> wIter = weights.iterator(); wIter.hasNext();) {
         Weight w = wIter.next();
         BooleanClause c = cIter.next();
-        if (w.scorer(context, true, true, context.reader.getLiveDocs()) == null) {
+        if (w.scorer(context, true, true, context.reader().getLiveDocs()) == null) {
           if (c.isRequired()) {
             fail = true;
             Explanation r = new Explanation(0.0f, "no match on required clause (" + c.getQuery().toString() + ")");
@@ -362,7 +362,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
         if (termsEnum == null) {
           return null;
         }
-        final ExactDocScorer docScorer = weight.createDocScorer(context);
+        final ExactSimScorer docScorer = weight.createDocScorer(context);
         final DocsEnum docsAndFreqsEnum = termsEnum.docs(acceptDocs, null, true);
         if (docsAndFreqsEnum == null) {
           // TODO: we could carry over TermState from the
@@ -394,7 +394,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
         if (termsEnum == null) {
           return null;
         }
-        final ExactDocScorer docScorer = weight.createDocScorer(context);
+        final ExactSimScorer docScorer = weight.createDocScorer(context);
         docsAndFreqs[i] = new DocsAndFreqs(null,
                                            termsEnum.docs(acceptDocs, null, false),
                                            termsEnum.docFreq(), docScorer);

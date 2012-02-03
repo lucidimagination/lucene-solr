@@ -39,6 +39,7 @@ import org.apache.solr.schema.*;
 import org.apache.solr.search.*;
 import org.apache.solr.util.BoundedTreeSet;
 import org.apache.solr.util.DateMathParser;
+import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.util.LongPriorityQueue;
 
@@ -208,10 +209,8 @@ public class SimpleFacets {
       facetResponse.add("facet_ranges", getFacetRangeCounts());
 
     } catch (IOException e) {
-      SolrException.logOnce(SolrCore.log, "Exception during facet counts", e);
       throw new SolrException(ErrorCode.SERVER_ERROR, e);
     } catch (ParseException e) {
-      SolrException.logOnce(SolrCore.log, "Exception during facet counts", e);
       throw new SolrException(ErrorCode.BAD_REQUEST, e);
     }
     return facetResponse;
@@ -329,6 +328,7 @@ public class SimpleFacets {
           Integer.MAX_VALUE,
           10, TimeUnit.SECONDS, // terminate idle threads after 10 sec
           new SynchronousQueue<Runnable>()  // directly hand off tasks
+          , new DefaultSolrThreadFactory("facetExectutor")
   );
   
   /**
@@ -408,7 +408,7 @@ public class SimpleFacets {
     FieldType ft = searcher.getSchema().getFieldType(fieldName);
     NamedList<Integer> res = new NamedList<Integer>();
 
-    FieldCache.DocTermsIndex si = FieldCache.DEFAULT.getTermsIndex(searcher.getIndexReader(), fieldName);
+    FieldCache.DocTermsIndex si = FieldCache.DEFAULT.getTermsIndex(searcher.getAtomicReader(), fieldName);
 
     final BytesRef prefixRef;
     if (prefix == null) {
@@ -609,7 +609,7 @@ public class SimpleFacets {
 
 
     IndexSchema schema = searcher.getSchema();
-    IndexReader r = searcher.getIndexReader();
+    AtomicReader r = searcher.getAtomicReader();
     FieldType ft = schema.getFieldType(field);
 
     boolean sortByCount = sort.equals("count") || sort.equals("true");
@@ -627,7 +627,7 @@ public class SimpleFacets {
       startTermBytes = new BytesRef(indexedPrefix);
     }
 
-    Fields fields = MultiFields.getFields(r);
+    Fields fields = r.fields();
     Terms terms = fields==null ? null : fields.terms(field);
     TermsEnum termsEnum = null;
     SolrIndexSearcher.DocsEnumState deState = null;
@@ -673,7 +673,7 @@ public class SimpleFacets {
             if (deState==null) {
               deState = new SolrIndexSearcher.DocsEnumState();
               deState.fieldName = field;
-              deState.liveDocs = MultiFields.getLiveDocs(r);
+              deState.liveDocs = r.getLiveDocs();
               deState.termsEnum = termsEnum;
               deState.docsEnum = docsEnum;
             }

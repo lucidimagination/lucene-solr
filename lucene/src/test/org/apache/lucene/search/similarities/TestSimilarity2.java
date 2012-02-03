@@ -27,7 +27,6 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -91,7 +90,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       is.setSimilarityProvider(simProvider);
       assertEquals(0, is.search(new TermQuery(new Term("foo", "bar")), 10).totalHits);
     }
-    is.close();
     ir.close();
     dir.close();
   }
@@ -114,7 +112,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       query.add(new TermQuery(new Term("bar", "baz")), BooleanClause.Occur.SHOULD);
       assertEquals(1, is.search(query, 10).totalHits);
     }
-    is.close();
     ir.close();
     dir.close();
   }
@@ -137,7 +134,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       query.add(new TermQuery(new Term("foo", "baz")), BooleanClause.Occur.SHOULD);
       assertEquals(1, is.search(query, 10).totalHits);
     }
-    is.close();
     ir.close();
     dir.close();
   }
@@ -162,7 +158,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
       assertEquals(1, is.search(query, 10).totalHits);
     }
-    is.close();
     ir.close();
     dir.close();
   }
@@ -188,7 +183,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
       assertEquals(1, is.search(query, 10).totalHits);
     }
-    is.close();
     ir.close();
     dir.close();
   }
@@ -215,7 +209,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
       assertEquals(1, is.search(query, 10).totalHits);
     }
-    is.close();
     ir.close();
     dir.close();
   }
@@ -247,7 +240,6 @@ public class TestSimilarity2 extends LuceneTestCase {
       assertTrue(score >= 0.0f);
       assertFalse("inf score for " + simProvider, Float.isInfinite(score));
     }
-    is.close();
     ir.close();
     dir.close();
   }

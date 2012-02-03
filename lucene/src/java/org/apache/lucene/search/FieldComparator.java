@@ -20,12 +20,9 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.Comparator;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.values.IndexDocValues.SortedSource;
-import org.apache.lucene.index.values.IndexDocValues.Source;
-import org.apache.lucene.index.values.IndexDocValues;
-import org.apache.lucene.index.values.ValueType;
+import org.apache.lucene.index.AtomicReader; // javadocs
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.search.FieldCache.ByteParser;
 import org.apache.lucene.search.FieldCache.DocTerms;
 import org.apache.lucene.search.FieldCache.DocTermsIndex;
@@ -75,7 +72,7 @@ import org.apache.lucene.util.packed.PackedInts;
  *       priority queue.  The {@link FieldValueHitQueue}
  *       calls this method when a new hit is competitive.
  *
- *  <li> {@link #setNextReader(IndexReader.AtomicReaderContext)} Invoked
+ *  <li> {@link #setNextReader(AtomicReaderContext)} Invoked
  *       when the search is switching to the next segment.
  *       You may need to update internal state of the
  *       comparator, for example retrieving new values from
@@ -206,7 +203,7 @@ public abstract class FieldComparator<T> {
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       if (missingValue != null) {
-        docsWithField = FieldCache.DEFAULT.getDocsWithField(context.reader, field);
+        docsWithField = FieldCache.DEFAULT.getDocsWithField(context.reader(), field);
         // optimization to remove unneeded checks on the bit interface:
         if (docsWithField instanceof Bits.MatchAllBits) {
           docsWithField = null;
@@ -264,7 +261,7 @@ public abstract class FieldComparator<T> {
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       // NOTE: must do this before calling super otherwise
       // we compute the docsWithField Bits twice!
-      currentReaderValues = FieldCache.DEFAULT.getBytes(context.reader, field, parser, missingValue != null);
+      currentReaderValues = FieldCache.DEFAULT.getBytes(context.reader(), field, parser, missingValue != null);
       return super.setNextReader(context);
     }
     
@@ -341,7 +338,7 @@ public abstract class FieldComparator<T> {
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       // NOTE: must do this before calling super otherwise
       // we compute the docsWithField Bits twice!
-      currentReaderValues = FieldCache.DEFAULT.getDoubles(context.reader, field, parser, missingValue != null);
+      currentReaderValues = FieldCache.DEFAULT.getDoubles(context.reader(), field, parser, missingValue != null);
       return super.setNextReader(context);
     }
     
@@ -360,7 +357,7 @@ public abstract class FieldComparator<T> {
   public static final class FloatDocValuesComparator extends FieldComparator<Double> {
     private final double[] values;
     private final String field;
-    private Source currentReaderValues;
+    private DocValues.Source currentReaderValues;
     private double bottom;
 
     FloatDocValuesComparator(int numHits, String field) {
@@ -400,11 +397,11 @@ public abstract class FieldComparator<T> {
 
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
-      final IndexDocValues docValues = context.reader.docValues(field);
+      final DocValues docValues = context.reader().docValues(field);
       if (docValues != null) {
         currentReaderValues = docValues.getSource(); 
       } else {
-        currentReaderValues = IndexDocValues.getDefaultSource(ValueType.FLOAT_64);
+        currentReaderValues = DocValues.getDefaultSource(DocValues.Type.FLOAT_64);
       }
       return this;
     }
@@ -484,7 +481,7 @@ public abstract class FieldComparator<T> {
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       // NOTE: must do this before calling super otherwise
       // we compute the docsWithField Bits twice!
-      currentReaderValues = FieldCache.DEFAULT.getFloats(context.reader, field, parser, missingValue != null);
+      currentReaderValues = FieldCache.DEFAULT.getFloats(context.reader(), field, parser, missingValue != null);
       return super.setNextReader(context);
     }
     
@@ -546,7 +543,7 @@ public abstract class FieldComparator<T> {
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       // NOTE: must do this before calling super otherwise
       // we compute the docsWithField Bits twice!
-      currentReaderValues = FieldCache.DEFAULT.getShorts(context.reader, field, parser, missingValue != null);
+      currentReaderValues = FieldCache.DEFAULT.getShorts(context.reader(), field, parser, missingValue != null);
       return super.setNextReader(context);
     }
 
@@ -630,7 +627,7 @@ public abstract class FieldComparator<T> {
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       // NOTE: must do this before calling super otherwise
       // we compute the docsWithField Bits twice!
-      currentReaderValues = FieldCache.DEFAULT.getInts(context.reader, field, parser, missingValue != null);
+      currentReaderValues = FieldCache.DEFAULT.getInts(context.reader(), field, parser, missingValue != null);
       return super.setNextReader(context);
     }
     
@@ -648,7 +645,7 @@ public abstract class FieldComparator<T> {
   /** Loads int index values and sorts by ascending value. */
   public static final class IntDocValuesComparator extends FieldComparator<Long> {
     private final long[] values;
-    private Source currentReaderValues;
+    private DocValues.Source currentReaderValues;
     private final String field;
     private long bottom;
 
@@ -693,11 +690,11 @@ public abstract class FieldComparator<T> {
 
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
-      IndexDocValues docValues = context.reader.docValues(field);
+      DocValues docValues = context.reader().docValues(field);
       if (docValues != null) {
         currentReaderValues = docValues.getSource();
       } else {
-        currentReaderValues = IndexDocValues.getDefaultSource(ValueType.FIXED_INTS_64);
+        currentReaderValues = DocValues.getDefaultSource(DocValues.Type.FIXED_INTS_64);
       }
       return this;
     }
@@ -778,7 +775,7 @@ public abstract class FieldComparator<T> {
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       // NOTE: must do this before calling super otherwise
       // we compute the docsWithField Bits twice!
-      currentReaderValues = FieldCache.DEFAULT.getLongs(context.reader, field, parser, missingValue != null);
+      currentReaderValues = FieldCache.DEFAULT.getLongs(context.reader(), field, parser, missingValue != null);
       return super.setNextReader(context);
     }
     
@@ -1291,7 +1288,7 @@ public abstract class FieldComparator<T> {
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       final int docBase = context.docBase;
-      termsIndex = FieldCache.DEFAULT.getTermsIndex(context.reader, field);
+      termsIndex = FieldCache.DEFAULT.getTermsIndex(context.reader(), field);
       final PackedInts.Reader docToOrd = termsIndex.getDocToOrd();
       FieldComparator perSegComp = null;
       if (docToOrd.hasArray()) {
@@ -1382,7 +1379,7 @@ public abstract class FieldComparator<T> {
 
     /* Current reader's doc ord/values.
        @lucene.internal */
-    SortedSource termsIndex;
+    DocValues.SortedSource termsIndex;
 
     /* Comparator for comparing by value.
        @lucene.internal */
@@ -1490,10 +1487,10 @@ public abstract class FieldComparator<T> {
     // Used per-segment when bit width of doc->ord is 8:
     private final class ByteOrdComparator extends PerSegmentComparator {
       private final byte[] readerOrds;
-      private final SortedSource termsIndex;
+      private final DocValues.SortedSource termsIndex;
       private final int docBase;
 
-      public ByteOrdComparator(byte[] readerOrds, SortedSource termsIndex, int docBase) {
+      public ByteOrdComparator(byte[] readerOrds, DocValues.SortedSource termsIndex, int docBase) {
         this.readerOrds = readerOrds;
         this.termsIndex = termsIndex;
         this.docBase = docBase;
@@ -1535,10 +1532,10 @@ public abstract class FieldComparator<T> {
     // Used per-segment when bit width of doc->ord is 16:
     private final class ShortOrdComparator extends PerSegmentComparator {
       private final short[] readerOrds;
-      private final SortedSource termsIndex;
+      private final DocValues.SortedSource termsIndex;
       private final int docBase;
 
-      public ShortOrdComparator(short[] readerOrds, SortedSource termsIndex, int docBase) {
+      public ShortOrdComparator(short[] readerOrds, DocValues.SortedSource termsIndex, int docBase) {
         this.readerOrds = readerOrds;
         this.termsIndex = termsIndex;
         this.docBase = docBase;
@@ -1580,10 +1577,10 @@ public abstract class FieldComparator<T> {
     // Used per-segment when bit width of doc->ord is 32:
     private final class IntOrdComparator extends PerSegmentComparator {
       private final int[] readerOrds;
-      private final SortedSource termsIndex;
+      private final DocValues.SortedSource termsIndex;
       private final int docBase;
 
-      public IntOrdComparator(int[] readerOrds, SortedSource termsIndex, int docBase) {
+      public IntOrdComparator(int[] readerOrds, DocValues.SortedSource termsIndex, int docBase) {
         this.readerOrds = readerOrds;
         this.termsIndex = termsIndex;
         this.docBase = docBase;
@@ -1623,11 +1620,11 @@ public abstract class FieldComparator<T> {
 
     // Used per-segment when bit width is not a native array
     // size (8, 16, 32):
-    private final class AnyOrdComparator extends PerSegmentComparator {
+    private final class AnyPackedDocToOrdComparator extends PerSegmentComparator {
       private final PackedInts.Reader readerOrds;
       private final int docBase;
 
-      public AnyOrdComparator(PackedInts.Reader readerOrds, int docBase) {
+      public AnyPackedDocToOrdComparator(PackedInts.Reader readerOrds, int docBase) {
         this.readerOrds = readerOrds;
         this.docBase = docBase;
       }
@@ -1664,47 +1661,94 @@ public abstract class FieldComparator<T> {
       }
     }
 
+    // Used per-segment when DV doesn't use packed ints for
+    // docToOrds:
+    private final class AnyOrdComparator extends PerSegmentComparator {
+      private final int docBase;
+
+      public AnyOrdComparator(int docBase) {
+        this.docBase = docBase;
+      }
+
+      @Override
+      public int compareBottom(int doc) {
+        assert bottomSlot != -1;
+        if (bottomSameReader) {
+          // ord is precisely comparable, even in the equal case
+          return bottomOrd - termsIndex.ord(doc);
+        } else {
+          // ord is only approx comparable: if they are not
+          // equal, we can use that; if they are equal, we
+          // must fallback to compare by value
+          final int order = termsIndex.ord(doc);
+          final int cmp = bottomOrd - order;
+          if (cmp != 0) {
+            return cmp;
+          }
+          termsIndex.getByOrd(order, tempBR);
+          return comp.compare(bottomValue, tempBR);
+        }
+      }
+
+      @Override
+      public void copy(int slot, int doc) {
+        final int ord = termsIndex.ord(doc);
+        ords[slot] = ord;
+        if (values[slot] == null) {
+          values[slot] = new BytesRef();
+        }
+        termsIndex.getByOrd(ord, values[slot]);
+        readerGen[slot] = currentReaderGen;
+      }
+    }
+
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
       final int docBase = context.docBase;
 
-      final IndexDocValues dv = context.reader.docValues(field);
+      final DocValues dv = context.reader().docValues(field);
       if (dv == null) {
         // This may mean entire segment had no docs with
         // this DV field; use default field value (empty
         // byte[]) in this case:
-        termsIndex = IndexDocValues.getDefaultSortedSource(ValueType.BYTES_VAR_SORTED, context.reader.maxDoc());
+        termsIndex = DocValues.getDefaultSortedSource(DocValues.Type.BYTES_VAR_SORTED, context.reader().maxDoc());
       } else {
         termsIndex = dv.getSource().asSortedSource();
         if (termsIndex == null) {
           // This means segment has doc values, but they are
           // not able to provide a sorted source; consider
           // this a hard error:
-          throw new IllegalStateException("DocValues exist for field \"" + field + "\", but not as a sorted source: type=" + dv.getSource().type() + " reader=" + context.reader);
+          throw new IllegalStateException("DocValues exist for field \"" + field + "\", but not as a sorted source: type=" + dv.getSource().type() + " reader=" + context.reader());
         }
       }
 
       comp = termsIndex.getComparator();
 
       FieldComparator perSegComp = null;
-      final PackedInts.Reader docToOrd = termsIndex.getDocToOrd();
-      if (docToOrd.hasArray()) {
-        final Object arr = docToOrd.getArray();
-        assert arr != null;
-        if (arr instanceof byte[]) {
-          // 8 bit packed
-          perSegComp = new ByteOrdComparator((byte[]) arr, termsIndex, docBase);
-        } else if (arr instanceof short[]) {
-          // 16 bit packed
-          perSegComp = new ShortOrdComparator((short[]) arr, termsIndex, docBase);
-        } else if (arr instanceof int[]) {
-          // 32 bit packed
-          perSegComp = new IntOrdComparator((int[]) arr, termsIndex, docBase);
+      if (termsIndex.hasPackedDocToOrd()) {
+        final PackedInts.Reader docToOrd = termsIndex.getDocToOrd();
+        if (docToOrd.hasArray()) {
+          final Object arr = docToOrd.getArray();
+          assert arr != null;
+          if (arr instanceof byte[]) {
+            // 8 bit packed
+            perSegComp = new ByteOrdComparator((byte[]) arr, termsIndex, docBase);
+          } else if (arr instanceof short[]) {
+            // 16 bit packed
+            perSegComp = new ShortOrdComparator((short[]) arr, termsIndex, docBase);
+          } else if (arr instanceof int[]) {
+            // 32 bit packed
+            perSegComp = new IntOrdComparator((int[]) arr, termsIndex, docBase);
+          }
         }
-      }
 
-      if (perSegComp == null) {
-        perSegComp = new AnyOrdComparator(docToOrd, docBase);
+        if (perSegComp == null) {
+          perSegComp = new AnyPackedDocToOrdComparator(docToOrd, docBase);
+        }
+      } else {
+        if (perSegComp == null) {
+          perSegComp = new AnyOrdComparator(docBase);
+        }
       }
         
       currentReaderGen++;
@@ -1809,7 +1853,7 @@ public abstract class FieldComparator<T> {
 
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
-      docTerms = FieldCache.DEFAULT.getTerms(context.reader, field);
+      docTerms = FieldCache.DEFAULT.getTerms(context.reader(), field);
       return this;
     }
     
@@ -1841,11 +1885,11 @@ public abstract class FieldComparator<T> {
    *  comparisons are done using BytesRef.compareTo, which is
    *  slow for medium to large result sets but possibly
    *  very fast for very small results sets.  The BytesRef
-   *  values are obtained using {@link IndexReader#docValues}. */
+   *  values are obtained using {@link AtomicReader#docValues}. */
   public static final class TermValDocValuesComparator extends FieldComparator<BytesRef> {
 
     private BytesRef[] values;
-    private Source docTerms;
+    private DocValues.Source docTerms;
     private final String field;
     private BytesRef bottom;
     private final BytesRef tempBR = new BytesRef();
@@ -1878,11 +1922,11 @@ public abstract class FieldComparator<T> {
 
     @Override
     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
-      final IndexDocValues dv = context.reader.docValues(field);
+      final DocValues dv = context.reader().docValues(field);
       if (dv != null) {
         docTerms = dv.getSource();
       } else {
-        docTerms = IndexDocValues.getDefaultSource(ValueType.BYTES_VAR_DEREF);
+        docTerms = DocValues.getDefaultSource(DocValues.Type.BYTES_VAR_DEREF);
       }
       return this;
     }

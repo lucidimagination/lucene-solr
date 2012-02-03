@@ -26,24 +26,23 @@ import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.lang.reflect.Constructor;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.appending.AppendingCodec;
+import org.apache.lucene.codecs.lucene40.Lucene40Codec;
+import org.apache.lucene.codecs.preflexrw.PreFlexRWCodec;
+import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.PostingsFormat;
-import org.apache.lucene.index.codecs.appending.AppendingCodec;
-import org.apache.lucene.index.codecs.lucene40.Lucene40Codec;
-import org.apache.lucene.index.codecs.preflexrw.PreFlexRWCodec;
-import org.apache.lucene.index.codecs.simpletext.SimpleTextCodec;
+import org.apache.lucene.index.IndexReader.ReaderClosedListener;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.FieldCache.CacheEntry;
@@ -59,6 +58,7 @@ import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.MergeInfo;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
+import org.apache.lucene.store.NRTCachingDirectory;
 import org.apache.lucene.util.FieldCacheSanityChecker.Insanity;
 import org.junit.*;
 import org.junit.rules.MethodRule;
@@ -189,14 +189,11 @@ public abstract class LuceneTestCase extends Assert {
    * Some tests expect the directory to contain a single segment, and want to do tests on that segment's reader.
    * This is an utility method to help them.
    */
-  public static SegmentReader getOnlySegmentReader(IndexReader reader) {
-    if (reader instanceof SegmentReader)
-      return (SegmentReader) reader;
-
+  public static SegmentReader getOnlySegmentReader(DirectoryReader reader) {
     IndexReader[] subReaders = reader.getSequentialSubReaders();
     if (subReaders.length != 1)
       throw new IllegalArgumentException(reader + " has " + subReaders.length + " segments instead of exactly one");
-
+    assertTrue(subReaders[0] instanceof SegmentReader);
     return (SegmentReader) subReaders[0];
   }
 
@@ -283,7 +280,8 @@ public abstract class LuceneTestCase extends Assert {
     int randomVal = random.nextInt(10);
     
     if ("Lucene3x".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal < 2)) { // preflex-only setup
-      codec = new PreFlexRWCodec();
+      codec = Codec.forName("Lucene3x");
+      assert (codec instanceof PreFlexRWCodec) : "fix your classpath to have tests-framework.jar before lucene-core.jar";
       PREFLEX_IMPERSONATION_IS_ACTIVE = true;
     } else if ("SimpleText".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 9)) {
       codec = new SimpleTextCodec();
@@ -544,11 +542,33 @@ public abstract class LuceneTestCase extends Assert {
     savedUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
     Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
       public void uncaughtException(Thread t, Throwable e) {
-        testsFailed = true;
-        uncaughtExceptions.add(new UncaughtExceptionEntry(t, e));
-        if (savedUncaughtExceptionHandler != null)
-          savedUncaughtExceptionHandler.uncaughtException(t, e);
+        // org.junit.internal.AssumptionViolatedException in older releases
+        // org.junit.Assume.AssumptionViolatedException in recent ones
+        if (e.getClass().getName().endsWith("AssumptionViolatedException")) {
+          String where = "<unknown>";
+          for (StackTraceElement elem : e.getStackTrace()) {
+            if ( ! elem.getClassName().startsWith("org.junit")) {
+              where = elem.toString();
+              break;
+            }
+          }
+          if (e.getCause() instanceof _TestIgnoredException)
+            e = e.getCause();
+          System.err.print("NOTE: Assume failed at " + where + " (ignored):");
+          if (VERBOSE) {
+            System.err.println();
+            e.printStackTrace(System.err);
+          } else {
+            System.err.print(" ");
+            System.err.println(e.getMessage());
+          }
+        } else {
+          testsFailed = true;
+          uncaughtExceptions.add(new UncaughtExceptionEntry(t, e));
+          if (savedUncaughtExceptionHandler != null)
+            savedUncaughtExceptionHandler.uncaughtException(t, e);
         }
+      }
     });
 
     savedBoolMaxClauseCount = BooleanQuery.getMaxClauseCount();
@@ -686,7 +706,7 @@ public abstract class LuceneTestCase extends Assert {
     }
   }
 
-  private final static int THREAD_STOP_GRACE_MSEC = 50;
+  private final static int THREAD_STOP_GRACE_MSEC = 10;
   // jvm-wide list of 'rogue threads' we found, so they only get reported once.
   private final static IdentityHashMap<Thread,Boolean> rogueThreads = new IdentityHashMap<Thread,Boolean>();
 
@@ -732,7 +752,8 @@ public abstract class LuceneTestCase extends Assert {
           rogueThreads.put(t, true);
           rogueCount++;
           if (t.getName().startsWith("LuceneTestCase")) {
-            System.err.println("PLEASE CLOSE YOUR INDEXSEARCHERS IN YOUR TEST!!!!");
+            // TODO: should we fail here now? really test should be failing?
+            System.err.println("PLEASE CLOSE YOUR INDEXREADERS IN YOUR TEST!!!!");
             continue;
           } else {
             // wait on the thread to die of natural causes
@@ -897,10 +918,10 @@ public abstract class LuceneTestCase extends Assert {
     if (r.nextBoolean()) {
       if (rarely(r)) {
         // crazy value
-        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 2, 7));
+        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 2, 15));
       } else {
         // reasonable value
-        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 8, 1000));
+        c.setMaxBufferedDocs(_TestUtil.nextInt(r, 16, 1000));
       }
     }
     if (r.nextBoolean()) {
@@ -913,15 +934,23 @@ public abstract class LuceneTestCase extends Assert {
       }
     }
     if (r.nextBoolean()) {
-      c.setIndexerThreadPool(new ThreadAffinityDocumentsWriterThreadPool(_TestUtil.nextInt(r, 1, 20)));
+      int maxNumThreadStates = rarely(r) ? _TestUtil.nextInt(r, 5, 20) // crazy value
+          : _TestUtil.nextInt(r, 1, 4); // reasonable value
+      if (rarely(r)) {
+        // random thread pool
+        c.setIndexerThreadPool(new RandomDocumentsWriterPerThreadPool(maxNumThreadStates, r));
+      } else {
+        // random thread pool
+        c.setIndexerThreadPool(new ThreadAffinityDocumentsWriterThreadPool(maxNumThreadStates));
+      }
     }
 
-    if (r.nextBoolean()) {
-      c.setMergePolicy(newTieredMergePolicy());
-    } else if (r.nextBoolean()) {
-      c.setMergePolicy(newLogMergePolicy());
-    } else {
+    if (rarely(r)) {
       c.setMergePolicy(new MockRandomMergePolicy(r));
+    } else if (r.nextBoolean()) {
+      c.setMergePolicy(newTieredMergePolicy());
+    } else {
+      c.setMergePolicy(newLogMergePolicy());
     }
 
     c.setReaderPooling(r.nextBoolean());
@@ -942,9 +971,9 @@ public abstract class LuceneTestCase extends Assert {
     logmp.setUseCompoundFile(r.nextBoolean());
     logmp.setCalibrateSizeByDeletes(r.nextBoolean());
     if (rarely(r)) {
-      logmp.setMergeFactor(_TestUtil.nextInt(r, 2, 4));
+      logmp.setMergeFactor(_TestUtil.nextInt(r, 2, 9));
     } else {
-      logmp.setMergeFactor(_TestUtil.nextInt(r, 5, 50));
+      logmp.setMergeFactor(_TestUtil.nextInt(r, 10, 50));
     }
     return logmp;
   }
@@ -952,16 +981,24 @@ public abstract class LuceneTestCase extends Assert {
   public static TieredMergePolicy newTieredMergePolicy(Random r) {
     TieredMergePolicy tmp = new TieredMergePolicy();
     if (rarely(r)) {
-      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 2, 4));
-      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 2, 4));
+      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 2, 9));
+      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 2, 9));
     } else {
-      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 5, 50));
-      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 5, 50));
+      tmp.setMaxMergeAtOnce(_TestUtil.nextInt(r, 10, 50));
+      tmp.setMaxMergeAtOnceExplicit(_TestUtil.nextInt(r, 10, 50));
     }
-    tmp.setMaxMergedSegmentMB(0.2 + r.nextDouble() * 2.0);
+    if (rarely(r)) {
+      tmp.setMaxMergedSegmentMB(0.2 + r.nextDouble() * 2.0);
+    } else {
+      tmp.setMaxMergedSegmentMB(r.nextDouble() * 100);
+    }
     tmp.setFloorSegmentMB(0.2 + r.nextDouble() * 2.0);
     tmp.setForceMergeDeletesPctAllowed(0.0 + r.nextDouble() * 30.0);
-    tmp.setSegmentsPerTier(_TestUtil.nextInt(r, 2, 20));
+    if (rarely(r)) {
+      tmp.setSegmentsPerTier(_TestUtil.nextInt(r, 2, 20));
+    } else {
+      tmp.setSegmentsPerTier(_TestUtil.nextInt(r, 10, 50));
+    }
     tmp.setUseCompoundFile(r.nextBoolean());
     tmp.setNoCFSRatio(0.1 + r.nextDouble()*0.8);
     tmp.setReclaimDeletesWeight(r.nextDouble()*4);
@@ -1007,7 +1044,7 @@ public abstract class LuceneTestCase extends Assert {
    */
   public static MockDirectoryWrapper newDirectory(Random r) throws IOException {
     Directory impl = newDirectoryImpl(r, TEST_DIRECTORY);
-    MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
+    MockDirectoryWrapper dir = new MockDirectoryWrapper(r, maybeNRTWrap(r, impl));
     stores.put(dir, Thread.currentThread().getStackTrace());
     dir.setThrottling(TEST_THROTTLING);
     return dir;
@@ -1034,25 +1071,18 @@ public abstract class LuceneTestCase extends Assert {
       fsdirClass = FS_DIRECTORIES[random.nextInt(FS_DIRECTORIES.length)];
     }
 
-    if (fsdirClass.indexOf(".") == -1) {// if not fully qualified, assume .store
-      fsdirClass = "org.apache.lucene.store." + fsdirClass;
-    }
-
     Class<? extends FSDirectory> clazz;
     try {
       try {
-        clazz = Class.forName(fsdirClass).asSubclass(FSDirectory.class);
+        clazz = CommandLineUtil.loadFSDirectoryClass(fsdirClass);
       } catch (ClassCastException e) {
         // TEST_DIRECTORY is not a sub-class of FSDirectory, so draw one at random
         fsdirClass = FS_DIRECTORIES[random.nextInt(FS_DIRECTORIES.length)];
-
-        if (fsdirClass.indexOf(".") == -1) {// if not fully qualified, assume .store
-          fsdirClass = "org.apache.lucene.store." + fsdirClass;
-        }
-
-        clazz = Class.forName(fsdirClass).asSubclass(FSDirectory.class);
+        clazz = CommandLineUtil.loadFSDirectoryClass(fsdirClass);
       }
-      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, newFSDirectoryImpl(clazz, f));
+      
+      Directory fsdir = newFSDirectoryImpl(clazz, f);
+      MockDirectoryWrapper dir = new MockDirectoryWrapper(random, maybeNRTWrap(random, fsdir));
       if (lf != null) {
         dir.setLockFactory(lf);
       }
@@ -1074,10 +1104,18 @@ public abstract class LuceneTestCase extends Assert {
     for (String file : d.listAll()) {
      d.copy(impl, file, file, newIOContext(r));
     }
-    MockDirectoryWrapper dir = new MockDirectoryWrapper(r, impl);
+    MockDirectoryWrapper dir = new MockDirectoryWrapper(r, maybeNRTWrap(r, impl));
     stores.put(dir, Thread.currentThread().getStackTrace());
     dir.setThrottling(TEST_THROTTLING);
     return dir;
+  }
+  
+  private static Directory maybeNRTWrap(Random random, Directory directory) {
+    if (rarely(random)) {
+      return new NRTCachingDirectory(directory, random.nextDouble(), random.nextDouble());
+    } else {
+      return directory;
+    }
   }
   
   public static Field newField(String name, String value, FieldType type) {
@@ -1089,6 +1127,10 @@ public abstract class LuceneTestCase extends Assert {
       // most of the time, don't modify the params
       return new Field(name, value, type);
     }
+
+    // TODO: once all core & test codecs can index
+    // offsets, sometimes randomly turn on offsets if we are
+    // already indexing positions...
 
     FieldType newType = new FieldType(type);
     if (!newType.stored() && random.nextBoolean()) {
@@ -1164,10 +1206,7 @@ public abstract class LuceneTestCase extends Assert {
       throws IOException {
     FSDirectory d = null;
     try {
-      // Assuming every FSDirectory has a ctor(File), but not all may take a
-      // LockFactory too, so setting it afterwards.
-      Constructor<? extends FSDirectory> ctor = clazz.getConstructor(File.class);
-      d = ctor.newInstance(file);
+      d = CommandLineUtil.newFSDirectory(clazz, file);
     } catch (Exception e) {
       d = FSDirectory.open(file);
     }
@@ -1185,12 +1224,12 @@ public abstract class LuceneTestCase extends Assert {
   }
   
   static Directory newDirectoryImpl(Random random, String clazzName) {
-    if (clazzName.equals("random"))
+    if (clazzName.equals("random")) {
       clazzName = randomDirectory(random);
-    if (clazzName.indexOf(".") == -1) // if not fully qualified, assume .store
-      clazzName = "org.apache.lucene.store." + clazzName;
+    }
+    
     try {
-      final Class<? extends Directory> clazz = Class.forName(clazzName).asSubclass(Directory.class);
+      final Class<? extends Directory> clazz = CommandLineUtil.loadDirectoryClass(clazzName);
       // If it is a FSDirectory type, try its ctor(File)
       if (FSDirectory.class.isAssignableFrom(clazz)) {
         final File dir = _TestUtil.getTempDir("index");
@@ -1217,9 +1256,9 @@ public abstract class LuceneTestCase extends Assert {
    * with one that returns null for getSequentialSubReaders.
    */
   public static IndexSearcher newSearcher(IndexReader r, boolean maybeWrap) throws IOException {
-    if (random.nextBoolean()) {
+    if (usually()) {
       if (maybeWrap && rarely()) {
-        r = new SlowMultiReaderWrapper(r);
+        r = SlowCompositeReaderWrapper.wrap(r);
       }
       IndexSearcher ret = random.nextBoolean() ? new AssertingIndexSearcher(random, r) : new AssertingIndexSearcher(random, r.getTopReaderContext());
       ret.setSimilarityProvider(similarityProvider);
@@ -1229,23 +1268,20 @@ public abstract class LuceneTestCase extends Assert {
       final ExecutorService ex = (random.nextBoolean()) ? null
           : Executors.newFixedThreadPool(threads = _TestUtil.nextInt(random, 1, 8),
                       new NamedThreadFactory("LuceneTestCase"));
-      if (ex != null && VERBOSE) {
+      if (ex != null) {
+       if (VERBOSE) {
         System.out.println("NOTE: newSearcher using ExecutorService with " + threads + " threads");
+       }
+       r.addReaderClosedListener(new ReaderClosedListener() {
+         @Override
+         public void onClose(IndexReader reader) {
+           shutdownExecutorService(ex);
+         }
+       });
       }
-      IndexSearcher ret = random.nextBoolean() ? 
-        new AssertingIndexSearcher(random, r, ex) {
-          @Override
-          public void close() throws IOException {
-            super.close();
-            shutdownExecutorService(ex);
-          }
-        } : new AssertingIndexSearcher(random, r.getTopReaderContext(), ex) {
-          @Override
-          public void close() throws IOException {
-            super.close();
-            shutdownExecutorService(ex);
-          }
-        };
+      IndexSearcher ret = random.nextBoolean() 
+          ? new AssertingIndexSearcher(random, r, ex)
+          : new AssertingIndexSearcher(random, r.getTopReaderContext(), ex);
       ret.setSimilarityProvider(similarityProvider);
       return ret;
     }

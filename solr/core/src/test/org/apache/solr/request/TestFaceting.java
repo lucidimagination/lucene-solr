@@ -80,7 +80,7 @@ public class TestFaceting extends SolrTestCaseJ4 {
 
     assertEquals(size, uif.getNumTerms());
 
-    TermsEnum te = uif.getOrdTermsEnum(req.getSearcher().getIndexReader());
+    TermsEnum te = uif.getOrdTermsEnum(req.getSearcher().getAtomicReader());
     assertEquals(size == 0, te == null);
 
     Random r = new Random(size);

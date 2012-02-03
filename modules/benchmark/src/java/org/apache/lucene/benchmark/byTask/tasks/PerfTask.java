@@ -36,7 +36,7 @@ import org.apache.lucene.benchmark.byTask.utils.Config;
  * logging.
  * <li>log.step.[class Task Name] - specifies the same as 'log.step', only for a
  * particular task name. For example, log.step.AddDoc will be applied only for
- * {@link AddDocTask}, but not for {@link DeleteDocTask}. It's a way to control
+ * {@link AddDocTask}. It's a way to control
  * per task logging settings. If you want to omit logging for any other task,
  * include log.step=-1. The syntax is "log.step." together with the Task's
  * 'short' name (i.e., without the 'Task' part).
@@ -199,9 +199,6 @@ public abstract class PerfTask implements Cloneable {
     return new String(c);
   }
   
-  /* (non-Javadoc)
-   * @see java.lang.Object#toString()
-   */
   @Override
   public String toString() {
     String padd = getPadding();
@@ -248,22 +245,23 @@ public abstract class PerfTask implements Cloneable {
   }
 
   /**
-   * Task setup work that should not be measured for that specific task.
-   * By default it does nothing, but tasks can implement this, moving work from 
-   * doLogic() to this method. Only the work done in doLogicis measured for this task.
-   * Notice that higher level (sequence) tasks containing this task would then 
-   * measure larger time than the sum of their contained tasks.
-   * @throws Exception 
+   * Task setup work that should not be measured for that specific task. By
+   * default it does nothing, but tasks can implement this, moving work from
+   * {@link #doLogic()} to this method. Only the work done in {@link #doLogic()}
+   * is measured for this task. Notice that higher level (sequence) tasks
+   * containing this task would then measure larger time than the sum of their
+   * contained tasks.
    */
   public void setup () throws Exception {
   }
-  
+
   /**
-   * Task tearDown work that should not be measured for that specific task.
-   * By default it does nothing, but tasks can implement this, moving work from 
-   * doLogic() to this method. Only the work done in doLogicis measured for this task.
-   * Notice that higher level (sequence) tasks containing this task would then 
-   * measure larger time than the sum of their contained tasks.
+   * Task tearDown work that should not be measured for that specific task. By
+   * default it does nothing, but tasks can implement this, moving work from
+   * {@link #doLogic()} to this method. Only the work done in {@link #doLogic()}
+   * is measured for this task. Notice that higher level (sequence) tasks
+   * containing this task would then measure larger time than the sum of their
+   * contained tasks.
    */
   public void tearDown() throws Exception {
     if (++logStepCount % logStep == 0) {
@@ -274,16 +272,20 @@ public abstract class PerfTask implements Cloneable {
   }
 
   /**
-   * Sub classes that supports parameters must override this method to return true.
+   * Sub classes that support parameters must override this method to return
+   * true.
+   * 
    * @return true iff this task supports command line params.
    */
   public boolean supportsParams () {
     return false;
   }
-  
+
   /**
    * Set the params of this task.
-   * @exception UnsupportedOperationException for tasks supporting command line parameters.
+   * 
+   * @exception UnsupportedOperationException
+   *              for tasks supporting command line parameters.
    */
   public void setParams(String params) {
     if (!supportsParams()) {

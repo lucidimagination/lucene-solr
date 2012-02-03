@@ -37,7 +37,7 @@ public class TestBinaryDocument extends LuceneTestCase {
   {
     FieldType ft = new FieldType();
     ft.setStored(true);
-    IndexableField binaryFldStored = new BinaryField("binaryStored", binaryValStored.getBytes());
+    IndexableField binaryFldStored = new StoredField("binaryStored", binaryValStored.getBytes());
     IndexableField stringFldStored = new Field("stringStored", binaryValStored, ft);
 
     Document doc = new Document();
@@ -71,19 +71,12 @@ public class TestBinaryDocument extends LuceneTestCase {
     
     writer.close();    
     reader.close();
-    
-    reader = IndexReader.open(dir, false);
-    /** delete the document from index */
-    reader.deleteDocument(0);
-    assertEquals(0, reader.numDocs());
-    
-    reader.close();
     dir.close();
   }
   
   public void testCompressionTools() throws Exception {
-    IndexableField binaryFldCompressed = new BinaryField("binaryCompressed", CompressionTools.compress(binaryValCompressed.getBytes()));
-    IndexableField stringFldCompressed = new BinaryField("stringCompressed", CompressionTools.compressString(binaryValCompressed));
+    IndexableField binaryFldCompressed = new StoredField("binaryCompressed", CompressionTools.compress(binaryValCompressed.getBytes()));
+    IndexableField stringFldCompressed = new StoredField("stringCompressed", CompressionTools.compressString(binaryValCompressed));
     
     Document doc = new Document();
     

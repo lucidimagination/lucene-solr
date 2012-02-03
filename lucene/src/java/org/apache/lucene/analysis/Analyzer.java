@@ -52,12 +52,12 @@ public abstract class Analyzer {
    * @param fieldName
    *          the name of the fields content passed to the
    *          {@link TokenStreamComponents} sink as a reader
-   * @param aReader
+   * @param reader
    *          the reader passed to the {@link Tokenizer} constructor
    * @return the {@link TokenStreamComponents} for this analyzer.
    */
   protected abstract TokenStreamComponents createComponents(String fieldName,
-      Reader aReader);
+      Reader reader);
 
   /**
    * Creates a TokenStream that is allowed to be re-use from the previous time
@@ -141,7 +141,6 @@ public abstract class Analyzer {
    * access to the source ({@link Tokenizer}) and the outer end (sink), an
    * instance of {@link TokenFilter} which also serves as the
    * {@link TokenStream} returned by
-   * {@link Analyzer#tokenStream(String, Reader)} and
    * {@link Analyzer#tokenStream(String, Reader)}.
    */
   public static class TokenStreamComponents {

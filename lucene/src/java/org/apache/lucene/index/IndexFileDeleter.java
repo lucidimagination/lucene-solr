@@ -179,7 +179,7 @@ final class IndexFileDeleter {
             }
             sis = null;
           } catch (IOException e) {
-            if (SegmentInfos.generationFromSegmentsFileName(fileName) <= currentGen) {
+            if (SegmentInfos.generationFromSegmentsFileName(fileName) <= currentGen && directory.fileLength(fileName) > 0) {
               throw e;
             } else {
               // Most likely we are opening an index that
@@ -450,8 +450,10 @@ final class IndexFileDeleter {
   public void checkpoint(SegmentInfos segmentInfos, boolean isCommit) throws IOException {
     assert locked();
 
+    assert Thread.holdsLock(writer);
+
     if (infoStream.isEnabled("IFD")) {
-      infoStream.message("IFD", "now checkpoint \"" + segmentInfos.toString(directory) + "\" [" + segmentInfos.size() + " segments " + "; isCommit = " + isCommit + "]");
+      infoStream.message("IFD", "now checkpoint \"" + writer.segString(segmentInfos) + "\" [" + segmentInfos.size() + " segments " + "; isCommit = " + isCommit + "]");
     }
 
     // Try again now to delete any previously un-deletable
@@ -501,8 +503,10 @@ final class IndexFileDeleter {
   void incRef(String fileName) throws IOException {
     assert locked();
     RefCount rc = getRefCount(fileName);
-    if (infoStream.isEnabled("IFD") && VERBOSE_REF_COUNTS) {
-      infoStream.message("IFD", "  IncRef \"" + fileName + "\": pre-incr count is " + rc.count);
+    if (infoStream.isEnabled("IFD")) {
+      if (VERBOSE_REF_COUNTS) {
+        infoStream.message("IFD", "  IncRef \"" + fileName + "\": pre-incr count is " + rc.count);
+      }
     }
     rc.IncRef();
   }
@@ -517,8 +521,10 @@ final class IndexFileDeleter {
   void decRef(String fileName) throws IOException {
     assert locked();
     RefCount rc = getRefCount(fileName);
-    if (infoStream.isEnabled("IFD") && VERBOSE_REF_COUNTS) {
-      infoStream.message("IFD", "  DecRef \"" + fileName + "\": pre-decr count is " + rc.count);
+    if (infoStream.isEnabled("IFD")) {
+      if (VERBOSE_REF_COUNTS) {
+        infoStream.message("IFD", "  DecRef \"" + fileName + "\": pre-decr count is " + rc.count);
+      }
     }
     if (0 == rc.DecRef()) {
       // This file is no longer referenced by any past
@@ -649,7 +655,6 @@ final class IndexFileDeleter {
     boolean deleted;
     Directory directory;
     Collection<CommitPoint> commitsToDelete;
-    long version;
     long generation;
     final Map<String,String> userData;
     private final int segmentCount;
@@ -659,7 +664,6 @@ final class IndexFileDeleter {
       this.commitsToDelete = commitsToDelete;
       userData = segmentInfos.getUserData();
       segmentsFileName = segmentInfos.getCurrentSegmentFileName();
-      version = segmentInfos.getVersion();
       generation = segmentInfos.getGeneration();
       files = Collections.unmodifiableCollection(segmentInfos.files(directory, true));
       segmentCount = segmentInfos.size();
@@ -688,11 +692,6 @@ final class IndexFileDeleter {
     @Override
     public Directory getDirectory() {
       return directory;
-    }
-
-    @Override
-    public long getVersion() {
-      return version;
     }
 
     @Override

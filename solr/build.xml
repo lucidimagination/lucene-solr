@@ -184,9 +184,12 @@
     <delete dir="package" />
     <delete dir="example/solr/lib" />
     <delete includeemptydirs="true">
-      <fileset dir="example" includes="**/data/**/*" excludes="**/.gitignore" />
-      <fileset dir="example/webapps" includes="**/*" excludes="**/.gitignore" />
-      <fileset dir="example/work" includes="**/*" excludes="**/.gitignore" />
+      <fileset dir="example">
+        <include name="**/data/**/*" />
+        <include name="webapps/**/*" />
+        <include name="work/**/*" />
+        <exclude name="**/.gitignore" />
+      </fileset>
     </delete>
     <echo message="TODO: fix tests to not write files to 'core/src/test-files/solr/data'!" />
     <delete dir="core/src/test-files/solr/data" />
@@ -291,7 +294,16 @@
     </ant>
   </target>
   
-  <target name="prepare-release"
+  <target name="dist-war-excl-slf4j"
+          description="Creates a Solr WAR Distribution file, excluding slf4j bindings.">
+    <ant dir="webapp" target="dist" inheritall="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+      <property name="exclude.from.war" value="*over-slf4j*,slf4j-jdk14*" />
+      <property name="solr.war.suffix" value="-excl-slf4j" />
+    </ant>
+  </target>
+
+	<target name="prepare-release"
           depends="clean, package, generate-maven-artifacts, sign-artifacts"/>
  
   <!-- make a distribution -->
@@ -473,7 +485,7 @@
           <packageset dir="contrib/langid/src/java"/>
           <packageset dir="contrib/uima/src/java"/>
           <group title="Core" packages="org.apache.*" />
-          <group title="SolrJ" packages="org.apache.solr.common.*,org.apache.solr.client.solrj*" />
+          <group title="SolrJ" packages="org.apache.solr.common.*,org.apache.solr.client.solrj.*,org.apache.zookeeper.*" />
           <group title="contrib: Clustering" packages="org.apache.solr.handler.clustering*" />
           <group title="contrib: DataImportHandler" packages="org.apache.solr.handler.dataimport*" />
           <group title="contrib: Solr Cell" packages="org.apache.solr.handler.extraction*" />

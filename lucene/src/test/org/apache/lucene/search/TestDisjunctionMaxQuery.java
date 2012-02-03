@@ -22,9 +22,10 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.SlowMultiReaderWrapper;
+import org.apache.lucene.index.Norm;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -66,13 +67,13 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     }
     
     @Override
-    public byte computeNorm(FieldInvertState state) {
+    public void computeNorm(FieldInvertState state, Norm norm) {
       // Disable length norm
-      return encodeNormValue(state.getBoost());
+      norm.setByte(encodeNormValue(state.getBoost()));
     }
     
     @Override
-    public float idf(int docFreq, int numDocs) {
+    public float idf(long docFreq, long numDocs) {
       return 1.0f;
     }
   }
@@ -155,7 +156,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       writer.addDocument(d4);
     }
     
-    r = new SlowMultiReaderWrapper(writer.getReader());
+    r = SlowCompositeReaderWrapper.wrap(writer.getReader());
     writer.close();
     s = newSearcher(r);
     s.setSimilarityProvider(sim);
@@ -163,7 +164,6 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   @Override
   public void tearDown() throws Exception {
-    s.close();
     r.close();
     index.close();
     super.tearDown();
@@ -175,10 +175,10 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     dq.add(tq("dek", "DOES_NOT_EXIST"));
     
     QueryUtils.check(random, dq, s);
-    assertTrue(s.getTopReaderContext().isAtomic);
+    assertTrue(s.getTopReaderContext() instanceof AtomicReaderContext);
     final Weight dw = s.createNormalizedWeight(dq);
     AtomicReaderContext context = (AtomicReaderContext)s.getTopReaderContext();
-    final Scorer ds = dw.scorer(context, true, false, context.reader.getLiveDocs());
+    final Scorer ds = dw.scorer(context, true, false, context.reader().getLiveDocs());
     final boolean skipOk = ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS;
     if (skipOk) {
       fail("firsttime skipTo found a match? ... "
@@ -190,11 +190,11 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     final DisjunctionMaxQuery dq = new DisjunctionMaxQuery(0.0f);
     dq.add(tq("dek", "albino"));
     dq.add(tq("dek", "DOES_NOT_EXIST"));
-    assertTrue(s.getTopReaderContext().isAtomic);
+    assertTrue(s.getTopReaderContext() instanceof AtomicReaderContext);
     QueryUtils.check(random, dq, s);
     final Weight dw = s.createNormalizedWeight(dq);
     AtomicReaderContext context = (AtomicReaderContext)s.getTopReaderContext();
-    final Scorer ds = dw.scorer(context, true, false, context.reader.getLiveDocs());
+    final Scorer ds = dw.scorer(context, true, false, context.reader().getLiveDocs());
     assertTrue("firsttime skipTo found no match",
         ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals("found wrong docid", "d4", r.document(ds.docID()).get("id"));

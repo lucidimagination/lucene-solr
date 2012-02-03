@@ -20,9 +20,9 @@ package org.apache.lucene.index;
 import java.io.PrintStream;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.DocumentsWriterPerThread.IndexingChain;
 import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
-import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.util.InfoStream;
@@ -90,7 +90,7 @@ public final class IndexWriterConfig implements Cloneable {
   public final static boolean DEFAULT_READER_POOLING = false;
 
   /** Default value is 1. Change using {@link #setReaderTermsIndexDivisor(int)}. */
-  public static final int DEFAULT_READER_TERMS_INDEX_DIVISOR = IndexReader.DEFAULT_TERMS_INDEX_DIVISOR;
+  public static final int DEFAULT_READER_TERMS_INDEX_DIVISOR = DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR;
 
   /** Default value is 1945. Change using {@link #setRAMPerThreadHardLimitMB(int)} */
   public static final int DEFAULT_RAM_PER_THREAD_HARD_LIMIT_MB = 1945;

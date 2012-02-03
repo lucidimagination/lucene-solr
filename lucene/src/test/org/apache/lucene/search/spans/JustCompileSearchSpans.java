@@ -21,8 +21,8 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
@@ -139,7 +139,7 @@ final class JustCompileSearchSpans {
   static final class JustCompileSpanScorer extends SpanScorer {
 
     protected JustCompileSpanScorer(Spans spans, Weight weight,
-        Similarity.SloppyDocScorer docScorer) throws IOException {
+        Similarity.SloppySimScorer docScorer) throws IOException {
       super(spans, weight, docScorer);
     }
 

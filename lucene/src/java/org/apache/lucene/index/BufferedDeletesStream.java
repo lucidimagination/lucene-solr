@@ -25,7 +25,6 @@ import java.util.Collections;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Query;
@@ -147,7 +146,7 @@ class BufferedDeletesStream {
   };
   
   /** Resolves the buffered deleted Term/Query/docIDs, into
-   *  actual deleted docIDs in the liveDocs BitVector for
+   *  actual deleted docIDs in the liveDocs MutableBits for
    *  each SegmentReader. */
   public synchronized ApplyDeletesResult applyDeletes(IndexWriter.ReaderPool readerPool, List<SegmentInfo> infos) throws IOException {
     final long t0 = System.currentTimeMillis();
@@ -206,27 +205,30 @@ class BufferedDeletesStream {
 
         delIDX--;
       } else if (packet != null && segGen == packet.delGen()) {
-        assert packet.isSegmentPrivate : "Packet and Segments deletegen can only match on a segment private del packet";
+        assert packet.isSegmentPrivate : "Packet and Segments deletegen can only match on a segment private del packet gen=" + segGen;
         //System.out.println("  eq");
 
         // Lock order: IW -> BD -> RP
         assert readerPool.infoIsLive(info);
-        final SegmentReader reader = readerPool.get(info, false, IOContext.READ);
+        final IndexWriter.ReadersAndLiveDocs rld = readerPool.get(info, true);
+        final SegmentReader reader = rld.getReader(IOContext.READ);
         int delCount = 0;
         final boolean segAllDeletes;
         try {
           if (coalescedDeletes != null) {
             //System.out.println("    del coalesced");
-            delCount += applyTermDeletes(coalescedDeletes.termsIterable(), reader);
-            delCount += applyQueryDeletes(coalescedDeletes.queriesIterable(), reader);
+            delCount += applyTermDeletes(coalescedDeletes.termsIterable(), rld, reader);
+            delCount += applyQueryDeletes(coalescedDeletes.queriesIterable(), rld, reader);
           }
           //System.out.println("    del exact");
           // Don't delete by Term here; DocumentsWriterPerThread
           // already did that on flush:
-          delCount += applyQueryDeletes(packet.queriesIterable(), reader);
-          segAllDeletes = reader.numDocs() == 0;
+          delCount += applyQueryDeletes(packet.queriesIterable(), rld, reader);
+          final int fullDelCount = rld.info.getDelCount() + rld.pendingDeleteCount;
+          assert fullDelCount <= rld.info.docCount;
+          segAllDeletes = fullDelCount == rld.info.docCount;
         } finally {
-          readerPool.release(reader, IOContext.Context.READ);
+          readerPool.release(reader, false);
         }
         anyNewDeletes |= delCount > 0;
 
@@ -238,7 +240,7 @@ class BufferedDeletesStream {
         }
 
         if (infoStream.isEnabled("BD")) {
-          infoStream.message("BD", "seg=" + info + " segGen=" + segGen + " segDeletes=[" + packet + "]; coalesced deletes=[" + (coalescedDeletes == null ? "null" : coalescedDeletes) + "] delCount=" + delCount + (segAllDeletes ? " 100% deleted" : ""));
+          infoStream.message("BD", "seg=" + info + " segGen=" + segGen + " segDeletes=[" + packet + "]; coalesced deletes=[" + (coalescedDeletes == null ? "null" : coalescedDeletes) + "] newDelCount=" + delCount + (segAllDeletes ? " 100% deleted" : ""));
         }
 
         if (coalescedDeletes == null) {
@@ -260,15 +262,18 @@ class BufferedDeletesStream {
         if (coalescedDeletes != null) {
           // Lock order: IW -> BD -> RP
           assert readerPool.infoIsLive(info);
-          SegmentReader reader = readerPool.get(info, false, IOContext.READ);
+          final IndexWriter.ReadersAndLiveDocs rld = readerPool.get(info, true);
+          final SegmentReader reader = rld.getReader(IOContext.READ);
           int delCount = 0;
           final boolean segAllDeletes;
           try {
-            delCount += applyTermDeletes(coalescedDeletes.termsIterable(), reader);
-            delCount += applyQueryDeletes(coalescedDeletes.queriesIterable(), reader);
-            segAllDeletes = reader.numDocs() == 0;
+            delCount += applyTermDeletes(coalescedDeletes.termsIterable(), rld, reader);
+            delCount += applyQueryDeletes(coalescedDeletes.queriesIterable(), rld, reader);
+            final int fullDelCount = rld.info.getDelCount() + rld.pendingDeleteCount;
+            assert fullDelCount <= rld.info.docCount;
+            segAllDeletes = fullDelCount == rld.info.docCount;
           } finally {
-            readerPool.release(reader, IOContext.Context.READ);
+            readerPool.release(reader, false);
           }
           anyNewDeletes |= delCount > 0;
 
@@ -280,7 +285,7 @@ class BufferedDeletesStream {
           }
 
           if (infoStream.isEnabled("BD")) {
-            infoStream.message("BD", "seg=" + info + " segGen=" + segGen + " coalesced deletes=[" + (coalescedDeletes == null ? "null" : coalescedDeletes) + "] delCount=" + delCount + (segAllDeletes ? " 100% deleted" : ""));
+            infoStream.message("BD", "seg=" + info + " segGen=" + segGen + " coalesced deletes=[" + (coalescedDeletes == null ? "null" : coalescedDeletes) + "] newDelCount=" + delCount + (segAllDeletes ? " 100% deleted" : ""));
           }
         }
         info.setBufferedDeletesGen(nextGen);
@@ -348,7 +353,7 @@ class BufferedDeletesStream {
   }
 
   // Delete by Term
-  private synchronized long applyTermDeletes(Iterable<Term> termsIter, SegmentReader reader) throws IOException {
+  private synchronized long applyTermDeletes(Iterable<Term> termsIter, IndexWriter.ReadersAndLiveDocs rld, SegmentReader reader) throws IOException {
     long delCount = 0;
     Fields fields = reader.fields();
     if (fields == null) {
@@ -362,7 +367,9 @@ class BufferedDeletesStream {
     DocsEnum docs = null;
 
     assert checkDeleteTerm(null);
-    
+
+    boolean any = false;
+
     //System.out.println(Thread.currentThread().getName() + " del terms reader=" + reader);
     for (Term term : termsIter) {
       // Since we visit terms sorted, we gain performance
@@ -387,7 +394,7 @@ class BufferedDeletesStream {
       // System.out.println("  term=" + term);
 
       if (termsEnum.seekExact(term.bytes(), false)) {
-        DocsEnum docsEnum = termsEnum.docs(reader.getLiveDocs(), docs, false);
+        DocsEnum docsEnum = termsEnum.docs(rld.liveDocs, docs, false);
         //System.out.println("BDS: got docsEnum=" + docsEnum);
 
         if (docsEnum != null) {
@@ -396,14 +403,19 @@ class BufferedDeletesStream {
             //System.out.println(Thread.currentThread().getName() + " del term=" + term + " doc=" + docID);
             if (docID == DocsEnum.NO_MORE_DOCS) {
               break;
+            }   
+            // NOTE: there is no limit check on the docID
+            // when deleting by Term (unlike by Query)
+            // because on flush we apply all Term deletes to
+            // each segment.  So all Term deleting here is
+            // against prior segments:
+            if (!any) {
+              rld.initWritableLiveDocs();
+              any = true;
             }
-            reader.deleteDocument(docID);
-            // TODO: we could/should change
-            // reader.deleteDocument to return boolean
-            // true if it did in fact delete, because here
-            // we could be deleting an already-deleted doc
-            // which makes this an upper bound:
-            delCount++;
+            if (rld.delete(docID)) {
+              delCount++;
+            }
           }
         }
       }
@@ -422,25 +434,31 @@ class BufferedDeletesStream {
   }
 
   // Delete by query
-  private static long applyQueryDeletes(Iterable<QueryAndLimit> queriesIter, SegmentReader reader) throws IOException {
+  private static long applyQueryDeletes(Iterable<QueryAndLimit> queriesIter, IndexWriter.ReadersAndLiveDocs rld, final SegmentReader reader) throws IOException {
     long delCount = 0;
-    final AtomicReaderContext readerContext = (AtomicReaderContext) reader.getTopReaderContext();
+    final AtomicReaderContext readerContext = reader.getTopReaderContext();
+    boolean any = false;
     for (QueryAndLimit ent : queriesIter) {
       Query query = ent.query;
       int limit = ent.limit;
-      final DocIdSet docs = new QueryWrapperFilter(query).getDocIdSet(readerContext, readerContext.reader.getLiveDocs());
+      final DocIdSet docs = new QueryWrapperFilter(query).getDocIdSet(readerContext, reader.getLiveDocs());
       if (docs != null) {
         final DocIdSetIterator it = docs.iterator();
         if (it != null) {
           while(true)  {
             int doc = it.nextDoc();
-            if (doc >= limit)
+            if (doc >= limit) {
               break;
+            }
 
-            reader.deleteDocument(doc);
-            // as we use getLiveDocs() to filter out already deleted documents,
-            // we only delete live documents, so the counting is right:
-            delCount++;
+            if (!any) {
+              rld.initWritableLiveDocs();
+              any = true;
+            }
+
+            if (rld.delete(doc)) {
+              delCount++;
+            }
           }
         }
       }

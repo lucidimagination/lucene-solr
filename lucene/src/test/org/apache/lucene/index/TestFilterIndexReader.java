@@ -18,16 +18,20 @@ package org.apache.lucene.index;
  */
 
 
-import org.apache.lucene.util.LuceneTestCase;
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.HashSet;
 
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Bits;
-
-import java.io.IOException;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.ReaderUtil;
 
 public class TestFilterIndexReader extends LuceneTestCase {
 
@@ -87,8 +91,8 @@ public class TestFilterIndexReader extends LuceneTestCase {
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse) throws IOException {
-        return new TestPositions(super.docsAndPositions(liveDocs, reuse == null ? null : ((FilterDocsAndPositionsEnum) reuse).in));
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
+        return new TestPositions(super.docsAndPositions(liveDocs, reuse == null ? null : ((FilterDocsAndPositionsEnum) reuse).in, needsOffsets));
       }
     }
 
@@ -110,8 +114,8 @@ public class TestFilterIndexReader extends LuceneTestCase {
       }
     }
     
-    public TestReader(IndexReader reader) {
-      super(new SlowMultiReaderWrapper(reader));
+    public TestReader(IndexReader reader) throws IOException {
+      super(SlowCompositeReaderWrapper.wrap(reader));
     }
 
     @Override
@@ -126,6 +130,7 @@ public class TestFilterIndexReader extends LuceneTestCase {
    */
   public void testFilterIndexReader() throws Exception {
     Directory directory = newDirectory();
+
     IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
 
     Document d1 = new Document();
@@ -143,12 +148,16 @@ public class TestFilterIndexReader extends LuceneTestCase {
     writer.close();
 
     Directory target = newDirectory();
+
+    // We mess with the postings so this can fail:
+    ((MockDirectoryWrapper) target).setCrossCheckTermVectorsOnClose(false);
+
     writer = new IndexWriter(target, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)));
-    IndexReader reader = new TestReader(IndexReader.open(directory, true));
+    IndexReader reader = new TestReader(IndexReader.open(directory));
     writer.addIndexes(reader);
     writer.close();
     reader.close();
-    reader = IndexReader.open(target, true);
+    reader = IndexReader.open(target);
     
     TermsEnum terms = MultiFields.getTerms(reader, "default").iterator(null);
     while (terms.next() != null) {
@@ -158,7 +167,7 @@ public class TestFilterIndexReader extends LuceneTestCase {
     assertEquals(TermsEnum.SeekStatus.FOUND, terms.seekCeil(new BytesRef("one")));
     
     DocsAndPositionsEnum positions = terms.docsAndPositions(MultiFields.getLiveDocs(reader),
-                                                            null);
+                                                            null, false);
     while (positions.nextDoc() != DocsEnum.NO_MORE_DOCS) {
       assertTrue((positions.docID() % 2) == 1);
     }
@@ -167,4 +176,22 @@ public class TestFilterIndexReader extends LuceneTestCase {
     directory.close();
     target.close();
   }
+
+  public void testOverrideMethods() throws Exception {
+    boolean fail = false;
+    for (Method m : FilterIndexReader.class.getMethods()) {
+      int mods = m.getModifiers();
+      if (Modifier.isStatic(mods) || Modifier.isFinal(mods) || m.isSynthetic()) {
+        continue;
+      }
+      Class<?> declaringClass = m.getDeclaringClass();
+      String name = m.getName();
+      if (declaringClass != FilterIndexReader.class && declaringClass != Object.class) {
+        System.err.println("method is not overridden by FilterIndexReader: " + name);
+        fail = true;
+      }
+    }
+    assertFalse("FilterIndexReader overrides (or not) some problematic methods; see log above", fail);
+  }
+
 }

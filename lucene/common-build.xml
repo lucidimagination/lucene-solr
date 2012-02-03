@@ -111,6 +111,7 @@
   <!-- clover wants to run with -lib, otherwise we prefer a repeatable
        classpath -->
   <property name="javac.includeAntRuntime" value="${run.clover}"/>
+  <property name="javac.args" value="-Xlint -Xlint:-deprecation -Xlint:-serial"/>
 
   <property name="javadoc.link" value="http://download.oracle.com/javase/6/docs/api/"/>
   <property name="javadoc.link.junit" value="http://junit.sourceforge.net/javadoc/"/>
@@ -194,7 +195,7 @@
   
   <property name="hg.exe" value="hg" />
   <property name="moman.url" value="https://bitbucket.org/jpbarrette/moman" />
-  <property name="moman.rev" value="115" />
+  <property name="moman.rev" value="120" />
   <property name="python.exe" value="python" />
 
   <property name="gpg.exe" value="gpg" />
@@ -654,14 +655,10 @@
 
   <target name="junit-parallel" unless="tests.sequential">
     <parallel threadsPerProcessor="${tests.threadspercpu}">
-     <test-macro threadNum="1" threadTotal="8"/>
-     <test-macro threadNum="2" threadTotal="8"/>
-     <test-macro threadNum="3" threadTotal="8"/>
-     <test-macro threadNum="4" threadTotal="8"/>
-     <test-macro threadNum="5" threadTotal="8"/>
-     <test-macro threadNum="6" threadTotal="8"/>
-     <test-macro threadNum="7" threadTotal="8"/>
-     <test-macro threadNum="8" threadTotal="8"/>
+     <test-macro threadNum="1" threadTotal="4"/>
+     <test-macro threadNum="2" threadTotal="4"/>
+     <test-macro threadNum="3" threadTotal="4"/>
+     <test-macro threadNum="4" threadTotal="4"/>
     </parallel>
   </target>
 
@@ -823,7 +820,7 @@
         <!-- <compilerarg line="-Xmaxwarns 10000000"/>
         <compilerarg line="-Xmaxerrs 10000000"/> -->
         <!-- for generics in Java 1.5: -->
-	<compilerarg line="-Xlint -Xlint:-deprecation -Xlint:-serial"/>
+	<compilerarg line="${javac.args}"/>
       </javac>
     </sequential>
   </macrodef>

@@ -21,22 +21,21 @@ import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_MASK;
 import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_SIZE;
 
 import java.io.IOException;
-import java.io.PrintStream;
 import java.text.NumberFormat;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.DocumentsWriterDeleteQueue.DeleteSlice;
-import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.search.similarities.SimilarityProvider;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FlushInfo;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.util.BitVector;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.ByteBlockPool.Allocator;
 import org.apache.lucene.util.ByteBlockPool.DirectTrackingAllocator;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.MutableBits;
 
 public class DocumentsWriterPerThread {
 
@@ -79,7 +78,7 @@ public class DocumentsWriterPerThread {
 
       final InvertedDocConsumer  termsHash = new TermsHash(documentsWriterPerThread, freqProxWriter, true,
                                                            new TermsHash(documentsWriterPerThread, termVectorsWriter, false, null));
-      final NormsWriter normsWriter = new NormsWriter();
+      final NormsConsumer normsWriter = new NormsConsumer(documentsWriterPerThread);
       final DocInverter docInverter = new DocInverter(documentsWriterPerThread.docState, termsHash, normsWriter);
       return new DocFieldProcessor(documentsWriterPerThread, docInverter);
     }
@@ -88,14 +87,15 @@ public class DocumentsWriterPerThread {
   static class DocState {
     final DocumentsWriterPerThread docWriter;
     Analyzer analyzer;
-    PrintStream infoStream;
+    InfoStream infoStream;
     SimilarityProvider similarityProvider;
     int docID;
     Iterable<? extends IndexableField> doc;
     String maxTermPrefix;
 
-    DocState(DocumentsWriterPerThread docWriter) {
+    DocState(DocumentsWriterPerThread docWriter, InfoStream infoStream) {
       this.docWriter = docWriter;
+      this.infoStream = infoStream;
     }
 
     // Only called by asserts
@@ -114,13 +114,15 @@ public class DocumentsWriterPerThread {
   static class FlushedSegment {
     final SegmentInfo segmentInfo;
     final BufferedDeletes segmentDeletes;
-    final BitVector liveDocs;
+    final MutableBits liveDocs;
+    final int delCount;
 
     private FlushedSegment(SegmentInfo segmentInfo,
-        BufferedDeletes segmentDeletes, BitVector liveDocs) {
+                           BufferedDeletes segmentDeletes, MutableBits liveDocs, int delCount) {
       this.segmentInfo = segmentInfo;
       this.segmentDeletes = segmentDeletes;
       this.liveDocs = liveDocs;
+      this.delCount = delCount;
     }
   }
 
@@ -131,7 +133,9 @@ public class DocumentsWriterPerThread {
   void abort() throws IOException {
     hasAborted = aborting = true;
     try {
-      infoStream.message("DWPT", "now abort");
+      if (infoStream.isEnabled("DWPT")) {
+        infoStream.message("DWPT", "now abort");
+      }
       try {
         consumer.abort();
       } catch (Throwable t) {
@@ -144,7 +148,9 @@ public class DocumentsWriterPerThread {
 
     } finally {
       aborting = false;
-      infoStream.message("DWPT", "done abort");
+      if (infoStream.isEnabled("DWPT")) {
+        infoStream.message("DWPT", "done abort");
+      }
     }
   }
   private final static boolean INFO_VERBOSE = false;
@@ -181,7 +187,7 @@ public class DocumentsWriterPerThread {
     this.writer = parent.indexWriter;
     this.infoStream = parent.infoStream;
     this.codec = parent.codec;
-    this.docState = new DocState(this);
+    this.docState = new DocState(this, infoStream);
     this.docState.similarityProvider = parent.indexWriter.getConfig()
         .getSimilarityProvider();
     bytesUsed = Counter.newCounter();
@@ -244,7 +250,6 @@ public class DocumentsWriterPerThread {
           // mark document as deleted
           deleteDocID(docState.docID);
           numDocsInRAM++;
-          fieldInfos.revertUncommitted();
         } else {
           abort();
         }
@@ -308,7 +313,6 @@ public class DocumentsWriterPerThread {
               // Incr here because finishDocument will not
               // be called (because an exc is being thrown):
               numDocsInRAM++;
-              fieldInfos.revertUncommitted();
             } else {
               abort();
             }
@@ -446,11 +450,11 @@ public class DocumentsWriterPerThread {
     // happens when an exception is hit processing that
     // doc, eg if analyzer has some problem w/ the text):
     if (pendingDeletes.docIDs.size() > 0) {
-      flushState.liveDocs = new BitVector(numDocsInRAM);
-      flushState.liveDocs.invertAll();
+      flushState.liveDocs = codec.liveDocsFormat().newLiveDocs(numDocsInRAM);
       for(int delDocID : pendingDeletes.docIDs) {
         flushState.liveDocs.clear(delDocID);
       }
+      flushState.delCountOnFlush = pendingDeletes.docIDs.size();
       pendingDeletes.bytesUsed.addAndGet(-pendingDeletes.docIDs.size() * BufferedDeletes.BYTES_PER_DEL_DOCID);
       pendingDeletes.docIDs.clear();
     }
@@ -473,7 +477,7 @@ public class DocumentsWriterPerThread {
       pendingDeletes.terms.clear();
       final SegmentInfo newSegment = new SegmentInfo(segment, flushState.numDocs, directory, false, flushState.codec, fieldInfos.asReadOnly());
       if (infoStream.isEnabled("DWPT")) {
-        infoStream.message("DWPT", "new segment has " + (flushState.liveDocs == null ? 0 : (flushState.numDocs - flushState.liveDocs.count())) + " deleted docs");
+        infoStream.message("DWPT", "new segment has " + (flushState.liveDocs == null ? 0 : (flushState.numDocs - flushState.delCountOnFlush)) + " deleted docs");
         infoStream.message("DWPT", "new segment has " + (newSegment.getHasVectors() ? "vectors" : "no vectors"));
         infoStream.message("DWPT", "flushedFiles=" + newSegment.files());
         infoStream.message("DWPT", "flushed codec=" + newSegment.getCodec());
@@ -490,19 +494,16 @@ public class DocumentsWriterPerThread {
       }
 
       if (infoStream.isEnabled("DWPT")) {
-        final double newSegmentSizeNoStore = newSegment.sizeInBytes(false)/1024./1024.;
-        final double newSegmentSize = newSegment.sizeInBytes(true)/1024./1024.;
+        final double newSegmentSize = newSegment.sizeInBytes()/1024./1024.;
         infoStream.message("DWPT", "flushed: segment=" + newSegment + 
                 " ramUsed=" + nf.format(startMBUsed) + " MB" +
-                " newFlushedSize=" + nf.format(newSegmentSize) + " MB" +
-                " (" + nf.format(newSegmentSizeNoStore) + " MB w/o doc stores)" +
-                " docs/MB=" + nf.format(flushedDocCount / newSegmentSize) +
-                " new/old=" + nf.format(100.0 * newSegmentSizeNoStore / startMBUsed) + "%");
+                " newFlushedSize(includes docstores)=" + nf.format(newSegmentSize) + " MB" +
+                " docs/MB=" + nf.format(flushedDocCount / newSegmentSize));
       }
       doAfterFlush();
       success = true;
 
-      return new FlushedSegment(newSegment, segmentDeletes, flushState.liveDocs);
+      return new FlushedSegment(newSegment, segmentDeletes, flushState.liveDocs, flushState.delCountOnFlush);
     } finally {
       if (!success) {
         if (segment != null) {

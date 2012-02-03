@@ -19,8 +19,8 @@ package org.apache.solr.schema;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.VectorValueSource;
 import org.apache.lucene.search.*;
@@ -373,7 +373,7 @@ class SpatialDistanceQuery extends Query {
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      return ((SpatialScorer)scorer(context, true, true, context.reader.getLiveDocs())).explain(doc);
+      return ((SpatialScorer)scorer(context, true, true, context.reader().getLiveDocs())).explain(doc);
     }
   }
 
@@ -383,8 +383,8 @@ class SpatialDistanceQuery extends Query {
     final int maxDoc;
     final float qWeight;
     int doc=-1;
-    final DocValues latVals;
-    final DocValues lonVals;
+    final FunctionValues latVals;
+    final FunctionValues lonVals;
     final Bits liveDocs;
 
 
@@ -405,7 +405,7 @@ class SpatialDistanceQuery extends Query {
       super(w);
       this.weight = w;
       this.qWeight = qWeight;
-      this.reader = readerContext.reader;
+      this.reader = readerContext.reader();
       this.maxDoc = reader.maxDoc();
       this.liveDocs = acceptDocs;
       latVals = latSource.getValues(weight.latContext, readerContext);

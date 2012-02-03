@@ -19,12 +19,16 @@ package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.*;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.CompositeReaderContext;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.SlowMultiReaderWrapper;
+import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.values.ValueType;
+import org.apache.lucene.index.DocValues.Type;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.BytesRefFieldSource;
 import org.apache.lucene.search.*;
@@ -171,9 +175,7 @@ public class TestGrouping extends LuceneTestCase {
   private void addGroupField(Document doc, String groupField, String value, boolean canUseIDV) {
     doc.add(new Field(groupField, value, TextField.TYPE_STORED));
     if (canUseIDV) {
-      IndexDocValuesField valuesField = new IndexDocValuesField(groupField);
-      valuesField.setBytes(new BytesRef(value), ValueType.BYTES_VAR_SORTED);
-      doc.add(valuesField);
+      doc.add(new DocValuesField(groupField, new BytesRef(value), Type.BYTES_VAR_SORTED));
     }
   }
 
@@ -181,7 +183,7 @@ public class TestGrouping extends LuceneTestCase {
     AbstractFirstPassGroupingCollector selected;
     if (canUseIDV && random.nextBoolean()) {
       boolean diskResident = random.nextBoolean();
-      selected = DVFirstPassGroupingCollector.create(groupSort, topDocs, groupField, ValueType.BYTES_VAR_SORTED, diskResident);
+      selected = DVFirstPassGroupingCollector.create(groupSort, topDocs, groupField, Type.BYTES_VAR_SORTED, diskResident);
     } else if (random.nextBoolean()) {
       ValueSource vs = new BytesRefFieldSource(groupField);
       selected = new FunctionFirstPassGroupingCollector(vs, new HashMap(), groupSort, topDocs);
@@ -197,7 +199,7 @@ public class TestGrouping extends LuceneTestCase {
   private AbstractFirstPassGroupingCollector createFirstPassCollector(String groupField, Sort groupSort, int topDocs, AbstractFirstPassGroupingCollector firstPassGroupingCollector) throws IOException {
     if (DVFirstPassGroupingCollector.class.isAssignableFrom(firstPassGroupingCollector.getClass())) {
       boolean diskResident = random.nextBoolean();
-      return DVFirstPassGroupingCollector.create(groupSort, topDocs, groupField, ValueType.BYTES_VAR_SORTED, diskResident);
+      return DVFirstPassGroupingCollector.create(groupSort, topDocs, groupField, Type.BYTES_VAR_SORTED, diskResident);
     } else if (TermFirstPassGroupingCollector.class.isAssignableFrom(firstPassGroupingCollector.getClass())) {
       ValueSource vs = new BytesRefFieldSource(groupField);
       return new FunctionFirstPassGroupingCollector(vs, new HashMap(), groupSort, topDocs);
@@ -220,7 +222,7 @@ public class TestGrouping extends LuceneTestCase {
     if (DVFirstPassGroupingCollector.class.isAssignableFrom(firstPassGroupingCollector.getClass())) {
       boolean diskResident = random.nextBoolean();
       Collection<SearchGroup> searchGroups = firstPassGroupingCollector.getTopGroups(groupOffset, fillSortFields);
-      return DVSecondPassGroupingCollector.create(groupField, diskResident, ValueType.BYTES_VAR_SORTED, searchGroups, groupSort, sortWithinGroup, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
+      return DVSecondPassGroupingCollector.create(groupField, diskResident, Type.BYTES_VAR_SORTED, searchGroups, groupSort, sortWithinGroup, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
     } else if (TermFirstPassGroupingCollector.class.isAssignableFrom(firstPassGroupingCollector.getClass())) {
       Collection<SearchGroup<BytesRef>> searchGroups = firstPassGroupingCollector.getTopGroups(groupOffset, fillSortFields);
       return new TermSecondPassGroupingCollector(groupField, searchGroups, groupSort, sortWithinGroup, maxDocsPerGroup , getScores, getMaxScores, fillSortFields);
@@ -244,7 +246,7 @@ public class TestGrouping extends LuceneTestCase {
                                                                         boolean fillSortFields) throws IOException {
     if (DVFirstPassGroupingCollector.class.isAssignableFrom(firstPassGroupingCollector.getClass())) {
       boolean diskResident = random.nextBoolean();
-      return DVSecondPassGroupingCollector.create(groupField, diskResident, ValueType.BYTES_VAR_SORTED, (Collection) searchGroups, groupSort, sortWithinGroup, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
+      return DVSecondPassGroupingCollector.create(groupField, diskResident, Type.BYTES_VAR_SORTED, (Collection) searchGroups, groupSort, sortWithinGroup, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
     } else if (firstPassGroupingCollector.getClass().isAssignableFrom(TermFirstPassGroupingCollector.class)) {
       return new TermSecondPassGroupingCollector(groupField, searchGroups, groupSort, sortWithinGroup, maxDocsPerGroup , getScores, getMaxScores, fillSortFields);
     } else {
@@ -274,7 +276,7 @@ public class TestGrouping extends LuceneTestCase {
       return new TermAllGroupsCollector(groupField);
     } else if (firstPassGroupingCollector.getClass().isAssignableFrom(DVFirstPassGroupingCollector.class)) {
       boolean diskResident = random.nextBoolean();
-      return DVAllGroupsCollector.create(groupField, ValueType.BYTES_VAR_SORTED, diskResident);
+      return DVAllGroupsCollector.create(groupField, Type.BYTES_VAR_SORTED, diskResident);
     } else {
       ValueSource vs = new BytesRefFieldSource(groupField);
       return new FunctionAllGroupsCollector(vs, new HashMap());
@@ -555,7 +557,7 @@ public class TestGrouping extends LuceneTestCase {
     }
   }
 
-  private IndexReader getDocBlockReader(Directory dir, GroupDoc[] groupDocs) throws IOException {
+  private DirectoryReader getDocBlockReader(Directory dir, GroupDoc[] groupDocs) throws IOException {
     // Coalesce by group, but in random order:
     Collections.shuffle(Arrays.asList(groupDocs), random);
     final Map<BytesRef,List<GroupDoc>> groupMap = new HashMap<BytesRef,List<GroupDoc>>();
@@ -593,7 +595,7 @@ public class TestGrouping extends LuceneTestCase {
         }
         doc.add(newField("sort1", groupValue.sort1.utf8ToString(), StringField.TYPE_UNSTORED));
         doc.add(newField("sort2", groupValue.sort2.utf8ToString(), StringField.TYPE_UNSTORED));
-        doc.add(new NumericField("id").setIntValue(groupValue.id));
+        doc.add(new NumericField("id", groupValue.id));
         doc.add(newField("content", groupValue.content, TextField.TYPE_UNSTORED));
         //System.out.println("TEST:     doc content=" + groupValue.content + " group=" + (groupValue.group == null ? "null" : groupValue.group.utf8ToString()) + " sort1=" + groupValue.sort1.utf8ToString() + " id=" + groupValue.id);
       }
@@ -612,7 +614,7 @@ public class TestGrouping extends LuceneTestCase {
       w.updateDocuments(new Term("group", docs.get(0).get("group")), docs);
     }
 
-    final IndexReader r = w.getReader();
+    final DirectoryReader r = w.getReader();
     w.close();
 
     return r;
@@ -624,19 +626,17 @@ public class TestGrouping extends LuceneTestCase {
     public final int[] docStarts;
 
     public ShardState(IndexSearcher s) {
-      IndexReader[] subReaders = s.getIndexReader().getSequentialSubReaders();
-      if (subReaders == null) {
-        subReaders = new IndexReader[] {s.getIndexReader()};
-      }
-      subSearchers = new ShardSearcher[subReaders.length];
-      final IndexReader.ReaderContext ctx = s.getTopReaderContext();
-      if (ctx instanceof IndexReader.AtomicReaderContext) {
+      List<AtomicReader> subReaders = new ArrayList<AtomicReader>();
+      ReaderUtil.gatherSubReaders(subReaders, s.getIndexReader());
+      subSearchers = new ShardSearcher[subReaders.size()];
+      final IndexReaderContext ctx = s.getTopReaderContext();
+      if (ctx instanceof AtomicReaderContext) {
         assert subSearchers.length == 1;
-        subSearchers[0] = new ShardSearcher((IndexReader.AtomicReaderContext) ctx, ctx);
+        subSearchers[0] = new ShardSearcher((AtomicReaderContext) ctx, ctx);
       } else {
-        final IndexReader.CompositeReaderContext compCTX = (IndexReader.CompositeReaderContext) ctx;
+        final CompositeReaderContext compCTX = (CompositeReaderContext) ctx;
         for(int searcherIDX=0;searcherIDX<subSearchers.length;searcherIDX++) {
-          subSearchers[searcherIDX] = new ShardSearcher(compCTX.leaves[searcherIDX], compCTX);
+          subSearchers[searcherIDX] = new ShardSearcher(compCTX.leaves()[searcherIDX], compCTX);
         }
       }
 
@@ -644,7 +644,7 @@ public class TestGrouping extends LuceneTestCase {
       int docBase = 0;
       for(int subIDX=0;subIDX<docStarts.length;subIDX++) {
         docStarts[subIDX] = docBase;
-        docBase += subReaders[subIDX].maxDoc();
+        docBase += subReaders.get(subIDX).maxDoc();
         //System.out.println("docStarts[" + subIDX + "]=" + docStarts[subIDX]);
       }
     }
@@ -705,7 +705,7 @@ public class TestGrouping extends LuceneTestCase {
 
       Document doc = new Document();
       Document docNoGroup = new Document();
-      IndexDocValuesField idvGroupField = new IndexDocValuesField("group");
+      DocValuesField idvGroupField = new DocValuesField("group", new BytesRef(), Type.BYTES_VAR_SORTED);
       if (canUseIDV) {
         doc.add(idvGroupField);
       }
@@ -721,7 +721,7 @@ public class TestGrouping extends LuceneTestCase {
       Field content = newField("content", "", TextField.TYPE_UNSTORED);
       doc.add(content);
       docNoGroup.add(content);
-      NumericField id = new NumericField("id");
+      NumericField id = new NumericField("id", 0);
       doc.add(id);
       docNoGroup.add(id);
       final GroupDoc[] groupDocs = new GroupDoc[numDocs];
@@ -747,13 +747,13 @@ public class TestGrouping extends LuceneTestCase {
         if (groupDoc.group != null) {
           group.setValue(groupDoc.group.utf8ToString());
           if (canUseIDV) {
-            idvGroupField.setBytes(BytesRef.deepCopyOf(groupDoc.group), ValueType.BYTES_VAR_SORTED);
+            idvGroupField.setValue(BytesRef.deepCopyOf(groupDoc.group));
           }
         }
         sort1.setValue(groupDoc.sort1.utf8ToString());
         sort2.setValue(groupDoc.sort2.utf8ToString());
         content.setValue(groupDoc.content);
-        id.setIntValue(groupDoc.id);
+        id.setValue(groupDoc.id);
         if (groupDoc.group == null) {
           w.addDocument(docNoGroup);
         } else {
@@ -764,17 +764,17 @@ public class TestGrouping extends LuceneTestCase {
       final GroupDoc[] groupDocsByID = new GroupDoc[groupDocs.length];
       System.arraycopy(groupDocs, 0, groupDocsByID, 0, groupDocs.length);
 
-      final IndexReader r = w.getReader();
+      final DirectoryReader r = w.getReader();
       w.close();
 
       // NOTE: intentional but temporary field cache insanity!
-      final int[] docIDToID = FieldCache.DEFAULT.getInts(r, "id", false);
-      IndexReader rBlocks = null;
+      final int[] docIDToID = FieldCache.DEFAULT.getInts(new SlowCompositeReaderWrapper(r), "id", false);
+      DirectoryReader rBlocks = null;
       Directory dirBlocks = null;
 
       try {
         final IndexSearcher s = newSearcher(r);
-        if (SlowMultiReaderWrapper.class.isAssignableFrom(s.getIndexReader().getClass())) {
+        if (SlowCompositeReaderWrapper.class.isAssignableFrom(s.getIndexReader().getClass())) {
           canUseIDV = false;
         } else {
           canUseIDV = !preFlex;
@@ -801,7 +801,7 @@ public class TestGrouping extends LuceneTestCase {
         dirBlocks = newDirectory();
         rBlocks = getDocBlockReader(dirBlocks, groupDocs);
         final Filter lastDocInBlock = new CachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("groupend", "x"))));
-        final int[] docIDToIDBlocks = FieldCache.DEFAULT.getInts(rBlocks, "id", false);
+        final int[] docIDToIDBlocks = FieldCache.DEFAULT.getInts(new SlowCompositeReaderWrapper(rBlocks), "id", false);
 
         final IndexSearcher sBlocks = newSearcher(rBlocks);
         final ShardState shardsBlocks = new ShardState(sBlocks);
@@ -1139,12 +1139,10 @@ public class TestGrouping extends LuceneTestCase {
           assertEquals(docIDToIDBlocks, expectedGroups, groupsResultBlocks, false, true, true, getScores, false);
           assertEquals(docIDToIDBlocks, expectedGroups, topGroupsBlockShards, false, false, fillFields, getScores, false);
         }
-        s.close();
-        sBlocks.close();
       } finally {
-        FieldCache.DEFAULT.purge(r);
+        QueryUtils.purgeFieldCache(r);
         if (rBlocks != null) {
-          FieldCache.DEFAULT.purge(rBlocks);
+          QueryUtils.purgeFieldCache(rBlocks);
         }
       }
 
@@ -1181,7 +1179,7 @@ public class TestGrouping extends LuceneTestCase {
     List<AbstractFirstPassGroupingCollector> firstPassGroupingCollectors = new ArrayList<AbstractFirstPassGroupingCollector>();
     AbstractFirstPassGroupingCollector firstPassCollector = null;
     for(int shardIDX=0;shardIDX<subSearchers.length;shardIDX++) {
-      if (SlowMultiReaderWrapper.class.isAssignableFrom(subSearchers[shardIDX].getIndexReader().getClass())) {
+      if (SlowCompositeReaderWrapper.class.isAssignableFrom(subSearchers[shardIDX].getIndexReader().getClass())) {
         canUseIDV = false;
       } else {
         canUseIDV = !preFlex;
@@ -1315,11 +1313,11 @@ public class TestGrouping extends LuceneTestCase {
   }
 
   private static class ShardSearcher extends IndexSearcher {
-    private final IndexReader.AtomicReaderContext[] ctx;
+    private final AtomicReaderContext[] ctx;
 
-    public ShardSearcher(IndexReader.AtomicReaderContext ctx, IndexReader.ReaderContext parent) {
+    public ShardSearcher(AtomicReaderContext ctx, IndexReaderContext parent) {
       super(parent);
-      this.ctx = new IndexReader.AtomicReaderContext[] {ctx};
+      this.ctx = new AtomicReaderContext[] {ctx};
     }
 
     public void search(Weight weight, Collector collector) throws IOException {
@@ -1332,7 +1330,7 @@ public class TestGrouping extends LuceneTestCase {
 
     @Override
     public String toString() {
-      return "ShardSearcher(" + ctx[0].reader + ")";
+      return "ShardSearcher(" + ctx[0].reader() + ")";
     }
   }
 

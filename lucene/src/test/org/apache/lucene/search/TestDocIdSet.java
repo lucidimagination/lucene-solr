@@ -26,8 +26,8 @@ import junit.framework.Assert;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
@@ -121,7 +121,6 @@ public class TestDocIdSet extends LuceneTestCase {
     };
     
     Assert.assertEquals(0, searcher.search(new MatchAllDocsQuery(), f, 10).totalHits);
-    searcher.close();
     reader.close();
     dir.close();
   }

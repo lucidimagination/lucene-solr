@@ -24,6 +24,7 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.NumericField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.IndexSearcher;
@@ -68,15 +69,13 @@ public class TestParser extends LuceneTestCase {
       Document doc = new Document();
       doc.add(newField("date", date, TextField.TYPE_STORED));
       doc.add(newField("contents", content, TextField.TYPE_STORED));
-      NumericField numericField = new NumericField("date2");
-      numericField.setIntValue(Integer.valueOf(date));
-      doc.add(numericField);
+      doc.add(new NumericField("date2", Integer.valueOf(date)));
       writer.addDocument(doc);
       line = d.readLine();
     }
     d.close();
     writer.close();
-    reader = IndexReader.open(dir, true);
+    reader = IndexReader.open(dir);
     searcher = newSearcher(reader);
 
   }
@@ -84,7 +83,6 @@ public class TestParser extends LuceneTestCase {
   @AfterClass
   public static void afterClass() throws Exception {
     reader.close();
-    searcher.close();
     dir.close();
     reader = null;
     searcher = null;
@@ -183,8 +181,8 @@ public class TestParser extends LuceneTestCase {
   }
 
   public void testDuplicateFilterQueryXML() throws ParserException, IOException {
-    Assume.assumeTrue(searcher.getIndexReader().getSequentialSubReaders() == null ||
-        searcher.getIndexReader().getSequentialSubReaders().length == 1);
+    AtomicReaderContext leaves[] = searcher.getTopReaderContext().leaves();
+    Assume.assumeTrue(leaves == null || leaves.length == 1);
     Query q = parse("DuplicateFilterQuery.xml");
     int h = searcher.search(q, null, 1000).totalHits;
     assertEquals("DuplicateFilterQuery should produce 1 result ", 1, h);

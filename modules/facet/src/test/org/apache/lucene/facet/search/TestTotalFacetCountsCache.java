@@ -9,6 +9,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -299,7 +300,7 @@ public class TestTotalFacetCountsCache extends LuceneTestCase {
     writers[0].taxWriter.close();
 
     readers[0].taxReader.refresh();
-    IndexReader r2 = IndexReader.openIfChanged(readers[0].indexReader);
+    DirectoryReader r2 = DirectoryReader.openIfChanged(readers[0].indexReader);
     assertNotNull(r2);
     // Hold on to the 'original' reader so we can do some checks with it
     IndexReader origReader = null;
@@ -322,19 +323,6 @@ public class TestTotalFacetCountsCache extends LuceneTestCase {
     // try again - should not recompute
     assertTrue("Should be obtained from cache at 8th attempt",totalCounts == 
       TFC.getTotalCounts(readers[0].indexReader, readers[0].taxReader, iParams, null));
-    
-    // delete a doc from the reader and commit - should recompute
-    origReader.close();
-    origReader = readers[0].indexReader;
-    readers[0].indexReader = IndexReader.open(origReader.directory(),false);
-    initCache();
-    totalCounts = TFC.getTotalCounts(readers[0].indexReader, readers[0].taxReader, iParams, null);
-    prevGen = assertRecomputed(totalCounts, prevGen, "after opening a writable reader - 9th attempt!");
-    // now do the delete
-    readers[0].indexReader.deleteDocument(1);
-    readers[0].indexReader.commit(null);
-    totalCounts = TFC.getTotalCounts(readers[0].indexReader, readers[0].taxReader, iParams, null);
-    prevGen = assertRecomputed(totalCounts, prevGen, "after deleting docs the index - 10th attempt!");
     
     origReader.close();
     readers[0].close();

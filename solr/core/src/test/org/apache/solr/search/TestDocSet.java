@@ -17,22 +17,23 @@
 
 package org.apache.solr.search;
 
-import java.util.Random;
-import java.util.Arrays;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Random;
 
+import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.FilterIndexReader;
+import org.apache.lucene.util.ReaderUtil;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.MultiReader;
+import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Filter;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.OpenBitSet;
 import org.apache.lucene.util.OpenBitSetIterator;
-import org.apache.lucene.util.ReaderUtil;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.FilterIndexReader;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader.ReaderContext;
-import org.apache.lucene.index.MultiReader;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.DocIdSet;
-import org.apache.lucene.search.DocIdSetIterator;
 
 /**
  *
@@ -337,10 +338,15 @@ public class TestDocSet extends LuceneTestCase {
   ***/
 
   public IndexReader dummyIndexReader(final int maxDoc) {
-
+    // TODO FIXME: THIS IS HEAVY BROKEN AND ILLEGAL TO DO (null delegate):
     IndexReader r = new FilterIndexReader(null) {
       @Override
       public int maxDoc() {
+        return maxDoc;
+      }
+
+      @Override
+      public int numDocs() {
         return maxDoc;
       }
 
@@ -350,8 +356,8 @@ public class TestDocSet extends LuceneTestCase {
       }
 
       @Override
-      public IndexReader[] getSequentialSubReaders() {
-        return null;
+      public FieldInfos getFieldInfos() {
+        return new FieldInfos();
       }
     };
     return r;
@@ -407,7 +413,7 @@ public class TestDocSet extends LuceneTestCase {
   }
 
   public void doFilterTest(IndexReader reader) throws IOException {
-    ReaderContext topLevelContext = reader.getTopReaderContext();
+    IndexReaderContext topLevelContext = reader.getTopReaderContext();
     OpenBitSet bs = getRandomSet(reader.maxDoc(), rand.nextInt(reader.maxDoc()+1));
     DocSet a = new BitDocSet(bs);
     DocSet b = getIntDocSet(bs);

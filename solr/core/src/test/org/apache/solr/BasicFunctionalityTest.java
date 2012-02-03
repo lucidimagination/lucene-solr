@@ -33,10 +33,9 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.LogMergePolicy;
+import org.apache.lucene.util.English;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.params.AppendedSolrParams;
 import org.apache.solr.common.params.CommonParams;
-import org.apache.solr.common.params.DefaultSolrParams;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -56,6 +55,7 @@ import org.apache.solr.update.DirectUpdateHandler2;
 
 
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -120,10 +120,12 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
   
   @Test
   public void testSomeStuff() throws Exception {
+    clearIndex();
+
     // test merge factor picked up
     SolrCore core = h.getCore();
 
-    IndexWriter writer = ((DirectUpdateHandler2)core.getUpdateHandler()).getIndexWriterProvider().getIndexWriter(core);
+    IndexWriter writer = ((DirectUpdateHandler2)core.getUpdateHandler()).getSolrCoreState().getIndexWriter(core);
     assertEquals("Mergefactor was not picked up", ((LogMergePolicy)writer.getConfig().getMergePolicy()).getMergeFactor(), 8);
 
     lrf.args.put(CommonParams.VERSION,"2.2");
@@ -222,6 +224,19 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     assertQ(req("id:[100 TO 110]")
             ,"//*[@numFound='0']"
             );
+  }
+
+  @Test
+  public void testHTMLStrip() {
+    assertU(add(doc("id","200", "HTMLwhitetok","&#65;&#66;&#67;")));
+    assertU(add(doc("id","201", "HTMLwhitetok","&#65;B&#67;")));      // do it again to make sure reuse is working
+    assertU(commit());
+    assertQ(req("q","HTMLwhitetok:A&#66;C")
+        ,"//*[@numFound='2']"
+    );
+    assertQ(req("q","HTMLwhitetok:&#65;BC")
+        ,"//*[@numFound='2']"
+    );
   }
 
 
@@ -448,7 +463,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     assertEquals(p.getInt("iii",5), 5);
     assertEquals(p.getFieldParam("field1","i"), "555");
 
-    req.setParams(new DefaultSolrParams(p, new MapSolrParams(m)));
+    req.setParams(SolrParams.wrapDefaults(p, new MapSolrParams(m)));
     p = req.getParams();
     assertEquals(req.getOriginalParams().get("s"), "bbb");
     assertEquals(p.get("i"), "555");
@@ -470,7 +485,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     more.add("s", "ccc");
     more.add("ss","YYY");
     more.add("xx","XXX");
-    p = new AppendedSolrParams(p, SolrParams.toSolrParams(more));
+    p = SolrParams.wrapAppended(p, SolrParams.toSolrParams(more));
     assertEquals(3, p.getParams("s").length);
     assertEquals("bbb", p.getParams("s")[0]);
     assertEquals("aaa", p.getParams("s")[1]);
@@ -746,6 +761,50 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
                    SolrException.ErrorCode.getErrorCode(e.code()));
       assertTrue("exception doesn't contain field name",
                  -1 != e.getMessage().indexOf("sortabuse_t"));
+    }
+  }
+
+  @Ignore("See SOLR-1726")
+  @Test
+  public void testDeepPaging() throws Exception {
+    for (int i = 0; i < 1000; i++){
+      assertU(adoc("id", String.valueOf(i),  "foo_t", English.intToEnglish(i)));
+    }
+    assertU(commit());
+    SolrQueryRequest goldReq = null;
+    try {
+      goldReq = req("q", "foo_t:one", "rows", "50", "fl", "docid, score");
+      SolrQueryResponse gold = h.queryAndResponse("standard", goldReq);
+      ResultContext response = (ResultContext) gold.getValues().get("response");
+      assertQ("page: " + 0 + " failed",
+          req("q", "foo_t:one", "rows", "10", CommonParams.QT, "standard", "fl", "[docid], score"),
+          "*[count(//doc)=10]");
+      //ugh, what a painful way to get the document
+      DocIterator iterator = response.docs.subset(9, 1).iterator();
+      int lastDoc = iterator.nextDoc();
+      float lastScore = iterator.score();
+      for (int i = 1; i < 5; i++){
+        //page through some results
+        DocList subset = response.docs.subset(i * 10, 1);
+        iterator = subset.iterator();
+        int compareDoc = iterator.nextDoc();
+        float compareScore = iterator.score();
+        assertQ("page: " + i + " failed",
+            req("q", "foo_t:one", CommonParams.QT, "standard", "fl", "[docid], score",
+                "start", String.valueOf(i * 10), "rows", "1",  //only get one doc, and then compare it to gold
+                CommonParams.PAGEDOC, String.valueOf(lastDoc), CommonParams.PAGESCORE, String.valueOf(lastScore)),
+            "*[count(//doc)=1]",
+            "//float[@name='score'][.='" + compareScore + "']",
+            "//int[@name='[docid]'][.='" + compareDoc + "']"
+        );
+        lastScore = compareScore;
+        lastDoc = compareDoc;
+
+      }
+    } finally {
+      if (goldReq != null ) {
+        goldReq.close();
+      }
     }
   }
 

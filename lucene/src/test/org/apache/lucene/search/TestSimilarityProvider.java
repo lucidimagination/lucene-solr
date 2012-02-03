@@ -24,7 +24,8 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.MultiNorms;
+import org.apache.lucene.index.MultiDocValues;
+import org.apache.lucene.index.Norm;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.Similarity;
@@ -67,7 +68,6 @@ public class TestSimilarityProvider extends LuceneTestCase {
   
   @Override
   public void tearDown() throws Exception {
-    searcher.close();
     reader.close();
     directory.close();
     super.tearDown();
@@ -75,8 +75,9 @@ public class TestSimilarityProvider extends LuceneTestCase {
   
   public void testBasics() throws Exception {
     // sanity check of norms writer
-    byte fooNorms[] = MultiNorms.norms(reader, "foo");
-    byte barNorms[] = MultiNorms.norms(reader, "bar");
+    // TODO: generalize
+    byte fooNorms[] = (byte[]) MultiDocValues.getNormDocValues(reader, "foo").getSource().getArray();
+    byte barNorms[] = (byte[]) MultiDocValues.getNormDocValues(reader, "bar").getSource().getArray();
     for (int i = 0; i < fooNorms.length; i++) {
       assertFalse(fooNorms[i] == barNorms[i]);
     }
@@ -111,9 +112,10 @@ public class TestSimilarityProvider extends LuceneTestCase {
   }
   
   private class Sim1 extends TFIDFSimilarity {
+
     @Override
-    public byte computeNorm(FieldInvertState state) {
-      return encodeNormValue(1f);
+    public void computeNorm(FieldInvertState state, Norm norm) {
+      norm.setByte(encodeNormValue(1f));
     }
 
     @Override
@@ -127,7 +129,7 @@ public class TestSimilarityProvider extends LuceneTestCase {
     }
 
     @Override
-    public float idf(int docFreq, int numDocs) {
+    public float idf(long docFreq, long numDocs) {
       return 1f;
     }
 
@@ -138,9 +140,10 @@ public class TestSimilarityProvider extends LuceneTestCase {
   }
   
   private class Sim2 extends TFIDFSimilarity {
+    
     @Override
-    public byte computeNorm(FieldInvertState state) {
-      return encodeNormValue(10f);
+    public void computeNorm(FieldInvertState state, Norm norm) {
+      norm.setByte(encodeNormValue(10f));
     }
 
     @Override
@@ -154,7 +157,7 @@ public class TestSimilarityProvider extends LuceneTestCase {
     }
 
     @Override
-    public float idf(int docFreq, int numDocs) {
+    public float idf(long docFreq, long numDocs) {
       return 10f;
     }
 

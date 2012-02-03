@@ -17,12 +17,13 @@
 
 package org.apache.solr.search;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.lucene.document.BinaryField;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -30,13 +31,14 @@ import org.apache.lucene.document.LazyDocument;
 import org.apache.lucene.document.NumericField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.ReaderUtil;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
@@ -63,7 +65,7 @@ import org.slf4j.LoggerFactory;
  *
  * @since solr 0.9
  */
-public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
+public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrInfoMBean {
 
   // These should *only* be used for debugging or monitoring purposes
   public static final AtomicLong numOpens = new AtomicLong();
@@ -79,7 +81,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   private long openTime = System.currentTimeMillis();
   private long registerTime = 0;
   private long warmupTime = 0;
-  private final IndexReader reader;
+  private final DirectoryReader reader;
   private final boolean closeReader;
 
   private final int queryResultWindowSize;
@@ -107,15 +109,18 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   private Collection<String> storedHighlightFieldNames;
   private DirectoryFactory directoryFactory;
   
-  public SolrIndexSearcher(SolrCore core, String path, IndexSchema schema, SolrIndexConfig config, String name, boolean readOnly, boolean enableCache, DirectoryFactory directoryFactory) throws IOException {
+  private final AtomicReader atomicReader; 
+
+  public SolrIndexSearcher(SolrCore core, String path, IndexSchema schema, SolrIndexConfig config, String name, boolean enableCache, DirectoryFactory directoryFactory) throws IOException {
     // we don't need to reserve the directory because we get it from the factory
-    this(core, schema,name, core.getIndexReaderFactory().newReader(directoryFactory.get(path, config.lockType), readOnly), true, enableCache, false, directoryFactory);
+    this(core, schema,name, core.getIndexReaderFactory().newReader(directoryFactory.get(path, config.lockType)), true, enableCache, false, directoryFactory);
   }
 
-  public SolrIndexSearcher(SolrCore core, IndexSchema schema, String name, IndexReader r, boolean closeReader, boolean enableCache, boolean reserveDirectory, DirectoryFactory directoryFactory) {
+  public SolrIndexSearcher(SolrCore core, IndexSchema schema, String name, DirectoryReader r, boolean closeReader, boolean enableCache, boolean reserveDirectory, DirectoryFactory directoryFactory) throws IOException {
     super(r);
     this.directoryFactory = directoryFactory;
-    this.reader = getIndexReader();
+    this.reader = r;
+    this.atomicReader = SlowCompositeReaderWrapper.wrap(r);
     this.core = core;
     this.schema = schema;
     this.name = "Searcher@" + Integer.toHexString(hashCode()) + (name!=null ? " "+name : "");
@@ -131,6 +136,8 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     if (dir instanceof FSDirectory) {
       FSDirectory fsDirectory = (FSDirectory) dir;
       indexDir = fsDirectory.getDirectory().getAbsolutePath();
+    } else {
+      log.warn("WARNING: Directory impl does not support setting indexDir: " + dir.getClass().getName());
     }
 
     this.closeReader = closeReader;
@@ -179,7 +186,10 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     }
     optimizer = solrConfig.filtOptEnabled ? new LuceneQueryOptimizer(solrConfig.filtOptCacheSize,solrConfig.filtOptThreshold) : null;
 
-    fieldNames = r.getFieldNames(IndexReader.FieldOption.ALL);
+    fieldNames = new HashSet<String>();
+    for(FieldInfo fieldInfo : atomicReader.getFieldInfos()) {
+      fieldNames.add(fieldInfo.name);
+    }
 
     // do this at the end since an exception in the constructor means we won't close    
     numOpens.incrementAndGet();
@@ -201,6 +211,16 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   public final int docFreq(Term term) throws IOException {
     return reader.docFreq(term);
   }
+  
+  public final AtomicReader getAtomicReader() {
+    return atomicReader;
+  }
+  
+  @Override
+  public final DirectoryReader getIndexReader() {
+    assert reader == super.getIndexReader();
+    return reader; 
+  }
 
   /** Register sub-objects such as caches
    */
@@ -220,7 +240,6 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
    *
    * In particular, the underlying reader and any cache's in use are closed.
    */
-  @Override
   public void close() throws IOException {
     if (cachingEnabled) {
       StringBuilder sb = new StringBuilder();
@@ -267,22 +286,24 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
    * highlighted the index reader knows about.
    */
   public Collection<String> getStoredHighlightFieldNames() {
-    if (storedHighlightFieldNames == null) {
-      storedHighlightFieldNames = new LinkedList<String>();
-      for (String fieldName : fieldNames) {
-        try {
-          SchemaField field = schema.getField(fieldName);
-          if (field.stored() &&
-                  ((field.getType() instanceof org.apache.solr.schema.TextField) ||
-                  (field.getType() instanceof org.apache.solr.schema.StrField))) {
-            storedHighlightFieldNames.add(fieldName);
-          }
-        } catch (RuntimeException e) { // getField() throws a SolrException, but it arrives as a RuntimeException
+    synchronized (this) {
+      if (storedHighlightFieldNames == null) {
+        storedHighlightFieldNames = new LinkedList<String>();
+        for (String fieldName : fieldNames) {
+          try {
+            SchemaField field = schema.getField(fieldName);
+            if (field.stored() &&
+                ((field.getType() instanceof org.apache.solr.schema.TextField) ||
+                    (field.getType() instanceof org.apache.solr.schema.StrField))) {
+              storedHighlightFieldNames.add(fieldName);
+            }
+          } catch (RuntimeException e) { // getField() throws a SolrException, but it arrives as a RuntimeException
             log.warn("Field \"" + fieldName + "\" found in index, but not defined in schema.");
+          }
         }
       }
+      return storedHighlightFieldNames;
     }
-    return storedHighlightFieldNames;
   }
   //
   // Set default regenerators on filter and query caches if they don't have any
@@ -414,15 +435,13 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
     @Override
     public void binaryField(FieldInfo fieldInfo, byte[] value, int offset, int length) throws IOException {
-      doc.add(new BinaryField(fieldInfo.name, value));
+      doc.add(new StoredField(fieldInfo.name, value));
     }
 
     @Override
     public void stringField(FieldInfo fieldInfo, String value) throws IOException {
       final FieldType ft = new FieldType(TextField.TYPE_STORED);
       ft.setStoreTermVectors(fieldInfo.storeTermVector);
-      ft.setStoreTermVectorPositions(fieldInfo.storePositionWithTermVector);
-      ft.setStoreTermVectorOffsets(fieldInfo.storeOffsetWithTermVector);
       ft.setStoreTermVectors(fieldInfo.storeTermVector);
       ft.setIndexed(fieldInfo.isIndexed);
       ft.setOmitNorms(fieldInfo.omitNorms);
@@ -432,30 +451,30 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
     @Override
     public void intField(FieldInfo fieldInfo, int value) {
-      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      FieldType ft = new FieldType(NumericField.getFieldType(NumericField.DataType.INT, true));
       ft.setIndexed(fieldInfo.isIndexed);
-      doc.add(new NumericField(fieldInfo.name, ft).setIntValue(value));
+      doc.add(new NumericField(fieldInfo.name, value, ft));
     }
 
     @Override
     public void longField(FieldInfo fieldInfo, long value) {
-      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      FieldType ft = new FieldType(NumericField.getFieldType(NumericField.DataType.LONG, true));
       ft.setIndexed(fieldInfo.isIndexed);
-      doc.add(new NumericField(fieldInfo.name, ft).setLongValue(value));
+      doc.add(new NumericField(fieldInfo.name, value, ft));
     }
 
     @Override
     public void floatField(FieldInfo fieldInfo, float value) {
-      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      FieldType ft = new FieldType(NumericField.getFieldType(NumericField.DataType.FLOAT, true));
       ft.setIndexed(fieldInfo.isIndexed);
-      doc.add(new NumericField(fieldInfo.name, ft).setFloatValue(value));
+      doc.add(new NumericField(fieldInfo.name, value, ft));
     }
 
     @Override
     public void doubleField(FieldInfo fieldInfo, double value) {
-      FieldType ft = new FieldType(NumericField.TYPE_STORED);
+      FieldType ft = new FieldType(NumericField.getFieldType(NumericField.DataType.DOUBLE, true));
       ft.setIndexed(fieldInfo.isIndexed);
-      doc.add(new NumericField(fieldInfo.name, ft).setDoubleValue(value));
+      doc.add(new NumericField(fieldInfo.name, value, ft));
     }
   }
 
@@ -550,7 +569,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
    * @return the first document number containing the term
    */
   public int getFirstMatch(Term t) throws IOException {
-    Fields fields = MultiFields.getFields(reader);
+    Fields fields = atomicReader.fields();
     if (fields == null) return -1;
     Terms terms = fields.terms(t.field());
     if (terms == null) return -1;
@@ -559,10 +578,41 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     if (!termsEnum.seekExact(termBytes, false)) {
       return -1;
     }
-    DocsEnum docs = termsEnum.docs(MultiFields.getLiveDocs(reader), null, false);
+    DocsEnum docs = termsEnum.docs(atomicReader.getLiveDocs(), null, false);
     if (docs == null) return -1;
     int id = docs.nextDoc();
     return id == DocIdSetIterator.NO_MORE_DOCS ? -1 : id;
+  }
+
+  /** lookup the docid by the unique key field, and return the id *within* the leaf reader in the low 32 bits, and the index of the leaf reader in the high 32 bits.
+   * -1 is returned if not found.
+   * @lucene.internal
+   */
+  public long lookupId(BytesRef idBytes) throws IOException {
+    String field = schema.getUniqueKeyField().getName();
+    final AtomicReaderContext[] leaves = leafContexts;
+
+
+    for (int i=0; i<leaves.length; i++) {
+      final AtomicReaderContext leaf = leaves[i];
+      final AtomicReader reader = leaf.reader();
+
+      final Fields fields = reader.fields();
+      if (fields == null) continue;
+
+      final Bits liveDocs = reader.getLiveDocs();
+      
+      final DocsEnum docs = reader.termDocsEnum(liveDocs, field, idBytes, false);
+
+      if (docs == null) continue;
+      int id = docs.nextDoc();
+      if (id == DocIdSetIterator.NO_MORE_DOCS) continue;
+      assert docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
+
+      return (((long)i) << 32) | id;
+    }
+
+    return -1;
   }
 
 
@@ -699,7 +749,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
     for (int i=0; i<leaves.length; i++) {
       final AtomicReaderContext leaf = leaves[i];
-      final IndexReader reader = leaf.reader;
+      final AtomicReader reader = leaf.reader();
       final Bits liveDocs = reader.getLiveDocs();   // TODO: the filter may already only have liveDocs...
       DocIdSet idSet = null;
       if (pf.filter != null) {
@@ -931,7 +981,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
         for (int i=0; i<leaves.length; i++) {
           final AtomicReaderContext leaf = leaves[i];
-          final IndexReader reader = leaf.reader;
+          final AtomicReader reader = leaf.reader();
           collector.setNextReader(leaf);
           Fields fields = reader.fields();
           Terms terms = fields.terms(t.field());
@@ -942,7 +992,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
           if (terms != null) {
             final TermsEnum termsEnum = terms.iterator(null);
             if (termsEnum.seekExact(termBytes, false)) {
-              docsEnum = termsEnum.docs(MultiFields.getLiveDocs(reader), null, false);
+              docsEnum = termsEnum.docs(liveDocs, null, false);
             }
           }
 
@@ -1308,7 +1358,12 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     } else {
       TopDocsCollector topCollector;
       if (cmd.getSort() == null) {
-        topCollector = TopScoreDocCollector.create(len, true);
+        if(cmd.getScoreDoc() != null) {
+        	topCollector = TopScoreDocCollector.create(len, cmd.getScoreDoc(), true); //create the Collector with InOrderPagingCollector
+        } else {
+          topCollector = TopScoreDocCollector.create(len, true);
+        }
+
       } else {
         topCollector = TopFieldCollector.create(weightSort(cmd.getSort()), len, false, needScores, needScores, true);
       }
@@ -1332,7 +1387,6 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
       TopDocs topDocs = topCollector.topDocs(0, len);
       maxScore = totalHits>0 ? topDocs.getMaxScore() : 0.0f;
       nDocsReturned = topDocs.scoreDocs.length;
-
       ids = new int[nDocsReturned];
       scores = (cmd.getFlags()&GET_SCORES)!=0 ? new float[nDocsReturned] : null;
       for (int i=0; i<nDocsReturned; i++) {
@@ -1341,7 +1395,6 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
         if (scores != null) scores[i] = scoreDoc.score;
       }
     }
-
 
     int sliceLen = Math.min(lastDocRequested,nDocsReturned);
     if (sliceLen < 0) sliceLen=0;
@@ -1731,7 +1784,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
       while (doc>=end) {
         AtomicReaderContext leaf = leafContexts[readerIndex++];
         base = leaf.docBase;
-        end = base + leaf.reader.maxDoc();
+        end = base + leaf.reader().maxDoc();
         topCollector.setNextReader(leaf);
         // we should never need to set the scorer given the settings for the collector
       }
@@ -1961,6 +2014,18 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     private int supersetMaxDoc;
     private int flags;
     private long timeAllowed = -1;
+    //Issue 1726 start
+    private ScoreDoc scoreDoc;
+    
+    public ScoreDoc getScoreDoc()
+    {
+    	return scoreDoc;
+    }
+    public void setScoreDoc(ScoreDoc scoreDoc)
+    {
+    	this.scoreDoc = scoreDoc;
+    }
+    //Issue 1726 end
 
     // public List<Grouping.Command> groupCommands;
 
@@ -2136,7 +2201,7 @@ class FilterImpl extends Filter {
         iterators.add(iter);
       }
       for (Weight w : weights) {
-        Scorer scorer = w.scorer(context, true, false, context.reader.getLiveDocs());
+        Scorer scorer = w.scorer(context, true, false, context.reader().getLiveDocs());
         if (scorer == null) return null;
         iterators.add(scorer);
       }

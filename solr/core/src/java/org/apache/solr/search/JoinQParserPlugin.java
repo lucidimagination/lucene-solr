@@ -57,7 +57,7 @@ public class JoinQParserPlugin extends QParserPlugin {
         String fromIndex = getParam("fromIndex");
         String toField = getParam("to");
         String v = localParams.get("v");
-        QParser fromQueryParser = subQuery(v, "lucene");
+        QParser fromQueryParser = subQuery(v, null);
         Query fromQuery = fromQueryParser.getQuery();
         JoinQuery jq = new JoinQuery(fromField, toField, fromIndex, fromQuery);
         return jq;
@@ -188,7 +188,7 @@ class JoinQuery extends Query {
 
 
     @Override
-    public Scorer scorer(IndexReader.AtomicReaderContext context, boolean scoreDocsInOrder,
+    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
         boolean topScorer, Bits acceptDocs) throws IOException {
       if (filter == null) {
         boolean debug = rb != null && rb.isDebug();
@@ -220,7 +220,8 @@ class JoinQuery extends Query {
         filter = resultSet.getTopFilter();
       }
 
-      DocIdSet readerSet = filter.getDocIdSet(context, null);  // this set only includes live docs
+      // Although this set only includes live docs, other filters can be pushed down to queries.
+      DocIdSet readerSet = filter.getDocIdSet(context, acceptDocs);
       if (readerSet == null) readerSet=DocIdSet.EMPTY_DOCIDSET;
       return new JoinScorer(this, readerSet.iterator(), getBoost());
     }
@@ -261,8 +262,8 @@ class JoinQuery extends Query {
         fastForRandomSet = new HashDocSet(sset.getDocs(), 0, sset.size());
       }
 
-      Fields fromFields = MultiFields.getFields(fromSearcher.getIndexReader());
-      Fields toFields = fromSearcher==toSearcher ? fromFields : MultiFields.getFields(toSearcher.getIndexReader());
+      Fields fromFields = fromSearcher.getAtomicReader().fields();
+      Fields toFields = fromSearcher==toSearcher ? fromFields : toSearcher.getAtomicReader().fields();
       if (fromFields == null) return DocSet.EMPTY;
       Terms terms = fromFields.terms(fromField);
       Terms toTerms = toFields.terms(toField);
@@ -284,8 +285,8 @@ class JoinQuery extends Query {
         }
       }
 
-      Bits fromLiveDocs = MultiFields.getLiveDocs(fromSearcher.getIndexReader());
-      Bits toLiveDocs = fromSearcher == toSearcher ? fromLiveDocs : MultiFields.getLiveDocs(toSearcher.getIndexReader());
+      Bits fromLiveDocs = fromSearcher.getAtomicReader().getLiveDocs();
+      Bits toLiveDocs = fromSearcher == toSearcher ? fromLiveDocs : toSearcher.getAtomicReader().getLiveDocs();
 
       fromDeState = new SolrIndexSearcher.DocsEnumState();
       fromDeState.fieldName = fromField;
@@ -456,8 +457,8 @@ class JoinQuery extends Query {
     }
 
     @Override
-    public Explanation explain(IndexReader.AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, true, false, context.reader.getLiveDocs());
+    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
+      Scorer scorer = scorer(context, true, false, context.reader().getLiveDocs());
       boolean exists = scorer.advance(doc) == doc;
 
       ComplexExplanation result = new ComplexExplanation();

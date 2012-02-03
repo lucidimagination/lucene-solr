@@ -18,11 +18,12 @@
 package org.apache.solr.schema;
 
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.queries.function.DocValues;
+import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.BoolDocValues;
 import org.apache.lucene.queries.function.valuesource.OrdFieldSource;
@@ -170,8 +171,8 @@ class BoolFieldSource extends ValueSource {
 
 
   @Override
-  public DocValues getValues(Map context, IndexReader.AtomicReaderContext readerContext) throws IOException {
-    final FieldCache.DocTermsIndex sindex = FieldCache.DEFAULT.getTermsIndex(readerContext.reader, field);
+  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final FieldCache.DocTermsIndex sindex = FieldCache.DEFAULT.getTermsIndex(readerContext.reader(), field);
 
     // figure out what ord maps to true
     int nord = sindex.numOrd();
