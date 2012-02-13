@@ -25,7 +25,6 @@ import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.util.CharArraySet;
 
 import java.util.Map;
-import java.util.Set;
 import java.io.IOException;
 
 /**
@@ -48,6 +47,7 @@ public class StopFilterFactory extends BaseTokenFilterFactory implements Resourc
     assureMatchVersion();
   }
 
+  @Override
   public void inform(ResourceLoader loader) {
     String stopWordFiles = args.get("words");
     ignoreCase = getBoolean("ignoreCase",false);
@@ -55,7 +55,11 @@ public class StopFilterFactory extends BaseTokenFilterFactory implements Resourc
 
     if (stopWordFiles != null) {
       try {
-        stopWords = getWordSet(loader, stopWordFiles, ignoreCase);
+        if ("snowball".equalsIgnoreCase(args.get("format"))) {
+          stopWords = getSnowballWordSet(loader, stopWordFiles, ignoreCase);
+        } else {
+          stopWords = getWordSet(loader, stopWordFiles, ignoreCase);
+        }
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -76,12 +80,13 @@ public class StopFilterFactory extends BaseTokenFilterFactory implements Resourc
     return ignoreCase;
   }
 
-  public Set<?> getStopWords() {
+  public CharArraySet getStopWords() {
     return stopWords;
   }
 
-  public StopFilter create(TokenStream input) {
-    StopFilter stopFilter = new StopFilter(luceneMatchVersion,input,stopWords,ignoreCase);
+  @Override
+  public TokenStream create(TokenStream input) {
+    StopFilter stopFilter = new StopFilter(luceneMatchVersion,input,stopWords);
     stopFilter.setEnablePositionIncrements(enablePositionIncrements);
     return stopFilter;
   }

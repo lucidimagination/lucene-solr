@@ -74,7 +74,6 @@ public class RecoveryStrategy extends Thread {
   // make sure any threads stop retrying
   public void close() {
     close = true;
-    interrupt();
   }
 
   
@@ -105,7 +104,8 @@ public class RecoveryStrategy extends Thread {
     if (!leaderBaseUrl.equals(baseUrl)) {
       
       CommonsHttpSolrServer server = new CommonsHttpSolrServer(leaderBaseUrl);
-      server.setSoTimeout(15000);
+      server.setConnectionTimeout(30000);
+      server.setSoTimeout(30000);
       PrepRecovery prepCmd = new PrepRecovery();
       prepCmd.setCoreName(leaderCoreName);
       prepCmd.setNodeName(nodeName);

@@ -18,11 +18,10 @@ package org.apache.lucene.analysis.ca;
  */
 
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.util.CharArraySet;
 
 public class TestCatalanAnalyzer extends BaseTokenStreamTestCase {
   /** This test fails with NPE when the 
@@ -41,10 +40,16 @@ public class TestCatalanAnalyzer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "un", new String[] { });
   }
   
+  /** test use of elisionfilter */
+  public void testContractions() throws IOException {
+    Analyzer a = new CatalanAnalyzer(TEST_VERSION_CURRENT);
+    assertAnalyzesTo(a, "Diccionari de l'Institut d'Estudis Catalans",
+        new String[] { "diccion", "inst", "estud", "catalan" });
+  }
+  
   /** test use of exclusion set */
   public void testExclude() throws IOException {
-    Set<String> exclusionSet = new HashSet<String>();
-    exclusionSet.add("llengües");
+    CharArraySet exclusionSet = new CharArraySet(TEST_VERSION_CURRENT, asSet("llengües"), false);
     Analyzer a = new CatalanAnalyzer(TEST_VERSION_CURRENT, 
         CatalanAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTermReuse(a, "llengües", "llengües");

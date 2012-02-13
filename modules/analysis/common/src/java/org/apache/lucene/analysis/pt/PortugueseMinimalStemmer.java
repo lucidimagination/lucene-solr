@@ -24,7 +24,7 @@ package org.apache.lucene.analysis.pt;
  * <i>A study on the Use of Stemming for Monolingual Ad-Hoc Portuguese
  * Information Retrieval</i> (Orengo, et al)
  * which is just the plural reduction step of the RSLP
- * algorithm from <i>A Stemming Algorithmm for the Portuguese Language</i>,
+ * algorithm from <i>A Stemming Algorithm for the Portuguese Language</i>,
  * Orengo et al.
  * @see RSLPStemmerBase
  */

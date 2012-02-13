@@ -11,3 +11,70 @@ dist
 .project
 .settings/
 bin/
+
+# /lucene/
+
+
+# /lucene/contrib/db/bdb/
+/lucene/contrib/db/bdb/lib
+/lucene/contrib/db/bdb/index
+
+
+# /lucene/contrib/db/bdb-je/
+/lucene/contrib/db/bdb-je/lib
+/lucene/contrib/db/bdb-je/index
+
+
+# /lucene/src/java/org/apache/lucene/queryParser/
+/lucene/src/java/org/apache/lucene/queryParser/QueryParser.java
+/lucene/src/java/org/apache/lucene/queryParser/TokenMgrError.java
+/lucene/src/java/org/apache/lucene/queryParser/ParseException.java
+/lucene/src/java/org/apache/lucene/queryParser/Token.java
+/lucene/src/java/org/apache/lucene/queryParser/TokenManager.java
+/lucene/src/java/org/apache/lucene/queryParser/QueryParserConstants.java
+
+# /lucene/src/java/org/apache/lucene/util/automaton/
+/lucene/src/java/org/apache/lucene/util/automaton/moman
+
+
+# /modules/analysis/common/src/java/org/apache/lucene/analysis/standard/
+/modules/analysis/common/src/java/org/apache/lucene/analysis/standard/Token.java
+/modules/analysis/common/src/java/org/apache/lucene/analysis/standard/StandardTokenizer.java
+/modules/analysis/common/src/java/org/apache/lucene/analysis/standard/StandardTokenizerTokenManager.java
+/modules/analysis/common/src/java/org/apache/lucene/analysis/standard/TokenMgrError.java
+/modules/analysis/common/src/java/org/apache/lucene/analysis/standard/CharStream.java
+/modules/analysis/common/src/java/org/apache/lucene/analysis/standard/StandardTokenizerConstants.java
+
+
+# /modules/benchmark/
+/modules/benchmark/temp
+/modules/benchmark/work
+
+# /solr/
+/solr/.project
+/solr/.classpath
+/solr/.settings
+/solr/bin
+/solr/luke
+/solr/package
+
+# /solr/example
+/solr/example/webapps
+/solr/example/work
+/solr/example/solr/data
+/solr/example/exampledocs/post.jar
+
+# /solr/client/ruby/flare/
+/solr/client/ruby/flare/tmp
+
+# More solr.
+/solr/contrib/dataimporthandler/src/test-files/dataimport.properties
+/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport.properties
+/solr/contrib/dataimporthandler-extras/src/test-files/dihextras/solr/conf/dataimport.properties
+/solr/example/example-DIH/solr/db/conf/dataimport.properties
+/solr/example/example-DIH/solr/rss/conf/dataimport.properties
+
+# output folders.
+bin.misc/
+bin.tests-framework/
+

@@ -36,7 +36,6 @@ import org.apache.lucene.util.Version;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.Arrays;
-import java.util.Set;
 
 /**
  * {@link Analyzer} for French language. 
@@ -52,6 +51,7 @@ import java.util.Set;
  * <p>You must specify the required {@link Version}
  * compatibility when creating FrenchAnalyzer:
  * <ul>
+ *   <li> As of 3.6, FrenchLightStemFilter is used for less aggressive stemming.
  *   <li> As of 3.1, Snowball stemming is done with SnowballFilter, 
  *        LowerCaseFilter is used prior to StopFilter, and ElisionFilter and 
  *        Snowball stopwords are used by default.
@@ -100,23 +100,23 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
   /**
    * Contains words that should be indexed but not stemmed.
    */
-  private final Set<?> excltable;
+  private final CharArraySet excltable;
 
   /**
    * Returns an unmodifiable instance of the default stop-words set.
    * @return an unmodifiable instance of the default stop-words set.
    */
-  public static Set<?> getDefaultStopSet(){
+  public static CharArraySet getDefaultStopSet(){
     return DefaultSetHolder.DEFAULT_STOP_SET;
   }
   
   private static class DefaultSetHolder {
     /** @deprecated (3.1) remove this in Lucene 5.0, index bw compat */
     @Deprecated
-    static final Set<?> DEFAULT_STOP_SET_30 = CharArraySet
+    static final CharArraySet DEFAULT_STOP_SET_30 = CharArraySet
         .unmodifiableSet(new CharArraySet(Version.LUCENE_CURRENT, Arrays.asList(FRENCH_STOP_WORDS),
             false));
-    static final Set<?> DEFAULT_STOP_SET;
+    static final CharArraySet DEFAULT_STOP_SET;
     static {
       try {
         DEFAULT_STOP_SET = WordlistLoader.getSnowballWordSet(IOUtils.getDecodingReader(SnowballFilter.class, 
@@ -146,7 +146,7 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
    * @param stopwords
    *          a stopword set
    */
-  public FrenchAnalyzer(Version matchVersion, Set<?> stopwords){
+  public FrenchAnalyzer(Version matchVersion, CharArraySet stopwords){
     this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
   
@@ -160,8 +160,8 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
    * @param stemExclutionSet
    *          a stemming exclusion set
    */
-  public FrenchAnalyzer(Version matchVersion, Set<?> stopwords,
-      Set<?> stemExclutionSet) {
+  public FrenchAnalyzer(Version matchVersion, CharArraySet stopwords,
+      CharArraySet stemExclutionSet) {
     super(matchVersion, stopwords);
     this.excltable = CharArraySet.unmodifiableSet(CharArraySet
         .copy(matchVersion, stemExclutionSet));
@@ -177,7 +177,7 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
    *         {@link StandardFilter}, {@link ElisionFilter},
    *         {@link LowerCaseFilter}, {@link StopFilter},
    *         {@link KeywordMarkerFilter} if a stem exclusion set is
-   *         provided, and {@link SnowballFilter}
+   *         provided, and {@link FrenchLightStemFilter}
    */
   @Override
   protected TokenStreamComponents createComponents(String fieldName,
@@ -190,7 +190,11 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
       result = new StopFilter(matchVersion, result, stopwords);
       if(!excltable.isEmpty())
         result = new KeywordMarkerFilter(result, excltable);
-      result = new SnowballFilter(result, new org.tartarus.snowball.ext.FrenchStemmer());
+      if (matchVersion.onOrAfter(Version.LUCENE_36)) {
+        result = new FrenchLightStemFilter(result);
+      } else {
+        result = new SnowballFilter(result, new org.tartarus.snowball.ext.FrenchStemmer());
+      }
       return new TokenStreamComponents(source, result);
     } else {
       final Tokenizer source = new StandardTokenizer(matchVersion, reader);

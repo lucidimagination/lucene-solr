@@ -22,8 +22,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.FilterIndexReader;
-import org.apache.lucene.util.ReaderUtil;
+import org.apache.lucene.index.FilterAtomicReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.MultiReader;
@@ -339,7 +338,7 @@ public class TestDocSet extends LuceneTestCase {
 
   public IndexReader dummyIndexReader(final int maxDoc) {
     // TODO FIXME: THIS IS HEAVY BROKEN AND ILLEGAL TO DO (null delegate):
-    IndexReader r = new FilterIndexReader(null) {
+    IndexReader r = new FilterAtomicReader(null) {
       @Override
       public int maxDoc() {
         return maxDoc;
@@ -430,15 +429,15 @@ public class TestDocSet extends LuceneTestCase {
 
     DocIdSet da;
     DocIdSet db;
+    AtomicReaderContext[] leaves = topLevelContext.leaves();
 
     // first test in-sequence sub readers
-    for (AtomicReaderContext readerContext : ReaderUtil.leaves(topLevelContext)) {
+    for (AtomicReaderContext readerContext : leaves) {
       da = fa.getDocIdSet(readerContext, null);
       db = fb.getDocIdSet(readerContext, null);
       doTestIteratorEqual(da, db);
     }  
 
-    AtomicReaderContext[] leaves = ReaderUtil.leaves(topLevelContext);
     int nReaders = leaves.length;
     // now test out-of-sequence sub readers
     for (int i=0; i<nReaders; i++) {

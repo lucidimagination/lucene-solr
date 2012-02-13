@@ -23,6 +23,7 @@ import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.util.Version;
 
 public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
@@ -36,20 +37,19 @@ public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
   public void testBasics() throws IOException {
     Analyzer a = new ItalianAnalyzer(TEST_VERSION_CURRENT);
     // stemming
-    checkOneTermReuse(a, "abbandonata", "abbandon");
-    checkOneTermReuse(a, "abbandonati", "abbandon");
+    checkOneTermReuse(a, "abbandonata", "abbandonat");
+    checkOneTermReuse(a, "abbandonati", "abbandonat");
     // stopword
     assertAnalyzesTo(a, "dallo", new String[] {});
   }
   
   /** test use of exclusion set */
   public void testExclude() throws IOException {
-    Set<String> exclusionSet = new HashSet<String>();
-    exclusionSet.add("abbandonata");
+    CharArraySet exclusionSet = new CharArraySet(TEST_VERSION_CURRENT, asSet("abbandonata"), false);
     Analyzer a = new ItalianAnalyzer(TEST_VERSION_CURRENT, 
         ItalianAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTermReuse(a, "abbandonata", "abbandonata");
-    checkOneTermReuse(a, "abbandonati", "abbandon");
+    checkOneTermReuse(a, "abbandonati", "abbandonat");
   }
   
   /** blast some random strings through the analyzer */
@@ -61,7 +61,7 @@ public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
   public void testContractions() throws IOException {
     Analyzer a = new ItalianAnalyzer(TEST_VERSION_CURRENT);
     assertAnalyzesTo(a, "dell'Italia", new String[] { "ital" });
-    assertAnalyzesTo(a, "l'Italiano", new String[] { "ital" });
+    assertAnalyzesTo(a, "l'Italiano", new String[] { "italian" });
   }
   
   /** test that we don't enable this before 3.2*/

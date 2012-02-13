@@ -31,13 +31,13 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.PriorityQueue;
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.analysis.CharFilterFactory;
 import org.apache.solr.analysis.TokenFilterFactory;
 import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.analysis.TokenizerFactory;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.luke.FieldFlag;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.SolrParams;
@@ -84,6 +84,23 @@ public class LukeRequestHandler extends RequestHandlerBase
   public static final int DEFAULT_COUNT = 10;
   
   static final int HIST_ARRAY_SIZE = 33;
+  
+  private static enum ShowStyle {
+    ALL,
+    DOC,
+    SCHEMA,
+    INDEX;
+    
+    public static ShowStyle get(String v) {
+      if(v==null) return null;
+      if("schema".equals(v)) return SCHEMA;
+      if("index".equals(v))  return INDEX;
+      if("doc".equals(v))    return DOC;
+      if("all".equals(v))    return ALL;
+      throw new SolrException(ErrorCode.BAD_REQUEST, "Unknown Show Style: "+v);
+    }
+  };
+  
 
   @Override
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception
@@ -93,20 +110,28 @@ public class LukeRequestHandler extends RequestHandlerBase
     DirectoryReader reader = searcher.getIndexReader();
     SolrParams params = req.getParams();
     int numTerms = params.getInt( NUMTERMS, DEFAULT_COUNT );
+    ShowStyle style = ShowStyle.get(params.get("show"));
 
     // Always show the core lucene info
     Map<String, TopTermQueue> topTerms = new TreeMap<String, TopTermQueue>();
 
     // If no doc is given, show all fields and top terms
     Set<String> fields = null;
-    if( params.get( CommonParams.FL ) != null ) {
-      fields = new TreeSet<String>(Arrays.asList(params.getParams( CommonParams.FL )));
+    String fl = params.get(CommonParams.FL);
+    if (fl != null) {
+      fields = new TreeSet<String>(Arrays.asList(fl.split( "[,\\s]+" )));
     }
-    if ( "schema".equals( params.get( "show" ))) {
+    if( ShowStyle.SCHEMA == style ) {
       numTerms = 0; // Abort any statistics gathering.
     }
-    rsp.add("index", getIndexInfo(reader, numTerms, topTerms, fields ));
 
+    rsp.add("index", getIndexInfo(reader, numTerms, topTerms, fields ));
+    
+    if(ShowStyle.INDEX==style) {
+      return; // thats all we need
+    }
+        
+    
     Integer docId = params.getInt( DOC_ID );
     if( docId == null && params.get( ID ) != null ) {
       // Look for something with a given solr ID
@@ -121,6 +146,9 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     // Read the document from the index
     if( docId != null ) {
+      if( style != null && style != ShowStyle.DOC ) {
+        throw new SolrException(ErrorCode.BAD_REQUEST, "missing doc param for doc style");
+      }
       Document doc = null;
       try {
         doc = reader.document( docId );
@@ -138,7 +166,7 @@ public class LukeRequestHandler extends RequestHandlerBase
       docinfo.add( "solr", doc );
       rsp.add( "doc", docinfo );
     }
-    else if ( "schema".equals( params.get( "show" ) ) ) {
+    else if ( ShowStyle.SCHEMA == style ) {
       rsp.add( "schema", getSchemaInfo( req.getSchema() ) );
     }
     else {
@@ -300,7 +328,7 @@ public class LukeRequestHandler extends RequestHandlerBase
     Fields theFields = reader.fields();
 
     for (String fieldName : fieldNames) {
-      if (fields != null && ! fields.contains(fieldName)) {
+      if (fields != null && ! fields.contains(fieldName) && ! fields.contains("*")) {
         continue; // we're not interested in this term
       }
 
@@ -522,7 +550,7 @@ public class LukeRequestHandler extends RequestHandlerBase
           }
           totalTerms += terms.getUniqueTermCount();
 
-          if (fieldList != null && !fieldList.contains(field)) {
+          if (fieldList != null && ! fieldList.contains(field) && ! fieldList.contains("*")) {
             continue;
           }
 
@@ -557,11 +585,13 @@ public class LukeRequestHandler extends RequestHandlerBase
       indexInfo.add("numTerms", (new Long(totalTerms)).intValue());
 
     }
+        
     indexInfo.add("version", reader.getVersion());  // TODO? Is this different then: IndexReader.getCurrentVersion( dir )?
     indexInfo.add("segmentCount", reader.getSequentialSubReaders().length);
     indexInfo.add("current", reader.isCurrent() );
     indexInfo.add("hasDeletions", reader.hasDeletions() );
     indexInfo.add("directory", dir );
+    indexInfo.add("userData", reader.getIndexCommit().getUserData());
     String s = reader.getIndexCommit().getUserData().get(SolrIndexWriter.COMMIT_TIME_MSEC_KEY);
     if (s != null) {
       indexInfo.add("lastModified", new Date(Long.parseLong(s)));

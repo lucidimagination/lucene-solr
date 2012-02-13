@@ -31,7 +31,7 @@
   
   <!-- if you extend the classpath refid in one contrib's build.xml (add JARs), use this as basis: -->
   <path id="base.classpath">
-   <pathelement location="${common.dir}/build/classes/java"/>
+   <pathelement location="${common.dir}/build/core/classes/java"/>
    <pathelement path="${project.classpath}"/>
   </path>
   
@@ -39,7 +39,7 @@
   <path id="classpath" refid="base.classpath"/>
   
   <path id="test.base.classpath">
-    <pathelement location="${common.dir}/build/classes/test-framework"/>
+    <pathelement location="${common.dir}/build/test-framework/classes/java"/>
     <path refid="classpath"/>
     <path refid="junit-path"/>
     <pathelement location="${build.dir}/classes/java"/>
@@ -62,28 +62,6 @@
   </target>
   <target name="build-artifacts-and-tests" depends="jar, compile-test" />
 	
-  <available 
-    type="file" 
-    file="pom.xml" 
-    property="pom.xml.present">
-  </available>
-
-  <target name="dist-maven" if="pom.xml.present" depends="jar-core, jar-src, javadocs">
-    <taskdef resource="org/apache/maven/artifact/ant/antlib.xml" 
-             uri="antlib:org.apache.maven.artifact.ant" 
-             classpathref="maven-ant-tasks.classpath"/>
-    <sequential>
-      <m2-deploy>
-        <artifact-attachments>
-          <attach file="${build.dir}/${final.name}-src.jar"
-                  classifier="sources"/>
-          <attach file="${build.dir}/${final.name}-javadoc.jar"
-                  classifier="javadoc"/>
-        </artifact-attachments>
-      </m2-deploy>
-    </sequential>
-  </target>
-
   <target name="javadocs" depends="compile-core">
    	<sequential>
        <mkdir dir="${javadoc.dir}/contrib-${name}"/>
@@ -117,29 +95,6 @@
       </uptodate>
     </sequential>
   </macrodef>
-
-  <macrodef name="module-uptodate">
-    <attribute name="name"/>
-    <attribute name="property"/>
-    <attribute name="jarfile"/>
-    <attribute name="module-src-name" default="@{name}"/>
-    <sequential>
-      <uptodate property="@{property}" targetfile="@{jarfile}">
-      	<srcfiles dir="${common.dir}/../modules/@{module-src-name}/src/java" includes="**/*.java"/>
-      </uptodate>
-    </sequential>
-  </macrodef>
-
-  <property name="analyzers-common.jar" value="${common.dir}/../modules/analysis/build/common/lucene-analyzers-common-${version}.jar"/>
-  <target name="check-analyzers-common-uptodate" unless="analyzers-common.uptodate">
-    <module-uptodate name="analysis/common" jarfile="${analyzers-common.jar}" property="analyzers-common.uptodate"/>
-  </target>
-  <target name="jar-analyzers-common" unless="analyzers-common.uptodate" depends="check-analyzers-common-uptodate">
-    <ant dir="${common.dir}/../modules/analysis/common" target="jar-core" inheritall="false">
-      <propertyset refid="uptodate.and.compiled.properties"/>
-    </ant>
-    <property name="analyzers-common.uptodate" value="true"/>
-  </target>
 
   <property name="facet.jar" value="${common.dir}/../modules/facet/build/lucene-facet-${version}.jar"/>
   <target name="check-facet-uptodate" unless="facet.uptodate">
@@ -249,28 +204,6 @@
       <propertyset refid="uptodate.and.compiled.properties"/>
     </ant>
     <property name="misc.uptodate" value="true"/>
-  </target>
-
-  <property name="queries.jar" value="${common.dir}/../modules/queries/build/lucene-queries-${version}.jar"/>
-  <target name="check-queries-uptodate" unless="queries.uptodate">
-    <module-uptodate name="queries" jarfile="${queries.jar}" property="queries.uptodate"/>
-  </target>
-  <target name="jar-queries" unless="queries.uptodate" depends="check-queries-uptodate">
-  	<ant dir="${common.dir}/../modules/queries" target="jar-core" inheritAll="false">
-      <propertyset refid="uptodate.and.compiled.properties"/>
-    </ant>
-    <property name="queries.uptodate" value="true"/>
-  </target>
-
-  <property name="queryparser.jar" value="${common.dir}/../modules/queryparser/build/lucene-queryparser-${version}.jar"/>
-  <target name="check-queryparser-uptodate" unless="queryparser.uptodate">
-    <module-uptodate name="queryparser" jarfile="${queryparser.jar}" property="queryparser.uptodate"/>
-  </target>
-  <target name="jar-queryparser" unless="queryparser.uptodate" depends="check-queryparser-uptodate">
-    <ant dir="${common.dir}/../modules/queryparser" target="jar-core" inheritall="false">
-      <propertyset refid="uptodate.and.compiled.properties"/>
-    </ant>
-    <property name="queryparser.uptodate" value="true"/>
   </target>
 
   <property name="sandbox.jar" value="${common.dir}/build/contrib/sandbox/lucene-sandbox-${version}.jar"/>

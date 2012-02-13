@@ -18,11 +18,10 @@ package org.apache.lucene.analysis.en;
  */
 
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.util.CharArraySet;
 
 public class TestEnglishAnalyzer extends BaseTokenStreamTestCase {
   /** This test fails with NPE when the 
@@ -41,12 +40,13 @@ public class TestEnglishAnalyzer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "the", new String[] {});
     // possessive removal
     checkOneTermReuse(a, "steven's", "steven");
+    checkOneTermReuse(a, "steven\u2019s", "steven");
+    checkOneTermReuse(a, "steven\uFF07s", "steven");
   }
   
   /** test use of exclusion set */
   public void testExclude() throws IOException {
-    Set<String> exclusionSet = new HashSet<String>();
-    exclusionSet.add("books");
+    CharArraySet exclusionSet = new CharArraySet(TEST_VERSION_CURRENT, asSet("books"), false);
     Analyzer a = new EnglishAnalyzer(TEST_VERSION_CURRENT, 
         EnglishAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTermReuse(a, "books", "books");

@@ -19,11 +19,12 @@ package org.apache.lucene.analysis.ca;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.util.Set;
+import java.util.Arrays;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.StopFilter;
+import org.apache.lucene.analysis.fr.ElisionFilter;
 import org.apache.lucene.analysis.miscellaneous.KeywordMarkerFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
@@ -37,18 +38,32 @@ import org.tartarus.snowball.ext.CatalanStemmer;
 
 /**
  * {@link Analyzer} for Catalan.
+ * <p>
+ * <a name="version"/>
+ * <p>You must specify the required {@link Version}
+ * compatibility when creating CatalanAnalyzer:
+ * <ul>
+ *   <li> As of 3.6, ElisionFilter with a set of Catalan 
+ *        contractions is used by default.
+ * </ul>
  */
 public final class CatalanAnalyzer extends StopwordAnalyzerBase {
-  private final Set<?> stemExclusionSet;
+  private final CharArraySet stemExclusionSet;
   
   /** File containing default Catalan stopwords. */
   public final static String DEFAULT_STOPWORD_FILE = "stopwords.txt";
+  
+  private static final CharArraySet DEFAULT_ARTICLES = CharArraySet.unmodifiableSet(
+      new CharArraySet(Version.LUCENE_CURRENT, 
+          Arrays.asList(
+              "d", "l", "m", "n", "s", "t"
+          ), true));
   
   /**
    * Returns an unmodifiable instance of the default stop words set.
    * @return default stop words set.
    */
-  public static Set<?> getDefaultStopSet(){
+  public static CharArraySet getDefaultStopSet(){
     return DefaultSetHolder.DEFAULT_STOP_SET;
   }
   
@@ -57,7 +72,7 @@ public final class CatalanAnalyzer extends StopwordAnalyzerBase {
    * accesses the static final set the first time.;
    */
   private static class DefaultSetHolder {
-    static final Set<?> DEFAULT_STOP_SET;
+    static final CharArraySet DEFAULT_STOP_SET;
 
     static {
       try {
@@ -84,7 +99,7 @@ public final class CatalanAnalyzer extends StopwordAnalyzerBase {
    * @param matchVersion lucene compatibility version
    * @param stopwords a stopword set
    */
-  public CatalanAnalyzer(Version matchVersion, Set<?> stopwords) {
+  public CatalanAnalyzer(Version matchVersion, CharArraySet stopwords) {
     this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
 
@@ -97,7 +112,7 @@ public final class CatalanAnalyzer extends StopwordAnalyzerBase {
    * @param stopwords a stopword set
    * @param stemExclusionSet a set of terms not to be stemmed
    */
-  public CatalanAnalyzer(Version matchVersion, Set<?> stopwords, Set<?> stemExclusionSet) {
+  public CatalanAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
     super(matchVersion, stopwords);
     this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(
         matchVersion, stemExclusionSet));
@@ -120,6 +135,9 @@ public final class CatalanAnalyzer extends StopwordAnalyzerBase {
       Reader reader) {
     final Tokenizer source = new StandardTokenizer(matchVersion, reader);
     TokenStream result = new StandardFilter(matchVersion, source);
+    if (matchVersion.onOrAfter(Version.LUCENE_36)) {
+      result = new ElisionFilter(matchVersion, result, DEFAULT_ARTICLES);
+    }
     result = new LowerCaseFilter(matchVersion, result);
     result = new StopFilter(matchVersion, result, stopwords);
     if(!stemExclusionSet.isEmpty())

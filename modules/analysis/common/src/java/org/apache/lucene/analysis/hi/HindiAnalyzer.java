@@ -19,9 +19,9 @@ package org.apache.lucene.analysis.hi;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.util.Set;
 
 import org.apache.lucene.analysis.miscellaneous.KeywordMarkerFilter;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.apache.lucene.analysis.TokenStream;
@@ -34,9 +34,16 @@ import org.apache.lucene.util.Version;
 
 /**
  * Analyzer for Hindi.
+ * <p>
+ * <a name="version"/>
+ * <p>You must specify the required {@link Version}
+ * compatibility when creating HindiAnalyzer:
+ * <ul>
+ *   <li> As of 3.6, StandardTokenizer is used for tokenization
+ * </ul>
  */
 public final class HindiAnalyzer extends StopwordAnalyzerBase {
-  private final Set<?> stemExclusionSet;
+  private final CharArraySet stemExclusionSet;
   
   /**
    * File containing default Hindi stopwords.
@@ -51,7 +58,7 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
    * Returns an unmodifiable instance of the default stop-words set.
    * @return an unmodifiable instance of the default stop-words set.
    */
-  public static Set<?> getDefaultStopSet(){
+  public static CharArraySet getDefaultStopSet(){
     return DefaultSetHolder.DEFAULT_STOP_SET;
   }
   
@@ -60,7 +67,7 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
    * accesses the static final set the first time.;
    */
   private static class DefaultSetHolder {
-    static final Set<?> DEFAULT_STOP_SET;
+    static final CharArraySet DEFAULT_STOP_SET;
 
     static {
       try {
@@ -80,7 +87,7 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
    * @param stopwords a stopword set
    * @param stemExclusionSet a stemming exclusion set
    */
-  public HindiAnalyzer(Version version, Set<?> stopwords, Set<?> stemExclusionSet) {
+  public HindiAnalyzer(Version version, CharArraySet stopwords, CharArraySet stemExclusionSet) {
     super(version, stopwords);
     this.stemExclusionSet = CharArraySet.unmodifiableSet(
         CharArraySet.copy(matchVersion, stemExclusionSet));
@@ -92,7 +99,7 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
    * @param version lucene compatibility version
    * @param stopwords a stopword set
    */
-  public HindiAnalyzer(Version version, Set<?> stopwords) {
+  public HindiAnalyzer(Version version, CharArraySet stopwords) {
     this(version, stopwords, CharArraySet.EMPTY_SET);
   }
   
@@ -110,7 +117,7 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
    * used to tokenize all the text in the provided {@link Reader}.
    * 
    * @return {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
-   *         built from a {@link IndicTokenizer} filtered with
+   *         built from a {@link StandardTokenizer} filtered with
    *         {@link LowerCaseFilter}, {@link IndicNormalizationFilter},
    *         {@link HindiNormalizationFilter}, {@link KeywordMarkerFilter}
    *         if a stem exclusion set is provided, {@link HindiStemFilter}, and
@@ -119,7 +126,12 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
   @Override
   protected TokenStreamComponents createComponents(String fieldName,
       Reader reader) {
-    final Tokenizer source = new IndicTokenizer(matchVersion, reader);
+    final Tokenizer source;
+    if (matchVersion.onOrAfter(Version.LUCENE_36)) {
+      source = new StandardTokenizer(matchVersion, reader);
+    } else {
+      source = new IndicTokenizer(matchVersion, reader);
+    }
     TokenStream result = new LowerCaseFilter(matchVersion, source);
     if (!stemExclusionSet.isEmpty())
       result = new KeywordMarkerFilter(result, stemExclusionSet);

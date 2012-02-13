@@ -39,13 +39,13 @@ public class KuromojiAnalyzer extends StopwordAnalyzerBase {
     this(matchVersion, new Segmenter(), DefaultSetHolder.DEFAULT_STOP_SET, DefaultSetHolder.DEFAULT_STOP_TAGS);
   }
   
-  public KuromojiAnalyzer(Version matchVersion, Segmenter segmenter, Set<?> stopwords, Set<String> stoptags) {
+  public KuromojiAnalyzer(Version matchVersion, Segmenter segmenter, CharArraySet stopwords, Set<String> stoptags) {
     super(matchVersion, stopwords);
     this.segmenter = segmenter;
     this.stoptags = stoptags;
   }
   
-  public static Set<?> getDefaultStopSet(){
+  public static CharArraySet getDefaultStopSet(){
     return DefaultSetHolder.DEFAULT_STOP_SET;
   }
   
@@ -58,12 +58,12 @@ public class KuromojiAnalyzer extends StopwordAnalyzerBase {
    * outer class accesses the static final set the first time.
    */
   private static class DefaultSetHolder {
-    static final Set<?> DEFAULT_STOP_SET;
+    static final CharArraySet DEFAULT_STOP_SET;
     static final Set<String> DEFAULT_STOP_TAGS;
 
     static {
       try {
-        DEFAULT_STOP_SET = loadStopwordSet(false, KuromojiAnalyzer.class, "stopwords.txt", "#");
+        DEFAULT_STOP_SET = loadStopwordSet(true, KuromojiAnalyzer.class, "stopwords.txt", "#");  // ignore case
         final CharArraySet tagset = loadStopwordSet(false, KuromojiAnalyzer.class, "stoptags.txt", "#");
         DEFAULT_STOP_TAGS = new HashSet<String>();
         for (Object element : tagset) {
@@ -71,9 +71,8 @@ public class KuromojiAnalyzer extends StopwordAnalyzerBase {
           DEFAULT_STOP_TAGS.add(new String(chars));
         }
       } catch (IOException ex) {
-        // default set should always be present as it is part of the
-        // distribution (JAR)
-        throw new RuntimeException("Unable to load default stopword set");
+        // default set should always be present as it is part of the distribution (JAR)
+        throw new RuntimeException("Unable to load default stopword or stoptag set");
       }
     }
   }
@@ -81,11 +80,11 @@ public class KuromojiAnalyzer extends StopwordAnalyzerBase {
   @Override
   protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
     Tokenizer tokenizer = new KuromojiTokenizer(this.segmenter, reader);
-    TokenStream stream = new LowerCaseFilter(matchVersion, tokenizer);
-    stream = new CJKWidthFilter(stream);
+    TokenStream stream = new KuromojiBaseFormFilter(tokenizer);
     stream = new KuromojiPartOfSpeechStopFilter(true, stream, stoptags);
+    stream = new CJKWidthFilter(stream);
     stream = new StopFilter(matchVersion, stream, stopwords);
-    stream = new KuromojiBaseFormFilter(stream);
+    stream = new LowerCaseFilter(matchVersion, stream);
     return new TokenStreamComponents(tokenizer, stream);
   }
 }

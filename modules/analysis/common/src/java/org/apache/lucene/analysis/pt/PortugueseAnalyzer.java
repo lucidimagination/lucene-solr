@@ -19,7 +19,6 @@ package org.apache.lucene.analysis.pt;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
@@ -39,9 +38,16 @@ import org.tartarus.snowball.ext.PortugueseStemmer;
 
 /**
  * {@link Analyzer} for Portuguese.
+ * <p>
+ * <a name="version"/>
+ * <p>You must specify the required {@link Version}
+ * compatibility when creating PortugueseAnalyzer:
+ * <ul>
+ *   <li> As of 3.6, PortugueseLightStemFilter is used for less aggressive stemming.
+ * </ul>
  */
 public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
-  private final Set<?> stemExclusionSet;
+  private final CharArraySet stemExclusionSet;
   
   /** File containing default Portuguese stopwords. */
   public final static String DEFAULT_STOPWORD_FILE = "portuguese_stop.txt";
@@ -50,7 +56,7 @@ public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
    * Returns an unmodifiable instance of the default stop words set.
    * @return default stop words set.
    */
-  public static Set<?> getDefaultStopSet(){
+  public static CharArraySet getDefaultStopSet(){
     return DefaultSetHolder.DEFAULT_STOP_SET;
   }
   
@@ -59,7 +65,7 @@ public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
    * accesses the static final set the first time.;
    */
   private static class DefaultSetHolder {
-    static final Set<?> DEFAULT_STOP_SET;
+    static final CharArraySet DEFAULT_STOP_SET;
 
     static {
       try {
@@ -86,7 +92,7 @@ public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
    * @param matchVersion lucene compatibility version
    * @param stopwords a stopword set
    */
-  public PortugueseAnalyzer(Version matchVersion, Set<?> stopwords) {
+  public PortugueseAnalyzer(Version matchVersion, CharArraySet stopwords) {
     this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
 
@@ -99,7 +105,7 @@ public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
    * @param stopwords a stopword set
    * @param stemExclusionSet a set of terms not to be stemmed
    */
-  public PortugueseAnalyzer(Version matchVersion, Set<?> stopwords, Set<?> stemExclusionSet) {
+  public PortugueseAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
     super(matchVersion, stopwords);
     this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(
         matchVersion, stemExclusionSet));
@@ -115,7 +121,7 @@ public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
    *         built from an {@link StandardTokenizer} filtered with
    *         {@link StandardFilter}, {@link LowerCaseFilter}, {@link StopFilter}
    *         , {@link KeywordMarkerFilter} if a stem exclusion set is
-   *         provided and {@link SnowballFilter}.
+   *         provided and {@link PortugueseLightStemFilter}.
    */
   @Override
   protected TokenStreamComponents createComponents(String fieldName,
@@ -126,7 +132,11 @@ public final class PortugueseAnalyzer extends StopwordAnalyzerBase {
     result = new StopFilter(matchVersion, result, stopwords);
     if(!stemExclusionSet.isEmpty())
       result = new KeywordMarkerFilter(result, stemExclusionSet);
-    result = new SnowballFilter(result, new PortugueseStemmer());
+    if (matchVersion.onOrAfter(Version.LUCENE_36)) {
+      result = new PortugueseLightStemFilter(result);
+    } else {
+      result = new SnowballFilter(result, new PortugueseStemmer());
+    }
     return new TokenStreamComponents(source, result);
   }
 }

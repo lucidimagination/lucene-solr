@@ -60,8 +60,6 @@ New Features
 
  * LUCENE-3496: Support grouping by DocValues. (Martijn van Groningen)
 
- * LUCENE-3602: Added query time joining under the join module. (Martijn van Groningen, Michael McCandless)
-
  * LUCENE-2795: Generified DirectIOLinuxDirectory to work across any
    unix supporting the O_DIRECT flag when opening a file (tested on
    Linux and OS X but likely other Unixes will work), and improved it
@@ -81,7 +79,7 @@ API Changes
    for API use. (Andrzej Bialecki)
 
  * LUCENE-2912: The field-specific hashmaps in SweetSpotSimilarity were removed.
-   Instead, use SimilarityProvider to return different SweetSpotSimilaritys
+   Instead, use PerFieldSimilarityWrapper to return different SweetSpotSimilaritys
    for different fields, this way all parameters (such as TF factors) can be 
    customized on a per-field basis.  (Robert Muir)
 
@@ -150,6 +148,8 @@ New Features
    joins in both parent to child and child to parent directions.
    (Mike McCandless)
 
+ * LUCENE-3602: Added query time joining under the join module. (Martijn van Groningen, Michael McCandless)
+
 API Changes
 
  * LUCENE-3596: DirectoryTaxonomyWriter.openIndexWriter() now takes an
@@ -169,6 +169,17 @@ Changes in runtime behavior
 
  * LUCENE-3626: PKIndexSplitter and MultiPassIndexSplitter now work
    per segment.  (Uwe Schindler)
+   
+ * SOLR-3105: When passed LUCENE_36 or greater as version, GermanAnalyzer,
+   SpanishAnalyzer, FrenchAnalyzer, ItalianAnalyzer, and PortugueseAnalyzer
+   use a lighter stemming approach, CatalanAnalyzer uses ElisionFilter 
+   with a set of contractions, HindiAnalyzer uses StandardTokenizer, and
+   ThaiAnalyzer uses thai stopwords. Add GermanNormalizationFilter which applies
+   the Snowball German2 algorithm to ae/oe/ue and case-folds ß. Add 
+   GalicianMinimalStemFilter for plural removal only. (Robert Muir)
+
+ * LUCENE-3748: EnglishPossessiveFilter did not work with Unicode right 
+   single quotation mark (U+2019).  (David Croley via Robert Muir)
 
 Optimizations
 
@@ -209,6 +220,10 @@ Bug Fixes
 
  * LUCENE-3719: FVH: slow performance on very large queries.
    (Igor Motov via Koji Sekiguchi)
+
+ * LUCENE-3765: As of Version.LUCENE_36, DutchAnalyzer's two ctors
+   that take stopwords and stem exclusion tables also initialize
+   the default stem overrides (e.g. kind/kinder, fiets).  (Robert Muir)
 
 Documentation
 

@@ -21,7 +21,6 @@ package org.apache.lucene.analysis.de;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.Arrays;
-import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
@@ -54,6 +53,7 @@ import org.tartarus.snowball.ext.German2Stemmer;
  * <p>You must specify the required {@link Version}
  * compatibility when creating GermanAnalyzer:
  * <ul>
+ *   <li> As of 3.6, GermanLightStemFilter is used for less aggressive stemming.
  *   <li> As of 3.1, Snowball stemming is done with SnowballFilter, and 
  *        Snowball stopwords are used by default.
  *   <li> As of 2.9, StopFilter preserves position
@@ -89,16 +89,16 @@ public final class GermanAnalyzer extends StopwordAnalyzerBase {
    * Returns a set of default German-stopwords 
    * @return a set of default German-stopwords 
    */
-  public static final Set<?> getDefaultStopSet(){
+  public static final CharArraySet getDefaultStopSet(){
     return DefaultSetHolder.DEFAULT_SET;
   }
   
   private static class DefaultSetHolder {
     /** @deprecated in 3.1, remove in Lucene 5.0 (index bw compat) */
     @Deprecated
-    private static final Set<?> DEFAULT_SET_30 = CharArraySet.unmodifiableSet(new CharArraySet(
+    private static final CharArraySet DEFAULT_SET_30 = CharArraySet.unmodifiableSet(new CharArraySet(
         Version.LUCENE_CURRENT, Arrays.asList(GERMAN_STOP_WORDS), false));
-    private static final Set<?> DEFAULT_SET;
+    private static final CharArraySet DEFAULT_SET;
     static {
       try {
         DEFAULT_SET = WordlistLoader.getSnowballWordSet(IOUtils.getDecodingReader(SnowballFilter.class, 
@@ -118,7 +118,7 @@ public final class GermanAnalyzer extends StopwordAnalyzerBase {
   /**
    * Contains words that should be indexed but not stemmed.
    */
-  private final Set<?> exclusionSet;
+  private final CharArraySet exclusionSet;
 
   /**
    * Builds an analyzer with the default stop words:
@@ -138,7 +138,7 @@ public final class GermanAnalyzer extends StopwordAnalyzerBase {
    * @param stopwords
    *          a stopword set
    */
-  public GermanAnalyzer(Version matchVersion, Set<?> stopwords) {
+  public GermanAnalyzer(Version matchVersion, CharArraySet stopwords) {
     this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
   
@@ -152,7 +152,7 @@ public final class GermanAnalyzer extends StopwordAnalyzerBase {
    * @param stemExclusionSet
    *          a stemming exclusion set
    */
-  public GermanAnalyzer(Version matchVersion, Set<?> stopwords, Set<?> stemExclusionSet) {
+  public GermanAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
     super(matchVersion, stopwords);
     exclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(matchVersion, stemExclusionSet));
   }
@@ -166,7 +166,7 @@ public final class GermanAnalyzer extends StopwordAnalyzerBase {
    *         built from a {@link StandardTokenizer} filtered with
    *         {@link StandardFilter}, {@link LowerCaseFilter}, {@link StopFilter}
    *         , {@link KeywordMarkerFilter} if a stem exclusion set is
-   *         provided, and {@link SnowballFilter}
+   *         provided, {@link GermanNormalizationFilter} and {@link GermanLightStemFilter}
    */
   @Override
   protected TokenStreamComponents createComponents(String fieldName,
@@ -176,10 +176,14 @@ public final class GermanAnalyzer extends StopwordAnalyzerBase {
     result = new LowerCaseFilter(matchVersion, result);
     result = new StopFilter( matchVersion, result, stopwords);
     result = new KeywordMarkerFilter(result, exclusionSet);
-    if (matchVersion.onOrAfter(Version.LUCENE_31))
+    if (matchVersion.onOrAfter(Version.LUCENE_36)) {
+      result = new GermanNormalizationFilter(result);
+      result = new GermanLightStemFilter(result);
+    } else if (matchVersion.onOrAfter(Version.LUCENE_31)) {
       result = new SnowballFilter(result, new German2Stemmer());
-    else
+    } else {
       result = new GermanStemFilter(result);
+    }
     return new TokenStreamComponents(source, result);
   }
 }

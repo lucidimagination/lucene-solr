@@ -24,6 +24,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.util.Locale;
+import java.util.Map;
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.kuromoji.KuromojiTokenizer;
@@ -58,11 +59,12 @@ public class KuromojiTokenizerFactory extends BaseTokenizerFactory implements Re
   
   private static final String USER_DICT_ENCODING = "user-dictionary-encoding";
 
-  private Segmenter segmenter;
+  private UserDictionary userDictionary;
+  private Mode mode;
   
   @Override
   public void inform(ResourceLoader loader) {
-    Mode mode = args.get(MODE) != null ? Mode.valueOf(args.get(MODE).toUpperCase(Locale.ENGLISH)) : Mode.NORMAL;
+    mode = getMode(args);
     String userDictionaryPath = args.get(USER_DICT_PATH);
     try {
       if (userDictionaryPath != null) {
@@ -75,9 +77,9 @@ public class KuromojiTokenizerFactory extends BaseTokenizerFactory implements Re
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT);
         Reader reader = new InputStreamReader(stream, decoder);
-        this.segmenter = new Segmenter(new UserDictionary(reader), mode);
+        userDictionary = new UserDictionary(reader);
       } else {
-        this.segmenter = new Segmenter(mode);
+        userDictionary = null;
       }
     } catch (Exception e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
@@ -86,6 +88,15 @@ public class KuromojiTokenizerFactory extends BaseTokenizerFactory implements Re
   
   @Override
   public Tokenizer create(Reader input) {
-    return new KuromojiTokenizer(segmenter, input);
+    return new KuromojiTokenizer(new Segmenter(userDictionary, mode), input);
+  }
+  
+  private Mode getMode(Map<String, String> args) {
+    String mode = args.get(MODE);
+    if (mode != null) {
+      return Mode.valueOf(mode.toUpperCase(Locale.ENGLISH));
+    } else {
+      return Segmenter.DEFAULT_MODE;
+    }
   }
 }

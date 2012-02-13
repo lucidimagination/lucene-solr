@@ -78,6 +78,19 @@ Changes in backwards compatibility policy
     
   (Mike McCandless, Robert Muir, Uwe Schindler, Mark Miller, Michael Busch)
 
+* LUCENE-2858, LUCENE-3733: IndexReader was refactored into abstract
+  AtomicReader, CompositeReader, and DirectoryReader. To open Directory-
+  based indexes use DirectoryReader.open(), the corresponding method in
+  IndexReader is now deprecated for easier migration. Only DirectoryReader
+  supports commits, versions, and reopening with openIfChanged(). Terms,
+  postings, docvalues, and norms can from now on only be retrieved using
+  AtomicReader; DirectoryReader and MultiReader extend CompositeReader,
+  only offering stored fields and access to the sub-readers (which may be
+  composite or atomic). SlowCompositeReaderWrapper (LUCENE-2597) can be
+  used to emulate atomic readers on top of composites.
+  Please review MIGRATE.txt for information how to migrate old code.
+  (Uwe Schindler, Robert Muir, Mike McCandless)
+
 * LUCENE-2265: FuzzyQuery and WildcardQuery now operate on Unicode codepoints,
   not unicode code units. For example, a Wildcard "?" represents any unicode
   character. Furthermore, the rest of the automaton package and RegexpQuery use 
@@ -98,7 +111,7 @@ Changes in backwards compatibility policy
   and TermToBytesRefAttribute instead.  (Uwe Schindler)
 
 * LUCENE-2600: Remove IndexReader.isDeleted in favor of
-  IndexReader.getDeletedDocs().  (Mike McCandless)
+  AtomicReader.getDeletedDocs().  (Mike McCandless)
 
 * LUCENE-2667: FuzzyQuery's defaults have changed for more performant 
   behavior: the minimum similarity is 2 edit distances from the word,
@@ -116,10 +129,6 @@ Changes in backwards compatibility policy
   for example).  If your code somehow depends on the old behavior, you will
   need to change it (e.g. using "\\" to escape '\' itself).  
   (Sunil Kamath, Terry Yang via Robert Muir)
-
-* LUCENE-2771: IndexReader.norms() now throws UOE on non-atomic IndexReaders. If
-  you really want a top-level norms, use MultiNorms or SlowMultiReaderWrapper.
-  (Uwe Schindler, Robert Muir)
 
 * LUCENE-2837: Collapsed Searcher, Searchable into IndexSearcher;
   removed contrib/remote and MultiSearcher (Mike McCandless); absorbed
@@ -189,9 +198,9 @@ Changes in backwards compatibility policy
   with the old tokenStream() method removed.  Consequently it is now mandatory
   for all Analyzers to support reusability. (Chris Male)
 
-* LUCENE-3473: IndexReader.getUniqueTermCount() no longer throws UOE when
-  it cannot be easily determined (e.g. Multi*Readers). Instead, it returns
-  -1 to be consistent with this behavior across other index statistics.
+* LUCENE-3473: AtomicReader.getUniqueTermCount() no longer throws UOE when
+  it cannot be easily determined. Instead, it returns -1 to be consistent with
+  this behavior across other index statistics.
   (Robert Muir)
 
 * LUCENE-1536: The abstract FilteredDocIdSet.match() method is no longer
@@ -207,19 +216,19 @@ Changes in backwards compatibility policy
 * LUCENE-3533: Removed SpanFilters, they created large lists of objects and 
   did not scale. (Robert Muir)
   
-* LUCENE-3606: IndexReader was made read-only. It is no longer possible to
-  delete or undelete documents using IndexReader; you have to use IndexWriter
-  now. As deleting by internal Lucene docID is no longer possible, this
-  requires adding a unique identifier field to your index. Deleting/relying
-  upon Lucene docIDs is not recommended anyway, because they can change.
-  Consequently commit() was removed and IndexReader.open(), openIfChanged(),
-  and clone() no longer take readOnly booleans or IndexDeletionPolicy
+* LUCENE-3606: IndexReader and subclasses were made read-only. It is no longer
+  possible to delete or undelete documents using IndexReader; you have to use
+  IndexWriter now. As deleting by internal Lucene docID is no longer possible,
+  this requires adding a unique identifier field to your index. Deleting/
+  relying upon Lucene docIDs is not recommended anyway, because they can
+  change. Consequently commit() was removed and DirectoryReader.open(),
+  openIfChanged() no longer take readOnly booleans or IndexDeletionPolicy
   instances. Furthermore, IndexReader.setNorm() was removed. If you need
   customized norm values, the recommended way to do this is by modifying
-  SimilarityProvider to use an external byte[] or one of the new DocValues
+  Similarity to use an external byte[] or one of the new DocValues
   fields (LUCENE-3108). Alternatively, to dynamically change norms (boost
-  *and* length norm) at query time, wrap your IndexReader using
-  FilterIndexReader, overriding FilterIndexReader.norms(). To persist the
+  *and* length norm) at query time, wrap your AtomicReader using
+  FilterAtomicReader, overriding FilterAtomicReader.norms(). To persist the
   changes on disk, copy the FilteredIndexReader to a new index using
   IndexWriter.addIndexes().  (Uwe Schindler, Robert Muir)
 
@@ -231,10 +240,20 @@ Changes in backwards compatibility policy
   FieldInfo.IndexOption: DOCS_AND_POSITIONS_AND_OFFSETS.  (Robert
   Muir, Mike McCandless)
 
-* LUCENE-3646: FieldCacheImpl now throws UOE on non-atomic IndexReaders. If
-  you really want a top-level fieldcache, use SlowMultiReaderWrapper.
-  (Robert Muir)
-  
+* LUCENE-2858, LUCENE-3770: FilterIndexReader was renamed to 
+  FilterAtomicReader and now extends AtomicReader. If you want to filter 
+  composite readers like DirectoryReader or MultiReader, filter their 
+  atomic leaves and build a new CompositeReader (e.g. MultiReader) around 
+  them. (Uwe Schindler, Robert Muir) 
+
+* LUCENE-3736: ParallelReader was split into ParallelAtomicReader
+  and ParallelCompositeReader. Lucene 3.x's ParallelReader is now
+  ParallelAtomicReader; but the new composite variant has improved performance
+  as it works on the atomic subreaders. It requires that all parallel
+  composite readers have the same subreader structure. If you cannot provide this,
+  you can use SlowCompositeReaderWrapper to make all parallel readers atomic
+  and use ParallelAtomicReader.  (Uwe Schindler, Mike McCandless, Robert Muir)
+
 Changes in Runtime Behavior
 
 * LUCENE-2846: omitNorms now behaves like omitTermFrequencyAndPositions, if you
@@ -323,9 +342,6 @@ Changes in Runtime Behavior
   
   (Mike McCandless, Michael Busch, Simon Willnauer)
 
-* LUCENE-3146: IndexReader.setNorm throws IllegalStateException if the field
-  does not store norms. (Shai Erera, Mike McCandless)
-
 * LUCENE-3309: Stored fields no longer record whether they were
   tokenized or not.  In general you should not rely on stored fields
   to record any "metadata" from indexing (tokenized, omitNorms,
@@ -342,12 +358,12 @@ API Changes
   and iterated as byte[] (wrapped in a BytesRef) by IndexReader for
   searching.
 
-* LUCENE-1458, LUCENE-2111: IndexReader now directly exposes its
+* LUCENE-1458, LUCENE-2111: AtomicReader now directly exposes its
   deleted docs (getDeletedDocs), providing a new Bits interface to
   directly query by doc ID.
 
 * LUCENE-2691: IndexWriter.getReader() has been made package local and is now
-  exposed via open and reopen methods on IndexReader.  The semantics of the
+  exposed via open and reopen methods on DirectoryReader.  The semantics of the
   call is the same as it was prior to the API change.
   (Grant Ingersoll, Mike McCandless)
 
@@ -357,14 +373,6 @@ API Changes
 * LUCENE-2831: Weight#scorer, Weight#explain, Filter#getDocIdSet,
   Collector#setNextReader & FieldComparator#setNextReader now expect an
   AtomicReaderContext instead of an IndexReader. (Simon Willnauer)
-
-* LUCENE-2846: Remove the deprecated IndexReader.setNorm(int, String, float).
-  This method was only syntactic sugar for setNorm(int, String, byte), but
-  using the global Similarity.getDefault().encodeNormValue.  Use the byte-based
-  method instead to ensure that the norm is encoded with your Similarity.
-  Also removed norms(String, byte[], int), which was only used by MultiReader
-  for building top-level norms. If you really need a top-level norms, use 
-  MultiNorms or SlowMultiReaderWrapper. (Robert Muir, Mike Mccandless)
 
 * LUCENE-2892: Add QueryParser.newFieldQuery (called by getFieldQuery by 
   default) which takes Analyzer as a parameter, for easier customization by 
@@ -473,7 +481,7 @@ New features
   Sep*, makes it simple to take any variable sized int block coders
   (like Simple9/16) and use them in a codec.  (Mike McCandless)
 
-* LUCENE-2597: Add oal.index.SlowMultiReaderWrapper, to wrap a
+* LUCENE-2597: Add oal.index.SlowCompositeReaderWrapper, to wrap a
   composite reader (eg MultiReader or DirectoryReader), making it
   pretend it's an atomic reader.  This is a convenience class (you can
   use MultiFields static methods directly, instead) if you need to use
@@ -583,16 +591,12 @@ New features
     for plugging in new ranking algorithms without dealing with all of the
     nuances and implementation details of Lucene. 
 
-  - Added a new helper class BasicSimilarityProvider that just applies one
-    scoring algorithm to all fields, with queryNorm() and coord() returning 1.
-    In general, it is recommended to disable coord() when using the new models.
-    For example, to use BM25 for all fields: 
-     searcher.setSimilarityProvider(
-        new BasicSimilarityProvider(new BM25Similarity()));
+  - For example, to use BM25 for all fields: 
+     searcher.setSimilarity(new BM25Similarity());
 
     If you instead want to apply different similarities (e.g. ones with 
     different parameter values or different algorithms entirely) to different
-    fields, implement SimilarityProvider with your per-field logic.
+    fields, implement PerFieldSimilarityWrapper with your per-field logic.
 
   (David Mark Nemeskey via Robert Muir)
 
@@ -613,7 +617,7 @@ New features
 * LUCENE-1536: Filters can now be applied down-low, if their DocIdSet implements
   a new bits() method, returning all documents in a random access way. If the
   DocIdSet is not too sparse, it will be passed as acceptDocs down to the Scorer
-  as replacement for IndexReader's live docs.
+  as replacement for AtomicReader's live docs.
   In addition, FilteredQuery backs now IndexSearcher's filtering search methods.
   Using FilteredQuery you can chain Filters in a very performant way
   [new FilteredQuery(new FilteredQuery(query, filter1), filter2)], which was not
@@ -627,7 +631,7 @@ New features
   load only certain fields when loading a document.  (Peter Chang via
   Mike McCandless)
   
-* LUCENE-3628: Norms are represented as DocValues. IndexReader exposes
+* LUCENE-3628: Norms are represented as DocValues. AtomicReader exposes
   a #normValues(String) method to obtain norms per field. (Simon Willnauer) 
 
 * LUCENE-3687: Similarity#computeNorm(FieldInvertState, Norm) allows to compute
@@ -690,7 +694,10 @@ Bug fixes
 
 * LUCENE-3589: BytesRef copy(short) didnt set length.
   (Peter Chang via Robert Muir)
-  
+
+* SOLR-3076: ToParent/ChildBlockJoinQuery was not handling an incoming
+  filter nor deleted docs correctly (Mikhail Khludnev via Mike
+  McCandless).
   
 ======================= Lucene 3.6.0 =======================
 
@@ -752,6 +759,11 @@ Changes in backwards compatibility policy
 * LUCENE-3672: Deprecate Directory.fileModified and
   IndexCommit.getTimestamp and .getVersion. (Andrzej Bialecki, Robert
   Muir, Mike McCandless)
+
+* LUCENE-3760: In IndexReader/DirectoryReader, deprecate static
+  methods getCurrentVersion and getCommitUserData, and non-static
+  method getCommitUserData (use getIndexCommit().getUserData()
+  instead).  (Ryan McKinley, Robert Muir, Mike McCandless)
   
 Security fixes
 
@@ -774,7 +786,7 @@ API Changes
   query time, wrap your IndexReader using FilterIndexReader, overriding
   FilterIndexReader.norms(). To persist the changes on disk, copy the
   FilteredIndexReader to a new index using IndexWriter.addIndexes().
-  In Lucene 4.0, SimilarityProvider will allow you to customize scoring
+  In Lucene 4.0, Similarity will allow you to customize scoring
   using external norms, too.  (Uwe Schindler, Robert Muir)
 
 * LUCENE-3735: PayloadProcessorProvider was changed to return a
@@ -782,6 +794,16 @@ API Changes
   of the provider to return for the factory is now based on the IndexReader
   to be merged. To mimic the old behaviour, just use IndexReader.directory()
   for choosing the provider by Directory.  (Uwe Schindler)
+
+* LUCENE-3765: Deprecated StopFilter ctor that took ignoreCase, because
+  in some cases (if the set is a CharArraySet), the argument is ignored.
+  Deprecated StandardAnalyzer and ClassicAnalyzer ctors that take File,
+  please use the Reader ctor instead.  (Robert Muir)
+
+* LUCENE-3766: Deprecate no-arg ctors of Tokenizer. Tokenizers are
+  TokenStreams with Readers: tokenizers with null Readers will not be
+  supported in Lucene 4.0, just use a TokenStream.  
+  (Mike McCandless, Robert Muir)
 
 New Features
 
@@ -902,6 +924,17 @@ Build
     Lucene release javadocs for the same version.
 
   (Steve Rowe, hossman)
+
+* LUCENE-3753: Restructure the Lucene build system:
+  - Created a new Lucene-internal module named "core" by moving the java/
+    and test/ directories from lucene/src/ to lucene/core/src/.
+  - Eliminated lucene/src/ by moving all its directories up one level.
+  - Each internal module (core/, test-framework/, and tools/) now has its own
+    build.xml, from which it is possible to run module-specific targets.
+    lucene/build.xml delegates all build tasks (via
+    <ant dir="internal-module-dir"> calls) to these modules' build.xml files.
+  (Steve Rowe)
+
 
 ======================= Lucene 3.5.0 =======================
 
