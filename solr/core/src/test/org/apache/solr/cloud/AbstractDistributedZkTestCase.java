@@ -18,15 +18,23 @@ package org.apache.solr.cloud;
  */
 
 import java.io.File;
+import java.util.Map;
 
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.common.cloud.CloudState;
+import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
-import org.apache.solr.core.SolrConfig;
+import org.apache.solr.common.cloud.ZkNodeProps;
+import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.zookeeper.KeeperException;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 
 public abstract class AbstractDistributedZkTestCase extends BaseDistributedSearchTestCase {
+  
+  protected static final String DEFAULT_COLLECTION = "collection1";
   private static final boolean DEBUG = false;
   protected ZkTestServer zkServer;
 
@@ -36,7 +44,6 @@ public abstract class AbstractDistributedZkTestCase extends BaseDistributedSearc
     super.setUp();
     log.info("####SETUP_START " + getName());
     createTempDir();
-    ignoreException("java.nio.channels.ClosedChannelException");
     
     String zkDir = testDir.getAbsolutePath() + File.separator
     + "zookeeper/server1/data";
@@ -44,6 +51,10 @@ public abstract class AbstractDistributedZkTestCase extends BaseDistributedSearc
     zkServer.run();
     
     System.setProperty("zkHost", zkServer.getZkAddress());
+    System.setProperty("enable.update.log", "true");
+    System.setProperty("remove.version.field", "true");
+    System
+    .setProperty("solr.directoryFactory", "solr.StandardDirectoryFactory");
     
     AbstractZkTestCase.buildZooKeeper(zkServer.getZkHost(), zkServer.getZkAddress(), "solrconfig.xml", "schema.xml");
 
@@ -70,8 +81,84 @@ public abstract class AbstractDistributedZkTestCase extends BaseDistributedSearc
 
     shards = sb.toString();
   }
+  
+  protected void waitForRecoveriesToFinish(String collection, ZkStateReader zkStateReader, boolean verbose)
+      throws Exception {
+    waitForRecoveriesToFinish(collection, zkStateReader, verbose, true);
+  }
+  
+  protected void waitForRecoveriesToFinish(String collection,
+      ZkStateReader zkStateReader, boolean verbose, boolean failOnTimeout)
+      throws Exception {
+    boolean cont = true;
+    int cnt = 0;
+    
+    while (cont) {
+      if (verbose) System.out.println("-");
+      boolean sawLiveRecovering = false;
+      zkStateReader.updateCloudState(true);
+      CloudState cloudState = zkStateReader.getCloudState();
+      Map<String,Slice> slices = cloudState.getSlices(collection);
+      for (Map.Entry<String,Slice> entry : slices.entrySet()) {
+        Map<String,ZkNodeProps> shards = entry.getValue().getShards();
+        for (Map.Entry<String,ZkNodeProps> shard : shards.entrySet()) {
+          if (verbose) System.out.println("rstate:"
+              + shard.getValue().get(ZkStateReader.STATE_PROP)
+              + " live:"
+              + cloudState.liveNodesContain(shard.getValue().get(
+                  ZkStateReader.NODE_NAME_PROP)));
+          String state = shard.getValue().get(ZkStateReader.STATE_PROP);
+          if ((state.equals(ZkStateReader.RECOVERING) || state
+              .equals(ZkStateReader.SYNC))
+              && cloudState.liveNodesContain(shard.getValue().get(
+                  ZkStateReader.NODE_NAME_PROP))) {
+            sawLiveRecovering = true;
+          }
+        }
+      }
+      if (!sawLiveRecovering || cnt == 120) {
+        if (!sawLiveRecovering) {
+          if (verbose) System.out.println("no one is recoverying");
+        } else {
+          if (failOnTimeout) {
+            fail("There are still nodes recoverying");
+            printLayout();
+            return;
+          }
+          if (verbose) System.out
+              .println("gave up waiting for recovery to finish..");
+        }
+        cont = false;
+      } else {
+        Thread.sleep(1000);
+      }
+      cnt++;
+    }
+  }
 
+  protected void assertAllActive(String collection,ZkStateReader zkStateReader)
+      throws KeeperException, InterruptedException {
+
+      zkStateReader.updateCloudState(true);
+      CloudState cloudState = zkStateReader.getCloudState();
+      Map<String,Slice> slices = cloudState.getSlices(collection);
+      if (slices == null) {
+        throw new IllegalArgumentException("Cannot find collection:" + collection);
+      }
+      for (Map.Entry<String,Slice> entry : slices.entrySet()) {
+        Map<String,ZkNodeProps> shards = entry.getValue().getShards();
+        for (Map.Entry<String,ZkNodeProps> shard : shards.entrySet()) {
+
+          String state = shard.getValue().get(ZkStateReader.STATE_PROP);
+          if (!state.equals(ZkStateReader.ACTIVE)) {
+            fail("Not all shards are ACTIVE");
+          }
+        }
+      }
+  }
+  
   @Override
+  @After
   public void tearDown() throws Exception {
     if (DEBUG) {
       printLayout();
@@ -79,6 +166,9 @@ public abstract class AbstractDistributedZkTestCase extends BaseDistributedSearc
     zkServer.shutdown();
     System.clearProperty("zkHost");
     System.clearProperty("collection");
+    System.clearProperty("enable.update.log");
+    System.clearProperty("remove.version.field");
+    System.clearProperty("solr.directoryFactory");
     System.clearProperty("solr.test.sys.prop1");
     System.clearProperty("solr.test.sys.prop2");
     resetExceptionIgnores();
@@ -93,7 +183,5 @@ public abstract class AbstractDistributedZkTestCase extends BaseDistributedSearc
   
   @AfterClass
   public static void afterClass() throws InterruptedException {
-    // wait just a bit for any zk client threads to outlast timeout
-    Thread.sleep(2000);
   }
 }

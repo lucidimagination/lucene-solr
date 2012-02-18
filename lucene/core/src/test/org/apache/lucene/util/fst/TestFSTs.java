@@ -1383,7 +1383,7 @@ public class TestFSTs extends LuceneTestCase {
     }
   }
 
-  // java -cp build/classes/test:build/classes/test-framework:build/classes/java:lib/junit-4.7.jar org.apache.lucene.util.fst.TestFSTs /x/tmp/allTerms3.txt out
+  // java -cp build/classes/test:build/classes/test-framework:build/classes/java:lib/junit-4.10.jar org.apache.lucene.util.fst.TestFSTs /x/tmp/allTerms3.txt out
   public static void main(String[] args) throws IOException {
     int prune = 0;
     int limit = Integer.MAX_VALUE;
@@ -1627,7 +1627,7 @@ public class TestFSTs extends LuceneTestCase {
           }
         }
         allIDs.add(idString);
-        idField.setValue(idString);
+        idField.setStringValue(idString);
         w.addDocument(doc);
       }
 
@@ -1752,7 +1752,7 @@ public class TestFSTs extends LuceneTestCase {
     }
 
     for(String term : allTerms) {
-      f.setValue(term);
+      f.setStringValue(term);
       w.addDocument(doc);
     }
 

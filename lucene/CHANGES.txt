@@ -405,6 +405,11 @@ API Changes
   long instead of int (to enable distributed scoring of > 2B docs).
   (Yonik Seeley, Andrzej Bialecki, Robert Muir)
 
+* LUCENE-3761: Generalize SearcherManager into an abstract ReferenceManager.
+  SearcherManager remains a concrete class, but due to the refactoring, the 
+  method maybeReopen has been deprecated in favor of maybeRefresh().
+  (Shai Erera, Mike McCandless, Simon Willnauer)
+
 New features
 
 * LUCENE-2604: Added RegexpQuery support to QueryParser. Regular expressions
@@ -765,6 +770,13 @@ Changes in backwards compatibility policy
   method getCommitUserData (use getIndexCommit().getUserData()
   instead).  (Ryan McKinley, Robert Muir, Mike McCandless)
   
+Changes in Runtime Behavior
+
+* LUCENE-3796: Throw an exception if you try to set an index-time
+  boost on a field that omits norms. Because the index-time boost
+  is multiplied into the norm, previously your boost would be 
+  silently discarded.  (Robert Muir)
+  
 Security fixes
 
 * LUCENE-3588: Try harder to prevent SIGSEGV on cloned MMapIndexInputs:
@@ -804,6 +816,15 @@ API Changes
   TokenStreams with Readers: tokenizers with null Readers will not be
   supported in Lucene 4.0, just use a TokenStream.  
   (Mike McCandless, Robert Muir)
+
+* LUCENE-3769: Simplified NRTManager by requiring applyDeletes to be
+  passed to ctor only; if an app needs to mix and match it's free to
+  create two NRTManagers (one always applying deletes and the other
+  never applying deletes).  (MJB, Shai Erera, Mike McCandless)
+
+* LUCENE-3776: You now acquire/release the IndexSearcher directly from
+  NRTManager.  (Mike McCandless)
+  
 
 New Features
 
@@ -934,6 +955,13 @@ Build
     lucene/build.xml delegates all build tasks (via
     <ant dir="internal-module-dir"> calls) to these modules' build.xml files.
   (Steve Rowe)
+
+* LUCENE-3774: Optimized and streamlined license and notice file validation
+  by refactoring the build task into an ANT task and modifying build scripts
+  to perform top-level checks. (Dawid Weiss, Steve Rowe, Robert Muir)
+
+* LUCENE-3762: Upgrade JUnit to 4.10, refactor state-machine of detecting 
+  setUp/tearDown call chaining in LuceneTestCase. (Dawid Weiss, Robert Muir)
 
 
 ======================= Lucene 3.5.0 =======================

@@ -178,7 +178,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
         }
 
         case PREPRECOVERY: {
-          this.handlePrepRecoveryAction(req, rsp);
+          this.handleWaitForStateAction(req, rsp);
           break;
         }
         
@@ -354,6 +354,10 @@ public class CoreAdminHandler extends RequestHandlerBase {
         if (opts != null)
           cd.setShardId(opts);
         
+        opts = params.get(CoreAdminParams.ROLES);
+        if (opts != null)
+          cd.setRoles(opts);
+        
         Integer numShards = params.getInt(ZkStateReader.NUM_SHARDS_PROP);
         if (numShards != null)
           cd.setNumShards(numShards);
@@ -401,14 +405,10 @@ public class CoreAdminHandler extends RequestHandlerBase {
     boolean doPersist = false;
 
     if (cname.equals(name)) return doPersist;
-
-    SolrCore core = coreContainer.getCore(cname);
-    if (core != null) {
-      doPersist = coreContainer.isPersistent();
-      coreContainer.register(name, core, false);
-      coreContainer.remove(cname);
-      core.close();
-    }
+    
+    doPersist = coreContainer.isPersistent();
+    coreContainer.rename(cname, name);
+    
     return doPersist;
   }
 
@@ -601,7 +601,11 @@ public class CoreAdminHandler extends RequestHandlerBase {
     SolrCore core = null;
     try {
       core = coreContainer.getCore(cname);
-      core.getUpdateHandler().getSolrCoreState().doRecovery(core);
+      if (core != null) {
+        core.getUpdateHandler().getSolrCoreState().doRecovery(core);
+      } else {
+        SolrException.log(log, "Cound not find core to call recovery:" + cname);
+      }
     } finally {
       // no recoveryStrat close for now
       if (core != null) {
@@ -610,7 +614,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     }
   }
   
-  protected void handlePrepRecoveryAction(SolrQueryRequest req,
+  protected void handleWaitForStateAction(SolrQueryRequest req,
       SolrQueryResponse rsp) throws IOException, InterruptedException {
     final SolrParams params = req.getParams();
     
@@ -621,8 +625,9 @@ public class CoreAdminHandler extends RequestHandlerBase {
     
     String nodeName = params.get("nodeName");
     String coreNodeName = params.get("coreNodeName");
-    
- 
+    String waitForState = params.get("state");
+    boolean checkLive = params.getBool("checkLive", true);
+    int pauseFor = params.getInt("pauseFor", 0);
     SolrCore core =  null;
 
     try {
@@ -630,7 +635,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
       if (core == null) {
         throw new SolrException(ErrorCode.BAD_REQUEST, "core not found:" + cname);
       }
-      String state;
+      String state = null;
       int retry = 0;
       while (true) {
         // wait until we are sure the recovering node is ready
@@ -640,20 +645,28 @@ public class CoreAdminHandler extends RequestHandlerBase {
         CloudState cloudState = coreContainer
             .getZkController()
             .getCloudState();
+        String collection = cloudDescriptor.getCollectionName();
         ZkNodeProps nodeProps = 
-            cloudState.getSlice(cloudDescriptor.getCollectionName(),
+            cloudState.getSlice(collection,
                 cloudDescriptor.getShardId()).getShards().get(coreNodeName);
-        state = nodeProps.get(ZkStateReader.STATE_PROP);
-        boolean live = cloudState.liveNodesContain(nodeName);
-        if (nodeProps != null && state.equals(ZkStateReader.RECOVERING)
-            && live) {
-          break;
+        boolean live = false;
+        if (nodeProps != null) {
+          
+          state = nodeProps.get(ZkStateReader.STATE_PROP);
+          live = cloudState.liveNodesContain(nodeName);
+          if (nodeProps != null && state.equals(waitForState)) {
+            if (checkLive && live) {
+              break;
+            } else {
+              break;
+            }
+          }
         }
         
         if (retry++ == 30) {
           throw new SolrException(ErrorCode.BAD_REQUEST,
-              "I was asked to prep for recovery for " + nodeName
-                  + " but she is not live or not in a recovery state - state: " + state + " live:" + live);
+              "I was asked to wait on state " + waitForState + " for " + nodeName
+                  + " but I still do not see the request state. I see state: " + state + " live:" + live);
         }
         
         Thread.sleep(1000);
@@ -663,21 +676,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
       // kept it from sending the update to be buffered -
       // pause for a while to let any outstanding updates finish
       
-      Thread.sleep(4000);
-      
-      UpdateRequestProcessorChain processorChain = core
-          .getUpdateProcessingChain(params.get(UpdateParams.UPDATE_CHAIN));
-      
-      ModifiableSolrParams reqParams = new ModifiableSolrParams(req.getParams());
-      reqParams.set(DistributedUpdateProcessor.COMMIT_END_POINT, "true");
-      
-      SolrQueryRequest sqr = new LocalSolrQueryRequest(core, reqParams);
-      UpdateRequestProcessor processor = processorChain.createProcessor(sqr,
-          new SolrQueryResponse());
-      CommitUpdateCommand cuc = new CommitUpdateCommand(req, false);
-      
-      processor.processCommit(cuc);
-      processor.finish();
+      Thread.sleep(pauseFor);
       
       // solrcloud_debug
 //      try {
@@ -738,7 +737,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
         info.add("uptime", System.currentTimeMillis() - core.getStartTime());
         RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
         try {
-          SimpleOrderedMap<Object> indexInfo = LukeRequestHandler.getIndexInfo(searcher.get().getIndexReader(), false);
+          SimpleOrderedMap<Object> indexInfo = LukeRequestHandler.getIndexInfo(searcher.get().getIndexReader());
           long size = getIndexSize(core);
           indexInfo.add("sizeInBytes", size);
           indexInfo.add("size", NumberUtils.readableSize(size));
