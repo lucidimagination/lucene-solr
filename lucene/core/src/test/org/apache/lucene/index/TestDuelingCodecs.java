@@ -22,19 +22,20 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.RegExp;
@@ -96,9 +97,10 @@ public class TestDuelingCodecs extends LuceneTestCase {
     createRandomIndex(numdocs, leftWriter, seed);
     createRandomIndex(numdocs, rightWriter, seed);
 
-    leftReader = leftWriter.getReader();
+    // TODO: maybe we should do this wrapping in another test?
+    leftReader = maybeWrap(leftWriter.getReader());
     leftWriter.close();
-    rightReader = rightWriter.getReader();
+    rightReader = maybeWrap(rightWriter.getReader());
     rightWriter.close();
     
     info = "left: " + leftCodec.toString() + " / right: " + rightCodec.toString();
@@ -112,6 +114,12 @@ public class TestDuelingCodecs extends LuceneTestCase {
     rightDir.close();
     
     super.tearDown();
+  }
+  
+  static IndexReader maybeWrap(IndexReader other) throws IOException {
+    // TODO: bogus how we do this
+    IndexSearcher is = newSearcher(other);
+    return is.getIndexReader();
   }
   
   /**
@@ -140,6 +148,7 @@ public class TestDuelingCodecs extends LuceneTestCase {
     assertTermVectors(leftReader, rightReader);
     assertDocValues(leftReader, rightReader);
     assertDeletedDocs(leftReader, rightReader);
+    assertFieldInfos(leftReader, rightReader);
   }
   
   /** 
@@ -612,6 +621,25 @@ public class TestDuelingCodecs extends LuceneTestCase {
     for (int i = 0; i < leftReader.maxDoc(); i++) {
       assertEquals(info, leftBits.get(i), rightBits.get(i));
     }
+  }
+  
+  public void assertFieldInfos(IndexReader leftReader, IndexReader rightReader) throws Exception {
+    FieldInfos leftInfos = MultiFields.getMergedFieldInfos(leftReader);
+    FieldInfos rightInfos = MultiFields.getMergedFieldInfos(rightReader);
+    
+    // TODO: would be great to verify more than just the names of the fields!
+    TreeSet<String> left = new TreeSet<String>();
+    TreeSet<String> right = new TreeSet<String>();
+    
+    for (FieldInfo fi : leftInfos) {
+      left.add(fi.name);
+    }
+    
+    for (FieldInfo fi : rightInfos) {
+      right.add(fi.name);
+    }
+    
+    assertEquals(info, left, right);
   }
   
   
