@@ -256,6 +256,8 @@ Optimizations
 Bug Fixes
 ----------------------
 
+* SOLR-3068: Occasional NPE in ThreadDumpHandler (siren)
+
 * SOLR-2762: FSTLookup could return duplicate results or one results less
   than requested. (David Smiley, Dawid Weiss)
 
@@ -500,6 +502,12 @@ New Features
 
 * SOLR-3105: ElisionFilterFactory optionally allows the parameter 
   ignoreCase (default=false).  (Robert Muir)
+
+* LUCENE-3714: Add WFSTLookupFactory, a suggester that uses a weighted FST
+  for more fine-grained suggestions.  (Mike McCandless, Dawid Weiss, Robert Muir)
+
+* SOLR-3143: Add SuggestQueryConverter, a QueryConverter intended for
+  auto-suggesters. (Robert Muir)
 
 Optimizations
 ----------------------

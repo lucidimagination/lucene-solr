@@ -1,4 +1,4 @@
-package org.apache.solr.spelling.suggest;
+package org.apache.solr.spelling;
 
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -17,8 +17,31 @@ package org.apache.solr.spelling.suggest;
  * limitations under the License.
  */
 
-public class SuggesterTSTTest extends SuggesterTest {
-  public SuggesterTSTTest() {
-    super.requestUri = "/suggest_tst";
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+
+import org.apache.lucene.analysis.Token;
+
+/**
+ * Passes the entire query string to the configured analyzer as-is.
+ **/
+public class SuggestQueryConverter extends SpellingQueryConverter {
+
+  @Override
+  public Collection<Token> convert(String original) {
+    if (original == null) { // this can happen with q.alt = and no query
+      return Collections.emptyList();
+    }
+
+    Collection<Token> result = new ArrayList<Token>();
+    try {
+      analyze(result, new StringReader(original), 0);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    return result;
   }
 }
