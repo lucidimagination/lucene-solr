@@ -1,4 +1,4 @@
-                      Apache Solr Release Notes
+﻿                      Apache Solr Release Notes
 
 Introduction
 ------------
@@ -224,6 +224,11 @@ New Features
 * SOLR-3120: Optional post filtering for spatial queries bbox and geofilt
   for LatLonType. (yonik)
 
+* SOLR-2459: Expose LogLevel selection with a RequestHandler rather then servlet
+  (Stefan Matheis, Upayavira, ryan)
+
+* SOLR-3134: Include shard info in distributed response when shards.info=true (ryan)
+
 
 Optimizations
 ----------------------
@@ -318,7 +323,7 @@ Bug Fixes
 * SOLR-1520: QueryElevationComponent now supports non-string ids (gsingers)
 
 * SOLR-3037: When using binary format in solrj the codec screws up parameters
-  (Sami Siren via yonik)
+  (Sami Siren, Jörg Maier  via yonik)
 
 * SOLR-3062: A join in the main query was not respecting any filters pushed
   down to it via acceptDocs since LUCENE-1536. (Mike Hugo, yonik)
@@ -425,6 +430,7 @@ Other Changes
 * SOLR-3005: Default QueryResponseWriters are now initialized via init() with an empty
   NamedList. (Gasol Wu, Chris Male)
 
+* SOLR-2607: Removed obsolete client/ folder (ehatcher, Eric Pugh, janhoy)
 
 Documentation
 ----------------------

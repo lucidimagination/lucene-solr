@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -77,6 +78,7 @@ public final class ZkController {
   private final static Pattern URL_POST = Pattern.compile("https?://(.*)");
   private final static Pattern URL_PREFIX = Pattern.compile("(https?://).*");
 
+  private final boolean SKIP_AUTO_RECOVERY = Boolean.getBoolean("solrcloud.skip.autorecovery");
   
   // package private for tests
 
@@ -85,7 +87,8 @@ public final class ZkController {
   public final static String COLLECTION_PARAM_PREFIX="collection.";
   public final static String CONFIGNAME_PROP="configName";
 
-  private final Map<String, CoreState> coreStates = Collections.synchronizedMap(new HashMap<String, CoreState>());
+  private Map<String, CoreState> coreStates = null;
+  private final Map<String, ElectionContext> electionContexts = Collections.synchronizedMap(new HashMap<String, ElectionContext>());
   
   private SolrZkClient zkClient;
   private ZkCmdExecutor cmdExecutor;
@@ -104,7 +107,6 @@ public final class ZkController {
 
   private LeaderElector overseerElector;
   
-  private boolean SKIP_AUTO_RECOVERY = Boolean.getBoolean("solrcloud.skip.autorecovery");
 
   // this can be null in which case recovery will be inactive
   private CoreContainer cc;
@@ -341,6 +343,8 @@ public final class ZkController {
       createEphemeralLiveNode();
       cmdExecutor.ensureExists(ZkStateReader.COLLECTIONS_ZKNODE, zkClient);
 
+      syncNodeState();
+
       overseerElector = new LeaderElector(zkClient);
       ElectionContext context = new OverseerElectionContext(getNodeName(), zkClient, zkStateReader);
       overseerElector.setup(context);
@@ -365,6 +369,27 @@ public final class ZkController {
 
   }
   
+  /*
+   * sync internal state with zk on startup
+   */
+  private void syncNodeState() throws KeeperException, InterruptedException {
+    log.debug("Syncing internal state with zk. Current: " + coreStates);
+    final String path = Overseer.STATES_NODE + "/" + getNodeName();
+
+    final byte[] data = zkClient.getData(path, null, null, true);
+
+    coreStates = new HashMap<String,CoreState>();
+
+    if (data != null) {
+        CoreState[] states = CoreState.load(data);
+        List<CoreState> stateList = Arrays.asList(states);
+        for(CoreState coreState: stateList) {
+          coreStates.put(coreState.getCoreName(), coreState);
+        }
+    }
+    log.debug("after sync: " + coreStates);
+  }
+
   public boolean isConnected() {
     return zkClient.isConnected();
   }
@@ -605,6 +630,7 @@ public final class ZkController {
         collection, shardZkNodeName, leaderProps, this, cc);
     
     leaderElector.setup(context);
+    electionContexts.put(shardZkNodeName, context);
     leaderElector.joinElection(context, core);
   }
 
@@ -633,7 +659,10 @@ public final class ZkController {
       final String shardZkNodeName, String shardId, ZkNodeProps leaderProps,
       SolrCore core, CoreContainer cc) throws InterruptedException,
       KeeperException, IOException, ExecutionException {
-
+    if (SKIP_AUTO_RECOVERY) {
+      log.warn("Skipping recovery according to sys prop solrcloud.skip.autorecovery");
+      return false;
+    }
     boolean doRecovery = true;
     if (!isLeader) {
       
@@ -641,9 +670,9 @@ public final class ZkController {
         doRecovery = false;
       }
       
-      if (doRecovery && !SKIP_AUTO_RECOVERY) {
+      if (doRecovery) {
         log.info("Core needs to recover:" + core.getName());
-        core.getUpdateHandler().getSolrCoreState().doRecovery(core);
+        core.getUpdateHandler().getSolrCoreState().doRecovery(cc, coreName);
         return true;
       }
     } else {
@@ -720,9 +749,20 @@ public final class ZkController {
   /**
    * @param coreName
    * @param cloudDesc
+   * @throws KeeperException
+   * @throws InterruptedException
    */
-  public void unregister(String coreName, CloudDescriptor cloudDesc) {
-    // TODO : perhaps mark the core down in zk?
+  public void unregister(String coreName, CloudDescriptor cloudDesc)
+      throws InterruptedException, KeeperException {
+    final String zkNodeName = getNodeName() + "_" + coreName;
+    synchronized (coreStates) {
+      coreStates.remove(zkNodeName);
+    }
+    publishState();
+    ElectionContext context = electionContexts.remove(zkNodeName);
+    if (context != null) {
+      context.cancelElection();
+    }
   }
 
   /**
@@ -900,21 +940,31 @@ public final class ZkController {
     }
     CoreState coreState = new CoreState(coreName,
         cloudDesc.getCollectionName(), props, numShards);
-    coreStates.put(shardZkNodeName, coreState);
+    
+    synchronized (coreStates) {
+      coreStates.put(shardZkNodeName, coreState);
+    }
+    
+    publishState();
+  }
+  
+  private void publishState() {
     final String nodePath = "/node_states/" + getNodeName();
 
-    try {
-      zkClient.setData(nodePath, ZkStateReader.toJSON(coreStates.values()),
-          true);
-      
-    } catch (KeeperException e) {
-      throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR,
-          "could not publish node state", e);
-    } catch (InterruptedException e) {
-      // Restore the interrupted status
-      Thread.currentThread().interrupt();
-      throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR,
-          "could not publish node state", e);
+    synchronized (coreStates) {
+      try {
+        zkClient.setData(nodePath, ZkStateReader.toJSON(coreStates.values()),
+            true);
+        
+      } catch (KeeperException e) {
+        throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR,
+            "could not publish node state", e);
+      } catch (InterruptedException e) {
+        // Restore the interrupted status
+        Thread.currentThread().interrupt();
+        throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR,
+            "could not publish node state", e);
+      }
     }
   }
 
@@ -1034,7 +1084,7 @@ public final class ZkController {
       prepCmd.setNodeName(getNodeName());
       prepCmd.setCoreNodeName(shardZkNodeName);
       prepCmd.setState(ZkStateReader.DOWN);
-      prepCmd.setPauseFor(10000);
+      prepCmd.setPauseFor(5000);
       if (waitForNotLive){
         prepCmd.setCheckLive(false);
       }

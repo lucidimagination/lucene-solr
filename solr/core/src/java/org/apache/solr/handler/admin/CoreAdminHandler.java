@@ -36,6 +36,7 @@ import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.CloudState;
+import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
@@ -61,6 +62,7 @@ import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
 import org.apache.solr.util.NumberUtils;
 import org.apache.solr.util.RefCounted;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -318,6 +320,17 @@ public class CoreAdminHandler extends RequestHandlerBase {
     try {
       SolrParams params = req.getParams();
       String name = params.get(CoreAdminParams.NAME);
+      
+      //for now, do not allow creating new core with same name when in cloud mode
+      //XXX perhaps it should just be unregistered from cloud before readding it?, 
+      //XXX perhaps we should also check that cores are of same type before adding new core to collection?
+      if (coreContainer.getZkController() != null) {
+        if (coreContainer.getCore(name) != null) {
+          log.info("Re-creating a core with existing name is not allowed in cloud mode");
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+              "Core with name '" + name + "' already exists.");
+        }
+      }
 
       String instanceDir = params.get(CoreAdminParams.INSTANCE_DIR);
       if (instanceDir == null) {
@@ -453,7 +466,23 @@ public class CoreAdminHandler extends RequestHandlerBase {
     SolrCore core = coreContainer.remove(cname);
     if(core == null){
        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-              "No such core exists '"+cname+"'");
+          "No such core exists '" + cname + "'");
+    } else {
+      if (coreContainer.getZkController() != null) {
+        log.info("Unregistering core " + cname + " from cloudstate.");
+        try {
+          coreContainer.getZkController().unregister(cname, core.getCoreDescriptor().getCloudDescriptor());
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
+              "Could not unregister core " + cname + " from cloudstate: "
+                  + e.getMessage(), e);
+        } catch (KeeperException e) {
+          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
+              "Could not unregister core " + cname + " from cloudstate: "
+                  + e.getMessage(), e);
+        }
+      }
     }
     if (params.getBool(CoreAdminParams.DELETE_INDEX, false)) {
       core.addCloseHook(new CloseHook() {
@@ -600,7 +629,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     try {
       core = coreContainer.getCore(cname);
       if (core != null) {
-        core.getUpdateHandler().getSolrCoreState().doRecovery(core);
+        core.getUpdateHandler().getSolrCoreState().doRecovery(coreContainer, cname);
       } else {
         SolrException.log(log, "Cound not find core to call recovery:" + cname);
       }
@@ -626,81 +655,91 @@ public class CoreAdminHandler extends RequestHandlerBase {
     String waitForState = params.get("state");
     Boolean checkLive = params.getBool("checkLive");
     int pauseFor = params.getInt("pauseFor", 0);
-    SolrCore core =  null;
-
-    try {
-      core = coreContainer.getCore(cname);
-      if (core == null) {
-        throw new SolrException(ErrorCode.BAD_REQUEST, "core not found:" + cname);
-      }
-      String state = null;
-      boolean live = false;
-      int retry = 0;
-      while (true) {
-        // wait until we are sure the recovering node is ready
-        // to accept updates
-        CloudDescriptor cloudDescriptor = core.getCoreDescriptor()
-            .getCloudDescriptor();
-        CloudState cloudState = coreContainer
-            .getZkController()
-            .getCloudState();
-        String collection = cloudDescriptor.getCollectionName();
-        ZkNodeProps nodeProps = 
-            cloudState.getSlice(collection,
-                cloudDescriptor.getShardId()).getShards().get(coreNodeName);
-        
-        if (nodeProps != null) {
-          state = nodeProps.get(ZkStateReader.STATE_PROP);
-          live = cloudState.liveNodesContain(nodeName);
-          if (nodeProps != null && state.equals(waitForState)) {
-            if (checkLive == null) {
-              break;
-            } else if (checkLive && live) {
-              break;
-            } else if (!checkLive && !live) {
-              break;
+    
+    String state = null;
+    boolean live = false;
+    int retry = 0;
+    while (true) {
+      SolrCore core = null;
+      try {
+        core = coreContainer.getCore(cname);
+        if (core == null && retry == 30) {
+          throw new SolrException(ErrorCode.BAD_REQUEST, "core not found:"
+              + cname);
+        }
+        if (core != null) {
+          // wait until we are sure the recovering node is ready
+          // to accept updates
+          CloudDescriptor cloudDescriptor = core.getCoreDescriptor()
+              .getCloudDescriptor();
+          CloudState cloudState = coreContainer.getZkController()
+              .getCloudState();
+          String collection = cloudDescriptor.getCollectionName();
+          Slice slice = cloudState.getSlice(collection,
+              cloudDescriptor.getShardId());
+          if (slice != null) {
+            ZkNodeProps nodeProps = slice.getShards().get(coreNodeName);
+            if (nodeProps != null) {
+              state = nodeProps.get(ZkStateReader.STATE_PROP);
+              live = cloudState.liveNodesContain(nodeName);
+              if (nodeProps != null && state.equals(waitForState)) {
+                if (checkLive == null) {
+                  break;
+                } else if (checkLive && live) {
+                  break;
+                } else if (!checkLive && !live) {
+                  break;
+                }
+              }
             }
           }
         }
         
         if (retry++ == 30) {
           throw new SolrException(ErrorCode.BAD_REQUEST,
-              "I was asked to wait on state " + waitForState + " for " + nodeName
-                  + " but I still do not see the request state. I see state: " + state + " live:" + live);
+              "I was asked to wait on state " + waitForState + " for "
+                  + nodeName
+                  + " but I still do not see the request state. I see state: "
+                  + state + " live:" + live);
         }
-        
-        Thread.sleep(1000);
+      } finally {
+        if (core != null) {
+          core.close();
+        }
       }
-      
-      // small safety net for any updates that started with state that
-      // kept it from sending the update to be buffered -
-      // pause for a while to let any outstanding updates finish
-      //System.out.println("I saw state:" + state + " sleep for " + pauseFor + " live:" + live);
-      Thread.sleep(pauseFor);
-      
-      // solrcloud_debug
-//      try {;
-//        LocalSolrQueryRequest r = new LocalSolrQueryRequest(core,  new ModifiableSolrParams());
-//        CommitUpdateCommand commitCmd = new CommitUpdateCommand(r, false);
-//        commitCmd.softCommit = true;
-//        core.getUpdateHandler().commit(commitCmd);
-//        RefCounted<SolrIndexSearcher> searchHolder = core.getNewestSearcher(false);
-//        SolrIndexSearcher searcher = searchHolder.get();
-//        try {
-//          System.out.println(core.getCoreDescriptor().getCoreContainer().getZkController().getNodeName() + " to replicate "
-//              + searcher.search(new MatchAllDocsQuery(), 1).totalHits + " gen:" + core.getDeletionPolicy().getLatestCommit().getGeneration()  + " data:" + core.getDataDir());
-//        } finally {
-//          searchHolder.decref();
-//        }
-//      } catch (Exception e) {
-//        
-//      }
-      
-    } finally {
-      if (core != null) {
-        core.close();
-      }
+      Thread.sleep(1000);
     }
+    
+    // small safety net for any updates that started with state that
+    // kept it from sending the update to be buffered -
+    // pause for a while to let any outstanding updates finish
+    // System.out.println("I saw state:" + state + " sleep for " + pauseFor +
+    // " live:" + live);
+    Thread.sleep(pauseFor);
+    
+    // solrcloud_debug
+    // try {;
+    // LocalSolrQueryRequest r = new LocalSolrQueryRequest(core, new
+    // ModifiableSolrParams());
+    // CommitUpdateCommand commitCmd = new CommitUpdateCommand(r, false);
+    // commitCmd.softCommit = true;
+    // core.getUpdateHandler().commit(commitCmd);
+    // RefCounted<SolrIndexSearcher> searchHolder =
+    // core.getNewestSearcher(false);
+    // SolrIndexSearcher searcher = searchHolder.get();
+    // try {
+    // System.out.println(core.getCoreDescriptor().getCoreContainer().getZkController().getNodeName()
+    // + " to replicate "
+    // + searcher.search(new MatchAllDocsQuery(), 1).totalHits + " gen:" +
+    // core.getDeletionPolicy().getLatestCommit().getGeneration() + " data:" +
+    // core.getDataDir());
+    // } finally {
+    // searchHolder.decref();
+    // }
+    // } catch (Exception e) {
+    //
+    // }
+    
   }
   
   protected void handleDistribUrlAction(SolrQueryRequest req,

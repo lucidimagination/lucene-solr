@@ -22,6 +22,7 @@ import java.io.IOException;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.solr.cloud.RecoveryStrategy;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrCore;
 import org.slf4j.Logger;
@@ -29,6 +30,8 @@ import org.slf4j.LoggerFactory;
 
 public final class DefaultSolrCoreState extends SolrCoreState {
   public static Logger log = LoggerFactory.getLogger(DefaultSolrCoreState.class);
+  
+  private final boolean SKIP_AUTO_RECOVERY = Boolean.getBoolean("solrcloud.skip.autorecovery");
   
   private final Object recoveryLock = new Object();
   private int refCnt = 1;
@@ -62,7 +65,6 @@ public final class DefaultSolrCoreState extends SolrCoreState {
 
   @Override
   public  void decref(IndexWriterCloser closer) throws IOException {
-    boolean cancelRecovery = false;
     synchronized (this) {
       refCnt--;
       if (refCnt == 0) {
@@ -77,11 +79,8 @@ public final class DefaultSolrCoreState extends SolrCoreState {
         }
         directoryFactory.close();
         closed = true;
-        cancelRecovery = true;
       }
     }
-    // don't wait for this in the sync block
-    if (cancelRecovery) cancelRecovery();
   }
 
   @Override
@@ -111,7 +110,12 @@ public final class DefaultSolrCoreState extends SolrCoreState {
   }
 
   @Override
-  public void doRecovery(SolrCore core) {
+  public void doRecovery(CoreContainer cc, String name) {
+    if (SKIP_AUTO_RECOVERY) {
+      log.warn("Skipping recovery according to sys prop solrcloud.skip.autorecovery");
+      return;
+    }
+    
     cancelRecovery();
     synchronized (recoveryLock) {
       while (recoveryRunning) {
@@ -126,7 +130,7 @@ public final class DefaultSolrCoreState extends SolrCoreState {
       // if true, we are recovering after startup and shouldn't have (or be receiving) additional updates (except for local tlog recovery)
       boolean recoveringAfterStartup = recoveryStrat == null;
 
-      recoveryStrat = new RecoveryStrategy(core);
+      recoveryStrat = new RecoveryStrategy(cc, name);
       recoveryStrat.setRecoveringAfterStartup(recoveringAfterStartup);
       recoveryStrat.start();
       recoveryRunning = true;
