@@ -135,7 +135,10 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     //is agnostic of request params.
     handle.remove("maxScore");
     query("q","{!func}"+i1, "fl","*,score");  // even scores should match exactly here
-
+    
+    // multple fl entries
+    query("q","*:*", "fl","id", "fl", t1, "sort","n_tl1 desc");
+    
     handle.put("highlighting", UNORDERED);
     handle.put("response", UNORDERED);
 

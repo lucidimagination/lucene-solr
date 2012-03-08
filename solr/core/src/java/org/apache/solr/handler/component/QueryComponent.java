@@ -935,13 +935,14 @@ public class QueryComponent extends SearchComponent
       // make sure that the id is returned for correlation.
       String fl = sreq.params.get(CommonParams.FL);
       if (fl != null) {
-         fl = fl.trim();
+        fl = fl.trim();
         // currently, "score" is synonymous with "*,score" so
-        // don't add "id" if the fl is empty or "score" or it would change the meaning.
-         if (fl.length()!=0 && !"score".equals(fl) && !"*".equals(fl)) {
-           sreq.params.set(CommonParams.FL, fl+','+uniqueField.getName());
-         }
-      }      
+        // don't add "id" if the fl is empty or "score" or it would change the
+        // meaning.
+        if (fl.length() != 0 && !"score".equals(fl) && !"*".equals(fl)) {
+          sreq.params.add(CommonParams.FL, uniqueField.getName());
+        }
+      }
 
       ArrayList<String> ids = new ArrayList<String>(shardDocs.size());
       for (ShardDoc shardDoc : shardDocs) {
