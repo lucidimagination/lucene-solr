@@ -22,6 +22,7 @@
       <licenses>
         <fileset dir="@{dir}">
           <include name="**/*.jar" />
+          <exclude name="**/lucid-codecs-*.jar"/>
           <!-- Speed up scanning a bit. -->
           <exclude name="**/.git/**" />
           <exclude name="**/.svn/**" />
