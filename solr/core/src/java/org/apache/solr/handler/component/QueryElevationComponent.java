@@ -399,7 +399,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       SortSpec sortSpec = rb.getSortSpec();
       if (sortSpec.getSort() == null) {
         sortSpec.setSort(new Sort(new SortField[]{
-            new SortField(idField, comparator, false),
+            new SortField("_elevate_", comparator, true),
             new SortField(null, SortField.Type.SCORE, false)
         }));
       } else {
@@ -409,12 +409,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         ArrayList<SortField> sorts = new ArrayList<SortField>(current.length + 1);
         // Perhaps force it to always sort by score
         if (force && current[0].getType() != SortField.Type.SCORE) {
-          sorts.add(new SortField(idField, comparator, false));
+          sorts.add(new SortField("_elevate_", comparator, true));
           modify = true;
         }
         for (SortField sf : current) {
           if (sf.getType() == SortField.Type.SCORE) {
-            sorts.add(new SortField(idField, comparator, sf.getReverse()));
+            sorts.add(new SortField("_elevate_", comparator, sf.getReverse()));
             modify = true;
           }
           sorts.add(sf);
@@ -449,29 +449,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   @Override
   public void process(ResponseBuilder rb) throws IOException {
     // Do nothing -- the real work is modifying the input query
-  }
-  
-  @Override  
-  public int distributedProcess(ResponseBuilder rb) throws IOException {
-    // TODO: this is a hackey way to get distrib working - we need to reverse all the sorts
-    SortSpec sortSpec = rb.getSortSpec();
-    Sort sort = sortSpec.getSort();
-    if (sort != null) {
-      SortField[] sorts = sort.getSort();
-      List<SortField> sortsList = new ArrayList<SortField>(sorts.length);
-      for (SortField s : sorts) {
-        if (s.getComparatorSource() != null) {
-          FieldComparatorSource cs = s.getComparatorSource();
-          sortsList.add(new SortField(s.getField(), cs, true));
-        } else if (s.getParser() != null) {
-          sortsList.add(new SortField(s.getField(), s.getParser(), true));
-        } else {
-          sortsList.add(new SortField(s.getField(), s.getType(), true));
-        }
-      }
-      rb.getSortSpec().getSort().setSort(sortsList.toArray(new SortField[0]));
-    }
-    return super.distributedProcess(rb);
   }
 
   //---------------------------------------------------------------------------------
@@ -531,7 +508,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
       @Override
       public int compare(int slot1, int slot2) {
-        return values[slot2] - values[slot1];  // values will be small enough that there is no overflow concern
+        return values[slot1] - values[slot2];  // values will be small enough that there is no overflow concern
       }
 
       @Override
@@ -553,7 +530,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
       @Override
       public int compareBottom(int doc) throws IOException {
-        return docVal(doc) - bottomVal;
+        return bottomVal - docVal(doc);
       }
 
       @Override
