@@ -21,7 +21,6 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.*;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -234,9 +233,17 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
               "QueryElevationComponent must specify argument: " + CONFIG_FILE);
         }
         log.info("Loading QueryElevation from data dir: " + f);
-
-        InputStream is = VersionedFile.getLatestFile(core.getDataDir(), f);
-        Config cfg = new Config(core.getResourceLoader(), f, new InputSource(is), null);
+        
+        Config cfg;
+        
+        ZkController zkController = core.getCoreDescriptor().getCoreContainer().getZkController();
+        if (zkController != null) {
+          cfg = new Config(core.getResourceLoader(), f, null, null);
+        } else {
+          InputStream is = VersionedFile.getLatestFile(core.getDataDir(), f);
+          cfg = new Config(core.getResourceLoader(), f, new InputSource(is), null);
+        }
+  
         map = loadElevationMap(cfg);
         elevationCache.put(reader, map);
       }
@@ -443,6 +450,29 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   public void process(ResponseBuilder rb) throws IOException {
     // Do nothing -- the real work is modifying the input query
   }
+  
+  @Override  
+  public int distributedProcess(ResponseBuilder rb) throws IOException {
+    // TODO: this is a hackey way to get distrib working - we need to reverse all the sorts
+    SortSpec sortSpec = rb.getSortSpec();
+    Sort sort = sortSpec.getSort();
+    if (sort != null) {
+      SortField[] sorts = sort.getSort();
+      List<SortField> sortsList = new ArrayList<SortField>(sorts.length);
+      for (SortField s : sorts) {
+        if (s.getComparatorSource() != null) {
+          FieldComparatorSource cs = s.getComparatorSource();
+          sortsList.add(new SortField(s.getField(), cs, true));
+        } else if (s.getParser() != null) {
+          sortsList.add(new SortField(s.getField(), s.getParser(), true));
+        } else {
+          sortsList.add(new SortField(s.getField(), s.getType(), true));
+        }
+      }
+      rb.getSortSpec().getSort().setSort(sortsList.toArray(new SortField[0]));
+    }
+    return super.distributedProcess(rb);
+  }
 
   //---------------------------------------------------------------------------------
   // SolrInfoMBean
@@ -455,17 +485,17 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
   @Override
   public String getVersion() {
-    return "$Revision$";
+    return "$Revision: 1238085 $";
   }
 
   @Override
   public String getSourceId() {
-    return "$Id$";
+    return "$Id: QueryElevationComponent.java 1238085 2012-01-30 23:34:03Z uschindler $";
   }
 
   @Override
   public String getSource() {
-    return "$URL$";
+    return "$URL: https://svn.apache.org/repos/asf/lucene/dev/trunk/solr/core/src/java/org/apache/solr/handler/component/QueryElevationComponent.java $";
   }
 
   @Override
