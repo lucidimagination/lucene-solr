@@ -51,16 +51,17 @@ public class DistributedQueryElevationComponentTest extends BaseDistributedSearc
   
   @Override
   public void doTest() throws Exception {
-    
-    
     del("*:*");
-    indexr(id,"1", "text", "XXXX XXXX", "field_t", "anything");
-    indexr(id,"2", "text", "YYYY YYYY", "plow_t", "rake");
-    indexr(id,"3", "text", "ZZZZ ZZZZ");
-    indexr(id,"4", "text", "XXXX XXXX");
-    indexr(id,"5", "text", "ZZZZ ZZZZ ZZZZ");
-    indexr(id,"6", "text", "ZZZZ");
+    indexr(id,"1", "int_i", "1", "text", "XXXX XXXX", "field_t", "anything");
+    indexr(id,"2", "int_i", "2", "text", "YYYY YYYY", "plow_t", "rake");
+    indexr(id,"3", "int_i", "3", "text", "ZZZZ ZZZZ");
+    indexr(id,"4", "int_i", "4", "text", "XXXX XXXX");
+    indexr(id,"5", "int_i", "5", "text", "ZZZZ ZZZZ ZZZZ");
+    indexr(id,"6", "int_i", "6", "text", "ZZZZ");
+    
+    index_specific(2, id, "7", "int_i", "7", "text", "solr");
     commit();
+    
     handle.put("explain", SKIPVAL);
     handle.put("debug", SKIPVAL);
     handle.put("QTime", SKIPVAL);
@@ -74,10 +75,13 @@ public class DistributedQueryElevationComponentTest extends BaseDistributedSearc
     handle.put("q", SKIP);
     handle.put("qt", SKIP);
     query("q", "*:*", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", "sort", "id desc", CommonParams.FL, "id, score, [elevated]");
+
+    query("q", "ZZZZ", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "forceElevation", "true", "sort", "int_i desc");
     
-    query("q", "ZZZZ", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "id");
+    query("q", "solr", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "forceElevation", "true", "sort", "int_i asc");
     
-    query("q", "ZZZZ", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "score", "score desc");
+    // currently cannot sort by id with distrib
+    // query("q", "ZZZZ", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "forceElevation", "true", "sort", "id desc");
   }
   
   protected void indexr(Object... fields) throws Exception {
@@ -85,4 +89,5 @@ public class DistributedQueryElevationComponentTest extends BaseDistributedSearc
     addFields(doc, fields);
     indexDoc(doc);
   }
+  
 }

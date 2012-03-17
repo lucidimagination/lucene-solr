@@ -399,7 +399,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       SortSpec sortSpec = rb.getSortSpec();
       if (sortSpec.getSort() == null) {
         sortSpec.setSort(new Sort(new SortField[]{
-            new SortField("_elevate_", comparator, true),
+            new SortField(idField, comparator, true),
             new SortField(null, SortField.Type.SCORE, false)
         }));
       } else {
@@ -409,12 +409,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         ArrayList<SortField> sorts = new ArrayList<SortField>(current.length + 1);
         // Perhaps force it to always sort by score
         if (force && current[0].getType() != SortField.Type.SCORE) {
-          sorts.add(new SortField("_elevate_", comparator, true));
+          sorts.add(new SortField(idField, comparator, true));
           modify = true;
         }
         for (SortField sf : current) {
           if (sf.getType() == SortField.Type.SCORE) {
-            sorts.add(new SortField("_elevate_", comparator, sf.getReverse()));
+            sorts.add(new SortField(idField, comparator, !sf.getReverse()));
             modify = true;
           }
           sorts.add(sf);
