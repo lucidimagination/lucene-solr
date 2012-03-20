@@ -632,10 +632,6 @@ public final class SolrCore implements SolrInfoMBean {
 //    openHandles.put(this, new RuntimeException("unclosed core - name:" + getName() + " refs: " + refCount.get()));
   }
 
-  static {
-    Codec.setDefault(Codec.forName(com.lucid.upgrade.index.VersionUtil.CODEC_VERSION_CURRENT)); // sidecars
-  }
-
   private Codec initCodec(SolrConfig solrConfig, final IndexSchema schema) {
     final PluginInfo info = solrConfig.getPluginInfo(CodecFactory.class.getName());
     final CodecFactory factory;
@@ -648,7 +644,7 @@ public final class SolrCore implements SolrInfoMBean {
       if (defaultCodecFactory != null) {
         factory = (CodecFactory) schema.getResourceLoader().newInstance(defaultCodecFactory);
       } else {
-      	factory = new com.lucid.index.codecs.LucidCodecFactory();
+      	factory = new DefaultCodecFactory();
       }
     }
     return factory.create(schema);
