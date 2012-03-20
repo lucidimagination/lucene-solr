@@ -966,32 +966,12 @@
   </target>
 
   <property name="svn.export.dir" location="${build.dir}/svn-export"/>
-  <property name="tmp.sourcetree.dir" location="/tmp/sourcetree"/>
-
-  <macrodef name="svn-export-source">
-    <attribute name="source.dir"/>
-    <sequential>
-      <delete dir="${svn.export.dir}" includeemptydirs="true" failonerror="false"/>
-      <delete dir="${tmp.sourcetree.dir}" includeemptydirs="true" failonerror="false"/>
-      <mkdir dir="${tmp.sourcetree.dir}"/>
-      <copy todir="${tmp.sourcetree.dir}">
-        <fileset dir=".."/>
-      </copy>
-      <mkdir dir="${svn.export.dir}"/>
-      <copy todir="${svn.export.dir}">
-        <fileset dir="${tmp.sourcetree.dir}"/>
-      </copy>
-      <delete dir="${tmp.sourcetree.dir}"/>
-    </sequential>
-  </macrodef>
-
-  
-  <macrodef name="svn-export-source-orig"
+  <macrodef name="svn-export-source"
             description="Runs 'svn export' with the same URL and revision as the current working copy.">
     <attribute name="source.dir"/>
     <sequential>
       <delete dir="${svn.export.dir}" includeemptydirs="true" failonerror="false"/>
-      <get-svn-info directory="@{source.dir}"/> 
+      <get-svn-info directory="@{source.dir}"/>
       <exec dir="@{source.dir}" executable="${svn.exe}" failonerror="true">
         <arg value="export"/>
         <arg value="--native-eol"/>
