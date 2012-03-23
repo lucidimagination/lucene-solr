@@ -20,7 +20,6 @@ package org.apache.lucene.index;
 import java.io.IOException;
 
 import org.apache.lucene.search.SearcherManager; // javadocs
-import org.apache.lucene.store.*;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ReaderUtil;         // for javadocs
@@ -61,12 +60,17 @@ public abstract class AtomicReader extends IndexReader {
     return readerContext;
   }
 
-  /** Returns true if there are norms stored for this field. */
-  public boolean hasNorms(String field) throws IOException {
-    // backward compatible implementation.
-    // SegmentReader has an efficient implementation.
+  /** 
+   * Returns true if there are norms stored for this field.
+   * @deprecated (4.0) use {@link #getFieldInfos()} and check {@link FieldInfo#hasNorms()} 
+   *                   for the field instead.
+   */
+  @Deprecated
+  public final boolean hasNorms(String field) throws IOException {
     ensureOpen();
-    return normValues(field) != null;
+    // note: using normValues(field) != null would potentially cause i/o
+    FieldInfo fi = getFieldInfos().fieldInfo(field);
+    return fi != null && fi.hasNorms();
   }
 
   /**

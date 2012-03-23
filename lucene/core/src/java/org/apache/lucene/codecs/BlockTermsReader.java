@@ -197,6 +197,7 @@ public class BlockTermsReader extends FieldsProducer {
 
   @Override
   public Terms terms(String field) throws IOException {
+    assert field != null;
     return fields.get(field);
   }
 
@@ -776,9 +777,6 @@ public class BlockTermsReader extends FieldsProducer {
           throw new UnsupportedOperationException();
         }
         return state.ord;
-      }
-
-      private void doPendingSeek() {
       }
 
       /* Does initial decode of next block of terms; this

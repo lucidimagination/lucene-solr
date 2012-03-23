@@ -47,20 +47,57 @@ import org.apache.lucene.util.fst.FST;
 // TODO: somehow factor out a reusable viterbi search here,
 // so other decompounders/tokenizers can reuse...
 
-/* Uses a rolling Viterbi search to find the least cost
- * segmentation (path) of the incoming characters.  For
- * tokens that appear to be compound (> length 2 for all
+/**
+ * Tokenizer for Japanese that uses morphological analysis.
+ * <p>
+ * This tokenizer sets a number of additional attributes:
+ * <ul>
+ *   <li>{@link BaseFormAttribute} containing base form for inflected
+ *       adjectives and verbs.
+ *   <li>{@link PartOfSpeechAttribute} containing part-of-speech.
+ *   <li>{@link ReadingAttribute} containing reading and pronunciation.
+ *   <li>{@link InflectionAttribute} containing additional part-of-speech
+ *       information for inflected forms.
+ * </ul>
+ * <p>
+ * This tokenizer uses a rolling Viterbi search to find the 
+ * least cost segmentation (path) of the incoming characters.  
+ * For tokens that appear to be compound (> length 2 for all
  * Kanji, or > length 7 for non-Kanji), we see if there is a
  * 2nd best segmentation of that token after applying
  * penalties to the long tokens.  If so, and the Mode is
- * SEARCH_WITH_COMPOUND, we output the alternate
- * segmentation as well. */
+ * {@link Mode#SEARCH}, we output the alternate segmentation 
+ * as well.
+ */
 public final class KuromojiTokenizer extends Tokenizer {
 
+  /**
+   * Tokenization mode: this determines how the tokenizer handles
+   * compound and unknown words.
+   */
   public static enum Mode {
-    NORMAL, SEARCH, EXTENDED
+    /**
+     * Ordinary segmentation: no decomposition for compounds,
+     */
+    NORMAL, 
+
+    /**
+     * Segmentation geared towards search: this includes a 
+     * decompounding process for long nouns, also including
+     * the full compound token as a synonym.
+     */
+    SEARCH, 
+
+    /**
+     * Extended mode outputs unigrams for unknown words.
+     * @lucene.experimental
+     */
+    EXTENDED
   }
 
+  /**
+   * Default tokenization mode. Currently this is {@link Mode#SEARCH}.
+   */
   public static final Mode DEFAULT_MODE = Mode.SEARCH;
 
   enum Type {
@@ -136,6 +173,14 @@ public final class KuromojiTokenizer extends Tokenizer {
   private final ReadingAttribute readingAtt = addAttribute(ReadingAttribute.class);
   private final InflectionAttribute inflectionAtt = addAttribute(InflectionAttribute.class);
 
+  /**
+   * Create a new KuromojiTokenizer.
+   * 
+   * @param input Reader containing text
+   * @param userDictionary Optional: if non-null, user dictionary.
+   * @param discardPunctuation true if punctuation tokens should be dropped from the output.
+   * @param mode tokenization mode.
+   */
   public KuromojiTokenizer(Reader input, UserDictionary userDictionary, boolean discardPunctuation, Mode mode) {
     super(input);
     dictionary = TokenInfoDictionary.getInstance();
@@ -585,27 +630,71 @@ public final class KuromojiTokenizer extends Tokenizer {
 
       if (pos - lastBackTracePos >= MAX_BACKTRACE_GAP) {
         // Safety: if we've buffered too much, force a
-        // backtrace now:
+        // backtrace now.  We find the least-cost partial
+        // path, across all paths, backtrace from it, and
+        // then prune all others.  Note that this, in
+        // general, can produce the wrong result, if the
+        // total bast path did not in fact back trace
+        // through this partial best path.  But it's the
+        // best we can do... (short of not having a
+        // safety!).
+
+        // First pass: find least cost parital path so far,
+        // including ending at future positions:
         int leastIDX = -1;
         int leastCost = Integer.MAX_VALUE;
-        for(int idx=0;idx<posData.count;idx++) {
-          //System.out.println("    idx=" + idx + " cost=" + cost);
-          final int cost = posData.costs[idx];
-          if (cost < leastCost) {
-            leastCost = cost;
-            leastIDX = idx;
+        Position leastPosData = null;
+        for(int pos2=pos;pos2<positions.getNextPos();pos2++) {
+          final Position posData2 = positions.get(pos2);
+          for(int idx=0;idx<posData2.count;idx++) {
+            //System.out.println("    idx=" + idx + " cost=" + cost);
+            final int cost = posData.costs[idx];
+            if (cost < leastCost) {
+              leastCost = cost;
+              leastIDX = idx;
+              leastPosData = posData2;
+            }
           }
         }
-        backtrace(posData, leastIDX);
+
+        // We will always have at least one live path:
+        assert leastIDX != -1;
+
+        // Second pass: prune all but the best path:
+        for(int pos2=pos;pos2<positions.getNextPos();pos2++) {
+          final Position posData2 = positions.get(pos2);
+          if (posData2 != leastPosData) {
+            posData2.reset();
+          } else {
+            if (leastIDX != 0) {
+              posData2.costs[0] = posData2.costs[leastIDX];
+              posData2.lastRightID[0] = posData2.lastRightID[leastIDX];
+              posData2.backPos[0] = posData2.backPos[leastIDX];
+              posData2.backIndex[0] = posData2.backIndex[leastIDX];
+              posData2.backID[0] = posData2.backID[leastIDX];
+              posData2.backType[0] = posData2.backType[leastIDX];
+            }
+            posData2.count = 1;
+          }
+        }
+
+        backtrace(leastPosData, 0);
 
         // Re-base cost so we don't risk int overflow:
-        Arrays.fill(posData.costs, 0, posData.count, 0);
+        Arrays.fill(leastPosData.costs, 0, leastPosData.count, 0);
 
         if (pending.size() != 0) {
           return;
         } else {
           // This means the backtrace only produced
           // punctuation tokens, so we must keep parsing.
+          if (pos != leastPosData.pos) {
+            // We jumped into a future position; continue to
+            // the top of the loop to skip until we get
+            // there:
+            assert pos < leastPosData.pos;
+            continue;
+          }
         }
       }
 

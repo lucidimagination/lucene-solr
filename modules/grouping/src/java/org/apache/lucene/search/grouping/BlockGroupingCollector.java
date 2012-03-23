@@ -18,24 +18,13 @@ package org.apache.lucene.search.grouping;
  */
 
 
-import java.io.IOException;
-
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexWriter;       // javadocs
-import org.apache.lucene.search.Collector;
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.FieldComparator;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.SortField;
-import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.TopDocsCollector;
-import org.apache.lucene.search.TopFieldCollector;
-import org.apache.lucene.search.TopScoreDocCollector;
-import org.apache.lucene.search.Weight;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.search.*;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.PriorityQueue;
+
+import java.io.IOException;
 
 /** BlockGroupingCollector performs grouping with a
  *  single pass collector, as long as you are grouping by a
@@ -76,7 +65,7 @@ public class BlockGroupingCollector extends Collector {
   // TODO: specialize into 2 classes, static "create" method:
   private final boolean needsScores;
 
-  private final FieldComparator[] comparators;
+  private final FieldComparator<?>[] comparators;
   private final int[] reversed;
   private final int compIDXEnd;
   private int bottomSlot;
@@ -265,7 +254,7 @@ public class BlockGroupingCollector extends Collector {
     this.topNGroups = topNGroups;
 
     final SortField[] sortFields = groupSort.getSort();
-    comparators = new FieldComparator[sortFields.length];
+    comparators = new FieldComparator<?>[sortFields.length];
     compIDXEnd = comparators.length - 1;
     reversed = new int[sortFields.length];
     for (int i = 0; i < sortFields.length; i++) {
@@ -301,7 +290,7 @@ public class BlockGroupingCollector extends Collector {
    *  @param fillSortFields If true then the Comparable
    *     values for the sort fields will be set
    */
-  public TopGroups getTopGroups(Sort withinGroupSort, int groupOffset, int withinGroupOffset, int maxDocsPerGroup, boolean fillSortFields) throws IOException {
+  public TopGroups<?> getTopGroups(Sort withinGroupSort, int groupOffset, int withinGroupOffset, int maxDocsPerGroup, boolean fillSortFields) throws IOException {
 
     //if (queueFull) {
     //System.out.println("getTopGroups groupOffset=" + groupOffset + " topNGroups=" + topNGroups);
@@ -316,14 +305,14 @@ public class BlockGroupingCollector extends Collector {
 
     final FakeScorer fakeScorer = new FakeScorer();
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked","rawtypes"})
     final GroupDocs<Object>[] groups = new GroupDocs[groupQueue.size() - groupOffset];
     for(int downTo=groupQueue.size()-groupOffset-1;downTo>=0;downTo--) {
       final OneGroup og = groupQueue.pop();
 
       // At this point we hold all docs w/ in each group,
       // unsorted; we now sort them:
-      final TopDocsCollector collector;
+      final TopDocsCollector<?> collector;
       if (withinGroupSort == null) {
         // Sort by score
         if (!needsScores) {
@@ -350,7 +339,7 @@ public class BlockGroupingCollector extends Collector {
       final Object[] groupSortValues;
 
       if (fillSortFields) {
-        groupSortValues = new Comparable[comparators.length];
+        groupSortValues = new Comparable<?>[comparators.length];
         for(int sortFieldIDX=0;sortFieldIDX<comparators.length;sortFieldIDX++) {
           groupSortValues[sortFieldIDX] = comparators[sortFieldIDX].value(og.comparatorSlot);
         }
@@ -384,7 +373,7 @@ public class BlockGroupingCollector extends Collector {
   @Override
   public void setScorer(Scorer scorer) throws IOException {
     this.scorer = scorer;
-    for (FieldComparator comparator : comparators) {
+    for (FieldComparator<?> comparator : comparators) {
       comparator.setScorer(scorer);
     }
   }
@@ -425,7 +414,7 @@ public class BlockGroupingCollector extends Collector {
         assert !queueFull;
 
         //System.out.println("    init copy to bottomSlot=" + bottomSlot);
-        for (FieldComparator fc : comparators) {
+        for (FieldComparator<?> fc : comparators) {
           fc.copy(bottomSlot, doc);
           fc.setBottom(bottomSlot);
         }        
@@ -450,7 +439,7 @@ public class BlockGroupingCollector extends Collector {
 
         //System.out.println("       best w/in group!");
         
-        for (FieldComparator fc : comparators) {
+        for (FieldComparator<?> fc : comparators) {
           fc.copy(bottomSlot, doc);
           // Necessary because some comparators cache
           // details of bottom slot; this forces them to
@@ -480,7 +469,7 @@ public class BlockGroupingCollector extends Collector {
         }
       }
       groupCompetes = true;
-      for (FieldComparator fc : comparators) {
+      for (FieldComparator<?> fc : comparators) {
         fc.copy(bottomSlot, doc);
         // Necessary because some comparators cache
         // details of bottom slot; this forces them to

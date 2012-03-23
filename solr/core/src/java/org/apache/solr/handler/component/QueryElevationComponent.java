@@ -399,7 +399,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       SortSpec sortSpec = rb.getSortSpec();
       if (sortSpec.getSort() == null) {
         sortSpec.setSort(new Sort(new SortField[]{
-            new SortField(idField, comparator, true),
+            new SortField("_elevate_", comparator, true),
             new SortField(null, SortField.Type.SCORE, false)
         }));
       } else {
@@ -409,12 +409,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         ArrayList<SortField> sorts = new ArrayList<SortField>(current.length + 1);
         // Perhaps force it to always sort by score
         if (force && current[0].getType() != SortField.Type.SCORE) {
-          sorts.add(new SortField(idField, comparator, true));
+          sorts.add(new SortField("_elevate_", comparator, true));
           modify = true;
         }
         for (SortField sf : current) {
           if (sf.getType() == SortField.Type.SCORE) {
-            sorts.add(new SortField(idField, comparator, !sf.getReverse()));
+            sorts.add(new SortField("_elevate_", comparator, !sf.getReverse()));
             modify = true;
           }
           sorts.add(sf);
@@ -462,17 +462,17 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
   @Override
   public String getVersion() {
-    return "$Revision: 1238085 $";
+    return "$Revision$";
   }
 
   @Override
   public String getSourceId() {
-    return "$Id: QueryElevationComponent.java 1238085 2012-01-30 23:34:03Z uschindler $";
+    return "$Id$";
   }
 
   @Override
   public String getSource() {
-    return "$URL: https://svn.apache.org/repos/asf/lucene/dev/trunk/solr/core/src/java/org/apache/solr/handler/component/QueryElevationComponent.java $";
+    return "$URL$";
   }
 
   @Override
@@ -498,7 +498,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   }
 
   @Override
-  public FieldComparator<Integer> newComparator(final String fieldname, final int numHits, int sortPos, boolean reversed) throws IOException {
+  public FieldComparator<Integer> newComparator(String fieldname, final int numHits, int sortPos, boolean reversed) throws IOException {
     return new FieldComparator<Integer>() {
       private final int[] values = new int[numHits];
       private int bottomVal;
@@ -544,7 +544,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         ordSet.clear();
         Fields fields = context.reader().fields();
         if (fields == null) return this;
-        Terms terms = fields.terms(fieldname);
+        Terms terms = fields.terms(idField);
         if (terms == null) return this;
         termsEnum = terms.iterator(termsEnum);
         BytesRef term = new BytesRef();

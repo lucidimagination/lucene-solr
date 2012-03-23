@@ -276,7 +276,7 @@ public class QueryComponent extends SearchComponent
     if (groupingSpec != null) {
       try {
         boolean needScores = (cmd.getFlags() & SolrIndexSearcher.GET_SCORES) != 0;
-        if (params.getBool("group.distributed.first", false)) {
+        if (params.getBool(GroupParams.GROUP_DISTRIBUTED_FIRST, false)) {
           CommandHandler.Builder topsGroupsActionBuilder = new CommandHandler.Builder()
               .setQueryCommand(cmd)
               .setNeedDocSet(false) // Order matters here
@@ -297,14 +297,14 @@ public class QueryComponent extends SearchComponent
           rsp.add("firstPhase", commandHandler.processResult(result, serializer));
           rb.setResult(result);
           return;
-        } else if (params.getBool("group.distributed.second", false)) {
+        } else if (params.getBool(GroupParams.GROUP_DISTRIBUTED_SECOND, false)) {
           CommandHandler.Builder secondPhaseBuilder = new CommandHandler.Builder()
               .setQueryCommand(cmd)
               .setTruncateGroups(groupingSpec.isTruncateGroups() && groupingSpec.getFields().length > 0)
               .setSearcher(searcher);
 
           for (String field : groupingSpec.getFields()) {
-            String[] topGroupsParam = params.getParams("group.topgroups." + field);
+            String[] topGroupsParam = params.getParams(GroupParams.GROUP_DISTRIBUTED_TOPGROUPS_PREFIX + field);
             if (topGroupsParam == null) {
               continue;
             }
@@ -780,6 +780,7 @@ public class QueryComponent extends SearchComponent
       
       long numFound = 0;
       Float maxScore=null;
+      boolean partialResults = false;
       for (ShardResponse srsp : sreq.responses) {
         SolrDocumentList docs = null;
 
@@ -814,6 +815,11 @@ public class QueryComponent extends SearchComponent
 
         if (docs == null) { // could have been initialized in the shards info block above
           docs = (SolrDocumentList)srsp.getSolrResponse().getResponse().get("response");
+        }
+        
+        NamedList<?> responseHeader = (NamedList<?>)srsp.getSolrResponse().getResponse().get("responseHeader");
+        if (responseHeader != null && Boolean.TRUE.equals(responseHeader.get("partialResults"))) {
+          partialResults = true;
         }
         
         // calculate global maxScore and numDocsFound
@@ -894,6 +900,9 @@ public class QueryComponent extends SearchComponent
       // TODO: use ResponseBuilder (w/ comments) or the request context?
       rb.resultIds = resultIds;
       rb._responseDocs = responseDocs;
+      if (partialResults) {
+        rb.rsp.getResponseHeader().add( "partialResults", Boolean.TRUE );
+      }
   }
 
   private void createRetrieveDocs(ResponseBuilder rb) {

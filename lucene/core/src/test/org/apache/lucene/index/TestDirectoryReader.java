@@ -110,7 +110,7 @@ public class TestDirectoryReader extends LuceneTestCase {
 
     // This should blow up if we forget to check that the TermEnum is from the same
     // reader as the TermDocs.
-    while (td.nextDoc() != td.NO_MORE_DOCS) ret += td.docID();
+    while (td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) ret += td.docID();
 
     // really a dummy assert to ensure that we got some docs and to ensure that
     // nothing is eliminated by hotspot
@@ -924,6 +924,7 @@ public void testFilesOpenClose() throws IOException {
     writer.addDocument(new Document());
     writer.prepareCommit();
     assertFalse(DirectoryReader.indexExists(dir));
+    writer.commit();
     writer.close();
     assertTrue(DirectoryReader.indexExists(dir));
     dir.close();

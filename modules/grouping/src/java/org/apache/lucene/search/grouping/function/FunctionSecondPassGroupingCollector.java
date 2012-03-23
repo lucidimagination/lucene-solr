@@ -18,7 +18,6 @@ package org.apache.lucene.search.grouping.function;
  */
 
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.Sort;
@@ -40,7 +39,7 @@ import java.util.Map;
 public class FunctionSecondPassGroupingCollector extends AbstractSecondPassGroupingCollector<MutableValue> {
 
   private final ValueSource groupByVS;
-  private final Map vsContext;
+  private final Map<?, ?> vsContext;
 
   private FunctionValues.ValueFiller filler;
   private MutableValue mval;
@@ -59,7 +58,7 @@ public class FunctionSecondPassGroupingCollector extends AbstractSecondPassGroup
    * @param vsContext The value source context
    * @throws IOException IOException When I/O related errors occur
    */
-  public FunctionSecondPassGroupingCollector(Collection<SearchGroup<MutableValue>> searchGroups, Sort groupSort, Sort withinGroupSort, int maxDocsPerGroup, boolean getScores, boolean getMaxScores, boolean fillSortFields, ValueSource groupByVS, Map vsContext) throws IOException {
+  public FunctionSecondPassGroupingCollector(Collection<SearchGroup<MutableValue>> searchGroups, Sort groupSort, Sort withinGroupSort, int maxDocsPerGroup, boolean getScores, boolean getMaxScores, boolean fillSortFields, ValueSource groupByVS, Map<?, ?> vsContext) throws IOException {
     super(searchGroups, groupSort, withinGroupSort, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
     this.groupByVS = groupByVS;
     this.vsContext = vsContext;
@@ -78,8 +77,8 @@ public class FunctionSecondPassGroupingCollector extends AbstractSecondPassGroup
    */
   public void setNextReader(AtomicReaderContext readerContext) throws IOException {
     super.setNextReader(readerContext);
-    FunctionValues docValues = groupByVS.getValues(vsContext, readerContext);
-    filler = docValues.getValueFiller();
+    FunctionValues values = groupByVS.getValues(vsContext, readerContext);
+    filler = values.getValueFiller();
     mval = filler.getValue();
   }
 

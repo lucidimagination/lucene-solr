@@ -151,15 +151,22 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
     assertFalse(schema.getField("store").omitNorms());
     assertTrue(schema.getField("store_0_coordinate").omitNorms());
     assertTrue(schema.getField("store_1_coordinate").omitNorms());
+    assertFalse(schema.getField("amount").omitNorms());
+    assertTrue(schema.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_currency").omitNorms());
+    assertTrue(schema.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_amount_raw").omitNorms());
     
     SolrInputDocument doc = new SolrInputDocument();
     doc.addField( "store", "40.7143,-74.006", 3.0f );
+    doc.addField( "amount", "10.5", 3.0f );
     Document out = DocumentBuilder.toDocument( doc, core.getSchema() );
     assertNotNull( out.get( "store" ) );
+    assertNotNull( out.get( "amount" ) );
     assertNotNull(out.getField("store_0_coordinate"));
     //NOTE: As the subtypes have omitNorm=true, they must have boost=1F, otherwise this is going to fail when adding the doc to Lucene.
     assertTrue(1f == out.getField("store_0_coordinate").boost());
     assertTrue(1f == out.getField("store_1_coordinate").boost());
+    assertTrue(1f == out.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_currency").boost());
+    assertTrue(1f == out.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_amount_raw").boost());
   }
   
   @Test
@@ -169,16 +176,22 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
     assertFalse(schema.getField("store").omitNorms());
     assertTrue(schema.getField("store_0_coordinate").omitNorms());
     assertTrue(schema.getField("store_1_coordinate").omitNorms());
+    assertFalse(schema.getField("amount").omitNorms());
+    assertTrue(schema.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_currency").omitNorms());
+    assertTrue(schema.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_amount_raw").omitNorms());
     
     SolrInputDocument doc = new SolrInputDocument();
     doc.setDocumentBoost(3.0f);
     doc.addField( "store", "40.7143,-74.006");
+    doc.addField( "amount", "10.5");
     Document out = DocumentBuilder.toDocument( doc, core.getSchema() );
     assertNotNull( out.get( "store" ) );
     assertNotNull(out.getField("store_0_coordinate"));
     //NOTE: As the subtypes have omitNorm=true, they must have boost=1F, otherwise this is going to fail when adding the doc to Lucene.
     assertTrue(1f == out.getField("store_0_coordinate").boost());
     assertTrue(1f == out.getField("store_1_coordinate").boost());
+    assertTrue(1f == out.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_currency").boost());
+    assertTrue(1f == out.getField("amount" + FieldType.POLY_FIELD_SEPARATOR + "_amount_raw").boost());
   }
   
   /**

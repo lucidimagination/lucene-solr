@@ -18,7 +18,6 @@ package org.apache.lucene.search.grouping.function;
  */
 
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.FieldComparator;
@@ -42,7 +41,7 @@ import java.util.Map;
 public class FunctionAllGroupHeadsCollector extends AbstractAllGroupHeadsCollector<FunctionAllGroupHeadsCollector.GroupHead> {
 
   private final ValueSource groupBy;
-  private final Map vsContext;
+  private final Map<?, ?> vsContext;
   private final Map<MutableValue, GroupHead> groups;
   private final Sort sortWithinGroup;
 
@@ -58,7 +57,7 @@ public class FunctionAllGroupHeadsCollector extends AbstractAllGroupHeadsCollect
    * @param vsContext The ValueSource context
    * @param sortWithinGroup The sort within a group
    */
-  public FunctionAllGroupHeadsCollector(ValueSource groupBy, Map vsContext, Sort sortWithinGroup) {
+  public FunctionAllGroupHeadsCollector(ValueSource groupBy, Map<?, ?> vsContext, Sort sortWithinGroup) {
     super(sortWithinGroup.getSort().length);
     groups = new HashMap<MutableValue, GroupHead>();
     this.sortWithinGroup = sortWithinGroup;
@@ -98,7 +97,7 @@ public class FunctionAllGroupHeadsCollector extends AbstractAllGroupHeadsCollect
   public void setScorer(Scorer scorer) throws IOException {
     this.scorer = scorer;
     for (GroupHead groupHead : groups.values()) {
-      for (FieldComparator comparator : groupHead.comparators) {
+      for (FieldComparator<?> comparator : groupHead.comparators) {
         comparator.setScorer(scorer);
       }
     }
@@ -106,8 +105,8 @@ public class FunctionAllGroupHeadsCollector extends AbstractAllGroupHeadsCollect
 
   public void setNextReader(AtomicReaderContext context) throws IOException {
     this.readerContext = context;
-    FunctionValues docValues = groupBy.getValues(vsContext, context);
-    filler = docValues.getValueFiller();
+    FunctionValues values = groupBy.getValues(vsContext, context);
+    filler = values.getValueFiller();
     mval = filler.getValue();
 
     for (GroupHead groupHead : groups.values()) {
@@ -119,8 +118,9 @@ public class FunctionAllGroupHeadsCollector extends AbstractAllGroupHeadsCollect
 
   class GroupHead extends AbstractAllGroupHeadsCollector.GroupHead<MutableValue> {
 
-    final FieldComparator[] comparators;
+    final FieldComparator<?>[] comparators;
 
+    @SuppressWarnings({"unchecked","rawtypes"})
     private GroupHead(MutableValue groupValue, Sort sort, int doc) throws IOException {
       super(groupValue, doc + readerContext.docBase);
       final SortField[] sortFields = sort.getSort();
@@ -138,7 +138,7 @@ public class FunctionAllGroupHeadsCollector extends AbstractAllGroupHeadsCollect
     }
 
     public void updateDocHead(int doc) throws IOException {
-      for (FieldComparator comparator : comparators) {
+      for (FieldComparator<?> comparator : comparators) {
         comparator.copy(0, doc);
         comparator.setBottom(0);
       }

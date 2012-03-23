@@ -18,7 +18,6 @@ package org.apache.lucene.search.grouping.function;
  */
 
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.grouping.AbstractAllGroupsCollector;
@@ -44,7 +43,7 @@ import java.util.TreeSet;
  */
 public class FunctionAllGroupsCollector extends AbstractAllGroupsCollector<MutableValue> {
 
-  private final Map vsContext;
+  private final Map<?, ?> vsContext;
   private final ValueSource groupBy;
   private final SortedSet<MutableValue> groups = new TreeSet<MutableValue>();
 
@@ -57,7 +56,7 @@ public class FunctionAllGroupsCollector extends AbstractAllGroupsCollector<Mutab
    * @param groupBy The {@link ValueSource} to group by
    * @param vsContext The ValueSource context
    */
-  public FunctionAllGroupsCollector(ValueSource groupBy, Map vsContext) {
+  public FunctionAllGroupsCollector(ValueSource groupBy, Map<?, ?> vsContext) {
     this.vsContext = vsContext;
     this.groupBy = groupBy;
   }
@@ -80,8 +79,8 @@ public class FunctionAllGroupsCollector extends AbstractAllGroupsCollector<Mutab
    * {@inheritDoc}
    */
   public void setNextReader(AtomicReaderContext context) throws IOException {
-    FunctionValues docValues = groupBy.getValues(vsContext, context);
-    filler = docValues.getValueFiller();
+    FunctionValues values = groupBy.getValues(vsContext, context);
+    filler = values.getValueFiller();
     mval = filler.getValue();
   }
 }

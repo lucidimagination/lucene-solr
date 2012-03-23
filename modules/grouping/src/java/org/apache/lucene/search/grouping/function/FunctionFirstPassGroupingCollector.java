@@ -18,7 +18,6 @@ package org.apache.lucene.search.grouping.function;
  */
 
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.Sort;
@@ -37,9 +36,8 @@ import java.util.Map;
 public class FunctionFirstPassGroupingCollector extends AbstractFirstPassGroupingCollector<MutableValue> {
 
   private final ValueSource groupByVS;
-  private final Map vsContext;
+  private final Map<?, ?> vsContext;
 
-  private FunctionValues docValues;
   private FunctionValues.ValueFiller filler;
   private MutableValue mval;
 
@@ -57,7 +55,7 @@ public class FunctionFirstPassGroupingCollector extends AbstractFirstPassGroupin
    * @param topNGroups How many top groups to keep.
    * @throws IOException When I/O related errors occur
    */
-  public FunctionFirstPassGroupingCollector(ValueSource groupByVS, Map vsContext, Sort groupSort, int topNGroups) throws IOException {
+  public FunctionFirstPassGroupingCollector(ValueSource groupByVS, Map<?, ?> vsContext, Sort groupSort, int topNGroups) throws IOException {
     super(groupSort, topNGroups);
     this.groupByVS = groupByVS;
     this.vsContext = vsContext;
@@ -81,8 +79,8 @@ public class FunctionFirstPassGroupingCollector extends AbstractFirstPassGroupin
   @Override
   public void setNextReader(AtomicReaderContext readerContext) throws IOException {
     super.setNextReader(readerContext);
-    docValues = groupByVS.getValues(vsContext, readerContext);
-    filler = docValues.getValueFiller();
+    FunctionValues values = groupByVS.getValues(vsContext, readerContext);
+    filler = values.getValueFiller();
     mval = filler.getValue();
   }
 

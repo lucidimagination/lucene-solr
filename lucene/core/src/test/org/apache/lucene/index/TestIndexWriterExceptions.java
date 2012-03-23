@@ -1494,4 +1494,46 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     uoe.doFail = false;
     d.close();
   }
+  
+  public void testIllegalPositions() throws Exception {
+    Directory dir = newDirectory();
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    Document doc = new Document();
+    Token t1 = new Token("foo", 0, 3);
+    t1.setPositionIncrement(Integer.MAX_VALUE);
+    Token t2 = new Token("bar", 4, 7);
+    t2.setPositionIncrement(200);
+    TokenStream overflowingTokenStream = new CannedTokenStream(
+        new Token[] { t1, t2 }
+    );
+    Field field = new TextField("foo", overflowingTokenStream);
+    doc.add(field);
+    try {
+      iw.addDocument(doc);
+      fail();
+    } catch (IllegalArgumentException expected) {
+      // expected exception
+    }
+    iw.close();
+    dir.close();
+  }
+  
+  public void testLegalbutVeryLargePositions() throws Exception {
+    Directory dir = newDirectory();
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    Document doc = new Document();
+    Token t1 = new Token("foo", 0, 3);
+    t1.setPositionIncrement(Integer.MAX_VALUE-500);
+    if (random.nextBoolean()) {
+      t1.setPayload(new Payload(new byte[] { 0x1 } ));
+    }
+    TokenStream overflowingTokenStream = new CannedTokenStream(
+        new Token[] { t1 }
+    );
+    Field field = new TextField("foo", overflowingTokenStream);
+    doc.add(field);
+    iw.addDocument(doc);
+    iw.close();
+    dir.close();
+  }
 }

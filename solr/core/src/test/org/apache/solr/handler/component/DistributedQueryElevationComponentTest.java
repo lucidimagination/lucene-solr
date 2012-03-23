@@ -24,6 +24,8 @@ import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.util.FileUtils;
+import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 /**
@@ -41,16 +43,26 @@ public class DistributedQueryElevationComponentTest extends BaseDistributedSearc
     schemaString = "schema11.xml";
   }
   
+  private static String elevateFilename = "elevate-data-distrib.xml";
+  
   @BeforeClass
   public static void beforeClass() throws IOException {
+    System.setProperty("elevate.data.file", elevateFilename);
     File parent = new File(TEST_HOME(), "conf");
     File elevateFile = new File(parent, "elevate.xml");
-    File elevateDataFile = new File(parent, "elevate-data.xml");
+    File elevateDataFile = new File(parent, elevateFilename);
     FileUtils.copyFile(elevateFile, elevateDataFile);
   }
   
+  @AfterClass
+  public static void afterClass() throws IOException {
+    System.clearProperty("elevate.data.file");
+  }
+
   @Override
   public void doTest() throws Exception {
+    
+    
     del("*:*");
     indexr(id,"1", "int_i", "1", "text", "XXXX XXXX", "field_t", "anything");
     indexr(id,"2", "int_i", "2", "text", "YYYY YYYY", "plow_t", "rake");
@@ -80,8 +92,7 @@ public class DistributedQueryElevationComponentTest extends BaseDistributedSearc
     
     query("q", "solr", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "forceElevation", "true", "sort", "int_i asc");
     
-    // currently cannot sort by id with distrib
-    // query("q", "ZZZZ", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "forceElevation", "true", "sort", "id desc");
+    query("q", "ZZZZ", "qt", "/elevate", "shards.qt", "/elevate", "rows", "500", CommonParams.FL, "*, [elevated]", "forceElevation", "true", "sort", "id desc");
   }
   
   protected void indexr(Object... fields) throws Exception {

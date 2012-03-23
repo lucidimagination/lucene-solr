@@ -48,9 +48,11 @@ import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.util.XML;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.params.AnalysisParams;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.FacetParams;
 import org.junit.Test;
@@ -463,6 +465,42 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     Assert.fail("commitWithin failed to commit");
   }
 
+  @Test
+  public void testErrorHandling() throws Exception
+  {    
+    SolrServer server = getSolrServer();
+
+    SolrQuery query = new SolrQuery();
+    query.set(CommonParams.QT, "/analysis/field");
+    query.set(AnalysisParams.FIELD_TYPE, "int");
+    query.set(AnalysisParams.FIELD_VALUE, "hello");
+    try {
+      server.query( query );
+      Assert.fail("should have a number format exception");
+    }
+    catch(SolrException ex) {
+      assertEquals(400, ex.code());
+      assertEquals("Invalid Number: hello", ex.getMessage());  // The reason should get passed through
+    }
+    catch(Throwable t) {
+      t.printStackTrace();
+      Assert.fail("should have thrown a SolrException! not: "+t);
+    }
+    
+    try {
+      server.deleteByQuery( "??::??" ); // query syntax error
+      Assert.fail("should have a number format exception");
+    }
+    catch(SolrException ex) {
+      assertEquals(400, ex.code());
+      assertTrue(ex.getMessage().indexOf("??::??")>0);  // The reason should get passed through
+    }
+    catch(Throwable t) {
+      t.printStackTrace();
+      Assert.fail("should have thrown a SolrException! not: "+t);
+    }
+  }
+
 
   @Test
   public void testAugmentFields() throws Exception
@@ -673,8 +711,8 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     FieldStatsInfo stats = rsp.getFieldStatsInfo().get( f );
     assertNotNull( stats );
     
-    assertEquals( 23.0, stats.getMin().doubleValue(), 0 );
-    assertEquals( 94.0, stats.getMax().doubleValue(), 0 );
+    assertEquals( 23.0, ((Double)stats.getMin()).doubleValue(), 0 );
+    assertEquals( 94.0, ((Double)stats.getMax()).doubleValue(), 0 );
     assertEquals( new Long(nums.length), stats.getCount() );
     assertEquals( new Long(0), stats.getMissing() );
     assertEquals( "26.4", stats.getStddev().toString().substring(0,4) );
@@ -699,8 +737,8 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     stats = rsp.getFieldStatsInfo().get( f );
     assertNotNull( stats );
     
-    assertEquals( 5.0, stats.getMin().doubleValue(), 0 );
-    assertEquals( 20.0, stats.getMax().doubleValue(), 0 );
+    assertEquals( 5.0, ((Double)stats.getMin()).doubleValue(), 0 );
+    assertEquals( 20.0, ((Double)stats.getMax()).doubleValue(), 0 );
     assertEquals( new Long(nums.length), stats.getCount() );
     assertEquals( new Long(0), stats.getMissing() );
     
@@ -744,7 +782,7 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertEquals( inStockF.getCount(), inStockT.getCount() );
     assertEquals( stats.getCount().longValue(), inStockF.getCount()+inStockT.getCount() );
 
-    assertTrue( "check that min max faceted ok", inStockF.getMin() > inStockT.getMax() );
+    assertTrue( "check that min max faceted ok", ((Double)inStockF.getMin()).doubleValue() < ((Double)inStockF.getMax()).doubleValue() );
     assertEquals( "they have the same distribution", inStockF.getStddev(), inStockT.getStddev() );
   }
 

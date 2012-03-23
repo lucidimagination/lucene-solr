@@ -45,7 +45,6 @@ import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.OrdTermState;
 import org.apache.lucene.index.StoredFieldVisitor;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -60,6 +59,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Constants; // for javadocs
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * High-performance single-document main memory Apache Lucene fulltext search index. 
@@ -205,7 +205,7 @@ public class MemoryIndex {
    * Arrays.binarySearch() and Arrays.sort()
    */
   private static final Comparator<Object> termComparator = new Comparator<Object>() {
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked","rawtypes"})
     public int compare(Object o1, Object o2) {
       if (o1 instanceof Map.Entry<?,?>) o1 = ((Map.Entry<?,?>) o1).getKey();
       if (o2 instanceof Map.Entry<?,?>) o2 = ((Map.Entry<?,?>) o2).getKey();
@@ -474,39 +474,12 @@ public class MemoryIndex {
   
   /**
    * Returns a reasonable approximation of the main memory [bytes] consumed by
-   * this instance. Useful for smart memory sensititive caches/pools. Assumes
-   * fieldNames are interned, whereas tokenized terms are memory-overlaid.
-   * 
+   * this instance. Useful for smart memory sensititive caches/pools.
    * @return the main memory consumption
    */
-  public int getMemorySize() {
-    // for example usage in a smart cache see nux.xom.pool.Pool    
-    int PTR = VM.PTR;
-    int INT = VM.INT;
-    int size = 0;
-    size += VM.sizeOfObject(2*PTR + INT); // memory index
-    if (sortedFields != null) size += VM.sizeOfObjectArray(sortedFields.length);
-    
-    size += VM.sizeOfHashMap(fields.size());
-    for (Map.Entry<String, Info> entry : fields.entrySet()) { // for each Field Info
-      Info info = entry.getValue();
-      size += VM.sizeOfObject(2*INT + 3*PTR); // Info instance vars
-      if (info.sortedTerms != null) size += VM.sizeOfObjectArray(info.sortedTerms.length);
-      
-      int len = info.terms.size();
-      size += VM.sizeOfHashMap(len);
-      Iterator<Map.Entry<BytesRef,ArrayIntList>> iter2 = info.terms.entrySet().iterator();
-      while (--len >= 0) { // for each term
-        Map.Entry<BytesRef,ArrayIntList> e = iter2.next();
-        // FIXME: this calculation is probably not correct since we use bytes now.
-        size += VM.sizeOfObject(PTR + 3*INT); // assumes substring() memory overlay
-//        size += STR + 2 * ((String) e.getKey()).length();
-        ArrayIntList positions = e.getValue();
-        size += VM.sizeOfArrayIntList(positions.size());
-      }
-    }
-    return size;
-  } 
+  public long getMemorySize() {
+    return RamUsageEstimator.sizeOf(this);
+  }
 
   private int numPositions(ArrayIntList positions) {
     return positions.size() / stride;
@@ -541,7 +514,6 @@ public class MemoryIndex {
   public String toString() {
     StringBuilder result = new StringBuilder(256);    
     sortFields();   
-    int sumBytes = 0;
     int sumPositions = 0;
     int sumTerms = 0;
     
@@ -552,7 +524,6 @@ public class MemoryIndex {
       info.sortTerms();
       result.append(fieldName + ":\n");
       
-      int numBytes = 0;
       int numPositions = 0;
       for (int j=0; j < info.sortedTerms.length; j++) {
         Map.Entry<BytesRef,ArrayIntList> e = info.sortedTerms[j];
@@ -562,22 +533,20 @@ public class MemoryIndex {
         result.append(positions.toString(stride)); // ignore offsets
         result.append("\n");
         numPositions += numPositions(positions);
-        numBytes += term.length;
       }
       
       result.append("\tterms=" + info.sortedTerms.length);
       result.append(", positions=" + numPositions);
-      result.append(", Kbytes=" + (numBytes/1000.0f));
+      result.append(", memory=" + RamUsageEstimator.humanReadableUnits(RamUsageEstimator.sizeOf(info)));
       result.append("\n");
       sumPositions += numPositions;
-      sumBytes += numBytes;
       sumTerms += info.sortedTerms.length;
     }
     
     result.append("\nfields=" + sortedFields.length);
     result.append(", terms=" + sumTerms);
     result.append(", positions=" + sumPositions);
-    result.append(", Kbytes=" + (sumBytes/1000.0f));
+    result.append(", memory=" + RamUsageEstimator.humanReadableUnits(getMemorySize()));
     return result.toString();
   }
   
@@ -609,9 +578,6 @@ public class MemoryIndex {
     /** Boost factor for hits for this field */
     private final float boost;
 
-    /** Term for this field's fieldName, lazily computed on demand */
-    public transient Term template;
-
     private final long sumTotalTermFreq;
 
     public Info(HashMap<BytesRef,ArrayIntList> terms, int numTokens, int numOverlapTokens, float boost) {
@@ -642,16 +608,6 @@ public class MemoryIndex {
       if (sortedTerms == null) sortedTerms = sort(terms);
     }
         
-    /** note that the frequency can be calculated as numPosition(getPositions(x)) */
-    public ArrayIntList getPositions(BytesRef term) {
-      return terms.get(term);
-    }
-
-    /** note that the frequency can be calculated as numPosition(getPositions(x)) */
-    public ArrayIntList getPositions(int pos) {
-      return sortedTerms[pos].getValue();
-    }
-    
     public float getBoost() {
       return boost;
     }
@@ -671,10 +627,6 @@ public class MemoryIndex {
     private int[] elements;
     private int size = 0;
       
-    public ArrayIntList() {
-      this(10);
-    }
-
     public ArrayIntList(int initialCapacity) {
       elements = new int[initialCapacity];
     }
@@ -699,16 +651,6 @@ public class MemoryIndex {
     
     public int size() {
       return size;
-    }
-    
-    public int[] toArray(int stride) {
-      int[] arr = new int[size() / stride];
-      if (stride == 1) {
-        System.arraycopy(elements, 0, arr, 0, size); // fast path
-      } else { 
-        for (int i=0, j=0; j < size; i++, j += stride) arr[i] = elements[j];
-      }
-      return arr;
     }
     
     private void ensureCapacity(int minCapacity) {
@@ -1154,83 +1096,4 @@ public class MemoryIndex {
       return norms;
     }
   }
-
-  
-  ///////////////////////////////////////////////////////////////////////////////
-  // Nested classes:
-  ///////////////////////////////////////////////////////////////////////////////
-  private static final class VM {
-        
-    public static final int PTR = Constants.JRE_IS_64BIT ? 8 : 4;    
-
-    // bytes occupied by primitive data types
-    public static final int BOOLEAN = 1;
-    public static final int BYTE = 1;
-    public static final int CHAR = 2;
-    public static final int SHORT = 2;
-    public static final int INT = 4;
-    public static final int LONG = 8;
-    public static final int FLOAT = 4;
-    public static final int DOUBLE = 8;
-    
-    private static final int LOG_PTR = (int) Math.round(log2(PTR));
-    
-    /**
-     * Object header of any heap allocated Java object. 
-     * ptr to class, info for monitor, gc, hash, etc.
-     */
-    private static final int OBJECT_HEADER = 2*PTR; 
-
-    private VM() {} // not instantiable
-
-    //  assumes n > 0
-    //  64 bit VM:
-    //    0     --> 0*PTR
-    //    1..8  --> 1*PTR
-    //    9..16 --> 2*PTR
-    private static int sizeOf(int n) {
-        return (((n-1) >> LOG_PTR) + 1) << LOG_PTR;
-    }
-    
-    public static int sizeOfObject(int n) {
-        return sizeOf(OBJECT_HEADER + n);        
-    }
-    
-    public static int sizeOfObjectArray(int len) {
-        return sizeOfObject(INT + PTR*len);        
-    }
-    
-    public static int sizeOfCharArray(int len) {
-        return sizeOfObject(INT + CHAR*len);        
-    }
-    
-    public static int sizeOfIntArray(int len) {
-        return sizeOfObject(INT + INT*len);        
-    }
-    
-    public static int sizeOfString(int len) {
-        return sizeOfObject(3*INT + PTR) + sizeOfCharArray(len);
-    }
-    
-    public static int sizeOfHashMap(int len) {
-        return sizeOfObject(4*PTR + 4*INT) + sizeOfObjectArray(len) 
-            + len * sizeOfObject(3*PTR + INT); // entries
-    }
-    
-    // note: does not include referenced objects
-    public static int sizeOfArrayList(int len) {
-        return sizeOfObject(PTR + 2*INT) + sizeOfObjectArray(len); 
-    }
-    
-    public static int sizeOfArrayIntList(int len) {
-        return sizeOfObject(PTR + INT) + sizeOfIntArray(len);
-    }
-    
-    /** logarithm to the base 2. Example: log2(4) == 2, log2(8) == 3 */
-    private static double log2(double value) {
-      return Math.log(value) / Math.log(2);
-    }
-        
-  }
-
 }

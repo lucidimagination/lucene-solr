@@ -203,7 +203,6 @@ public class Highlighter
     }
     
 		TokenStream newStream = fragmentScorer.init(tokenStream);
-
 		if(newStream != null) {
 		  tokenStream = newStream;
 		}

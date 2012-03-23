@@ -19,7 +19,6 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -262,13 +261,6 @@ public final class ParallelAtomicReader extends AtomicReader {
     }
     
     return fields;
-  }
-  
-  @Override
-  public boolean hasNorms(String field) throws IOException {
-    ensureOpen();
-    AtomicReader reader = fieldToReader.get(field);
-    return reader==null ? false : reader.hasNorms(field);
   }
   
   @Override

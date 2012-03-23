@@ -49,10 +49,18 @@ import org.apache.lucene.util._TestUtil;
 public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
   // some helpers to test Analyzers and TokenStreams:
   
+  /**
+   * Attribute that records if it was cleared or not.  This is used 
+   * for testing that clearAttributes() was called correctly.
+   */
   public static interface CheckClearAttributesAttribute extends Attribute {
     boolean getAndResetClearCalled();
   }
 
+  /**
+   * Attribute that records if it was cleared or not.  This is used 
+   * for testing that clearAttributes() was called correctly.
+   */
   public static final class CheckClearAttributesAttributeImpl extends AttributeImpl implements CheckClearAttributesAttribute {
     private boolean clearCalled = false;
     
@@ -157,7 +165,11 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         }
       }
       if (posIncrAtt != null) {
-        assertTrue("posIncrement must be >= 0", posIncrAtt.getPositionIncrement() >= 0);
+        if (i == 0) {
+          assertTrue("first posIncrement must be >= 1", posIncrAtt.getPositionIncrement() >= 1);
+        } else {
+          assertTrue("posIncrement must be >= 0", posIncrAtt.getPositionIncrement() >= 0);
+        }
       }
       if (posLengthAtt != null) {
         assertTrue("posLength must be >= 1", posLengthAtt.getPositionLength() >= 1);
@@ -165,8 +177,9 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     }
     assertFalse("TokenStream has more tokens than expected", ts.incrementToken());
     ts.end();
-    if (finalOffset != null)
+    if (finalOffset != null) {
       assertEquals("finalOffset ", finalOffset.intValue(), offsetAtt.endOffset());
+    }
     if (offsetAtt != null) {
       assertTrue("finalOffset must be >= 0", offsetAtt.endOffset() >= 0);
     }
@@ -282,7 +295,12 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
   
   /** utility method for blasting tokenstreams with data to make sure they don't do anything crazy */
   public static void checkRandomData(Random random, Analyzer a, int iterations) throws IOException {
-    checkRandomData(random, a, iterations, false);
+    checkRandomData(random, a, iterations, 20, false);
+  }
+  
+  /** utility method for blasting tokenstreams with data to make sure they don't do anything crazy */
+  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength) throws IOException {
+    checkRandomData(random, a, iterations, maxWordLength, false);
   }
   
   /** 
@@ -291,11 +309,42 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
    */
   public static void checkRandomData(Random random, Analyzer a, int iterations, boolean simple) throws IOException {
     checkRandomData(random, a, iterations, 20, simple);
+  }
+  
+  static class AnalysisThread extends Thread {
+    final int iterations;
+    final int maxWordLength;
+    final Random random;
+    final Analyzer a;
+    final boolean simple;
+    
+    AnalysisThread(Random random, Analyzer a, int iterations, int maxWordLength, boolean simple) {
+      this.random = random;
+      this.a = a;
+      this.iterations = iterations;
+      this.maxWordLength = maxWordLength;
+      this.simple = simple;
+    }
+    
+    @Override
+    public void run() {
+      try {
+        // see the part in checkRandomData where it replays the same text again
+        // to verify reproducability/reuse: hopefully this would catch thread hazards.
+        checkRandomData(random, a, iterations, maxWordLength, random.nextBoolean(), simple);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  };
+  
+  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength, boolean simple) throws IOException {
+    checkRandomData(random, a, iterations, maxWordLength, random.nextBoolean(), simple);
     // now test with multiple threads
     int numThreads = _TestUtil.nextInt(random, 4, 8);
     Thread threads[] = new Thread[numThreads];
     for (int i = 0; i < threads.length; i++) {
-      threads[i] = new AnalysisThread(new Random(random.nextLong()), a, iterations, simple);
+      threads[i] = new AnalysisThread(new Random(random.nextLong()), a, iterations, maxWordLength, simple);
     }
     for (int i = 0; i < threads.length; i++) {
       threads[i].start();
@@ -308,45 +357,16 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       }
     }
   }
-  
-  static class AnalysisThread extends Thread {
-    final int iterations;
-    final Random random;
-    final Analyzer a;
-    final boolean simple;
-    
-    AnalysisThread(Random random, Analyzer a, int iterations, boolean simple) {
-      this.random = random;
-      this.a = a;
-      this.iterations = iterations;
-      this.simple = simple;
-    }
-    
-    @Override
-    public void run() {
-      try {
-        // see the part in checkRandomData where it replays the same text again
-        // to verify reproducability/reuse: hopefully this would catch thread hazards.
-        checkRandomData(random, a, iterations, 20, simple);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    }
-  };
-  
-  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength, boolean simple) throws IOException {
-    checkRandomData(random, a, iterations, maxWordLength, random.nextBoolean(), simple);
-  }
 
-  public static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength, boolean useCharFilter, boolean simple) throws IOException {
+  private static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength, boolean useCharFilter, boolean simple) throws IOException {
     for (int i = 0; i < iterations; i++) {
       String text;
       if (simple) { 
-        text = random.nextBoolean() ? _TestUtil.randomSimpleString(random) : _TestUtil.randomHtmlishString(random, maxWordLength);
+        text = random.nextBoolean() ? _TestUtil.randomSimpleString(random, maxWordLength) : _TestUtil.randomHtmlishString(random, maxWordLength);
       } else {
         switch(_TestUtil.nextInt(random, 0, 4)) {
           case 0: 
-            text = _TestUtil.randomSimpleString(random);
+            text = _TestUtil.randomSimpleString(random, maxWordLength);
             break;
           case 1:
             text = _TestUtil.randomRealisticUnicodeString(random, maxWordLength);
@@ -379,6 +399,8 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       List<Integer> startOffsets = new ArrayList<Integer>();
       List<Integer> endOffsets = new ArrayList<Integer>();
       ts.reset();
+
+      // First pass: save away "correct" tokens
       while (ts.incrementToken()) {
         tokens.add(termAtt.toString());
         if (typeAtt != null) types.add(typeAtt.type());
@@ -391,12 +413,98 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       }
       ts.end();
       ts.close();
+
       // verify reusing is "reproducable" and also get the normal tokenstream sanity checks
       if (!tokens.isEmpty()) {
+
+        // KWTokenizer (for example) can produce a token
+        // even when input is length 0:
+        if (text.length() != 0) {
+
+          // (Optional) second pass: do something evil:
+          final int evilness = random.nextInt(50);
+          if (evilness == 17) {
+            if (VERBOSE) {
+              System.out.println(Thread.currentThread().getName() + ": NOTE: BaseTokenStreamTestCase: re-run analysis w/ exception");
+            }
+            // Throw an errant exception from the Reader:
+
+            MockReaderWrapper evilReader = new MockReaderWrapper(random, new StringReader(text));
+            evilReader.throwExcAfterChar(random.nextInt(text.length()+1));
+            reader = evilReader;
+
+            try {
+              // NOTE: some Tokenizers go and read characters
+              // when you call .setReader(Reader), eg
+              // PatternTokenizer.  This is a bit
+              // iffy... (really, they should only
+              // pull from the Reader when you call
+              // .incremenToken(), I think?), but we
+              // currently allow it, so, we must call
+              // a.tokenStream inside the try since we may
+              // hit the exc on init:
+              ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(evilReader, remainder) : evilReader);
+              ts.reset();
+              while (ts.incrementToken());
+              fail("did not hit exception");
+            } catch (RuntimeException re) {
+              assertTrue(MockReaderWrapper.isMyEvilException(re));
+            }
+            try {
+              ts.end();
+            } catch (AssertionError ae) {
+              // Catch & ignore MockTokenizer's
+              // anger...
+              if ("end() called before incrementToken() returned false!".equals(ae.getMessage())) {
+                // OK
+              } else {
+                throw ae;
+              }
+            }
+            ts.close();
+          } else if (evilness == 7) {
+            // Only consume a subset of the tokens:
+            final int numTokensToRead = random.nextInt(tokens.size());
+            if (VERBOSE) {
+              System.out.println(Thread.currentThread().getName() + ": NOTE: BaseTokenStreamTestCase: re-run analysis, only consuming " + numTokensToRead + " of " + tokens.size() + " tokens");
+            }
+
+            reader = new StringReader(text);
+            ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(reader, remainder) : reader);
+            ts.reset();
+            for(int tokenCount=0;tokenCount<numTokensToRead;tokenCount++) {
+              assertTrue(ts.incrementToken());
+            }
+            try {
+              ts.end();
+            } catch (AssertionError ae) {
+              // Catch & ignore MockTokenizer's
+              // anger...
+              if ("end() called before incrementToken() returned false!".equals(ae.getMessage())) {
+                // OK
+              } else {
+                throw ae;
+              }
+            }
+            ts.close();
+          }
+        }
+
+        // Final pass: verify clean tokenization matches
+        // results from first pass:
         if (VERBOSE) {
           System.out.println(Thread.currentThread().getName() + ": NOTE: BaseTokenStreamTestCase: re-run analysis; " + tokens.size() + " tokens");
         }
         reader = new StringReader(text);
+
+        if (random.nextInt(30) == 7) {
+          if (VERBOSE) {
+            System.out.println(Thread.currentThread().getName() + ": NOTE: BaseTokenStreamTestCase: using spoon-feed reader");
+          }
+
+          reader = new MockReaderWrapper(random, reader);
+        }
+        
         ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(reader, remainder) : reader);
         if (typeAtt != null && posIncAtt != null && posLengthAtt != null && offsetAtt != null) {
           // offset + pos + posLength + type

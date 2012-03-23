@@ -17,32 +17,21 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.IntField;
-import org.apache.lucene.document.StoredField;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.LogDocMergePolicy;
-import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.Term;
+import org.apache.lucene.document.*;
+import org.apache.lucene.index.*;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.grouping.GroupDocs;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.FixedBitSet;
-import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.ReaderUtil;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.*;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 public class TestBlockJoin extends LuceneTestCase {
 
@@ -149,7 +138,7 @@ public class TestBlockJoin extends LuceneTestCase {
     childDoc = s.doc(hits.scoreDocs[0].doc);
     //System.out.println("CHILD = " + childDoc + " docID=" + hits.scoreDocs[0].doc);
     assertEquals("java", childDoc.get("skill"));
-    assertEquals(2007, ((StoredField) childDoc.getField("year")).numericValue());
+    assertEquals(2007, (childDoc.getField("year")).numericValue());
     assertEquals("Lisa", getParentDoc(r, parentsFilter, hits.scoreDocs[0].doc).get("name"));
 
     // Test with filter on child docs:
@@ -161,23 +150,36 @@ public class TestBlockJoin extends LuceneTestCase {
     dir.close();
   }
 
+  protected QueryWrapperFilter skill(String skill) {
+    return new QueryWrapperFilter(new TermQuery(new Term("skill", skill)));
+  }
+
   public void testSimpleFilter() throws Exception {
 
     final Directory dir = newDirectory();
     final RandomIndexWriter w = new RandomIndexWriter(random, dir);
 
     final List<Document> docs = new ArrayList<Document>();
-
     docs.add(makeJob("java", 2007));
     docs.add(makeJob("python", 2010));
+    Collections.shuffle(docs, random);
     docs.add(makeResume("Lisa", "United Kingdom"));
-    w.addDocuments(docs);
 
-    docs.clear();
-    docs.add(makeJob("ruby", 2005));
-    docs.add(makeJob("java", 2006));
-    docs.add(makeResume("Frank", "United States"));
-    w.addDocuments(docs);
+    final List<Document> docs2 = new ArrayList<Document>();
+    docs2.add(makeJob("ruby", 2005));
+    docs2.add(makeJob("java", 2006));
+    Collections.shuffle(docs2, random);
+    docs2.add(makeResume("Frank", "United States"));
+    
+    addSkillless(w);
+    boolean turn = random.nextBoolean();
+    w.addDocuments(turn ? docs:docs2);
+
+    addSkillless(w);
+    
+    w.addDocuments(!turn ? docs:docs2);
+    
+    addSkillless(w);
 
     IndexReader r = w.getReader();
     w.close();
@@ -216,8 +218,30 @@ public class TestBlockJoin extends LuceneTestCase {
     TopDocs usThen = s.search(childJoinQuery , new QueryWrapperFilter(new TermQuery(new Term("country", "United States"))), 1);
     assertEquals("has filter - single passed", 1, usThen.totalHits);
     assertEquals("Frank", r.document(usThen.scoreDocs[0].doc).get("name"));
+    
+    
+    TermQuery us = new TermQuery(new Term("country", "United States"));
+    assertEquals("@ US we have java and ruby", 2, 
+        s.search(new ToChildBlockJoinQuery(us, 
+                          parentsFilter, random.nextBoolean()), 10).totalHits );
+
+    assertEquals("java skills in US", 1, s.search(new ToChildBlockJoinQuery(us, parentsFilter, random.nextBoolean()),
+        skill("java"), 10).totalHits );
+
+    BooleanQuery rubyPython = new BooleanQuery();
+    rubyPython.add(new TermQuery(new Term("skill", "ruby")), Occur.SHOULD);
+    rubyPython.add(new TermQuery(new Term("skill", "python")), Occur.SHOULD);
+    assertEquals("ruby skills in US", 1, s.search(new ToChildBlockJoinQuery(us, parentsFilter, random.nextBoolean()),
+                                          new QueryWrapperFilter(rubyPython), 10).totalHits );
+
     r.close();
     dir.close();
+  }
+
+  private void addSkillless(final RandomIndexWriter w) throws IOException {
+    if (random.nextBoolean()) {
+      w.addDocument(makeResume("Skillless", random.nextBoolean() ? "United Kingdom":"United States"));
+    }
   }
   
   private Document getParentDoc(IndexReader reader, Filter parents, int childDocID) throws IOException {
@@ -338,7 +362,7 @@ public class TestBlockJoin extends LuceneTestCase {
 
       if (VERBOSE) {
         StringBuilder sb = new StringBuilder();
-        sb.append("parentID=" + parentDoc.get("parentID"));
+        sb.append("parentID=").append(parentDoc.get("parentID"));
         for(int fieldID=0;fieldID<parentFields.length;fieldID++) {
           String s = parentDoc.get("parent" + fieldID);
           if (s != null) {
@@ -371,7 +395,7 @@ public class TestBlockJoin extends LuceneTestCase {
 
         if (VERBOSE) {
           StringBuilder sb = new StringBuilder();
-          sb.append("childID=" + joinChildDoc.get("childID"));
+          sb.append("childID=").append(joinChildDoc.get("childID"));
           for(int fieldID=0;fieldID<childFields.length;fieldID++) {
             String s = joinChildDoc.get("child" + fieldID);
             if (s != null) {
@@ -666,45 +690,68 @@ public class TestBlockJoin extends LuceneTestCase {
       // the fully denormalized index (so we can compare
       // results):
       final Query childQuery2;
+      
+      // apply a filter to children
+      final Filter childFilter2, childJoinFilter2;
 
       if (random.nextBoolean()) {
         childQuery2 = parentQuery2;
         childJoinQuery2 = parentJoinQuery2;
+        childFilter2 = null;
+        childJoinFilter2 = null;
       } else {
-        // AND child field w/ parent query:
-        final BooleanQuery bq = new BooleanQuery();
-        childJoinQuery2 = bq;
         final Term childTerm = randomChildTerm(childFields[0]);
-        if (random.nextBoolean()) {
-          bq.add(parentJoinQuery2, BooleanClause.Occur.MUST);
-          bq.add(new TermQuery(childTerm),
-                 BooleanClause.Occur.MUST);
+        if (random.nextBoolean()) { // filtered case
+          childJoinQuery2 = parentJoinQuery2;
+          final Filter f = new QueryWrapperFilter(new TermQuery(childTerm));
+          childJoinFilter2 = random.nextBoolean()
+                  ? new CachingWrapperFilter(f): f;
         } else {
-          bq.add(new TermQuery(childTerm),
-                 BooleanClause.Occur.MUST);
-          bq.add(parentJoinQuery2, BooleanClause.Occur.MUST);
+          childJoinFilter2 = null;
+          // AND child field w/ parent query:
+          final BooleanQuery bq = new BooleanQuery();
+          childJoinQuery2 = bq;
+          if (random.nextBoolean()) {
+            bq.add(parentJoinQuery2, BooleanClause.Occur.MUST);
+            bq.add(new TermQuery(childTerm),
+                   BooleanClause.Occur.MUST);
+          } else {
+            bq.add(new TermQuery(childTerm),
+                   BooleanClause.Occur.MUST);
+            bq.add(parentJoinQuery2, BooleanClause.Occur.MUST);
+          }
         }
-
-        final BooleanQuery bq2 = new BooleanQuery();
-        childQuery2 = bq2;
-        if (random.nextBoolean()) {
-          bq2.add(parentQuery2, BooleanClause.Occur.MUST);
-          bq2.add(new TermQuery(childTerm),
-                  BooleanClause.Occur.MUST);
+        
+        if (random.nextBoolean()) { // filtered case
+          childQuery2 = parentQuery2;
+          final Filter f = new QueryWrapperFilter(new TermQuery(childTerm));
+          childFilter2 = random.nextBoolean()
+                  ? new CachingWrapperFilter(f): f;
         } else {
-          bq2.add(new TermQuery(childTerm),
-                  BooleanClause.Occur.MUST);
-          bq2.add(parentQuery2, BooleanClause.Occur.MUST);
+          childFilter2 = null;
+          final BooleanQuery bq2 = new BooleanQuery();
+          childQuery2 = bq2;
+          if (random.nextBoolean()) {
+            bq2.add(parentQuery2, BooleanClause.Occur.MUST);
+            bq2.add(new TermQuery(childTerm),
+                    BooleanClause.Occur.MUST);
+          } else {
+            bq2.add(new TermQuery(childTerm),
+                    BooleanClause.Occur.MUST);
+            bq2.add(parentQuery2, BooleanClause.Occur.MUST);
+          }
         }
       }
 
       final Sort childSort2 = getRandomSort("child", childFields.length);
-
+              
       // Search denormalized index:
       if (VERBOSE) {
-        System.out.println("TEST: run top down query=" + childQuery2 + " sort=" + childSort2);
+        System.out.println("TEST: run top down query=" + childQuery2 +
+            " filter=" + childFilter2 +
+            " sort=" + childSort2);
       }
-      final TopDocs results2 = s.search(childQuery2, null, r.numDocs(),
+      final TopDocs results2 = s.search(childQuery2, childFilter2, r.numDocs(),
                                         childSort2);
       if (VERBOSE) {
         System.out.println("  " + results2.totalHits + " totalHits:");
@@ -716,9 +763,10 @@ public class TestBlockJoin extends LuceneTestCase {
 
       // Search join index:
       if (VERBOSE) {
-        System.out.println("TEST: run top down join query=" + childJoinQuery2 + " sort=" + childSort2);
+        System.out.println("TEST: run top down join query=" + childJoinQuery2 + 
+            " filter=" + childJoinFilter2 + " sort=" + childSort2);
       }
-      TopDocs joinResults2 = joinS.search(childJoinQuery2, null, joinR.numDocs(), childSort2);
+      TopDocs joinResults2 = joinS.search(childJoinQuery2, childJoinFilter2, joinR.numDocs(), childSort2);
       if (VERBOSE) {
         System.out.println("  " + joinResults2.totalHits + " totalHits:");
         for(ScoreDoc sd : joinResults2.scoreDocs) {
@@ -755,7 +803,7 @@ public class TestBlockJoin extends LuceneTestCase {
 
       FieldDoc hit0 = (FieldDoc) hit;
       FieldDoc joinHit0 = (FieldDoc) joinHit;
-      assertEquals(hit0.fields, joinHit0.fields);
+      assertArrayEquals(hit0.fields, joinHit0.fields);
     }
   }
 

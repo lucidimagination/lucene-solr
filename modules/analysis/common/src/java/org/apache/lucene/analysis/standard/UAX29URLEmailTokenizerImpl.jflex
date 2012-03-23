@@ -205,6 +205,10 @@ EMAIL = {EMAILlocalPart} "@" ({DomainNameStrict} | {EMAILbracketedHost})
 <<EOF>> { return StandardTokenizerInterface.YYEOF; }
 
 {URL}   { return URL_TYPE; }
+
+// LUCENE-3880: Disrupt recognition of "mailto:test" as <ALPHANUM> from "mailto:test@example.org"
+[mM][aA][iI][lL][tT][oO] / ":" {EMAIL} { return WORD_TYPE; }
+
 {EMAIL} { return EMAIL_TYPE; }
 
 // UAX#29 WB8.   Numeric × Numeric
