@@ -19,12 +19,12 @@ package org.apache.solr.schema;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.queries.function.docvalues.DocTermsIndexDocValues;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.queries.function.docvalues.StringIndexDocValues;
 import org.apache.lucene.queries.function.valuesource.FieldCacheSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
@@ -105,12 +105,18 @@ public class DateField extends PrimitiveFieldType {
 
   public static TimeZone UTC = TimeZone.getTimeZone("UTC");
 
-  /* :TODO: let Locale/TimeZone come from init args for rounding only */
-
-  /** TimeZone for DateMath (UTC) */
-  protected static final TimeZone MATH_TZ = UTC;
-  /** Locale for DateMath (Locale.US) */
-  protected static final Locale MATH_LOCALE = Locale.US;
+  /** 
+   * No longer used
+   * @deprecated use DateMathParser.DEFAULT_MATH_TZ
+   * @see DateMathParser#DEFAULT_MATH_TZ
+   */
+  protected static final TimeZone MATH_TZ = DateMathParser.DEFAULT_MATH_TZ;
+  /** 
+   * No longer used
+   * @deprecated use DateMathParser.DEFAULT_MATH_LOCALE
+   * @see DateMathParser#DEFAULT_MATH_LOCALE
+   */
+  protected static final Locale MATH_LOCALE = DateMathParser.DEFAULT_MATH_LOCALE;
 
   /** 
    * Fixed TimeZone (UTC) needed for parsing/formating Dates in the 
@@ -146,7 +152,7 @@ public class DateField extends PrimitiveFieldType {
    */
   public Date parseMath(Date now, String val) {
     String math = null;
-    final DateMathParser p = new DateMathParser(MATH_TZ, MATH_LOCALE);
+    final DateMathParser p = new DateMathParser();
     
     if (null != now) p.setNow(now);
     
@@ -296,7 +302,7 @@ public class DateField extends PrimitiveFieldType {
    */
   public Date parseMathLenient(Date now, String val, SolrQueryRequest req) {
     String math = null;
-    final DateMathParser p = new DateMathParser(MATH_TZ, MATH_LOCALE);
+    final DateMathParser p = new DateMathParser();
 
     if (null != now) p.setNow(now);
 
@@ -360,7 +366,7 @@ public class DateField extends PrimitiveFieldType {
       /* delegate to SimpleDateFormat for easy stuff */
       Date d = super.parse(i, p);
       int milliIndex = p.getIndex();
-      /* worry aboutthe milliseconds ourselves */
+      /* worry about the milliseconds ourselves */
       if (null != d &&
           -1 == p.getErrorIndex() &&
           milliIndex + 1 < i.length() &&
@@ -401,7 +407,7 @@ public class DateField extends PrimitiveFieldType {
     }
 
     @Override
-    public Object clone() {
+    public DateFormat clone() {
       ISO8601CanonicalDateFormat c
         = (ISO8601CanonicalDateFormat) super.clone();
       c.millisParser = NumberFormat.getIntegerInstance(CANONICAL_LOCALE);
@@ -458,7 +464,7 @@ class DateFieldSource extends FieldCacheSource {
 
   @Override
   public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
-    return new StringIndexDocValues(this, readerContext, field) {
+    return new DocTermsIndexDocValues(this, readerContext, field) {
       @Override
       protected String toTerm(String readableValue) {
         // needed for frange queries to work properly

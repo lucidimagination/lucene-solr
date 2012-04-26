@@ -253,7 +253,7 @@ public final class PagedBytes {
     }
   }
 
-  /** 1<<blockBits must be bigger than biggest single
+  /** 1&lt;&lt;blockBits must be bigger than biggest single
    *  BytesRef slice that will be pulled */
   public PagedBytes(int blockBits) {
     this.blockSize = 1 << blockBits;
@@ -415,7 +415,7 @@ public final class PagedBytes {
     }
 
     @Override
-    public Object clone() {
+    public PagedBytesDataInput clone() {
       PagedBytesDataInput clone = getDataInput();
       clone.setPosition(getPosition());
       return clone;

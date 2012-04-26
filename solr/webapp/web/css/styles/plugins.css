@@ -10,6 +10,31 @@
 #content #plugins #navigation .updatehandler a{ background-image: url( ../../img/ico/arrow-circle.png ); }
 #content #plugins #navigation .queryhandler a { background-image: url( ../../img/ico/magnifier.png ); }
 
+#content #plugins #navigation .PLUGINCHANGES { margin-top: 20px; }
+#content #plugins #navigation .PLUGINCHANGES a { background-image: url( ../../img/ico/eye.png ); }
+#content #plugins #navigation .RELOAD a { background-image: url( ../../img/ico/arrow-circle.png ); }
+
+
+#content #plugins #navigation a
+{
+  position: relative;
+}
+
+#content #plugins #navigation a span
+{
+  background-color: #bba500;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: normal;
+  line-height: 1.4em;
+  padding-left: 4px;
+  padding-right: 4px;
+  position: absolute;
+  right: 5px;
+  top: 7px;
+}
+
 #content #plugins #frame
 {
   float: right;
@@ -33,6 +58,11 @@
   display: block;
   font-weight: bold;
   padding-left: 21px;
+}
+
+#content #plugins #frame .entry.changed a span
+{
+  color: #bba500;
 }
 
 #content #plugins #frame .entry.expanded a
@@ -101,4 +131,45 @@
 #content #plugins #frame .entry .stats dd
 {
   width: 72%;
+}
+
+#content #plugins #frame .entry.expanded a.linker {
+  background-image: none;
+  background-position: 0 0;
+  display: inline;
+  font-weight: normal;
+  padding:0px;
+}
+
+#content #plugins #frame .entry.expanded a.linker:hover {
+  background-color:#F0F3FF;
+}
+
+#recording
+{
+  display: none;
+}
+
+#recording .wrapper
+{
+  padding: 30px;
+}
+
+#recording p
+{
+  background-position: 0 50%;
+  float: left;
+  padding-left: 21px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+#recording button
+{
+  float: right;
+}
+
+#recording button span
+{
+  background-image: url( ../../img/ico/new-text.png );
 }

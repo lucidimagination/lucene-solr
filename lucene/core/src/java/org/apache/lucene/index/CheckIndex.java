@@ -475,7 +475,7 @@ public class CheckIndex {
     }
 
 
-    result.newSegments = (SegmentInfos) sis.clone();
+    result.newSegments = sis.clone();
     result.newSegments.clear();
     result.maxSegmentName = -1;
 
@@ -642,7 +642,7 @@ public class CheckIndex {
       }
 
       // Keeper
-      result.newSegments.add((SegmentInfo) info.clone());
+      result.newSegments.add(info.clone());
     }
 
     if (0 == result.numBadSegments) {
@@ -1051,7 +1051,7 @@ public class CheckIndex {
         long termCount = -1;
         
         if (status.termCount-termCountStart > 0) {
-          termCount = fields.terms(field).getUniqueTermCount();
+          termCount = fields.terms(field).size();
           
           if (termCount != -1 && termCount != status.termCount - termCountStart) {
             throw new RuntimeException("termCount mismatch " + termCount + " vs " + (status.termCount - termCountStart));
@@ -1104,7 +1104,7 @@ public class CheckIndex {
       }
     }
     
-    int fieldCount = fields.getUniqueFieldCount();
+    int fieldCount = fields.size();
     
     if (fieldCount != -1) {
       if (fieldCount < 0) {

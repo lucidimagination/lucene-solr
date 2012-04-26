@@ -23,17 +23,9 @@ import java.io.Writer;
 import java.net.URLEncoder;
 import java.text.DateFormat;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
+import java.util.*;
 import java.util.Map.Entry;
 import java.nio.ByteBuffer;
-
-import org.apache.commons.httpclient.util.DateParseException;
 
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrInputDocument;
@@ -44,8 +36,6 @@ import org.apache.solr.common.util.*;
 
 
 /**
- * TODO? should this go in common?
- * 
  *
  * @since solr 1.3
  */
@@ -154,12 +144,11 @@ public class ClientUtils
    * Returns a formatter that can be use by the current thread if needed to
    * convert Date objects to the Internal representation.
    * @throws ParseException
-   * @throws DateParseException
    *
    * @deprecated Use {@link org.apache.solr.common.util.DateUtil#parseDate(String)}
    */
   @Deprecated
-  public static Date parseDate( String d ) throws ParseException, DateParseException
+  public static Date parseDate( String d ) throws ParseException
   {
     return DateUtil.parseDate(d);
   }
@@ -185,7 +174,8 @@ public class ClientUtils
 
 
   /**
-   * See: <a href="http://lucene.apache.org/java/docs/nightly/queryparsersyntax.html#Escaping%20Special%20Characters">Escaping Special Characters</a>
+   * See: {@link org.apache.lucene.queryparser.classic queryparser syntax} 
+   * for more information on Escaping Special Characters
    */
   public static String escapeQueryChars(String s) {
     StringBuilder sb = new StringBuilder();
@@ -235,9 +225,13 @@ public class ClientUtils
   }
   
   public static void appendMap(String collection, Map<String,Slice> map1, Map<String,Slice> map2) {
-    Set<Entry<String,Slice>> entrySet = map2.entrySet();
-    for (Entry<String,Slice> entry : entrySet) {
-      map1.put(collection + "_" + entry.getKey(), entry.getValue());
+    if (map1==null)
+      map1 = new HashMap<String,Slice>();
+    if (map2!=null) {
+      Set<Entry<String,Slice>> entrySet = map2.entrySet();
+      for (Entry<String,Slice> entry : entrySet) {
+        map1.put(collection + "_" + entry.getKey(), entry.getValue());
+      }
     }
   }
 }

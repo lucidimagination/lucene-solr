@@ -61,12 +61,12 @@ var load_terminfo = function( trigger_element, core_basepath, field, data_elemen
       context : terminfo_element,
       beforeSend : function( xhr, settings )
       {
-        trigger_element
+        $( 'span', trigger_element )
           .addClass( 'loader' );
       },
       success : function( response, text_status, xhr )
       {
-        trigger_element
+        $( 'span', trigger_element )
           .removeClass( 'loader' );
 
         var field_data = response.fields[field];
@@ -104,15 +104,15 @@ var load_terminfo = function( trigger_element, core_basepath, field, data_elemen
           {
             if( topterms_frq_last !== topterms[i+1] )
             {
-            if( topterms_frq_last )
-            {
-              topterms_content += '</ul></li>' + "\n";
-            }
+              if( topterms_frq_last )
+              {
+                topterms_content += '</ul></li>' + "\n";
+              }
 
-            topterms_frq_last = topterms[i+1];
-            topterms_content += '<li class="clearfix">'
-                             +  '<p><span>' + topterms_frq_last.esc() + '</span></p>' + "\n"
-                             +  '<ul>' + "\n";
+              topterms_frq_last = topterms[i+1];
+              topterms_content += '<li class="clearfix">'
+                               +  '<p><span>' + topterms_frq_last.esc() + '</span></p>' + "\n"
+                               +  '<ul>' + "\n";
             }
 
             var target = '#/' + current_core + '/query?q=' + field.esc() + ':' + encodeURIComponent( topterms[i] );
@@ -311,7 +311,7 @@ sammy.bind
       if( 0 !== navigation_data.fields.length )
       {
         navigation_data.fields.sort();
-        navigation_content += '<dt class="field">Fields</dt>' + "\n";
+        navigation_content += '<dt class="field">Field</dt>' + "\n";
         for( var i in navigation_data.fields )
         {
           var href = sammy_basepath + '?field=' + navigation_data.fields[i];
@@ -344,7 +344,7 @@ sammy.bind
       if( 0 !== navigation_data.dynamic_fields.length )
       {
         navigation_data.dynamic_fields.sort();
-        navigation_content += '<dt class="dynamic-field">Dynamic Fields</dt>' + "\n";
+        navigation_content += '<dt class="dynamic-field">Dynamic Field</dt>' + "\n";
         for( var i in navigation_data.dynamic_fields )
         {
           var href = sammy_basepath + '?dynamic-field=' + navigation_data.dynamic_fields[i];
@@ -355,7 +355,7 @@ sammy.bind
       if( 0 !== navigation_data.types.length )
       {
         navigation_data.types.sort();
-        navigation_content += '<dt class="type">Types</dt>' + "\n";
+        navigation_content += '<dt class="type">Type</dt>' + "\n";
         for( var i in navigation_data.types )
         {
           var href = sammy_basepath + '?type=' + navigation_data.types[i];
@@ -833,9 +833,13 @@ sammy.get
           $( 'dd.docs', options_element )
             .remove();
 
+          var target = '#/' + current_core + '/query?q=' + field.esc() + ':[* TO *]';
           docs_element
             .show()
-            .after( '<dd class="docs">' + schema_browser_data.fields[field].docs + '</dd>' );
+            .after( 
+             '<dd class="docs">'+
+               '<a href="'+target+'">' + schema_browser_data.fields[field].docs + '</a>' +
+             '</dd>' );
         }
         else
         {

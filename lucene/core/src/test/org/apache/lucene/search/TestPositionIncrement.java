@@ -59,6 +59,7 @@ public class TestPositionIncrement extends LuceneTestCase {
       @Override
       public TokenStreamComponents createComponents(String fieldName, Reader reader) {
         return new TokenStreamComponents(new Tokenizer(reader) {
+          // TODO: use CannedTokenStream
           private final String[] TOKENS = {"1", "2", "3", "4", "5"};
           private final int[] INCREMENTS = {0, 2, 1, 0, 1};
           private int i = 0;
@@ -88,7 +89,7 @@ public class TestPositionIncrement extends LuceneTestCase {
       }
     };
     Directory store = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, store, analyzer);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), store, analyzer);
     Document d = new Document();
     d.add(newField("field", "bogus", TextField.TYPE_STORED));
     writer.addDocument(d);
@@ -203,7 +204,7 @@ public class TestPositionIncrement extends LuceneTestCase {
 
   public void testPayloadsPos0() throws Exception {
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir, new MockPayloadAnalyzer());
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, new MockPayloadAnalyzer());
     Document doc = new Document();
     doc.add(new TextField("content", new StringReader(
         "a a b c d e a f g h i j a b k k")));

@@ -53,8 +53,11 @@ public class TestExtendedDismaxParser extends AbstractSolrTestCase {
             "text", "line up and fly directly at the enemy death cannons, clogging them with wreckage!"));
     assertU(adoc("id", "48", "text_sw", "this has gigabyte potential", "foo_i","100"));
     assertU(adoc("id", "49", "text_sw", "start the big apple end", "foo_i","-100"));
-    assertU(adoc("id", "50", "text_sw", "start new big city end"));
+    assertU(adoc("id", "50", "text_sw", "start new big city end"));    
     assertU(adoc("id", "51", "store",   "12.34,-56.78"));
+    assertU(adoc("id", "52", "text_sw", "tekna theou klethomen"));
+    assertU(adoc("id", "53", "text_sw", "nun tekna theou esmen"));
+    assertU(adoc("id", "54", "text_sw", "phanera estin ta tekna tou theou"));
     assertU(commit());
   }
   @Override
@@ -63,7 +66,7 @@ public class TestExtendedDismaxParser extends AbstractSolrTestCase {
     // the super classes version
     super.tearDown();
   }
-  
+    
   // test the edismax query parser based on the dismax parser
   public void testFocusQueryParser() {
     String allq = "id:[42 TO 51]";
@@ -71,8 +74,14 @@ public class TestExtendedDismaxParser extends AbstractSolrTestCase {
     String oner = "*[count(//doc)=1]";
     String twor = "*[count(//doc)=2]";
     String nor = "*[count(//doc)=0]";
-
-  assertQ("expected doc is missing (using un-escaped edismax w/qf)",
+    
+    assertQ("blank q",
+        req("q"," ",
+            "q.alt",allq,
+            "defType","edismax")
+        ,allr);
+    
+    assertQ("expected doc is missing (using un-escaped edismax w/qf)",
           req("q", "literal:colon", 
               "qf", "t_special",
               "defType", "edismax"),
@@ -288,6 +297,22 @@ public class TestExtendedDismaxParser extends AbstractSolrTestCase {
     ***/
 
   }
+  
+  public void testBoostQuery() {
+    assertQ(
+        req("q", "tekna", "qf", "text_sw", "defType", "edismax", "bq", "id:54^100", "bq", "id:53^10", "fq", "id:[52 TO 54]", "fl", "id,score"), 
+        "//doc[1]/str[@name='id'][.='54']",
+        "//doc[2]/str[@name='id'][.='53']",
+        "//doc[3]/str[@name='id'][.='52']"
+     );
+    
+    assertQ(
+        req("q", "tekna", "qf", "text_sw", "defType", "edismax", "bq", "id:54^-100", "bq", "id:53^10", "bq", "id:52", "fq", "id:[52 TO 54]", "fl", "id,score"), 
+        "//doc[1]/str[@name='id'][.='53']",
+        "//doc[2]/str[@name='id'][.='52']",
+        "//doc[3]/str[@name='id'][.='54']"
+     );
+  }
 
   public void testUserFields() {
     String oner = "*[count(//doc)=1]";
@@ -406,38 +431,171 @@ public class TestExtendedDismaxParser extends AbstractSolrTestCase {
   
   public void testCyclicAliasing() throws IOException, Exception {
     try {
-      h.query(req("defType","edismax", "q","Zapp Pig", "qf","who", "f.who.qf","name","f.name.qf","who"));
+      h.query(req("defType","edismax", "q","ignore_exception", "qf","who", "f.who.qf","name","f.name.qf","who"));
       fail("Simple cyclic alising");
     } catch (SolrException e) {
       assertTrue(e.getCause().getMessage().contains("Field aliases lead to a cycle"));
     }
     
     try {
-      h.query(req("defType","edismax", "q","Zapp Pig", "qf","who", "f.who.qf","name","f.name.qf","myalias", "f.myalias.qf","who"));
+      h.query(req("defType","edismax", "q","ignore_exception", "qf","who", "f.who.qf","name","f.name.qf","myalias", "f.myalias.qf","who"));
       fail();
     } catch (SolrException e) {
       assertTrue(e.getCause().getMessage().contains("Field aliases lead to a cycle"));
     }
     
     try {
-      h.query(req("defType","edismax", "q","Zapp Pig", "qf","field1", "f.field1.qf","field2 field3","f.field2.qf","field4 field5", "f.field4.qf","field5", "f.field5.qf","field6", "f.field3.qf","field6"));
+      h.query(req("defType","edismax", "q","ignore_exception", "qf","field1", "f.field1.qf","field2 field3","f.field2.qf","field4 field5", "f.field4.qf","field5", "f.field5.qf","field6", "f.field3.qf","field6"));
     } catch (SolrException e) {
       fail("This is not cyclic alising");
     }
     
     try {
-      h.query(req("defType","edismax", "q","Zapp Pig", "qf","field1", "f.field1.qf","field2 field3", "f.field2.qf","field4 field5", "f.field4.qf","field5", "f.field5.qf","field4"));
+      h.query(req("defType","edismax", "q","ignore_exception", "qf","field1", "f.field1.qf","field2 field3", "f.field2.qf","field4 field5", "f.field4.qf","field5", "f.field5.qf","field4"));
       fail();
     } catch (SolrException e) {
       assertTrue(e.getCause().getMessage().contains("Field aliases lead to a cycle"));
     }
     
     try {
-      h.query(req("defType","edismax", "q","who:(Zapp Pig)", "qf","field1", "f.who.qf","name","f.name.qf","myalias", "f.myalias.qf","who"));
+      h.query(req("defType","edismax", "q","who:(Zapp Pig) ignore_exception", "qf","field1", "f.who.qf","name","f.name.qf","myalias", "f.myalias.qf","who"));
       fail();
     } catch (SolrException e) {
       assertTrue(e.getCause().getMessage().contains("Field aliases lead to a cycle"));
     }
   }
+
+  public void testOperatorsWithLiteralColons() {
+    assertU(adoc("id", "142", "a_s", "bogus:xxx", "text_s", "yak"));
+    assertU(adoc("id", "143", "a_s", "bogus:xxx"));
+    assertU(adoc("id", "144", "text_s", "yak"));
+    assertU(adoc("id", "145", "a_s", "a_s:xxx", "text_s", "yak"));
+    assertU(adoc("id", "146", "a_s", "a_s:xxx"));
+    assertU(adoc("id", "147", "a_s", "AND", "a_s", "NOT"));
+    assertU(commit());
+
+    assertQ(req("q", "bogus:xxx AND text_s:yak",
+                "fl", "id",
+                "qf", "a_s b_s",
+                "defType", "edismax",
+                "mm", "0"),
+            "//*[@numFound='1']",
+            "//str[@name='id'][.='142']");
+    
+    assertQ(req("q", "a_s:xxx AND text_s:yak",
+                "fl", "id",
+                "qf", "a_s b_s",
+                "defType", "edismax",
+                "mm", "0",
+                "uf", "text_s"),
+            "//*[@numFound='1']",
+            "//str[@name='id'][.='145']");
+
+    assertQ(req("q", "NOT bogus:xxx +text_s:yak",
+                "fl", "id",
+                "qf", "a_s b_s",
+                "defType", "edismax",
+                "mm", "0",
+                "debugQuery", "true"),
+            "//*[@numFound='2']",
+            "//str[@name='id'][.='144']",
+            "//str[@name='id'][.='145']");
+    
+    assertQ(req("q", "NOT a_s:xxx +text_s:yak",
+                "fl", "id",
+                "qf", "a_s b_s",
+                "defType", "edismax",
+                "mm", "0",
+                "uf", "text_s"),
+            "//*[@numFound='2']",
+            "//str[@name='id'][.='142']",
+            "//str[@name='id'][.='144']");
+    
+    assertQ(req("q", "+bogus:xxx yak",
+                "fl", "id",
+                "qf", "a_s b_s text_s",
+                "defType", "edismax",
+                "mm", "0"),
+            "//*[@numFound='2']",
+            "//str[@name='id'][.='142']",
+            "//str[@name='id'][.='143']");
+
+    assertQ(req("q", "+a_s:xxx yak",
+                "fl", "id",
+                "qf", "a_s b_s text_s",
+                "defType", "edismax",
+                "mm", "0",
+                "uf", "b_s"),
+            "//*[@numFound='2']",
+            "//str[@name='id'][.='145']",
+            "//str[@name='id'][.='146']");
+  }
   
+  // test phrase fields including pf2 pf3 and phrase slop
+  public void testPfPs() {
+    assertU(adoc("id", "s0", "phrase_sw", "foo bar a b c", "boost_d", "1.0"));    
+    assertU(adoc("id", "s1", "phrase_sw", "foo a bar b c", "boost_d", "2.0"));    
+    assertU(adoc("id", "s2", "phrase_sw", "foo a b bar c", "boost_d", "3.0"));    
+    assertU(adoc("id", "s3", "phrase_sw", "foo a b c bar", "boost_d", "4.0"));    
+    assertU(commit());
+
+    assertQ("default order assumption wrong",
+        req("q",   "foo bar", 
+            "qf",  "phrase_sw",
+            "bf",  "boost_d",
+            "fl",  "score,*",
+            "defType", "edismax"),
+        "//doc[1]/str[@name='id'][.='s3']",
+        "//doc[2]/str[@name='id'][.='s2']",
+        "//doc[3]/str[@name='id'][.='s1']",
+        "//doc[4]/str[@name='id'][.='s0']"); 
+
+    assertQ("pf not working",
+          req("q",   "foo bar", 
+              "qf",  "phrase_sw",
+              "pf",  "phrase_sw^10",
+              "bf",  "boost_d",
+              "fl",  "score,*",
+              "defType", "edismax"),
+          "//doc[1]/str[@name='id'][.='s0']");
+    
+    assertQ("pf2 not working",
+        req("q",   "foo bar", 
+            "qf",  "phrase_sw",
+            "pf2", "phrase_sw^10",
+            "bf",  "boost_d",
+            "fl",  "score,*",
+            "defType", "edismax"),
+        "//doc[1]/str[@name='id'][.='s0']"); 
+
+    assertQ("pf3 not working",
+        req("q",   "a b bar", 
+            "qf",  "phrase_sw",
+            "pf3", "phrase_sw^10",
+            "bf",  "boost_d",
+            "fl",  "score,*",
+            "defType", "edismax"),
+        "//doc[1]/str[@name='id'][.='s2']"); 
+
+    assertQ("ps not working for pf2",
+        req("q",   "bar foo", 
+            "qf",  "phrase_sw",
+            "pf2", "phrase_sw^10",
+            "ps",  "2",
+            "bf",  "boost_d",
+            "fl",  "score,*",
+            "defType", "edismax"),
+        "//doc[1]/str[@name='id'][.='s0']"); 
+
+    assertQ("ps not working for pf3",
+        req("q",   "a bar foo", 
+            "qf",  "phrase_sw",
+            "pf3", "phrase_sw^10",
+            "ps",  "3",
+            "bf",  "boost_d",
+            "fl",  "score,*",
+            "debugQuery",  "true",
+            "defType", "edismax"),
+        "//doc[1]/str[@name='id'][.='s1']"); 
+  }
 }

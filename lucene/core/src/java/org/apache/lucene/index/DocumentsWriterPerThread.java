@@ -37,10 +37,10 @@ import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.MutableBits;
 
-public class DocumentsWriterPerThread {
+class DocumentsWriterPerThread {
 
   /**
-   * The IndexingChain must define the {@link #getChain(DocumentsWriter)} method
+   * The IndexingChain must define the {@link #getChain(DocumentsWriterPerThread)} method
    * which returns the DocConsumer that the DocumentsWriter calls to process the
    * documents.
    */

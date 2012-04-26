@@ -292,7 +292,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    * learn, improve and iterate.</p>
    *
    * <p>The resulting reader supports {@link
-   * IndexReader#reopen}, but that call will simply forward
+   * DirectoryReader#openIfChanged}, but that call will simply forward
    * back to this method (though this may change in the
    * future).</p>
    *
@@ -303,7 +303,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    * file descriptors, CPU time) will be consumed.</p>
    *
    * <p>For lower latency on reopening a reader, you should
-   * call {@link #setMergedSegmentWarmer} to
+   * call {@link IndexWriterConfig#setMergedSegmentWarmer} to
    * pre-warm a newly merged segment before it's committed
    * to the index.  This is important for minimizing
    * index-to-search delay after a large merge.  </p>
@@ -585,7 +585,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    */
   public IndexWriter(Directory d, IndexWriterConfig conf)
       throws CorruptIndexException, LockObtainFailedException, IOException {
-    config = (IndexWriterConfig) conf.clone();
+    config = conf.clone();
     directory = d;
     analyzer = conf.getAnalyzer();
     infoStream = conf.getInfoStream();
@@ -1345,7 +1345,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   final InfoStream infoStream;
 
   /**
-   * Forces merge policy to merge segments until there's <=
+   * Forces merge policy to merge segments until there are <=
    * maxNumSegments.  The actual merges to be
    * executed are determined by the {@link MergePolicy}.
    *
@@ -1371,14 +1371,14 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    * <p>The actual temporary usage could be much less than
    * these figures (it depends on many factors).</p>
    *
-   * <p>In general, once the this completes, the total size of the
+   * <p>In general, once this completes, the total size of the
    * index will be less than the size of the starting index.
    * It could be quite a bit smaller (if there were many
    * pending deletes) or just slightly smaller.</p>
    *
    * <p>If an Exception is hit, for example
-   * due to disk full, the index will not be corrupt and no
-   * documents will have been lost.  However, it may have
+   * due to disk full, the index will not be corrupted and no
+   * documents will be lost.  However, it may have
    * been partially merged (some segments were merged but
    * not all), and it's possible that one of the segments in
    * the index will be in non-compound format even when
@@ -1948,11 +1948,11 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   /**
    * Prepares the {@link SegmentInfo} for the new flushed segment and persists
    * the deleted documents {@link MutableBits}. Use
-   * {@link #publishFlushedSegment(SegmentInfo, FrozenBufferedDeletes)} to
+   * {@link #publishFlushedSegment(SegmentInfo, FrozenBufferedDeletes, FrozenBufferedDeletes)} to
    * publish the returned {@link SegmentInfo} together with its segment private
    * delete packet.
    * 
-   * @see #publishFlushedSegment(SegmentInfo, FrozenBufferedDeletes)
+   * @see #publishFlushedSegment(SegmentInfo, FrozenBufferedDeletes, FrozenBufferedDeletes)
    */
   SegmentInfo prepareFlushedSegment(FlushedSegment flushedSegment) throws IOException {
     assert flushedSegment != null;
@@ -2431,7 +2431,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
             // no partial changes (eg a delete w/o
             // corresponding add from an updateDocument) can
             // sneak into the commit point:
-            toCommit = (SegmentInfos) segmentInfos.clone();
+            toCommit = segmentInfos.clone();
 
             pendingCommitChangeCount = changeCount;
 
@@ -2517,7 +2517,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   /** Commits all changes to the index, specifying a
    *  commitUserData Map (String -> String).  This just
    *  calls {@link #prepareCommit(Map)} (if you didn't
-   *  already call it) and then {@link #finishCommit}.
+   *  already call it) and then {@link #commit}.
    *
    * <p><b>NOTE</b>: if this method hits an OutOfMemoryError
    * you should immediately close the writer.  See <a
@@ -3719,13 +3719,14 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
     directory.makeLock(IndexWriter.WRITE_LOCK_NAME).release();
   }
 
-  /** If {@link #getReader} has been called (ie, this writer
-   *  is in near real-time mode), then after a merge
-   *  completes, this class can be invoked to warm the
-   *  reader on the newly merged segment, before the merge
-   *  commits.  This is not required for near real-time
-   *  search, but will reduce search latency on opening a
-   *  new near real-time reader after a merge completes.
+  /** If {@link IndexReader#open(IndexWriter,boolean)} has
+   *  been called (ie, this writer is in near real-time
+   *  mode), then after a merge completes, this class can be
+   *  invoked to warm the reader on the newly merged
+   *  segment, before the merge commits.  This is not
+   *  required for near real-time search, but will reduce
+   *  search latency on opening a new near real-time reader
+   *  after a merge completes.
    *
    * @lucene.experimental
    *

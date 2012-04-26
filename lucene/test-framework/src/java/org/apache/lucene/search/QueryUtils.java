@@ -53,10 +53,10 @@ public class QueryUtils {
 
   /** check very basic hashCode and equals */
   public static void checkHashEquals(Query q) {
-    Query q2 = (Query)q.clone();
+    Query q2 = q.clone();
     checkEqual(q,q2);
 
-    Query q3 = (Query)q.clone();
+    Query q3 = q.clone();
     q3.setBoost(7.21792348f);
     checkUnequal(q,q3);
 
@@ -120,7 +120,7 @@ public class QueryUtils {
         }
         checkExplanations(q1,s);
         
-        Query q2 = (Query)q1.clone();
+        Query q2 = q1.clone();
         checkEqual(s.rewrite(q1),
                    s.rewrite(q2));
       }
@@ -360,8 +360,8 @@ public class QueryUtils {
       }
   }
     
-  // check that first skip on just created scorers always goes to the right doc
-  private static void checkFirstSkipTo(final Query q, final IndexSearcher s) throws IOException {
+  /** check that first skip on just created scorers always goes to the right doc */
+  public static void checkFirstSkipTo(final Query q, final IndexSearcher s) throws IOException {
     //System.out.println("checkFirstSkipTo: "+q);
     final float maxDiff = 1e-3f;
     final int lastDoc[] = {-1};

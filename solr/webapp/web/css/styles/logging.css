@@ -4,6 +4,19 @@
   padding-left: 21px;
 }
 
+#content #logging .block h2
+{
+  background-image: url( ../../img/ico/document-text.png );
+  margin-bottom: 10px;
+}
+
+#content #logging .block h2 span span
+{
+  color: #c0c0c0;
+  font-weight: normal;
+  margin-left: 10px;
+}
+
 #content #logging .jstree > li
 {
   margin-left: 0;
@@ -21,6 +34,15 @@
 #content #logging .jstree .level-warning { background-color: #fcecd5; }
 #content #logging .jstree .level-severe  { background-color: #fcdcda; }
 #content #logging .jstree .level-off     { background-color: #ffffff; }
+
+/* Log4j */
+#content #logging .jstree .level-all     { background-color: #9EDAFF; }
+#content #logging .jstree .level-trace   { background-color: #d5e5fc; }
+#content #logging .jstree .level-debug   { background-color: #d5fafc; }
+#content #logging .jstree .level-warn    { background-color: #e6fded; }
+#content #logging .jstree .level-error   { background-color: #fcecd5; }
+#content #logging .jstree .level-fatal   { background-color: #fcdcda; }
+
 
 #content #logging .jstree a
 {
@@ -50,6 +72,11 @@
   background-position: 100% 50%;
   cursor: pointer;
   padding-right: 21px;
+}
+
+#content #logging .jstree a.trigger.set
+{
+  font-weight: bold;
 }
 
 #content #logging .jstree a:hover span.name

@@ -79,6 +79,9 @@ public abstract class DataInput implements Cloneable {
   /** Reads an int stored in variable-length format.  Reads between one and
    * five bytes.  Smaller values take fewer bytes.  Negative numbers are not
    * supported.
+   * <p>
+   * The format is described further in {@link DataOutput#writeVInt(int)}.
+   * 
    * @see DataOutput#writeVInt(int)
    */
   public int readVInt() throws IOException {
@@ -94,17 +97,17 @@ public abstract class DataInput implements Cloneable {
     return i;
     */
     byte b = readByte();
+    if (b >= 0) return b;
     int i = b & 0x7F;
-    if ((b & 0x80) == 0) return i;
     b = readByte();
     i |= (b & 0x7F) << 7;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7F) << 14;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7F) << 21;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     // Warning: the next ands use 0x0F / 0xF0 - beware copy/paste errors:
     i |= (b & 0x0F) << 28;
@@ -121,7 +124,12 @@ public abstract class DataInput implements Cloneable {
 
   /** Reads a long stored in variable-length format.  Reads between one and
    * nine bytes.  Smaller values take fewer bytes.  Negative numbers are not
-   * supported. */
+   * supported.
+   * <p>
+   * The format is described further in {@link DataOutput#writeVInt(int)}.
+   * 
+   * @see DataOutput#writeVLong(long)
+   */
   public long readVLong() throws IOException {
     /* This is the original code of this method,
      * but a Hotspot bug (see LUCENE-2975) corrupts the for-loop if
@@ -135,32 +143,32 @@ public abstract class DataInput implements Cloneable {
     return i;
     */
     byte b = readByte();
+    if (b >= 0) return b;
     long i = b & 0x7FL;
-    if ((b & 0x80) == 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 7;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 14;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 21;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 28;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 35;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 42;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 49;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     b = readByte();
     i |= (b & 0x7FL) << 56;
-    if ((b & 0x80) == 0) return i;
+    if (b >= 0) return i;
     throw new IOException("Invalid vLong detected (negative values disallowed)");
   }
 
@@ -184,7 +192,7 @@ public abstract class DataInput implements Cloneable {
    * were cloned from.
    */
   @Override
-  public Object clone() {
+  public DataInput clone() {
     DataInput clone = null;
     try {
       clone = (DataInput)super.clone();

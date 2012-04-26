@@ -43,7 +43,7 @@ public class TestSynonymMap extends LuceneTestCase {
         SlowSynonymFilterFactory.parseRules( rules, synMap, "=>", ",", true, null);
         fail( "RuntimeException must be thrown." );
     }
-    catch( RuntimeException expected ){}
+    catch(InitializationException expected) {}
   }
   
   public void testReadMappingRules() throws Exception {
@@ -282,7 +282,7 @@ public class TestSynonymMap extends LuceneTestCase {
       }
 
       @Override
-      public Object newInstance(String cname, String... subpackages) {
+      public <T> T newInstance(String cname, Class<T> expectedType, String... subpackages) {
         throw new RuntimeException("stub");
       }
 

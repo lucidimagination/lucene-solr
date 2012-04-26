@@ -17,7 +17,6 @@
 
 package org.apache.solr.handler.admin;
 
-import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.File;
 import java.lang.management.ManagementFactory;
@@ -46,11 +45,6 @@ import org.slf4j.LoggerFactory;
 /**
  * This handler returns system info
  * 
- * NOTE: the response format is still likely to change.  It should be designed so
- * that it works nicely with an XSLT transformation.  Until we have a nice
- * XSLT front end for /admin, the format is still open to change.
- * 
- *
  * @since solr 1.2
  */
 public class SystemInfoHandler extends RequestHandlerBase 
@@ -283,16 +277,6 @@ public class SystemInfoHandler extends RequestHandlerBase
   @Override
   public String getDescription() {
     return "Get System Info";
-  }
-
-  @Override
-  public String getVersion() {
-    return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
   }
 
   @Override

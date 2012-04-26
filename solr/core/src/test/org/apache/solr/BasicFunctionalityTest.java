@@ -126,7 +126,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     SolrCore core = h.getCore();
 
     IndexWriter writer = ((DirectUpdateHandler2)core.getUpdateHandler()).getSolrCoreState().getIndexWriter(core);
-    assertEquals("Mergefactor was not picked up", ((LogMergePolicy)writer.getConfig().getMergePolicy()).getMergeFactor(), 8);
+    assertEquals("Mergefactor was not picked up", 8, ((LogMergePolicy)writer.getConfig().getMergePolicy()).getMergeFactor());
 
     lrf.args.put(CommonParams.VERSION,"2.2");
     assertQ("test query on empty index",
@@ -283,11 +283,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
         @Override
         public String getDescription() { return tmp; }
         @Override
-        public String getSourceId() { return tmp; }
-        @Override
         public String getSource() { return tmp; }
-        @Override
-        public String getVersion() { return tmp; }
         @Override
         public void handleRequestBody
           ( SolrQueryRequest req, SolrQueryResponse rsp ) {
@@ -694,6 +690,19 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
     assertQ("check count for near stuff",
             req("q", "bday:[NOW-1MONTH TO NOW+2HOURS]"), "*[count(//doc)=4]");
     
+    assertQ("check counts using fixed NOW",
+            req("q", "bday:[NOW/DAY TO NOW/DAY+1DAY]",
+                "NOW", "205369736000" // 1976-07-04T23:08:56.235Z
+                ),
+            "*[count(//doc)=1]");
+                
+    assertQ("check counts using fixed NOW and TZ rounding",
+            req("q", "bday:[NOW/DAY TO NOW/DAY+1DAY]",
+                "TZ", "GMT-23",
+                "NOW", "205369736000" // 1976-07-04T23:08:56.235Z
+                ),
+            "*[count(//doc)=0]");
+
   }
 
   public void testDateRoundtrip() {

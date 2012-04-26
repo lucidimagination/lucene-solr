@@ -22,7 +22,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
-import org.apache.solr.common.util.RTimer;
+import org.apache.solr.util.RTimer;
 import org.apache.solr.core.CloseHook;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrCore;
@@ -81,9 +81,9 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
   }
 
   /**
-   * Initialize the components based on name.  Note, if using {@link #INIT_FIRST_COMPONENTS} or {@link #INIT_LAST_COMPONENTS},
+   * Initialize the components based on name.  Note, if using <code>INIT_FIRST_COMPONENTS</code> or <code>INIT_LAST_COMPONENTS</code>,
    * then the {@link DebugComponent} will always occur last.  If this is not desired, then one must explicitly declare all components using
-   * the {@link #INIT_COMPONENTS} syntax.
+   * the <code>INIT_COMPONENTS</code> syntax.
    */
   @SuppressWarnings("unchecked")
   public void inform(SolrCore core)
@@ -331,16 +331,6 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
       }
     }
     return sb.toString();
-  }
-
-  @Override
-  public String getVersion() {
-    return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
   }
 
   @Override

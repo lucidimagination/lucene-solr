@@ -3,6 +3,9 @@ Lucene Change Log
 For more information on past and future Lucene versions, please see:
 http://s.apache.org/luceneversions
 
+For "contrib" changes prior to 4.0, please see:
+http://svn.apache.org/repos/asf/lucene/dev/tags/lucene_solr_3_6_0/lucene/contrib/CHANGES.txt
+
 ======================= Trunk (not yet released) =======================
 More information about this release, including any errata related to the 
 release notes, upgrade instructions, or other changes may be found online at:
@@ -257,6 +260,11 @@ Changes in backwards compatibility policy
   you can use SlowCompositeReaderWrapper to make all parallel readers atomic
   and use ParallelAtomicReader.  (Uwe Schindler, Mike McCandless, Robert Muir)
 
+* LUCENE-2000: clone() now returns covariant types where possible. (ryan)
+
+* LUCENE-3970: Rename Fields.getUniqueFieldCount -> .size() and
+  Terms.getUniqueTermCount -> .size().  (Iulius Curt via Mike McCandless)
+
 Changes in Runtime Behavior
 
 * LUCENE-2846: omitNorms now behaves like omitTermFrequencyAndPositions, if you
@@ -349,7 +357,25 @@ Changes in Runtime Behavior
   tokenized or not.  In general you should not rely on stored fields
   to record any "metadata" from indexing (tokenized, omitNorms,
   IndexOptions, boost, etc.)  (Mike McCandless)
-  
+
+* LUCENE-3309: Fast vector highlighter now inserts the
+  MultiValuedSeparator for NOT_ANALYZED fields (in addition to
+  ANALYZED fields).  To ensure your offsets are correct you should
+  provide an analyzer that returns 1 from the offsetGap method.
+  (Mike McCandless)
+
+* LUCENE-2621: Removed contrib/instantiated.  (Robert Muir)
+ 
+* LUCENE-1768: StandardQueryTreeBuilder no longer uses RangeQueryNodeBuilder
+  for RangeQueryNodes, since theses two classes were removed;
+  TermRangeQueryNodeProcessor now creates TermRangeQueryNode,
+  instead of RangeQueryNode; the same applies for numeric nodes;
+  (Vinicius Barros via Uwe Schindler)
+
+* LUCENE-3455: QueryParserBase.newFieldQuery() will throw a ParseException if
+  any of the calls to the Analyzer throw an IOException.  QueryParseBase.analyzeRangePart()
+  will throw a RuntimException if an IOException is thrown by the Analyzer.
+
 API Changes
 
 * LUCENE-2302, LUCENE-1458, LUCENE-2111, LUCENE-2514: Terms are no longer
@@ -416,6 +442,66 @@ API Changes
 * LUCENE-3859: AtomicReader.hasNorms(field) is deprecated, instead you
   can inspect the FieldInfo yourself to see if norms are present, which
   also allows you to get the type.  (Robert Muir)
+
+* LUCENE-2606: Changed RegexCapabilities interface to fix thread 
+  safety, serialization, and performance problems. If you have
+  written a custom RegexCapabilities it will need to be updated
+  to the new API.  (Robert Muir, Uwe Schindler)
+
+* LUCENE-2638 MakeHighFreqTerms.TermStats public to make it more useful
+  for API use. (Andrzej Bialecki)
+
+* LUCENE-2912: The field-specific hashmaps in SweetSpotSimilarity were removed.
+  Instead, use PerFieldSimilarityWrapper to return different SweetSpotSimilaritys
+  for different fields, this way all parameters (such as TF factors) can be 
+  customized on a per-field basis.  (Robert Muir)
+
+* LUCENE-3308: DuplicateFilter keepMode and processingMode have been converted to
+  enums DuplicateFilter.KeepMode and DuplicateFilter.ProcessingMode repsectively.
+
+* LUCENE-3483: Move Function grouping collectors from Solr to grouping module.
+  (Martijn van Groningen)
+   
+* LUCENE-3606: FieldNormModifier was deprecated, because IndexReader's
+  setNorm() was deprecated. Furthermore, this class is broken, as it does
+  not take position overlaps into account while recalculating norms.
+  (Uwe Schindler, Robert Muir)
+
+* LUCENE-3936: Renamed StringIndexDocValues to DocTermsIndexDocValues.
+  (Martijn van Groningen)
+
+* LUCENE-1768: Deprecated Parametric(Range)QueryNode, RangeQueryNode(Builder),
+  ParametricRangeQueryNodeProcessor were removed. (Vinicius Barros via Uwe Schindler)
+
+* LUCENE-3820: Deprecated constructors accepting pattern matching bounds. The input
+  is buffered and matched in one pass. (Dawid Weiss)
+
+* LUCENE-2413: Deprecated PatternAnalyzer in common/miscellaneous, in favor 
+  of the pattern package (CharFilter, Tokenizer, TokenFilter).  (Robert Muir)
+
+* LUCENE-2413: Removed the AnalyzerUtil in common/miscellaneous.  (Robert Muir)
+
+* LUCENE-1370: Added ShingleFilter option to output unigrams if no shingles
+  can be generated. (Chris Harris via Steven Rowe)
+   
+* LUCENE-2514, LUCENE-2551: JDK and ICU CollationKeyAnalyzers were changed to
+  use pure byte keys when Version >= 4.0. This cuts sort key size approximately
+  in half. (Robert Muir)
+
+* LUCENE-3400: Removed DutchAnalyzer.setStemDictionary (Chris Male)
+
+* LUCENE-3431: Removed QueryAutoStopWordAnalyzer.addStopWords* deprecated methods
+  since they prevented reuse.  Stopwords are now generated at instantiation through
+  the Analyzer's constructors. (Chris Male)
+
+* LUCENE-3434: Removed ShingleAnalyzerWrapper.set* and PerFieldAnalyzerWrapper.addAnalyzer
+  since they prevent reuse.  Both Analyzers should be configured at instantiation.
+  (Chris Male)
+
+* LUCENE-3765: Stopset ctors that previously took Set<?> or Map<?,String> now take
+  CharArraySet and CharArrayMap respectively. Previously the behavior was confusing,
+  and sometimes different depending on the type of set, and ultimately a CharArraySet
+  or CharArrayMap was always used anyway.  (Robert Muir)
 
 New features
 
@@ -651,6 +737,115 @@ New features
   value, custom similarities can now set a integer, float or byte value to the
   given Norm object. (Simon Willnauer)  
 
+* LUCENE-2604: Added RegexpQuery support to contrib/queryparser.
+  (Simon Willnauer, Robert Muir)
+
+* LUCENE-2373: Added a Codec implementation that works with append-only
+  filesystems (such as e.g. Hadoop DFS). SegmentInfos writing/reading
+  code is refactored to support append-only FS, and to allow for future
+  customization of per-segment information. (Andrzej Bialecki)
+
+* LUCENE-2479: Added ability to provide a sort comparator for spelling suggestions along
+  with two implementations.  The existing comparator (score, then frequency) is the default (Grant Ingersoll)
+
+* LUCENE-2608: Added the ability to specify the accuracy at method time in the SpellChecker.  The per class
+  method is also still available.  (Grant Ingersoll)
+    
+* LUCENE-2507: Added DirectSpellChecker, which retrieves correction candidates directly 
+  from the term dictionary using levenshtein automata.  (Robert Muir)
+
+* LUCENE-3527: Add LuceneLevenshteinDistance, which computes string distance in a compatible
+  way as DirectSpellChecker. This can be used to merge top-N results from more than one
+  SpellChecker.  (James Dyer via Robert Muir)
+
+* LUCENE-3496: Support grouping by DocValues. (Martijn van Groningen)
+
+* LUCENE-2795: Generified DirectIOLinuxDirectory to work across any
+  unix supporting the O_DIRECT flag when opening a file (tested on
+  Linux and OS X but likely other Unixes will work), and improved it
+  so it can be used for indexing and searching.  The directory uses
+  direct IO when doing large merges to avoid  unnecessarily evicting
+  cached IO pages due to large merges.  (Varun Thacker, Mike
+  McCandless)
+
+* LUCENE-3827: DocsAndPositionsEnum from MemoryIndex implements
+  start/endOffset, if offsets are indexed. (Alan Woodward via Mike
+  McCandless)
+
+* LUCENE-3802, LUCENE-3856: Support for grouped faceting. (Martijn van Groningen)
+
+* LUCENE-3444: Added a second pass grouping collector that keeps track of distinct
+  values for a specified field for the top N group. (Martijn van Groningen)
+
+* LUCENE-3778: Added a grouping utility class that makes it easier to use result
+  grouping for pure Lucene apps. (Martijn van Groningen)
+
+* LUCENE-2341: A new analysis/ filter: Morfologik - a dictionary-driven lemmatizer 
+  (accurate stemmer) for Polish (includes morphosyntactic annotations).
+  (Michał Dybizbański, Dawid Weiss)
+
+* LUCENE-2413: Consolidated Lucene/Solr analysis components into analysis/common. 
+  New features from Solr now available to Lucene users include:
+   - o.a.l.analysis.commongrams: Constructs n-grams for frequently occurring terms
+     and phrases. 
+   - o.a.l.analysis.charfilter.HTMLStripCharFilter: CharFilter that strips HTML 
+     constructs.
+   - o.a.l.analysis.miscellaneous.WordDelimiterFilter: TokenFilter that splits words 
+     into subwords and performs optional transformations on subword groups.
+   - o.a.l.analysis.miscellaneous.RemoveDuplicatesTokenFilter: TokenFilter which 
+     filters out Tokens at the same position and Term text as the previous token.
+   - o.a.l.analysis.miscellaneous.TrimFilter: Trims leading and trailing whitespace 
+     from Tokens in the stream.
+   - o.a.l.analysis.miscellaneous.KeepWordFilter: A TokenFilter that only keeps tokens 
+     with text contained in the required words (inverse of StopFilter).
+   - o.a.l.analysis.miscellaneous.HyphenatedWordsFilter: A TokenFilter that puts 
+     hyphenated words broken into two lines back together.
+   - o.a.l.analysis.miscellaneous.CapitalizationFilter: A TokenFilter that applies
+     capitalization rules to tokens.
+   - o.a.l.analysis.pattern: Package for pattern-based analysis, containing a 
+     CharFilter, Tokenizer, and Tokenfilter for transforming text with regexes.
+   - o.a.l.analysis.synonym.SynonymFilter: A synonym filter that supports multi-word
+     synonyms.
+   - o.a.l.analysis.phonetic: Package for phonetic search, containing various
+     phonetic encoders such as Double Metaphone.
+
+   Some existing analysis components changed packages:
+    - o.a.l.analysis.KeywordAnalyzer -> o.a.l.analysis.core.KeywordAnalyzer
+    - o.a.l.analysis.KeywordTokenizer -> o.a.l.analysis.core.KeywordTokenizer
+    - o.a.l.analysis.LetterTokenizer -> o.a.l.analysis.core.LetterTokenizer
+    - o.a.l.analysis.LowerCaseFilter -> o.a.l.analysis.core.LowerCaseFilter
+    - o.a.l.analysis.LowerCaseTokenizer -> o.a.l.analysis.core.LowerCaseTokenizer
+    - o.a.l.analysis.SimpleAnalyzer -> o.a.l.analysis.core.SimpleAnalyzer
+    - o.a.l.analysis.StopAnalyzer -> o.a.l.analysis.core.StopAnalyzer
+    - o.a.l.analysis.StopFilter -> o.a.l.analysis.core.StopFilter
+    - o.a.l.analysis.WhitespaceAnalyzer -> o.a.l.analysis.core.WhitespaceAnalyzer
+    - o.a.l.analysis.WhitespaceTokenizer -> o.a.l.analysis.core.WhitespaceTokenizer
+    - o.a.l.analysis.PorterStemFilter -> o.a.l.analysis.en.PorterStemFilter
+    - o.a.l.analysis.ASCIIFoldingFilter -> o.a.l.analysis.miscellaneous.ASCIIFoldingFilter
+    - o.a.l.analysis.ISOLatin1AccentFilter -> o.a.l.analysis.miscellaneous.ISOLatin1AccentFilter
+    - o.a.l.analysis.KeywordMarkerFilter -> o.a.l.analysis.miscellaneous.KeywordMarkerFilter
+    - o.a.l.analysis.LengthFilter -> o.a.l.analysis.miscellaneous.LengthFilter
+    - o.a.l.analysis.PerFieldAnalyzerWrapper -> o.a.l.analysis.miscellaneous.PerFieldAnalyzerWrapper
+    - o.a.l.analysis.TeeSinkTokenFilter -> o.a.l.analysis.sinks.TeeSinkTokenFilter
+    - o.a.l.analysis.CharFilter -> o.a.l.analysis.charfilter.CharFilter
+    - o.a.l.analysis.BaseCharFilter -> o.a.l.analysis.charfilter.BaseCharFilter
+    - o.a.l.analysis.MappingCharFilter -> o.a.l.analysis.charfilter.MappingCharFilter
+    - o.a.l.analysis.NormalizeCharMap -> o.a.l.analysis.charfilter.NormalizeCharMap
+    - o.a.l.analysis.CharArraySet -> o.a.l.analysis.util.CharArraySet
+    - o.a.l.analysis.CharArrayMap -> o.a.l.analysis.util.CharArrayMap
+    - o.a.l.analysis.ReusableAnalyzerBase -> o.a.l.analysis.util.ReusableAnalyzerBase
+    - o.a.l.analysis.StopwordAnalyzerBase -> o.a.l.analysis.util.StopwordAnalyzerBase
+    - o.a.l.analysis.WordListLoader -> o.a.l.analysis.util.WordListLoader
+    - o.a.l.analysis.CharTokenizer -> o.a.l.analysis.util.CharTokenizer
+    - o.a.l.util.CharacterUtils -> o.a.l.analysis.util.CharacterUtils
+
+   All analyzers in contrib/analyzers and contrib/icu were moved to the
+   analysis/ module.  The 'smartcn' and 'stempel' components now depend on 'common'.
+   (Chris Male, Robert Muir)
+
+* LUCENE-4004: Add DisjunctionMaxQuery support to the xml query parser.
+  (Benson Margulies via Robert Muir)
+
 Optimizations
 
 * LUCENE-2588: Don't store unnecessary suffixes when writing the terms
@@ -688,7 +883,13 @@ Optimizations
 * LUCENE-3795: Replace contrib/spatial with modules/spatial.  This includes 
   a basic spatial strategy interface.  (David Smiley, Chris Male, ryan)
     
-  
+* LUCENE-3932: Lucene3x codec loads terms index faster, by
+  pre-allocating the packed ints array based on the .tii file size
+  (Sean Bridges via Mike McCandless)
+
+* LUCENE-3468: Replaced last() and remove() with pollLast() in
+  FirstPassGroupingCollector (Martijn van Groningen)
+             
 Bug fixes
 
 * LUCENE-2803: The FieldCache can miss values if an entry for a reader
@@ -710,6 +911,63 @@ Bug fixes
 
 * LUCENE-3589: BytesRef copy(short) didnt set length.
   (Peter Chang via Robert Muir)
+
+* LUCENE-3045: fixed QueryNodeImpl.containsTag(String key) that was
+  not lowercasing the key before checking for the tag (Adriano Crestani)
+
+* LUCENE-3890: Fixed NPE for grouped faceting on multi-valued fields.
+  (Michael McCandless, Martijn van Groningen)
+
+* LUCENE-2945: Fix hashCode/equals for surround query parser generated queries.
+  (Paul Elschot, Simon Rosenthal, gsingers via ehatcher)
+
+* LUCENE-3971: MappingCharFilter could return invalid final token position.
+  (Dawid Weiss, Robert Muir)
+
+* LUCENE-3820: PatternReplaceCharFilter could return invalid token positions. 
+  (Dawid Weiss)
+
+* LUCENE-3969: Throw IAE on bad arguments that could cause confusing errors in
+  CompoundWordTokenFilterBase, PatternTokenizer, PositionFilter,
+  SnowballFilter, PathHierarchyTokenizer, ReversePathHierarchyTokenizer, 
+  WikipediaTokenizer, and KeywordTokenizer. ShingleFilter and 
+  CommonGramsFilter now populate PositionLengthAttribute. Fixed
+  PathHierarchyTokenizer to reset() all state. Protect against AIOOBE in
+  ReversePathHierarchyTokenizer if skip is large. Fixed wrong final
+  offset calculation in PathHierarchyTokenizer. 
+  (Mike McCandless, Uwe Schindler, Robert Muir)
+
+Documentation
+
+* LUCENE-3958: Javadocs corrections for IndexWriter.
+  (Iulius Curt via Robert Muir)
+
+Build
+
+* LUCENE-3808: Refactoring of testing infrastructure to use randomizedtesting
+  package: http://labs.carrotsearch.com/randomizedtesting.html (Dawid Weiss)
+
+* LUCENE-3964: Added target stage-maven-artifacts, which stages
+  Maven release artifacts to a Maven staging repository in preparation
+  for release.  (Steve Rowe)
+
+* LUCENE-2845: Moved contrib/benchmark to lucene/benchmark.
+
+* LUCENE-2995: Moved contrib/spellchecker into lucene/suggest.
+
+* LUCENE-3285: Moved contrib/queryparser into lucene/queryparser
+
+* LUCENE-3285: Moved contrib/xml-query-parser's demo into lucene/demo
+
+* LUCENE-3271: Moved contrib/queries BooleanFilter, BoostingQuery, 
+  ChainedFilter, FilterClause and TermsFilter into lucene/queries
+
+* LUCENE-3381: Moved contrib/queries regex.*, DuplicateFilter,
+  FuzzyLikeThisQuery and SlowCollated* into lucene/sandbox.
+  Removed contrib/queries.
+
+* LUCENE-3286: Moved remainder of contrib/xml-query-parser to lucene/queryparser.
+  Classes now found at org.apache.lucene.queryparser.xml.*
 
 ======================= Lucene 3.6.0 =======================
 
@@ -890,8 +1148,8 @@ New Features
 * LUCENE-3671: Add TypeTokenFilter that filters tokens based on
   their TypeAttribute.  (Tommaso Teofili via Uwe Schindler)
 
-* LUCENE-3690: Added HTMLStripCharFilter, a CharFilter that strips HTML
-  markup. (Steve Rowe)
+* LUCENE-3690,LUCENE-3913: Added HTMLStripCharFilter, a CharFilter that strips
+  HTML markup. (Steve Rowe)
 
 * LUCENE-3725: Added optional packing to FST building; this uses extra
   RAM during building but results in a smaller FST.  (Mike McCandless)
@@ -901,6 +1159,9 @@ New Features
 
 * LUCENE-3789: Expose MTQ TermsEnum via RewriteMethod for non package private
   access (Simon Willnauer)
+
+* LUCENE-3881: Added UAX29URLEmailAnalyzer: a standard analyzer that recognizes
+  URLs and emails. (Steve Rowe)
 
 Bug fixes
 
@@ -991,7 +1252,20 @@ Optimizations
 
 Documentation
 
-* LUCENE-3597: Fixed incorrect grouping documentation. (Martijn van Groningen, Robert Muir)
+* LUCENE-3597: Fixed incorrect grouping documentation. (Martijn van Groningen,
+  Robert Muir)
+
+* LUCENE-3926: Improve documentation of RAMDirectory, because this
+  class is not intended to work with huge indexes. Everything beyond
+  several hundred megabytes will waste resources (GC cycles), because
+  it uses an internal buffer size of 1024 bytes, producing millions of 
+  byte[1024] arrays. This class is optimized for small memory-resident
+  indexes. It also has bad concurrency on multithreaded environments.
+  It is recommended to materialize large indexes on disk and use
+  MMapDirectory, which is a high-performance directory implementation
+  working directly on the file system cache of the operating system,
+  so copying data to Java heap space is not useful.  (Uwe Schindler,
+  Mike McCandless, Robert Muir)
 
 Build
 
@@ -1046,6 +1320,15 @@ Build
 
 * LUCENE-3762: Upgrade JUnit to 4.10, refactor state-machine of detecting 
   setUp/tearDown call chaining in LuceneTestCase. (Dawid Weiss, Robert Muir)
+
+* LUCENE-3944: Make the 'generate-maven-artifacts' target use filtered POMs
+  placed under lucene/build/poms/, rather than in each module's base
+  directory.  The 'clean' target now removes them.
+  (Steve Rowe, Robert Muir)
+
+* LUCENE-3930: Changed build system to use Apache Ivy for retrival of 3rd
+  party JAR files.  Please review BUILD.txt for instructions.
+  (Robert Muir, Chris Male, Uwe Schindler, Steven Rowe, Hossman)
 
 
 ======================= Lucene 3.5.0 =======================

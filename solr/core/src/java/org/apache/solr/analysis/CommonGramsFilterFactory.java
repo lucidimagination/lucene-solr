@@ -55,10 +55,10 @@ public class CommonGramsFilterFactory extends BaseTokenFilterFactory implements
           commonWords = getWordSet(loader, commonWordFiles, ignoreCase);
         }
       } catch (IOException e) {
-        throw new RuntimeException(e);
+        throw new InitializationException("IOException thrown while loading common word file", e);
       }
     } else {
-      commonWords = (CharArraySet) StopAnalyzer.ENGLISH_STOP_WORDS_SET;
+      commonWords = StopAnalyzer.ENGLISH_STOP_WORDS_SET;
     }
   }
       

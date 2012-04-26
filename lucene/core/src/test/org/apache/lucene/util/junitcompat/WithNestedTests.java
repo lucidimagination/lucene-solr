@@ -24,8 +24,13 @@ import java.io.UnsupportedEncodingException;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.After;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Before;
+import org.junit.ClassRule;
+import org.junit.rules.TestRule;
+import org.junit.runner.Description;
+import org.junit.runners.model.Statement;
+
+import com.carrotsearch.randomizedtesting.RandomizedRunner;
 
 /**
  * An abstract test class that prepares nested test classes to run.
@@ -40,21 +45,28 @@ import org.junit.Before;
  * cause havoc (static fields).
  */
 public abstract class WithNestedTests {
-  public static ThreadLocal<Boolean> runsAsNested = new ThreadLocal<Boolean>() {
-    @Override
-    protected Boolean initialValue() {
-      return false;
-    }
-  };
+  /**
+   * This can no longer be thread local because {@link RandomizedRunner} runs
+   * suites in an isolated threadgroup/thread.
+   */
+  public static volatile boolean runsAsNested;
 
   public static abstract class AbstractNestedTest extends LuceneTestCase {
-    @Before
-    public void before() {
-      Assume.assumeTrue(isRunningNested());
-    }
+    @ClassRule
+    public static TestRule ignoreIfRunAsStandalone = new TestRule() {
+      public Statement apply(final Statement s, Description arg1) {
+        return new Statement() {
+          public void evaluate() throws Throwable {
+            if (isRunningNested()) {
+              s.evaluate();
+            }
+          }
+        };
+      }
+    };
 
     protected static boolean isRunningNested() {
-      return runsAsNested.get() != null && runsAsNested.get();
+      return runsAsNested;
     }
   }
 
@@ -85,13 +97,13 @@ public abstract class WithNestedTests {
       }
     }
 
-    runsAsNested.set(true);
+    runsAsNested = true;
   }
 
   @After
   public final void after() {
-    runsAsNested.set(false);
-    
+    runsAsNested = false;
+
     if (suppressOutputStreams) {
       System.out.flush();
       System.err.flush();

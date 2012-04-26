@@ -116,10 +116,25 @@ var logging_handler = function( response, text_status, xhr )
     return logger_content;
   };
 
-  var logger_content = logger_tree( null );
+  var logger_content = '<div class="block">' + "\n"
+                     + '<h2><span>' + response.watcher.esc() + '</span></h2>' + "\n"
+                     + '<ul class="tree jstree">' + logger_tree( null ) + '</ul>' + "\n"
+                     + '</div>';
 
   self
-    .html( '<ul class="tree jstree">' + logger_content + '</ul>' );
+    .html( logger_content );
+
+  self
+    .die( 'clear' )
+    .live
+    (
+      'clear',
+      function( event )
+      {
+        $( '.open', this )
+          .removeClass( 'open' );
+      }
+    );
 
   $( 'li:last-child', this )
     .addClass( 'jstree-last' );
@@ -136,8 +151,16 @@ var logging_handler = function( response, text_status, xhr )
         {
           var selector = $( '.selector-holder', element.closest( 'li' ) );
 
-          $( 'a.trigger', selector )
+          var trigger = $( 'a.trigger', selector );
+
+          trigger
             .text( level.esc() );
+
+          if( element.hasClass( 'set' ) )
+          {
+            trigger.first()
+              .addClass( 'set' );
+          }
 
           $( 'ul a[data-level="' + level + '"]', selector ).first()
             .addClass( 'level' );
@@ -145,16 +168,30 @@ var logging_handler = function( response, text_status, xhr )
       }
     )
 
-  $( '.trigger, .selector .close', this )
+  $( '.trigger', this )
     .die( 'click' )
     .live
     (
       'click',
       function( event )
       {
+        self.trigger( 'clear' );
+
         $( '.selector-holder', $( this ).parents( 'li' ).first() ).first()
           .trigger( 'toggle' );
 
+        return false;
+      }
+    );
+
+  $( '.selector .close', this )
+    .die( 'click' )
+    .live
+    (
+      'click',
+      function( event )
+      {
+        self.trigger( 'clear' );
         return false;
       }
     );
@@ -218,7 +255,7 @@ sammy.get
   function( context )
   {
     var core_basepath = $( 'li[data-basepath]', app.menu_element ).attr( 'data-basepath' );
-    loglevel_path = core_basepath + '/admin/loglevel';
+    loglevel_path = core_basepath + '/admin/logging';
     var content_element = $( '#content' );
         
     content_element

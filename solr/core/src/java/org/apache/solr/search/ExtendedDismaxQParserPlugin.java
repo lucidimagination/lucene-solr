@@ -163,7 +163,7 @@ class ExtendedDismaxQParser extends QParser {
     parsedUserQuery = null;
     String userQuery = getString();
     altUserQuery = null;
-    if( userQuery == null || userQuery.length() < 1 ) {
+    if( userQuery == null || userQuery.trim().length() == 0 ) {
       // If no query is specified, we may have an alternate
       String altQ = solrParams.get( DisMaxParams.ALTQ );
       if (altQ != null) {
@@ -172,7 +172,7 @@ class ExtendedDismaxQParser extends QParser {
         query.add( altUserQuery , BooleanClause.Occur.MUST );
       } else {
         return null;
-        // throw new SolrException( SolrException.ErrorCode.BAD_REQUEST, "missing query string" );
+        // throw new ParseException("missing query string" );
       }
     }
     else {     
@@ -344,13 +344,17 @@ class ExtendedDismaxQParser extends QParser {
 
     /* * * Boosting Query * * */
     boostParams = solrParams.getParams(DisMaxParams.BQ);
-    //List<Query> boostQueries = U.parseQueryStrings(req, boostParams);
     boostQueries=null;
     if (boostParams!=null && boostParams.length>0) {
+      Map<String,Float> bqBoosts = SolrPluginUtils.parseFieldBoosts(boostParams);
       boostQueries = new ArrayList<Query>();
-      for (String qs : boostParams) {
-        if (qs.trim().length()==0) continue;
-        Query q = subQuery(qs, null).getQuery();
+      for (Map.Entry<String,Float> bqs : bqBoosts.entrySet()) {
+        if (bqs.getKey().trim().length()==0) continue;
+        Query q = subQuery(bqs.getKey(), null).getQuery();
+        Float b = bqs.getValue();
+        if(b!=null) {
+          q.setBoost(b);
+        }
         boostQueries.add(q);
       }
     }
@@ -453,7 +457,7 @@ class ExtendedDismaxQParser extends QParser {
     throws ParseException {
     
     if (null == fields || fields.isEmpty() || 
-        null == clauses || clauses.size() <= shingleSize ) 
+        null == clauses || clauses.size() < shingleSize ) 
       return;
     
     if (0 == shingleSize) shingleSize = clauses.size();
@@ -631,14 +635,17 @@ class ExtendedDismaxQParser extends QParser {
   
   public List<Clause> splitIntoClauses(String s, boolean ignoreQuote) {
     ArrayList<Clause> lst = new ArrayList<Clause>(4);
-    Clause clause = new Clause();
+    Clause clause;
 
     int pos=0;
     int end=s.length();
     char ch=0;
     int start;
-    boolean disallowUserField = false;
+    boolean disallowUserField;
     outer: while (pos < end) {
+      clause = new Clause();
+      disallowUserField = true;
+      
       ch = s.charAt(pos);
 
       while (Character.isWhitespace(ch)) {
@@ -655,10 +662,10 @@ class ExtendedDismaxQParser extends QParser {
 
       clause.field = getFieldName(s, pos, end);
       if(clause.field != null && !userFields.isAllowed(clause.field)) {
-        disallowUserField = true;
         clause.field = null;
       }
       if (clause.field != null) {
+        disallowUserField = false;
         pos += clause.field.length(); // skip the field name
         pos++;  // skip the ':'
       }
@@ -754,7 +761,11 @@ class ExtendedDismaxQParser extends QParser {
 
       if (clause != null) {
         if(disallowUserField) {
-          clause.raw = clause.val;
+          clause.raw = s.substring(start, pos);
+          // escape colons, except for "match all" query
+          if(!"*:*".equals(clause.raw)) {
+            clause.raw = clause.raw.replaceAll(":", "\\\\:");
+          }
         } else {
           clause.raw = s.substring(start, pos);
           // Add default userField boost if no explicit boost exists
@@ -766,8 +777,6 @@ class ExtendedDismaxQParser extends QParser {
         }
         lst.add(clause);
       }
-      clause = new Clause();
-      disallowUserField = false;
     }
 
     return lst;
@@ -776,7 +785,6 @@ class ExtendedDismaxQParser extends QParser {
   /** 
    * returns a field name or legal field alias from the current 
    * position of the string 
-   * @param solrParams 
    */
   public String getFieldName(String s, int pos, int end) {
     if (pos >= end) return null;

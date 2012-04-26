@@ -147,11 +147,6 @@ public class CoreAdminHandler extends RequestHandlerBase {
           break;
         }
 
-        case ALIAS: {
-          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "'ALIAS' is not supported " +
-            req.getParams().get(CoreAdminParams.ACTION));
-        }
-
         case UNLOAD: {
           doPersist = this.handleUnloadAction(req, rsp);
           break;
@@ -248,7 +243,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
           dirsToBeReleased = new Directory[dirNames.length];
           DirectoryFactory dirFactory = core.getDirectoryFactory();
           for (int i = 0; i < dirNames.length; i++) {
-            Directory dir = dirFactory.get(dirNames[i], core.getSolrConfig().mainIndexConfig.lockType);
+            Directory dir = dirFactory.get(dirNames[i], core.getSolrConfig().indexConfig.lockType);
             dirsToBeReleased[i] = dir;
             // TODO: why doesn't this use the IR factory? what is going on here?
             readersToBeClosed[i] = DirectoryReader.open(dir);
@@ -538,6 +533,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     NamedList<Object> status = new SimpleOrderedMap<Object>();
     try {
       if (cname == null) {
+        rsp.add("defaultCoreName", coreContainer.getDefaultCoreName());
         for (String name : coreContainer.getCoreNames()) {
           status.add(name, getCoreStatus(coreContainer, name));
         }
@@ -812,8 +808,11 @@ public class CoreAdminHandler extends RequestHandlerBase {
     if (core != null) {
       try {
         info.add("name", core.getName());
+        info.add("isDefaultCore", core.getName().equals(cores.getDefaultCoreName()));
         info.add("instanceDir", normalizePath(core.getResourceLoader().getInstanceDir()));
         info.add("dataDir", normalizePath(core.getDataDir()));
+        info.add("config", core.getConfigResource());
+        info.add("schema", core.getSchemaResource());
         info.add("startTime", new Date(core.getStartTime()));
         info.add("uptime", System.currentTimeMillis() - core.getStartTime());
         RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
@@ -858,16 +857,6 @@ public class CoreAdminHandler extends RequestHandlerBase {
   @Override
   public String getDescription() {
     return "Manage Multiple Solr Cores";
-  }
-
-  @Override
-  public String getVersion() {
-    return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
   }
 
   @Override

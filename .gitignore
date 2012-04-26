@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 solr/build
 lucene/build
 build
@@ -11,6 +12,29 @@ dist
 .project
 .settings/
 bin/
+=======
+
+*.jar
+
+# .
+/classes
+/build
+/dist
+/*~
+/velocity.log
+/build.properties
+/.idea
+/*.iml
+/*.ipr
+/*.iws
+/.project
+/.classpath
+/.settings
+/prj.el
+/bin
+/bin.*
+/pom.xml
+>>>>>>> d2048c027917442b4d345d2e7102043845ecec41
 
 
 # ./lucene
@@ -373,3 +397,5 @@ bin/
 /modules/suggest/*.iml
 /modules/suggest/pom.xml
 /modules/suggest/dist
+
+/modules/spatial/build/

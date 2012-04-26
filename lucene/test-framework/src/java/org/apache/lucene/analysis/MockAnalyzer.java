@@ -64,7 +64,8 @@ public final class MockAnalyzer extends Analyzer {
    */
   public MockAnalyzer(Random random, CharacterRunAutomaton runAutomaton, boolean lowerCase, CharacterRunAutomaton filter, boolean enablePositionIncrements) {
     super(new PerFieldReuseStrategy());
-    this.random = random;
+    // TODO: this should be solved in a different way; Random should not be shared (!).
+    this.random = new Random(random.nextLong());
     this.runAutomaton = runAutomaton;
     this.lowerCase = lowerCase;
     this.filter = filter;
@@ -76,7 +77,7 @@ public final class MockAnalyzer extends Analyzer {
    * MockAnalyzer(random, runAutomaton, lowerCase, MockTokenFilter.EMPTY_STOPSET, false}).
    */
   public MockAnalyzer(Random random, CharacterRunAutomaton runAutomaton, boolean lowerCase) {
-    this(random, runAutomaton, lowerCase, MockTokenFilter.EMPTY_STOPSET, false);
+    this(random, runAutomaton, lowerCase, MockTokenFilter.EMPTY_STOPSET, true);
   }
 
   /** 
@@ -93,7 +94,8 @@ public final class MockAnalyzer extends Analyzer {
   public TokenStreamComponents createComponents(String fieldName, Reader reader) {
     MockTokenizer tokenizer = new MockTokenizer(reader, runAutomaton, lowerCase, maxTokenLength);
     tokenizer.setEnableChecks(enableChecks);
-    TokenFilter filt = new MockTokenFilter(tokenizer, filter, enablePositionIncrements);
+    MockTokenFilter filt = new MockTokenFilter(tokenizer, filter);
+    filt.setEnablePositionIncrements(enablePositionIncrements);
     return new TokenStreamComponents(tokenizer, maybePayload(filt, fieldName));
   }
   

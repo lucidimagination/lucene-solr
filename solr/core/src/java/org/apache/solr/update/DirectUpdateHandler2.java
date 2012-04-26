@@ -59,7 +59,9 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionRangeQuery;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryUtils;
+import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
+import org.apache.solr.util.RefCounted;
 
 /**
  *  TODO: add soft commitWithin support
@@ -381,6 +383,20 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
 
       log.info("start "+cmd);
 
+      // We must cancel pending commits *before* we actually execute the commit.
+
+      if (cmd.openSearcher) {
+        // we can cancel any pending soft commits if this commit will open a new searcher
+        softCommitTracker.cancelPendingCommit();
+      }
+      if (!cmd.softCommit && (cmd.openSearcher || !commitTracker.getOpenSearcher())) {
+        // cancel a pending hard commit if this commit is of equal or greater "strength"...
+        // If the autoCommit has openSearcher=true, then this commit must have openSearcher=true
+        // to cancel.
+         commitTracker.cancelPendingCommit();
+      }
+
+
       if (cmd.optimize) {
         writer.forceMerge(cmd.maxOptimizeSegments);
       } else if (cmd.expungeDeletes) {
@@ -424,7 +440,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
             core.getSearcher(true, false, waitSearcher);
           } else {
             // force open a new realtime searcher so realtime-get and versioning code can see the latest
-            core.openNewSearcher(true,true);
+            RefCounted<SolrIndexSearcher> searchHolder = core.openNewSearcher(true, true);
+            searchHolder.decref();
           }
           if (ulog != null) ulog.postSoftCommit(cmd);
         }
@@ -619,10 +636,6 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
 
   public Category getCategory() {
     return Category.UPDATEHANDLER;
-  }
-
-  public String getSourceId() {
-    return "$Id$";
   }
 
   public String getSource() {

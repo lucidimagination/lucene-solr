@@ -26,8 +26,10 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrResourceLoader;
-import org.apache.solr.handler.JsonUpdateRequestHandler;
 import org.apache.solr.handler.XmlUpdateRequestHandler;
+import org.apache.solr.logging.ListenerConfig;
+import org.apache.solr.logging.LogWatcher;
+import org.apache.solr.logging.jul.JulWatcher;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
@@ -49,7 +51,6 @@ import javax.xml.xpath.XPathFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
@@ -132,14 +133,14 @@ public class TestHarness {
   public TestHarness( String dataDirectory,
                       SolrConfig solrConfig,
                       IndexSchema indexSchema) {
-      this("", new Initializer("", dataDirectory, solrConfig, indexSchema));
+      this(null, new Initializer(null, dataDirectory, solrConfig, indexSchema));
   }
   
   public TestHarness(String coreName, CoreContainer.Initializer init) {
     try {
       container = init.initialize();
       if (coreName == null)
-        coreName = "";
+        coreName = CoreContainer.DEFAULT_DEFAULT_CORE_NAME;
       // get the core & decrease its refcount:
       // the container holds the core for the harness lifetime
       core = container.getCore(coreName);
@@ -190,7 +191,7 @@ public class TestHarness {
                       SolrConfig solrConfig,
                       IndexSchema indexSchema) {
       if (coreName == null)
-        coreName = "";
+        coreName = CoreContainer.DEFAULT_DEFAULT_CORE_NAME;
       this.coreName = coreName;
       this.dataDirectory = dataDirectory;
       this.solrConfig = solrConfig;
@@ -209,6 +210,9 @@ public class TestHarness {
           initZooKeeper(System.getProperty("zkHost"), 10000);
         }
       };
+      LogWatcher<?> logging = new JulWatcher("test");
+      logging.registerListener(new ListenerConfig(), container);
+      container.setLogging(logging);
       
       CoreDescriptor dcore = new CoreDescriptor(container, coreName, solrConfig.getResourceLoader().getInstanceDir());
       dcore.setConfigName(solrConfig.getResourceName());
@@ -221,7 +225,6 @@ public class TestHarness {
         // always kick off recovery if we are in standalone mode.
         core.getUpdateHandler().getUpdateLog().recoverFromLog();
       }
-      
       return container;
     }
   }
@@ -579,7 +582,7 @@ public class TestHarness {
    * specified set of default options.
    */
   public class LocalRequestFactory {
-    public String qtype = "standard";
+    public String qtype = null;
     public int start = 0;
     public int limit = 1000;
     public Map<String,String> args = new HashMap<String,String>();
