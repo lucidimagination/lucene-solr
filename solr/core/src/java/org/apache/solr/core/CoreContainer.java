@@ -411,9 +411,9 @@ public class CoreContainer
         if("JUL".equalsIgnoreCase(fname)) {
           logging = new JulWatcher(slf4jImpl);
         }
-//        else if( "Log4j".equals(fname) ) {
+        else if( "Log4j".equals(fname) ) {
 //          logging = new Log4jWatcher(slf4jImpl);
-//        }
+        }
         else {
           try {
             logging = loader.newInstance(fname, LogWatcher.class);
