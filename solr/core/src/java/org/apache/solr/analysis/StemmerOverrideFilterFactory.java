@@ -22,10 +22,8 @@ import java.util.List;
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.miscellaneous.StemmerOverrideFilter;
-import org.apache.lucene.analysis.util.CharArrayMap;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.*;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.util.plugin.ResourceLoaderAware;
 
 /**
  * Factory for {@link StemmerOverrideFilter}.
@@ -38,7 +36,7 @@ import org.apache.solr.util.plugin.ResourceLoaderAware;
  * &lt;/fieldType&gt;</pre>
  *
  */
-public class StemmerOverrideFilterFactory extends BaseTokenFilterFactory implements ResourceLoaderAware {
+public class StemmerOverrideFilterFactory extends TokenFilterFactory implements ResourceLoaderAware {
   private CharArrayMap<String> dictionary = null;
   private boolean ignoreCase;
 

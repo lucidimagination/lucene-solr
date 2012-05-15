@@ -194,6 +194,33 @@
       <check-broken-links dir="build/docs"/>
       <!-- TODO: change this level=class -->
       <check-missing-javadocs dir="build/docs" level="package"/>
+      <!-- too many classes to fix overall to just enable
+           the above to be level="class" right now, but we
+           can prevent the modules that don't have problems
+           from getting any worse -->
+      <check-missing-javadocs dir="build/docs/analyzers-common" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-icu" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-kuromoji" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-morfologik" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-phonetic" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-smartcn" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-stempel" level="class"/>
+      <check-missing-javadocs dir="build/docs/analyzers-uima" level="class"/>
+      <check-missing-javadocs dir="build/docs/benchmark" level="class"/>
+      <!-- core: problems -->
+      <check-missing-javadocs dir="build/docs/demo" level="class"/>
+      <check-missing-javadocs dir="build/docs/facet" level="class"/>
+      <!-- grouping: problems -->
+      <!-- highlighter: problems -->
+      <check-missing-javadocs dir="build/docs/join" level="class"/>
+      <check-missing-javadocs dir="build/docs/memory" level="class"/>
+      <check-missing-javadocs dir="build/docs/misc" level="class"/>
+      <!-- queries: problems -->
+      <!-- queryparser: problems -->
+      <check-missing-javadocs dir="build/docs/sandbox" level="class"/>
+      <!-- spatial: problems -->
+      <check-missing-javadocs dir="build/docs/suggest" level="class"/>
+      <!-- test-framework: problems -->
     </sequential>
   </target>
   
@@ -411,9 +438,13 @@
     <modules-crawl target="build-artifacts-and-tests"/>
   </target>
 
-  <target name="compile-test" depends="compile-lucene-core,compile-test-framework"
-          description="Builds core, test-framework, and modules tests">
-    <modules-crawl target="compile-test" failonerror="true"/>
+  <target name="compile-test" description="Builds core, test-framework, and modules tests">
+    <sequential>
+      <ant dir="core" target="compile-test" inheritall="false">
+        <propertyset refid="uptodate.and.compiled.properties"/>
+      </ant>
+      <modules-crawl target="compile-test" failonerror="true"/>
+    </sequential>
   </target>
   
   <target name="test-modules" depends="compile-test">
@@ -479,4 +510,14 @@
        <fileset dir="." includes="**/*.jar"/>
      </delete>
   </target>
+
+  <target name="get-jenkins-line-docs" unless="enwiki.exists">
+    <sequential>
+      <!-- TODO: can get .lzma instead (it's ~17% smaller) but there's no builtin ant support...? -->
+      <get src="http://people.apache.org/~mikemccand/enwiki.random.lines.txt.bz2"
+           dest="enwiki.random.lines.txt.bz2"/>
+      <bunzip2 src="enwiki.random.lines.txt.bz2" dest="enwiki.random.lines.txt"/>
+    </sequential>
+  </target>
+
 </project>

@@ -78,6 +78,12 @@ Upgrading from Solr 3.6-dev
   CommonsHttpSolrServer is now HttpSolrServer, and 
   StreamingUpdateSolrServer is now ConcurrentUpdateSolrServer.
 
+* The PingRequestHandler no longer looks for a <healthcheck/> option in the 
+  (legacy) <admin> section of solrconfig.xml.  Users who wish to take 
+  advantage of this feature should configure a "healthcheckFile" init param 
+  directly on the  PingRequestHandler.  As part of this change, relative file 
+  paths have been fixed to be resolved against the data dir.  See the example 
+  solrconfig.xml and SOLR-1258 for more details.
 
 Detailed Change List
 ----------------------
@@ -119,8 +125,9 @@ New Features
   (Stefan Matheis, Mark Miller)
   SOLR-3108: Error in SolrCloud's replica lookup code when replica's are hosted in same Solr instance.
   (Bruno Dumon, Sami Siren, Mark Miller)
-  SOLR-3080: Remove shard info from zookeeper when SolrCore is explicitlyunloaded.
+  SOLR-3080: Remove shard info from zookeeper when SolrCore is explicitly unloaded.
   (yonik, Mark Miller, siren)
+  SOLR-3437: Recovery issues a spurious commit to the cluster. (Trym R. Møller via Mark Miller)
 
 * SOLR-1566: Transforming documents in the ResponseWriters.  This will allow
   for more complex results in responses and open the door for function queries
@@ -279,6 +286,27 @@ New Features
   (all date range queries and date faceting is affected).  The default TZ
   is still UTC.  (David Schlotfeldt, hossman)
 
+* SOLR-3402: Analysis Factories are now configured with their Lucene Version
+  throw setLuceneMatchVersion, rather than through the Map passed to init.
+  Parsing and simple error checking for the Version is now done inside
+  the code that creates the Analysis Factories. (Chris Male)
+
+* SOLR-3178: Optimistic locking.  If a _version_ is provided with an update
+  that does not match the version in the index, an HTTP 409 error (Conflict)
+  will result.  (Per Steffensen, yonik)
+
+* SOLR-139: Updateable documents.  JSON Example:
+  {"id":"mydoc", "f1":{"set":10}, "f2":{"add":20}}  will result in field "f1"
+  being set to 10, "f2" having an additional value of 20 added, and all
+  other existing fields unchanged.  All source fields must be stored for
+  this feature to work correctly.  (Ryan McKinley, Erik Hatcher, yonik)
+
+* SOLR-2857: Support XML,CSV,JSON, and javabin in a single RequestHandler and 
+  choose the correct ContentStreamLoader based on Content-Type header.  This
+  also deprecates the existing [Xml,JSON,CSV,Binary,Xslt]UpdateRequestHandler.
+  (ryan)
+
+
 Optimizations
 ----------------------
 
@@ -393,6 +421,12 @@ Bug Fixes
 * SOLR-2605: fixed tracking of the 'defaultCoreName' in CoreContainer so that
   CoreAdminHandler could return consistent information regardless of wether
   there is a a default core name or not. (steffkes, hossman)
+
+* SOLR-3370: fixed CSVResponseWriter to respect globs in the 'fl' param
+  (Keith Fligg via hossman)
+
+* SOLR-3436: Group count incorrect when not all shards are queried in the second
+  pass. (Francois Perron, Martijn van Groningen)
 
 Other Changes
 ----------------------
@@ -518,6 +552,26 @@ Other Changes
   instance type (Chris Male)
 
 * SOLR-3388: HTTP caching is now disabled by default for RequestUpdateHandlers. (ryan)
+
+* SOLR-3309: web.xml now specifies metadata-complete=true (which requires 
+  Servlet 2.5) to prevent servlet containers from scanning class annotations 
+  on startup.  This allows for faster startup times on some servlet containers.
+  (Bill Bell, hossman)
+
+* SOLR-1893: Refactored some common code from LRUCache and FastLRUCache into 
+  SolrCacheBase (Tomás Fernández Löbbe via hossman)
+
+* SOLR-3403: Deprecated Analysis Factories now log their own deprecation messages.
+  No logging support is provided by Factory parent classes. (Chris Male)
+
+* SOLR-1258: PingRequestHandler is now directly configured with a 
+  "healthcheckFile" instead of looking for the legacy 
+  <admin><healthcheck/></admin> syntax.  Filenames specified as relative 
+  paths have been fixed so that they are resolved against the data dir 
+  instead of the CWD of the java process. (hossman)
+
+* SOLR-3083: JMX beans now report Numbers as numeric values rather then String
+  (Tagged Siteops, Greg Bowyer via ryan)
 
 
 Documentation

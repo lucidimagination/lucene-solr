@@ -1,4 +1,6 @@
-/**
+package org.apache.solr.util.plugin;
+
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,14 +17,10 @@
  * limitations under the License.
  */
 
-package org.apache.solr.util.plugin;
-
-import org.apache.solr.common.ResourceLoader;
-
 /**
- * @since solr 1.3
+ * @deprecated This interface has been kept for backwards compatibility and will
+ * be removed in (5.0).  Use {@link org.apache.lucene.analysis.util.ResourceLoaderAware}.
  */
-public interface ResourceLoaderAware 
-{
-  void inform( ResourceLoader loader );
+@Deprecated
+public interface ResourceLoaderAware extends org.apache.lucene.analysis.util.ResourceLoaderAware {
 }

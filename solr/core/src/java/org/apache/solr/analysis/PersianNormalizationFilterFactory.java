@@ -21,6 +21,9 @@ package org.apache.solr.analysis;
 
 import org.apache.lucene.analysis.fa.PersianNormalizationFilter;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
+import org.apache.lucene.analysis.util.MultiTermAwareComponent;
+import org.apache.lucene.analysis.util.TokenFilterFactory;
 
 /** 
  * Factory for {@link PersianNormalizationFilter}.
@@ -34,13 +37,13 @@ import org.apache.lucene.analysis.TokenStream;
  * &lt;/fieldType&gt;</pre>
  *
  */
-public class PersianNormalizationFilterFactory extends BaseTokenFilterFactory implements MultiTermAwareComponent {
+public class PersianNormalizationFilterFactory extends TokenFilterFactory implements MultiTermAwareComponent {
   public PersianNormalizationFilter create(TokenStream input) {
     return new PersianNormalizationFilter(input);
   }
   
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

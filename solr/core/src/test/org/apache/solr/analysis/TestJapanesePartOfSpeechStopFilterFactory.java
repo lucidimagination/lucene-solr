@@ -2,9 +2,11 @@ package org.apache.solr.analysis;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.solr.core.SolrResourceLoader;
 
@@ -28,20 +30,22 @@ import org.apache.solr.core.SolrResourceLoader;
 /**
  * Simple tests for {@link JapanesePartOfSpeechStopFilterFactory}
  */
-public class TestJapanesePartOfSpeechStopFilterFactory extends BaseTokenTestCase {
+public class TestJapanesePartOfSpeechStopFilterFactory extends BaseTokenStreamTestCase {
   public void testBasics() throws IOException {
     String tags = 
         "#  verb-main:\n" +
         "動詞-自立\n";
     
     JapaneseTokenizerFactory tokenizerFactory = new JapaneseTokenizerFactory();
-    tokenizerFactory.init(DEFAULT_VERSION_PARAM);
+    tokenizerFactory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
+    Map<String, String> tokenizerArgs = Collections.emptyMap();
+    tokenizerFactory.init(tokenizerArgs);
     tokenizerFactory.inform(new SolrResourceLoader(null, null));
     TokenStream ts = tokenizerFactory.create(new StringReader("私は制限スピードを超える。"));
     JapanesePartOfSpeechStopFilterFactory factory = new JapanesePartOfSpeechStopFilterFactory();
     Map<String,String> args = new HashMap<String,String>();
-    args.put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
     args.put("tags", "stoptags.txt");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(new StringMockSolrResourceLoader(tags));
     ts = factory.create(ts);

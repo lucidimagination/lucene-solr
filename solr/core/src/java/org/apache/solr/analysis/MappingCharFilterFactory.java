@@ -27,9 +27,8 @@ import java.util.regex.Pattern;
 import org.apache.lucene.analysis.CharStream;
 import org.apache.lucene.analysis.charfilter.MappingCharFilter;
 import org.apache.lucene.analysis.charfilter.NormalizeCharMap;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.*;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.util.plugin.ResourceLoaderAware;
 
 /**
  * Factory for {@link MappingCharFilter}. 
@@ -45,7 +44,7 @@ import org.apache.solr.util.plugin.ResourceLoaderAware;
  * @since Solr 1.4
  *
  */
-public class MappingCharFilterFactory extends BaseCharFilterFactory implements
+public class MappingCharFilterFactory extends CharFilterFactory implements
     ResourceLoaderAware, MultiTermAwareComponent {
 
   protected NormalizeCharMap normMap;
@@ -73,8 +72,9 @@ public class MappingCharFilterFactory extends BaseCharFilterFactory implements
       catch( IOException e ){
         throw new InitializationException("IOException thrown while loading mappings", e);
       }
-      normMap = new NormalizeCharMap();
-      parseRules( wlist, normMap );
+      final NormalizeCharMap.Builder builder = new NormalizeCharMap.Builder();
+      parseRules( wlist, builder );
+      normMap = builder.build();
     }
   }
 
@@ -85,12 +85,12 @@ public class MappingCharFilterFactory extends BaseCharFilterFactory implements
   // "source" => "target"
   static Pattern p = Pattern.compile( "\"(.*)\"\\s*=>\\s*\"(.*)\"\\s*$" );
 
-  protected void parseRules( List<String> rules, NormalizeCharMap normMap ){
+  protected void parseRules( List<String> rules, NormalizeCharMap.Builder builder ){
     for( String rule : rules ){
       Matcher m = p.matcher( rule );
       if( !m.find() )
         throw new InitializationException("Invalid Mapping Rule : [" + rule + "], file = " + mapping);
-      normMap.add( parseString( m.group( 1 ) ), parseString( m.group( 2 ) ) );
+      builder.add( parseString( m.group( 1 ) ), parseString( m.group( 2 ) ) );
     }
   }
 
@@ -128,7 +128,7 @@ public class MappingCharFilterFactory extends BaseCharFilterFactory implements
   }
 
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

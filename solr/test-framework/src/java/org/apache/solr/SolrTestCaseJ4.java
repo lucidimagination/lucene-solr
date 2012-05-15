@@ -713,6 +713,15 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     return msp;
   }
 
+  public static Map map(Object... params) {
+    LinkedHashMap ret = new LinkedHashMap();
+    for (int i=0; i<params.length; i+=2) {
+      Object o = ret.put(params[i], params[i+1]);
+      // TODO: handle multi-valued map?
+    }
+    return ret;
+  }
+
   /**
    * Generates a SolrQueryRequest using the LocalRequestFactory
    * @see #lrf
@@ -810,17 +819,18 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
         else out.append(',');
         JSONUtil.writeString(sfield.getName(), 0, sfield.getName().length(), out);
         out.append(':');
+
         if (sfield.getValueCount() > 1) {
           out.append('[');
-        }
-        boolean firstVal = true;
-        for (Object val : sfield) {
-          if (firstVal) firstVal=false;
-          else out.append(',');
-          out.append(JSONUtil.toJSON(val));
-        }
-        if (sfield.getValueCount() > 1) {
+          boolean firstVal = true;
+          for (Object val : sfield) {
+            if (firstVal) firstVal=false;
+            else out.append(',');
+            out.append(JSONUtil.toJSON(val));
+          }
           out.append(']');
+        } else {
+          out.append(JSONUtil.toJSON(sfield.getValue()));
         }
       }
       out.append('}');
@@ -1154,7 +1164,11 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     if (random().nextInt(10)==0) {
       assertU(optimize());
     } else {
-      assertU(commit());
+      if (random().nextInt(10) == 0) {
+        assertU(commit());
+      } else {
+        assertU(commit("softCommit","true"));
+      }
     }
 
     // merging segments no longer selects just adjacent segments hence ids (doc.order) can be shuffled.

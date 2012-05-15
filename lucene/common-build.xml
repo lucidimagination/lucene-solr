@@ -58,6 +58,7 @@
   <property name="ivy.bootstrap.version" value="2.2.0" />
   <property name="ivy.resource" value="org/apache/ivy/ant/antlib.xml" />
   <available resource="${ivy.resource}" property="ivy.available" />
+  <property name="ivy.default.configuration" value="*"/>
 
   <property name="junit.jar" value="junit-4.10.jar"/>
   <property name="junit-location.jar" value="${common.dir}/test-framework/lib/${junit.jar}"/>
@@ -225,8 +226,7 @@
   </propertyset>
 
   <patternset id="lucene.local.src.package.patterns"
-              includes="src/,index.html,*build*.xml,docs/,*.txt,lib/,backwards/"
-              excludes="**/pom.xml,**/*.iml,site/build/"
+              excludes="**/pom.xml,**/*.iml,**/*.jar,build/**,dist/**,lucene/benchmark/work/**,lucene/benchmark/temp/**"
   />
 
   <!-- Default exclude sources and javadoc jars from Ivy fetch to save time and bandwidth -->
@@ -235,6 +235,13 @@
       else="source|javadoc">
     <isset property="fetch.sources.javadocs"/>
   </condition>
+
+  <!-- Check for minimum supported ANT version. -->
+  <fail message="Minimum supported ANT version is 1.8.2. Yours: ${ant.version}">
+    <condition>
+      <not><antversion atleast="1.8.2" /></not>
+    </condition>
+  </fail>
 
   <!-- Import custom ANT tasks. -->
   <import file="${common.dir}/tools/custom-tasks.xml" />
@@ -267,11 +274,24 @@
     <!-- currently empty -->
   </target>
 
-  <target name="resolve" depends="ivy-availability-check,ivy-fail">
+  <target name="ivy-configure" unless="ivy.settings.uptodate">
+    <!-- override: just for safety, should be unnecessary -->
+    <ivy:configure file="${common.dir}/ivy-settings.xml" override="true"/>
+    <property name="ivy.settings.uptodate" value="true"/>
+  </target>
+
+  <target name="resolve" depends="ivy-availability-check,ivy-fail,ivy-configure">
     <!-- todo, make this a property or something. 
          only special cases need bundles -->
-    <ivy:retrieve type="jar,bundle" log="download-only"/>
+    <ivy:retrieve type="jar,bundle" log="download-only" 
+                  conf="${ivy.default.configuration}"/>
   </target>
+
+  <property name="ivy_install_path" location="${user.home}/.ant/lib" />
+  <property name="ivy_bootstrap_url1" value="http://repo1.maven.org/maven2"/>
+  <!-- you might need to tweak this from china so it works -->
+  <property name="ivy_bootstrap_url2" value="http://mirror.netcologne.de/maven2"/>
+  <property name="ivy_checksum_sha1" value="f9d1e83e82fc085093510f7d2e77d81d52bc2081"/>
 
   <target name="ivy-availability-check" unless="ivy.available">
    <echo>
@@ -311,13 +331,40 @@
   <target name="ivy-fail" unless="ivy.available">
     <fail>Ivy is not available</fail>
   </target>
-  <target name="ivy-bootstrap" description="Download and install Ivy in the users ant lib dir">
-    <property name="ivy_install_path" location="${user.home}/.ant/lib" />
-    <mkdir dir="${ivy_install_path}"/>
-    <echo message="installing ivy ${ivy.bootstrap.version} to ${ivy_install_path}"/>
-    <get src="http://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.bootstrap.version}/ivy-${ivy.bootstrap.version}.jar"
-         dest="${ivy_install_path}/ivy-${ivy.bootstrap.version}.jar" usetimestamp="true"/>
+  <target name="ivy-bootstrap" description="Download and install Ivy in the users ant lib dir" depends="ivy-bootstrap1,ivy-bootstrap2,ivy-checksum"/>
+
+  <!-- try to download from repo1.maven.org -->
+  <target name="ivy-bootstrap1">
+    <ivy-download src="${ivy_bootstrap_url1}" dest="${ivy_install_path}"/>
+    <available file="${ivy_install_path}/ivy-${ivy.bootstrap.version}.jar" property="ivy.bootstrap1.success" />
+  </target> 
+
+  <target name="ivy-bootstrap2" unless="ivy.bootstrap1.success">
+    <ivy-download src="${ivy_bootstrap_url2}" dest="${ivy_install_path}"/>
   </target>
+
+  <target name="ivy-checksum">
+    <checksum file="${ivy_install_path}/ivy-${ivy.bootstrap.version}.jar"
+              property="${ivy_checksum_sha1}"
+              algorithm="SHA"
+              verifyproperty="ivy.checksum.success"/>
+    <fail message="Checksum mismatch for ivy-${ivy.bootstrap.version}.jar. Please download this file manually">
+      <condition>
+        <isfalse value="${ivy.checksum.success}"/>
+      </condition>
+    </fail>
+  </target>
+   
+  <macrodef name="ivy-download">
+      <attribute name="src"/>
+      <attribute name="dest"/>
+    <sequential>
+      <mkdir dir="@{dest}"/>
+      <echo message="installing ivy ${ivy.bootstrap.version} to ${ivy_install_path}"/>
+      <get src="@{src}/org/apache/ivy/ivy/${ivy.bootstrap.version}/ivy-${ivy.bootstrap.version}.jar"
+           dest="@{dest}/ivy-${ivy.bootstrap.version}.jar" usetimestamp="true" ignoreerrors="true"/>
+    </sequential>
+  </macrodef>
 
   <target name="jflex-uptodate-check">
     <uptodate property="jflex.files.uptodate">
@@ -503,7 +550,7 @@
       <!-- If possible, include the svnversion -->
       <exec dir="." executable="${svnversion.exe}"
             outputproperty="svnversion" failifexecutionfails="false">
-        <arg line="."/>
+        <arg value="."/>
       </exec>
       
       <build-manifest title="@{title}"
@@ -1057,7 +1104,7 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
   	<fail message="You must redefine the javadocs task to do something!!!!!"/>
   </target>
 
-  <target name="install-maven-tasks" unless="maven-tasks.uptodate" depends="ivy-availability-check,ivy-fail">
+  <target name="install-maven-tasks" unless="maven-tasks.uptodate" depends="ivy-availability-check,ivy-fail,ivy-configure">
     <property name="maven-tasks.uptodate" value="true"/>
     <ivy:cachepath organisation="org.apache.maven" module="maven-ant-tasks" revision="2.1.3"
              inline="true" conf="master" type="jar" pathid="maven-ant-tasks.classpath"/>
@@ -1509,7 +1556,7 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
   
   <!-- PEGDOWN macro: Before using depend on the target "resolve-pegdown" -->
   
-  <target name="resolve-pegdown" unless="pegdown.loaded">
+  <target name="resolve-pegdown" unless="pegdown.loaded" depends="ivy-availability-check,ivy-fail,ivy-configure">
     <ivy:cachepath organisation="org.pegdown" module="pegdown" revision="1.1.0"
       inline="true" conf="default" type="jar" transitive="true" pathid="pegdown.classpath"/>
     <property name="pegdown.loaded" value="true"/>
@@ -1564,8 +1611,8 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
        <attribute name="dir"/>
      <sequential>
        <exec dir="." executable="${python.exe}" failonerror="true">
-         <arg line="${dev-tools.dir}/scripts/checkJavadocLinks.py"/>
-         <arg line="@{dir}"/>
+         <arg value="${dev-tools.dir}/scripts/checkJavadocLinks.py"/>
+         <arg value="@{dir}"/>
        </exec>
      </sequential>
   </macrodef>
@@ -1575,9 +1622,9 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
        <attribute name="level" default="class"/>
      <sequential>
        <exec dir="." executable="${python.exe}" failonerror="true">
-         <arg line="${dev-tools.dir}/scripts/checkJavaDocs.py"/>
-         <arg line="@{dir}"/>
-         <arg line="@{level}"/>
+         <arg value="${dev-tools.dir}/scripts/checkJavaDocs.py"/>
+         <arg value="@{dir}"/>
+         <arg value="@{level}"/>
        </exec>
      </sequential>
   </macrodef>

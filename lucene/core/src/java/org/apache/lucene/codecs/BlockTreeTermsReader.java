@@ -262,6 +262,10 @@ public class BlockTreeTermsReader extends FieldsProducer {
     }
   }
 
+  /**
+   * BlockTree statistics for a single field 
+   * returned by {@link FieldReader#computeStats()}.
+   */
   public static class Stats {
     public int indexNodeCount;
     public int indexArcCount;
@@ -2432,12 +2436,14 @@ public class BlockTreeTermsReader extends FieldsProducer {
           if ((code & 1) == 0) {
             // A normal term
             termExists = true;
+            subCode = 0;
             state.termBlockOrd++;
             return false;
           } else {
             // A sub-block; make sub-FP absolute:
             termExists = false;
-            lastSubFP = fp - suffixesReader.readVLong();
+            subCode = suffixesReader.readVLong();
+            lastSubFP = fp - subCode;
             //if (DEBUG) {
             //System.out.println("    lastSubFP=" + lastSubFP);
             //}

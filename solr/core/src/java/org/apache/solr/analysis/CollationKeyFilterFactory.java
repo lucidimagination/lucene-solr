@@ -26,9 +26,8 @@ import java.util.Locale;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.util.*;
 import org.apache.lucene.collation.CollationKeyFilter;
-import org.apache.solr.common.ResourceLoader;
-import org.apache.solr.util.plugin.ResourceLoaderAware;
 
 /**
  * Factory for {@link CollationKeyFilter}.
@@ -70,7 +69,7 @@ import org.apache.solr.util.plugin.ResourceLoaderAware;
  * @deprecated use {@link org.apache.solr.schema.CollationField} instead.
  */
 @Deprecated
-public class CollationKeyFilterFactory extends BaseTokenFilterFactory implements MultiTermAwareComponent,ResourceLoaderAware {
+public class CollationKeyFilterFactory extends TokenFilterFactory implements MultiTermAwareComponent, ResourceLoaderAware {
   private Collator collator;
 
   public void inform(ResourceLoader loader) {
@@ -170,7 +169,7 @@ public class CollationKeyFilterFactory extends BaseTokenFilterFactory implements
   }
   
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

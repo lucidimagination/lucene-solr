@@ -58,6 +58,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldFilterAtomicReader;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexReader.ReaderClosedListener;
+import org.apache.lucene.index.AlcoholicMergePolicy;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LogByteSizeMergePolicy;
@@ -178,6 +179,9 @@ public abstract class LuceneTestCase extends Assert {
   /** set of directories we created, in afterclass we try to clean these up */
   private static final Map<File, StackTraceElement[]> tempDirs = Collections.synchronizedMap(new HashMap<File, StackTraceElement[]>());
 
+  private static String DEFAULT_LINE_DOCS_FILE = "europarl.lines.txt.gz";
+  private static String JENKINS_LARGE_LINE_DOCS_FILE = "enwiki.random.lines.txt";
+
   // TODO: the fact these are static final means they're initialized on class load and they should
   // be reinitialized on before suite hooks (to allow proper tests).
 
@@ -197,7 +201,7 @@ public abstract class LuceneTestCase extends Assert {
   /** whether or not @nightly tests should run */
   public static final boolean TEST_NIGHTLY = Boolean.parseBoolean(System.getProperty("tests.nightly", "false"));
   /** the line file used by LineFileDocs */
-  public static final String TEST_LINE_DOCS_FILE = System.getProperty("tests.linedocsfile", "europarl.lines.txt.gz");
+  public static final String TEST_LINE_DOCS_FILE = System.getProperty("tests.linedocsfile", DEFAULT_LINE_DOCS_FILE);
   /** whether or not to clean threads between test invocations: "false", "perMethod", "perClass" */
   public static final String TEST_CLEAN_THREADS = System.getProperty("tests.cleanthreads", "perClass");
   /** whether or not to clean threads between test invocations: "false", "perMethod", "perClass" */
@@ -400,30 +404,33 @@ public abstract class LuceneTestCase extends Assert {
     }
 
     Class<?> targetClass = RandomizedContext.current().getTargetClass();
-    LuceneTestCase.useNoMemoryExpensiveCodec =
-        targetClass.isAnnotationPresent(UseNoMemoryExpensiveCodec.class);
-    if (useNoMemoryExpensiveCodec) {
-        System.err.println("NOTE: Using no memory expensive codecs (Memory, SimpleText) for " +
-            targetClass.getSimpleName() + ".");
+    if (targetClass.isAnnotationPresent(SuppressCodecs.class)) {
+      SuppressCodecs a = targetClass.getAnnotation(SuppressCodecs.class);
+      avoidCodecs = new HashSet<String>(Arrays.asList(a.value()));
+      System.err.println("NOTE: Suppressing codecs " + Arrays.toString(a.value()) 
+          + " for " + targetClass.getSimpleName() + ".");
+    } else {
+      avoidCodecs = null;
     }
+    
 
     PREFLEX_IMPERSONATION_IS_ACTIVE = false;
     savedCodec = Codec.getDefault();
     final Codec codec;
     int randomVal = random().nextInt(10);
     
-    if ("Lucene3x".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal < 2)) { // preflex-only setup
+    if ("Lucene3x".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal < 2 && !shouldAvoidCodec("Lucene3x"))) { // preflex-only setup
       codec = Codec.forName("Lucene3x");
       assert (codec instanceof PreFlexRWCodec) : "fix your classpath to have tests-framework.jar before lucene-core.jar";
       PREFLEX_IMPERSONATION_IS_ACTIVE = true;
-    } else if ("SimpleText".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 9)) {
+    } else if ("SimpleText".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 9 && !shouldAvoidCodec("SimpleText"))) {
       codec = new SimpleTextCodec();
-    } else if ("Appending".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 8)) {
+    } else if ("Appending".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 8 && !shouldAvoidCodec("Appending"))) {
       codec = new AppendingCodec();
     } else if (!"random".equals(TEST_CODEC)) {
       codec = Codec.forName(TEST_CODEC);
     } else if ("random".equals(TEST_POSTINGSFORMAT)) {
-      codec = new RandomCodec(random(), useNoMemoryExpensiveCodec);
+      codec = new RandomCodec(random(), avoidCodecs);
     } else {
       codec = new Lucene40Codec() {
         private final PostingsFormat format = PostingsFormat.forName(TEST_POSTINGSFORMAT);
@@ -715,11 +722,11 @@ public abstract class LuceneTestCase extends Assert {
 
     savedBoolMaxClauseCount = BooleanQuery.getMaxClauseCount();
 
-    if (useNoMemoryExpensiveCodec) {
+    if (avoidCodecs != null) {
       String defFormat = _TestUtil.getPostingsFormat("thisCodeMakesAbsolutelyNoSenseCanWeDeleteIt");
-      if ("SimpleText".equals(defFormat) || "Memory".equals(defFormat)) {
+      if (avoidCodecs.contains(defFormat)) {
         assumeTrue("NOTE: A test method in " + getClass().getSimpleName() 
-            + " was ignored, as it uses too much memory with " + defFormat + ".", false);
+            + " was ignored, as it is not allowed to use " + defFormat + ".", false);
       }
     }
   }
@@ -1116,6 +1123,8 @@ public abstract class LuceneTestCase extends Assert {
       c.setMergePolicy(new MockRandomMergePolicy(r));
     } else if (r.nextBoolean()) {
       c.setMergePolicy(newTieredMergePolicy());
+    } else if (r.nextInt(5) == 0) { 
+      c.setMergePolicy(newAlcoholicMergePolicy());
     } else {
       c.setMergePolicy(newLogMergePolicy());
     }
@@ -1132,6 +1141,15 @@ public abstract class LuceneTestCase extends Assert {
   public static TieredMergePolicy newTieredMergePolicy() {
     return newTieredMergePolicy(random());
   }
+  
+  public static AlcoholicMergePolicy newAlcoholicMergePolicy() {
+    return newAlcoholicMergePolicy(random(), timeZone);
+  }
+  
+  public static AlcoholicMergePolicy newAlcoholicMergePolicy(Random r, TimeZone tz) {
+    return new AlcoholicMergePolicy(tz, new Random(r.nextLong()));
+  }
+
 
   public static LogMergePolicy newLogMergePolicy(Random r) {
     LogMergePolicy logmp = r.nextBoolean() ? new LogDocMergePolicy() : new LogByteSizeMergePolicy();
@@ -1560,7 +1578,7 @@ public abstract class LuceneTestCase extends Assert {
   // We get here from InterceptTestCaseEvents on the 'failed' event....
   public static void reportPartialFailureInfo() {
     System.err.println("NOTE: reproduce with (hopefully): ant test " +
-    		"-Dtests.class=*." + getTestClass().getSimpleName() +
+    		"-Dtestcase=" + getTestClass().getSimpleName() +
     		" -Dtests.seed=" + RandomizedContext.current().getRunnerSeedAsString() +
     		reproduceWithExtraParams());
   }
@@ -1569,7 +1587,7 @@ public abstract class LuceneTestCase extends Assert {
   public void reportAdditionalFailureInfo() {
     StringBuilder b = new StringBuilder();
     b.append("NOTE: reproduce with: ant test ")
-     .append("-Dtests.class=*.").append(getTestClass().getSimpleName());
+     .append("-Dtestcase=").append(getTestClass().getSimpleName());
     if (getName() != null) {
       b.append(" -Dtests.method=").append(getName());
     }
@@ -1577,6 +1595,9 @@ public abstract class LuceneTestCase extends Assert {
      .append(RandomizedContext.current().getRunnerSeedAsString())
      .append(reproduceWithExtraParams());
     System.err.println(b.toString());
+    if (TEST_LINE_DOCS_FILE.endsWith(JENKINS_LARGE_LINE_DOCS_FILE)) {
+      System.err.println("NOTE: download the large Jenkins line-docs file by running 'ant get-jenkins-line-docs' in the lucene directory");
+    }
   }
 
   // extra params that were overridden needed to reproduce the command
@@ -1589,6 +1610,7 @@ public abstract class LuceneTestCase extends Assert {
     if (!TEST_DIRECTORY.equals("random")) sb.append(" -Dtests.directory=").append(TEST_DIRECTORY);
     if (RANDOM_MULTIPLIER > 1) sb.append(" -Dtests.multiplier=").append(RANDOM_MULTIPLIER);
     if (TEST_NIGHTLY) sb.append(" -Dtests.nightly=true");
+    if (!TEST_LINE_DOCS_FILE.equals(DEFAULT_LINE_DOCS_FILE)) sb.append(" -Dtests.linedocsfile=" + TEST_LINE_DOCS_FILE);
     // TODO we can't randomize this yet (it drives ant crazy) but this makes tests reproduceable
     // in case machines have different default charsets...
     sb.append(" -Dargs=\"-Dfile.encoding=" + System.getProperty("file.encoding") + "\"");
@@ -1629,7 +1651,11 @@ public abstract class LuceneTestCase extends Assert {
   }
   
   // initialized by the TestRunner
-  static boolean useNoMemoryExpensiveCodec;
+  static HashSet<String> avoidCodecs;
+  
+  static boolean shouldAvoidCodec(String codec) {
+    return avoidCodecs != null && avoidCodecs.contains(codec);
+  }
 
   private String name = "<unknown>";
 
@@ -1679,7 +1705,9 @@ public abstract class LuceneTestCase extends Assert {
   @Inherited
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.TYPE)
-  public @interface UseNoMemoryExpensiveCodec {}
+  public @interface SuppressCodecs {
+    String[] value();
+  }
 
   protected static boolean defaultCodecSupportsDocValues() {
     return !Codec.getDefault().getName().equals("Lucene3x");

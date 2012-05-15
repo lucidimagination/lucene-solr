@@ -82,6 +82,12 @@ var sammy = $.sammy
       {},
       function( context )
       {
+        if( app.timeout )
+        {
+          console.debug( 'Clearing Timeout #' + app.timeout );
+          clearTimeout( app.timeout );
+        }
+
         var menu_wrapper = $( '#menu-wrapper' );
 
         $( 'li[id].active', menu_wrapper )
@@ -92,7 +98,11 @@ var sammy = $.sammy
 
         if( this.params.splat )
         {
-          var active_element = $( '#' + this.params.splat[0], menu_wrapper );
+          var selector = '~' === this.params.splat[0][0]
+                       ? '#' + this.params.splat[0].replace( /^~/, '' ) + '.global'
+                       : '#menu-selector #' + this.params.splat[0];
+
+          var active_element = $( selector, menu_wrapper );
                     
           if( 0 === active_element.size() )
           {
@@ -139,6 +149,8 @@ var solr_admin = function( app_config )
     
   this.menu_element = $( '#menu-selector' );
   this.config = config;
+
+  this.timeout = null;
 
   this.run = function()
   {

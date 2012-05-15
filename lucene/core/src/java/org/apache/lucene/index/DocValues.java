@@ -21,7 +21,16 @@ import java.io.IOException;
 import java.util.Comparator;
 
 import org.apache.lucene.codecs.DocValuesFormat;
-import org.apache.lucene.document.DocValuesField;
+import org.apache.lucene.document.ByteDocValuesField; // javadocs
+import org.apache.lucene.document.DerefBytesDocValuesField; // javadocs
+import org.apache.lucene.document.DoubleDocValuesField; // javadocs
+import org.apache.lucene.document.FloatDocValuesField; // javadocs
+import org.apache.lucene.document.IntDocValuesField; // javadocs
+import org.apache.lucene.document.LongDocValuesField; // javadocs
+import org.apache.lucene.document.PackedLongDocValuesField; // javadocs
+import org.apache.lucene.document.ShortDocValuesField; // javadocs
+import org.apache.lucene.document.SortedBytesDocValuesField; // javadocs
+import org.apache.lucene.document.StraightBytesDocValuesField; // javadocs
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.packed.PackedInts;
 
@@ -40,7 +49,16 @@ import org.apache.lucene.util.packed.PackedInts;
  * {@link DocValues} are fully integrated into the {@link DocValuesFormat} API.
  * 
  * @see Type for limitations and default implementation documentation
- * @see DocValuesField for adding values to the index
+ * @see ByteDocValuesField for adding byte values to the index
+ * @see ShortDocValuesField for adding short values to the index
+ * @see IntDocValuesField for adding int values to the index
+ * @see LongDocValuesField for adding long values to the index
+ * @see FloatDocValuesField for adding float values to the index
+ * @see DoubleDocValuesField for adding double values to the index
+ * @see PackedLongDocValuesField for adding packed long values to the index
+ * @see SortedBytesDocValuesField for adding sorted {@link BytesRef} values to the index
+ * @see StraightBytesDocValuesField for adding straight {@link BytesRef} values to the index
+ * @see DerefBytesDocValuesField for adding deref {@link BytesRef} values to the index
  * @see DocValuesFormat#docsConsumer(org.apache.lucene.index.PerDocWriteState) for
  *      customization
  * @lucene.experimental
@@ -548,7 +566,7 @@ public abstract class DocValues implements Closeable {
      * pointer per document to dereference the shared byte[].
      * Use this type if your documents may share the same byte[].
      * <p>
-     * NOTE: Fields of this type will not store values for documents without and
+     * NOTE: Fields of this type will not store values for documents without an
      * explicitly provided value. If a documents value is accessed while no
      * explicit value is stored the returned {@link BytesRef} will be a 0-length
      * reference. Custom default values must be assigned explicitly.
@@ -575,7 +593,7 @@ public abstract class DocValues implements Closeable {
      * {@link #BYTES_FIXED_DEREF}, but allowing each
      * document's value to be a different length.
      * <p>
-     * NOTE: Fields of this type will not store values for documents without and
+     * NOTE: Fields of this type will not store values for documents without an
      * explicitly provided value. If a documents value is accessed while no
      * explicit value is stored the returned {@link BytesRef} will be a 0-length
      * reference. Custom default values must be assigned explicitly.
@@ -589,7 +607,7 @@ public abstract class DocValues implements Closeable {
      * {@link #BYTES_FIXED_SORTED}, but allowing each
      * document's value to be a different length.
      * <p>
-     * NOTE: Fields of this type will not store values for documents without and
+     * NOTE: Fields of this type will not store values for documents without an
      * explicitly provided value. If a documents value is accessed while no
      * explicit value is stored the returned {@link BytesRef} will be a 0-length
      * reference.Custom default values must be assigned explicitly.
@@ -607,7 +625,7 @@ public abstract class DocValues implements Closeable {
      * and allows access via document id, ordinal and by-value.
      * Use this type if your documents may share the same byte[].
      * <p>
-     * NOTE: Fields of this type will not store values for documents without and
+     * NOTE: Fields of this type will not store values for documents without an
      * explicitly provided value. If a documents value is accessed while no
      * explicit value is stored the returned {@link BytesRef} will be a 0-length
      * reference. Custom default values must be assigned

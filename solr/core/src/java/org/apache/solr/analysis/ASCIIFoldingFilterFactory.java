@@ -18,6 +18,10 @@
 
 
 package org.apache.solr.analysis;
+
+import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
+import org.apache.lucene.analysis.util.MultiTermAwareComponent;
+import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.miscellaneous.ASCIIFoldingFilter;
 import org.apache.lucene.analysis.TokenStream;
 
@@ -32,13 +36,13 @@ import org.apache.lucene.analysis.TokenStream;
  * &lt;/fieldType&gt;</pre>
  *
  */
-public class ASCIIFoldingFilterFactory extends BaseTokenFilterFactory implements MultiTermAwareComponent {
+public class ASCIIFoldingFilterFactory extends TokenFilterFactory implements MultiTermAwareComponent {
   public ASCIIFoldingFilter create(TokenStream input) {
     return new ASCIIFoldingFilter(input);
   }
 
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

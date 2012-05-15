@@ -19,17 +19,22 @@ package org.apache.solr.analysis;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Collections;
+import java.util.Map;
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.solr.core.SolrResourceLoader;
 
 /**
  * Simple tests for {@link JapaneseBaseFormFilterFactory}
  */
-public class TestJapaneseBaseFormFilterFactory extends BaseTokenTestCase {
+public class TestJapaneseBaseFormFilterFactory extends BaseTokenStreamTestCase {
   public void testBasics() throws IOException {
     JapaneseTokenizerFactory tokenizerFactory = new JapaneseTokenizerFactory();
-    tokenizerFactory.init(DEFAULT_VERSION_PARAM);
+    tokenizerFactory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
+    Map<String, String> args = Collections.emptyMap();
+    tokenizerFactory.init(args);
     tokenizerFactory.inform(new SolrResourceLoader(null, null));
     TokenStream ts = tokenizerFactory.create(new StringReader("それはまだ実験段階にあります"));
     JapaneseBaseFormFilterFactory factory = new JapaneseBaseFormFilterFactory();

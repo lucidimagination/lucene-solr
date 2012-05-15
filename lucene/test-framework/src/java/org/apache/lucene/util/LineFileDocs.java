@@ -24,17 +24,22 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPInputStream;
 
-import org.apache.lucene.document.DocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.SortedBytesDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.DocValues;
 
 /** Minimal port of benchmark's LneDocSource +
  * DocMaker, so tests can enum docs from a line file created
@@ -69,42 +74,71 @@ public class LineFileDocs implements Closeable {
       reader = null;
     }
   }
+  
+  private long randomSeekPos(Random random, long size) {
+    if (random == null || size <= 3L)
+      return 0L;
+    return (random.nextLong()&Long.MAX_VALUE) % (size/3);
+  }
 
   private synchronized void open(Random random) throws IOException {
     InputStream is = getClass().getResourceAsStream(path);
+    boolean needSkip = true;
+    long size = 0L, seekTo = 0L;
     if (is == null) {
       // if its not in classpath, we load it as absolute filesystem path (e.g. Hudson's home dir)
-      is = new FileInputStream(path);
-    }
-    File file = new File(path);
-    long size;
-    if (file.exists()) {
+      File file = new File(path);
       size = file.length();
+      if (path.endsWith(".gz")) {
+        // if it is a gzip file, we need to use InputStream and slowly skipTo:
+        is = new FileInputStream(file);
+      } else {
+        // optimized seek using RandomAccessFile:
+        seekTo = randomSeekPos(random, size);
+        final FileChannel channel = new RandomAccessFile(path, "r").getChannel();
+        if (LuceneTestCase.VERBOSE) {
+          System.out.println("TEST: LineFileDocs: file seek to fp=" + seekTo + " on open");
+        }
+        channel.position(seekTo);
+        is = Channels.newInputStream(channel);
+        needSkip = false;
+      }
     } else {
+      // if the file comes from Classpath:
       size = is.available();
     }
+    
     if (path.endsWith(".gz")) {
       is = new GZIPInputStream(is);
       // guestimate:
       size *= 2.8;
     }
-
-    reader = new BufferedReader(new InputStreamReader(is, "UTF-8"), BUFFER_SIZE);
-
-    // Override sizes for currently "known" line files:
-    if (path.equals("europarl.lines.txt.gz")) {
-      size = 15129506L;
-    } else if (path.equals("/home/hudson/lucene-data/enwiki.random.lines.txt.gz")) {
-      size = 3038178822L;
-    }
-
-    // Randomly seek to starting point:
-    if (random != null && size > 3) {
-      final long seekTo = (random.nextLong()&Long.MAX_VALUE) % (size/3);
+    
+    // If we only have an InputStream, we need to seek now,
+    // but this seek is a scan, so very inefficient!!!
+    if (needSkip) {
+      seekTo = randomSeekPos(random, size);
       if (LuceneTestCase.VERBOSE) {
-        System.out.println("TEST: LineFileDocs: seek to fp=" + seekTo + " on open");
+        System.out.println("TEST: LineFileDocs: stream skip to fp=" + seekTo + " on open");
       }
-      reader.skip(seekTo);
+      is.skip(seekTo);
+    }
+    
+    // if we seeked somewhere, read until newline char
+    if (seekTo > 0L) {
+      int b;
+      do {
+        b = is.read();
+      } while (b >= 0 && b != 13 && b != 10);
+    }
+    
+    CharsetDecoder decoder = IOUtils.CHARSET_UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT);
+    reader = new BufferedReader(new InputStreamReader(is, decoder), BUFFER_SIZE);
+    
+    if (seekTo > 0L) {
+      // read one more line, to make sure we are not inside a Windows linebreak (\r\n):
       reader.readLine();
     }
   }
@@ -150,7 +184,7 @@ public class LineFileDocs implements Closeable {
       doc.add(date);
 
       if (useDocValues) {
-        titleDV = new DocValuesField("titleDV", new BytesRef(), DocValues.Type.BYTES_VAR_SORTED);
+        titleDV = new SortedBytesDocValuesField("titleDV", new BytesRef());
         doc.add(titleDV);
       } else {
         titleDV = null;

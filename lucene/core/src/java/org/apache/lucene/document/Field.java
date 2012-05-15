@@ -30,19 +30,25 @@ import org.apache.lucene.document.FieldType.NumericType;
 import org.apache.lucene.index.IndexWriter; // javadocs
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.IndexableFieldType;
-import org.apache.lucene.index.Norm;
+import org.apache.lucene.index.Norm; // javadocs
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.index.FieldInvertState; // javadocs
 
 /**
- * Expert: directly creata a field for a document.  Most
+ * Expert: directly create a field for a document.  Most
  * users should use one of the sugar subclasses: {@link
  * IntField}, {@link LongField}, {@link FloatField}, {@link
- * DoubleField}, {@link DocValuesField}, {@link
+ * DoubleField}, {@link ByteDocValuesField}, {@link
+ * ShortDocValuesField}, {@link IntDocValuesField}, {@link
+ * LongDocValuesField}, {@link PackedLongDocValuesField},
+ * {@link FloatDocValuesField}, {@link
+ * DoubleDocValuesField}, {@link SortedBytesDocValuesField},
+ * {@link DerefBytesDocValuesField}, {@link
+ * StraightBytesDocValuesField}, {@link
  * StringField}, {@link TextField}, {@link StoredField}.
  *
  * <p/> A field is a section of a Document. Each field has three
- * parts: name, type andvalue. Values may be text
+ * parts: name, type and value. Values may be text
  * (String, Reader or pre-analyzed TokenStream), binary
  * (byte[]), or numeric (a Number).  Fields are optionally stored in the
  * index, so that they may be returned with hits on the document.
@@ -271,6 +277,26 @@ public class Field implements IndexableField {
       throw new IllegalArgumentException("cannot set a Reader value on an indexed field");
     }
     fieldsData = value;
+  }
+
+  public void setByteValue(byte value) {
+    if (!(fieldsData instanceof Byte)) {
+      throw new IllegalArgumentException("cannot change value type from " + fieldsData.getClass().getSimpleName() + " to Byte");
+    }
+    if (numericTokenStream != null) {
+      numericTokenStream.setIntValue(value);
+    }
+    fieldsData = Byte.valueOf(value);
+  }
+
+  public void setShortValue(short value) {
+    if (!(fieldsData instanceof Short)) {
+      throw new IllegalArgumentException("cannot change value type from " + fieldsData.getClass().getSimpleName() + " to Short");
+    }
+    if (numericTokenStream != null) {
+      numericTokenStream.setIntValue(value);
+    }
+    fieldsData = Short.valueOf(value);
   }
 
   public void setIntValue(int value) {

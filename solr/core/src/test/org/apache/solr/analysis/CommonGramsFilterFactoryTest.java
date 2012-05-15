@@ -17,14 +17,16 @@ package org.apache.solr.analysis;
  * limitations under the License.
  */
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.util.CharArraySet;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.core.SolrResourceLoader;
 
 import java.io.StringReader;
+import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -33,15 +35,16 @@ import java.util.HashMap;
  * used by the StopFilterFactoryTest TODO: consider creating separate test files
  * so this won't break if stop filter test files change
  **/
-public class CommonGramsFilterFactoryTest extends BaseTokenTestCase {
+public class CommonGramsFilterFactoryTest extends BaseTokenStreamTestCase {
 
   public void testInform() throws Exception {
     ResourceLoader loader = new SolrResourceLoader(null, null);
     assertTrue("loader is null and it shouldn't be", loader != null);
     CommonGramsFilterFactory factory = new CommonGramsFilterFactory();
-    Map<String, String> args = new HashMap<String, String>(DEFAULT_VERSION_PARAM);
+    Map<String, String> args = new HashMap<String, String>();
     args.put("words", "stop-1.txt");
     args.put("ignoreCase", "true");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     CharArraySet words = factory.getCommonWords();
@@ -53,6 +56,7 @@ public class CommonGramsFilterFactoryTest extends BaseTokenTestCase {
 
     factory = new CommonGramsFilterFactory();
     args.put("words", "stop-1.txt, stop-2.txt");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     words = factory.getCommonWords();
@@ -65,6 +69,7 @@ public class CommonGramsFilterFactoryTest extends BaseTokenTestCase {
     factory = new CommonGramsFilterFactory();
     args.put("words", "stop-snowball.txt");
     args.put("format", "snowball");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     words = factory.getCommonWords();
@@ -86,7 +91,8 @@ public class CommonGramsFilterFactoryTest extends BaseTokenTestCase {
     ResourceLoader loader = new SolrResourceLoader(null, null);
     assertTrue("loader is null and it shouldn't be", loader != null);
     CommonGramsFilterFactory factory = new CommonGramsFilterFactory();
-    Map<String, String> args = new HashMap<String, String>(DEFAULT_VERSION_PARAM);
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
+    Map<String, String> args = Collections.emptyMap();
     factory.init(args);
     factory.inform(loader);
     CharArraySet words = factory.getCommonWords();

@@ -294,7 +294,7 @@ public class HttpSolrServer extends SolrServer {
               }
               
               if (parts.size() > 0) {
-                MultipartEntity entity = new MultipartEntity(HttpMultipartMode.BROWSER_COMPATIBLE);
+                MultipartEntity entity = new MultipartEntity(HttpMultipartMode.STRICT);
                 for(FormBodyPart p: parts) {
                   entity.addPart(p);
                 }
@@ -387,6 +387,7 @@ public class HttpSolrServer extends SolrServer {
       switch (httpStatus) {
         case HttpStatus.SC_OK:
         case HttpStatus.SC_BAD_REQUEST:
+        case HttpStatus.SC_CONFLICT:  // 409
           break;
         case HttpStatus.SC_MOVED_PERMANENTLY:
         case HttpStatus.SC_MOVED_TEMPORARILY:

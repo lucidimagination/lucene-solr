@@ -19,10 +19,10 @@ package org.apache.solr.schema;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.KeywordAnalyzer;
-import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.analysis.util.*;
 import org.apache.lucene.util.Version;
-import org.apache.solr.analysis.*;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.solr.analysis.KeywordTokenizerFactory;
+import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.util.DOMUtil;
 import org.apache.solr.core.Config;
@@ -181,7 +181,7 @@ public final class FieldTypePluginLoader
 
     public void add(Object current) {
       if (!(current instanceof MultiTermAwareComponent)) return;
-      Object newComponent = ((MultiTermAwareComponent)current).getMultiTermComponent();
+      AbstractAnalysisFactory newComponent = ((MultiTermAwareComponent)current).getMultiTermComponent();
       if (newComponent instanceof TokenFilterFactory) {
         if (filters == null) {
           filters = new ArrayList<TokenFilterFactory>(2);
@@ -270,10 +270,10 @@ public final class FieldTypePluginLoader
       protected void init(CharFilterFactory plugin, Node node) throws Exception {
         if( plugin != null ) {
           final Map<String,String> params = DOMUtil.toMapExcept(node.getAttributes(),"class");
-          // copy the luceneMatchVersion from config, if not set
-          if (!params.containsKey(LUCENE_MATCH_VERSION_PARAM))
-            params.put(LUCENE_MATCH_VERSION_PARAM, 
-                       schema.getDefaultLuceneMatchVersion().toString());
+
+          String configuredVersion = params.remove(LUCENE_MATCH_VERSION_PARAM);
+          plugin.setLuceneMatchVersion(parseConfiguredVersion(configuredVersion, plugin.getClass().getSimpleName()));
+
           plugin.init( params );
           charFilters.add( plugin );
         }
@@ -306,10 +306,9 @@ public final class FieldTypePluginLoader
         }
         final Map<String,String> params = DOMUtil.toMapExcept(node.getAttributes(),"class");
 
-        // copy the luceneMatchVersion from config, if not set
-        if (!params.containsKey(LUCENE_MATCH_VERSION_PARAM))
-          params.put(LUCENE_MATCH_VERSION_PARAM, 
-                     schema.getDefaultLuceneMatchVersion().toString());
+        String configuredVersion = params.remove(LUCENE_MATCH_VERSION_PARAM);
+        plugin.setLuceneMatchVersion(parseConfiguredVersion(configuredVersion, plugin.getClass().getSimpleName()));
+
         plugin.init( params );
         tokenizers.add( plugin );
       }
@@ -340,10 +339,10 @@ public final class FieldTypePluginLoader
       protected void init(TokenFilterFactory plugin, Node node) throws Exception {
         if( plugin != null ) {
           final Map<String,String> params = DOMUtil.toMapExcept(node.getAttributes(),"class");
-          // copy the luceneMatchVersion from config, if not set
-          if (!params.containsKey(LUCENE_MATCH_VERSION_PARAM))
-            params.put(LUCENE_MATCH_VERSION_PARAM, 
-                       schema.getDefaultLuceneMatchVersion().toString());
+
+          String configuredVersion = params.remove(LUCENE_MATCH_VERSION_PARAM);
+          plugin.setLuceneMatchVersion(parseConfiguredVersion(configuredVersion, plugin.getClass().getSimpleName()));
+
           plugin.init( params );
           filters.add( plugin );
         }
@@ -358,6 +357,18 @@ public final class FieldTypePluginLoader
     
     return new TokenizerChain(charFilters.toArray(new CharFilterFactory[charFilters.size()]),
                               tokenizers.get(0), filters.toArray(new TokenFilterFactory[filters.size()]));
+  }
+
+  private Version parseConfiguredVersion(String configuredVersion, String pluginClassName) {
+    Version version = (configuredVersion != null) ?
+            Config.parseLuceneVersionString(configuredVersion) : schema.getDefaultLuceneMatchVersion();
+
+    if (!version.onOrAfter(Version.LUCENE_40)) {
+      log.warn(pluginClassName + " is using deprecated " + version +
+        " emulation. You should at some point declare and reindex to at least 4.0, because " +
+        "3.x emulation is deprecated and will be removed in 5.0");
+    }
+    return version;
   }
     
 }

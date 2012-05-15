@@ -22,6 +22,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.commons.codec.language.Metaphone;
+import org.apache.commons.codec.language.Caverphone2;
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
@@ -30,7 +32,7 @@ import org.apache.lucene.analysis.Tokenizer;
 /**
  *
  */
-public class TestPhoneticFilterFactory extends BaseTokenTestCase {
+public class TestPhoneticFilterFactory extends BaseTokenStreamTestCase {
   
   private static final int REPEATS = 100000;
 
@@ -45,12 +47,16 @@ public class TestPhoneticFilterFactory extends BaseTokenTestCase {
     
     args.put( PhoneticFilterFactory.ENCODER, "Metaphone" );
     ff.init( args );
-    assertTrue( ff.encoder instanceof Metaphone );
+    assertTrue( ff.getEncoder() instanceof Metaphone );
     assertTrue( ff.inject ); // default
 
     args.put( PhoneticFilterFactory.INJECT, "false" );
     ff.init( args );
     assertFalse( ff.inject );
+
+    args.put( PhoneticFilterFactory.MAX_CODE_LENGTH, "2");
+    ff.init( args );
+    assertEquals(2,((Metaphone) ff.getEncoder()).getMaxCodeLen());
   }
   
   /**
@@ -91,7 +97,20 @@ public class TestPhoneticFilterFactory extends BaseTokenTestCase {
 
     args.put( PhoneticFilterFactory.ENCODER, "org.apache.commons.codec.language.Metaphone" );
     ff.init( args );
-    assertTrue( ff.encoder instanceof Metaphone );
+    assertTrue( ff.getEncoder() instanceof Metaphone );
+    assertTrue( ff.inject ); // default
+
+    // we use "Caverphone2" as it is registered in the REGISTRY as Caverphone,
+    // so this effectively tests reflection without package name
+    args.put( PhoneticFilterFactory.ENCODER, "Caverphone2" );
+    ff.init( args );
+    assertTrue( ff.getEncoder() instanceof Caverphone2 );
+    assertTrue( ff.inject ); // default
+    
+    // cross check with registry
+    args.put( PhoneticFilterFactory.ENCODER, "Caverphone" );
+    ff.init( args );
+    assertTrue( ff.getEncoder() instanceof Caverphone2 );
     assertTrue( ff.inject ); // default
   }
   

@@ -19,14 +19,12 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.document.DocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FloatDocValuesField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocValues.Source;
-import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Norm;
@@ -37,6 +35,7 @@ import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
 /**
  * Tests the use of indexdocvalues in scoring.
@@ -44,19 +43,17 @@ import org.apache.lucene.util.LuceneTestCase;
  * In the example, a docvalues field is used as a per-document boost (separate from the norm)
  * @lucene.experimental
  */
+@SuppressCodecs("Lucene3x")
 public class TestDocValuesScoring extends LuceneTestCase {
   private static final float SCORE_EPSILON = 0.001f; /* for comparing floats */
 
-  public void testSimple() throws Exception {
-    assumeFalse("PreFlex codec cannot work with DocValues!", 
-        "Lucene3x".equals(Codec.getDefault().getName()));
-    
+  public void testSimple() throws Exception {    
     Directory dir = newDirectory();
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
     Document doc = new Document();
     Field field = newField("foo", "", TextField.TYPE_UNSTORED);
     doc.add(field);
-    DocValuesField dvField = new DocValuesField("foo_boost", 0.0f, DocValues.Type.FLOAT_32);
+    Field dvField = new FloatDocValuesField("foo_boost", 0.0f);
     doc.add(dvField);
     Field field2 = newField("bar", "", TextField.TYPE_UNSTORED);
     doc.add(field2);

@@ -9,8 +9,24 @@ HTTP data sources quick and easy.
 
 $Id$
 ==================  4.0.0-dev ==============
+Bug Fixes
+----------------------
+* SOLR-3430: Added a new test against a real SQL database.  Fixed problems revealed by this new test
+             related to  the expanded cache support added to 3.6/SOLR-2382 (James Dyer)
 
-(No Changes)
+Other Changes
+----------------------
+* SOLR-3262: The "threads" feature is removed (deprecated in Solr 3.6) (James Dyer)
+
+* SOLR-3422: Refactored internal data classes. 
+             All entities in data-config.xml must have a name (James Dyer)
+
+==================  3.6.1 ==================
+
+Bug Fixes
+----------------------
+* SOLR-3336: SolrEntityProcessor substitutes most variables at query time
+             (Michael Kroh, Lance Norskog, via Martijn van Groningen)
 
 ==================  3.6.0 ==================
 

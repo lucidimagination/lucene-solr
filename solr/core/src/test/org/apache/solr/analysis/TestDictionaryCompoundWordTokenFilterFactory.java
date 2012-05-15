@@ -22,16 +22,17 @@ import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.core.SolrResourceLoader;
 
 /**
  * Simple tests to ensure the Dictionary compound filter factory is working.
  */
-public class TestDictionaryCompoundWordTokenFilterFactory extends BaseTokenTestCase {
+public class TestDictionaryCompoundWordTokenFilterFactory extends BaseTokenStreamTestCase {
   /**
    * Ensure the filter actually decompounds text.
    */
@@ -40,8 +41,9 @@ public class TestDictionaryCompoundWordTokenFilterFactory extends BaseTokenTestC
     Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
     DictionaryCompoundWordTokenFilterFactory factory = new DictionaryCompoundWordTokenFilterFactory();
     ResourceLoader loader = new SolrResourceLoader(null, null);
-    Map<String,String> args = new HashMap<String,String>(DEFAULT_VERSION_PARAM);
+    Map<String,String> args = new HashMap<String,String>();
     args.put("dictionary", "compoundDictionary.txt");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     TokenStream stream = factory.create(tokenizer);

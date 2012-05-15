@@ -361,10 +361,7 @@
        
        To enable solr1.1 behavior, remove the /update handler or change its path
     -->
-  <requestHandler name="/update" class="solr.XmlUpdateRequestHandler" />
-
-  <!-- CSV update handler, loaded on demand -->
-  <requestHandler name="/update/csv" class="solr.CSVRequestHandler" startup="lazy" />
+  <requestHandler name="/update" class="solr.UpdateRequestHandler"  />
 
 
   <!-- 
@@ -464,10 +461,6 @@
   <!-- config for the admin interface --> 
   <admin>
     <defaultQuery>solr</defaultQuery>
-    
-    <!-- configure a healthcheck file for servers behind a loadbalancer
-    <healthcheck type="file">server-enabled</healthcheck>
-    -->
   </admin>
 
 </config>

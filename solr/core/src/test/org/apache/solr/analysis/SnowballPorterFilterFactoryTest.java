@@ -16,10 +16,11 @@ package org.apache.solr.analysis;
  * limitations under the License.
  */
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.SolrResourceLoader;
 import org.tartarus.snowball.ext.EnglishStemmer;
@@ -34,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 
-public class SnowballPorterFilterFactoryTest extends BaseTokenTestCase {
+public class SnowballPorterFilterFactoryTest extends BaseTokenStreamTestCase {
 
   public void test() throws IOException {
     EnglishStemmer stemmer = new EnglishStemmer();
@@ -47,9 +48,10 @@ public class SnowballPorterFilterFactoryTest extends BaseTokenTestCase {
     }
 
     SnowballPorterFilterFactory factory = new SnowballPorterFilterFactory();
-    Map<String, String> args = new HashMap<String, String>(DEFAULT_VERSION_PARAM);
+    Map<String, String> args = new HashMap<String, String>();
     args.put("language", "English");
 
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(new LinesMockSolrResourceLoader(new ArrayList<String>()));
     Tokenizer tokenizer = new MockTokenizer(
@@ -84,9 +86,10 @@ public class SnowballPorterFilterFactoryTest extends BaseTokenTestCase {
   public void testProtected() throws Exception {
     SnowballPorterFilterFactory factory = new SnowballPorterFilterFactory();
     ResourceLoader loader = new SolrResourceLoader(null, null);
-    Map<String,String> args = new HashMap<String,String>(DEFAULT_VERSION_PARAM);
+    Map<String,String> args = new HashMap<String,String>();
     args.put("protected", "protwords.txt");
     args.put("language", "English");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     Reader reader = new StringReader("ridding of some stemming");

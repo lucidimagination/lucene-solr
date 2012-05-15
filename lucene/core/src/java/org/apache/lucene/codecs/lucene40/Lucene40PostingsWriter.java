@@ -38,7 +38,12 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CodecUtil;
 import org.apache.lucene.util.IOUtils;
 
-/** @lucene.experimental */
+/**
+ * Concrete class that writes the 4.0 frq/prx postings format.
+ * 
+ * @see Lucene40PostingsFormat
+ * @lucene.experimental 
+ */
 public final class Lucene40PostingsWriter extends PostingsWriterBase {
   final static String CODEC = "Lucene40PostingsWriter";
 
@@ -138,11 +143,11 @@ public final class Lucene40PostingsWriter extends PostingsWriterBase {
     //if (DEBUG) System.out.println("SPW: startTerm freqOut.fp=" + freqStart);
     if (proxOut != null) {
       proxStart = proxOut.getFilePointer();
-      // force first payload to write its length
-      lastPayloadLength = -1;
-      // force first offset to write its length
-      lastOffsetLength = -1;
     }
+    // force first payload to write its length
+    lastPayloadLength = -1;
+    // force first offset to write its length
+    lastOffsetLength = -1;
     skipListWriter.resetSkip();
   }
 

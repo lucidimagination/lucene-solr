@@ -24,8 +24,10 @@ import org.apache.lucene.codecs.MultiLevelSkipListReader;
 import org.apache.lucene.store.IndexInput;
 
 /**
- * Implements the skip list reader for the default posting list format
+ * Implements the skip list reader for the 4.0 posting list format
  * that stores positions and payloads.
+ * 
+ * @see Lucene40PostingsFormat
  * @lucene.experimental
  */
 public class Lucene40SkipListReader extends MultiLevelSkipListReader {
@@ -111,23 +113,24 @@ public class Lucene40SkipListReader extends MultiLevelSkipListReader {
   @Override
   protected int readSkipData(int level, IndexInput skipStream) throws IOException {
     int delta;
-    if (currentFieldStoresPayloads) {
-      // the current field stores payloads.
+    if (currentFieldStoresPayloads || currentFieldStoresOffsets) {
+      // the current field stores payloads and/or offsets.
       // if the doc delta is odd then we have
-      // to read the current payload length
-      // because it differs from the length of the
-      // previous payload
+      // to read the current payload/offset lengths
+      // because it differs from the lengths of the
+      // previous payload/offset
       delta = skipStream.readVInt();
       if ((delta & 1) != 0) {
-        payloadLength[level] = skipStream.readVInt();
+        if (currentFieldStoresPayloads) {
+          payloadLength[level] = skipStream.readVInt();
+        }
+        if (currentFieldStoresOffsets) {
+          offsetLength[level] = skipStream.readVInt();
+        }
       }
       delta >>>= 1;
     } else {
       delta = skipStream.readVInt();
-    }
-
-    if (currentFieldStoresOffsets) {
-      offsetLength[level] = skipStream.readVInt();
     }
 
     freqPointer[level] += skipStream.readVInt();

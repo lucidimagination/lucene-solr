@@ -21,6 +21,9 @@ import java.util.Map;
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
+import org.apache.lucene.analysis.util.MultiTermAwareComponent;
+import org.apache.lucene.analysis.util.TokenFilterFactory;
 
 /**
  * Factory for {@link LowerCaseFilter}. 
@@ -33,7 +36,7 @@ import org.apache.lucene.analysis.core.LowerCaseFilter;
  * &lt;/fieldType&gt;</pre> 
  *
  */
-public class LowerCaseFilterFactory extends BaseTokenFilterFactory implements MultiTermAwareComponent {
+public class LowerCaseFilterFactory extends TokenFilterFactory implements MultiTermAwareComponent {
   @Override
   public void init(Map<String,String> args) {
     super.init(args);
@@ -45,7 +48,7 @@ public class LowerCaseFilterFactory extends BaseTokenFilterFactory implements Mu
   }
 
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

@@ -395,15 +395,15 @@ public class CoreContainer
         slf4jImpl = StaticLoggerBinder.getSingleton().getLoggerFactoryClassStr();
         if(fname==null) {
           if( slf4jImpl.indexOf("Log4j") > 0) {
-            fname = "Log4j";
+            log.warn("Log watching is not yet implemented for log4j" );
           }
           else if( slf4jImpl.indexOf("JDK") > 0) {
             fname = "JUL";
           }
         }
       }
-      catch(Exception ex) {
-        log.warn("Unable to read SLF4J version", ex);
+      catch(Throwable ex) {
+        log.warn("Unable to read SLF4J version.  LogWatcher will be disabled: "+ex);
       }
       
       // Now load the framework
@@ -418,8 +418,8 @@ public class CoreContainer
           try {
             logging = loader.newInstance(fname, LogWatcher.class);
           }
-          catch (Exception e) {
-            throw new SolrException(ErrorCode.SERVER_ERROR, e);
+          catch (Throwable e) {
+            log.warn("Unable to load LogWatcher", e);
           }
         }
         

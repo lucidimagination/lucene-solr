@@ -23,17 +23,23 @@ import java.io.Reader;
 import java.util.Map;
 
 import org.apache.lucene.analysis.cn.ChineseTokenizer;
+import org.apache.lucene.analysis.util.TokenizerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 
  * Factory for {@link ChineseTokenizer}
  * @deprecated Use {@link StandardTokenizerFactory} instead.
  */
 @Deprecated
-public class ChineseTokenizerFactory extends BaseTokenizerFactory {
+public class ChineseTokenizerFactory extends TokenizerFactory {
+
+  private static final Logger log = LoggerFactory.getLogger(ChineseTokenizerFactory.class);
+
   @Override
   public void init(Map<String,String> args) {
     super.init(args);
-    warnDeprecated("Use StandardTokenizerFactory instead.");
+    log.warn(getClass().getSimpleName() + " is deprecated. Use StandardTokenizeFactory instead.");
   }
   
   public ChineseTokenizer create(Reader in) {

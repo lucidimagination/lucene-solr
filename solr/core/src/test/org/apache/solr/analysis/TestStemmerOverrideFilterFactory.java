@@ -23,25 +23,27 @@ import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.core.SolrResourceLoader;
 
 /**
  * Simple tests to ensure the stemmer override filter factory is working.
  */
-public class TestStemmerOverrideFilterFactory extends BaseTokenTestCase {
+public class TestStemmerOverrideFilterFactory extends BaseTokenStreamTestCase {
   public void testKeywords() throws IOException {
     // our stemdict stems dogs to 'cat'
     Reader reader = new StringReader("testing dogs");
     Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
     StemmerOverrideFilterFactory factory = new StemmerOverrideFilterFactory();
-    Map<String,String> args = new HashMap<String,String>(DEFAULT_VERSION_PARAM);
+    Map<String,String> args = new HashMap<String,String>();
     ResourceLoader loader = new SolrResourceLoader(null, null);
     args.put("dictionary", "stemdict.txt");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     
@@ -53,10 +55,11 @@ public class TestStemmerOverrideFilterFactory extends BaseTokenTestCase {
     Reader reader = new StringReader("testing DoGs");
     Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
     StemmerOverrideFilterFactory factory = new StemmerOverrideFilterFactory();
-    Map<String,String> args = new HashMap<String,String>(DEFAULT_VERSION_PARAM);
+    Map<String,String> args = new HashMap<String,String>();
     ResourceLoader loader = new SolrResourceLoader(null, null);
     args.put("dictionary", "stemdict.txt");
     args.put("ignoreCase", "true");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     

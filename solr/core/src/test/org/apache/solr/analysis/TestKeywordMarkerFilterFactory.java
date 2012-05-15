@@ -23,24 +23,26 @@ import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.solr.common.ResourceLoader;
+import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.core.SolrResourceLoader;
 
 /**
  * Simple tests to ensure the keyword marker filter factory is working.
  */
-public class TestKeywordMarkerFilterFactory extends BaseTokenTestCase {
+public class TestKeywordMarkerFilterFactory extends BaseTokenStreamTestCase {
   public void testKeywords() throws IOException {
     Reader reader = new StringReader("dogs cats");
     Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
     KeywordMarkerFilterFactory factory = new KeywordMarkerFilterFactory();
-    Map<String,String> args = new HashMap<String,String>(DEFAULT_VERSION_PARAM);
+    Map<String,String> args = new HashMap<String,String>();
     ResourceLoader loader = new SolrResourceLoader(null, null);
     args.put("protected", "protwords.txt");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     
@@ -52,10 +54,11 @@ public class TestKeywordMarkerFilterFactory extends BaseTokenTestCase {
     Reader reader = new StringReader("dogs cats Cats");
     Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
     KeywordMarkerFilterFactory factory = new KeywordMarkerFilterFactory();
-    Map<String,String> args = new HashMap<String,String>(DEFAULT_VERSION_PARAM);
+    Map<String,String> args = new HashMap<String,String>();
     ResourceLoader loader = new SolrResourceLoader(null, null);
     args.put("protected", "protwords.txt");
     args.put("ignoreCase", "true");
+    factory.setLuceneMatchVersion(TEST_VERSION_CURRENT);
     factory.init(args);
     factory.inform(loader);
     

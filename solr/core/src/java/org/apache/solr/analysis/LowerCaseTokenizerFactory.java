@@ -17,8 +17,10 @@
 
 package org.apache.solr.analysis;
 
-import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.LowerCaseTokenizer;
+import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
+import org.apache.lucene.analysis.util.MultiTermAwareComponent;
+import org.apache.lucene.analysis.util.TokenizerFactory;
 
 import java.io.Reader;
 import java.util.Map;
@@ -33,7 +35,7 @@ import java.util.Map;
  * &lt;/fieldType&gt;</pre> 
  *
  */
-public class LowerCaseTokenizerFactory extends BaseTokenizerFactory implements MultiTermAwareComponent {
+public class LowerCaseTokenizerFactory extends TokenizerFactory implements MultiTermAwareComponent {
   @Override
   public void init(Map<String,String> args) {
     super.init(args);
@@ -45,8 +47,9 @@ public class LowerCaseTokenizerFactory extends BaseTokenizerFactory implements M
   }
 
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     LowerCaseFilterFactory filt = new LowerCaseFilterFactory();
+    filt.setLuceneMatchVersion(luceneMatchVersion);
     filt.init(args);
     return filt;
   }

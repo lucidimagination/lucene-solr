@@ -3,10 +3,8 @@ package org.apache.solr.analysis;
 import java.io.IOException;
 
 import org.apache.lucene.analysis.miscellaneous.KeywordMarkerFilter;
-import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.analysis.util.*;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.solr.common.ResourceLoader;
-import org.apache.solr.util.plugin.ResourceLoaderAware;
 
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -36,7 +34,7 @@ import org.apache.solr.util.plugin.ResourceLoaderAware;
  * &lt;/fieldType&gt;</pre> 
  *
  */
-public class KeywordMarkerFilterFactory extends BaseTokenFilterFactory implements ResourceLoaderAware {
+public class KeywordMarkerFilterFactory extends TokenFilterFactory implements ResourceLoaderAware {
   public static final String PROTECTED_TOKENS = "protected";
   private CharArraySet protectedWords;
   private boolean ignoreCase;

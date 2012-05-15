@@ -19,6 +19,9 @@ package org.apache.solr.analysis;
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.in.IndicNormalizationFilter;
+import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
+import org.apache.lucene.analysis.util.MultiTermAwareComponent;
+import org.apache.lucene.analysis.util.TokenFilterFactory;
 
 /** 
  * Factory for {@link IndicNormalizationFilter}. 
@@ -31,13 +34,13 @@ import org.apache.lucene.analysis.in.IndicNormalizationFilter;
  * &lt;/fieldType&gt;</pre>
  *
  */
-public class IndicNormalizationFilterFactory extends BaseTokenFilterFactory implements MultiTermAwareComponent {
+public class IndicNormalizationFilterFactory extends TokenFilterFactory implements MultiTermAwareComponent {
   public TokenStream create(TokenStream input) {
     return new IndicNormalizationFilter(input);
   }
   
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

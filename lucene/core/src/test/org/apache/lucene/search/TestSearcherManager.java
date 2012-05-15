@@ -39,11 +39,11 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.ThreadedIndexingAndSearchingTestCase;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.LuceneTestCase.UseNoMemoryExpensiveCodec;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util._TestUtil;
 
-@UseNoMemoryExpensiveCodec
+@SuppressCodecs({ "SimpleText", "Memory" })
 public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
 
   boolean warmCalled;
@@ -108,7 +108,11 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
             Thread.sleep(_TestUtil.nextInt(random(), 1, 100));
             writer.commit();
             Thread.sleep(_TestUtil.nextInt(random(), 1, 5));
-            if (mgr.maybeRefresh()) {
+            boolean block = random().nextBoolean();
+            if (block) {
+              mgr.maybeRefreshBlocking();
+              lifetimeMGR.prune(pruner);
+            } else if (mgr.maybeRefresh()) {
               lifetimeMGR.prune(pruner);
             }
           }
@@ -349,4 +353,35 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     other.close();
     dir.close();
   }
+  
+  public void testMaybeRefreshBlockingLock() throws Exception {
+    // make sure that maybeRefreshBlocking releases the lock, otherwise other
+    // threads cannot obtain it.
+    final Directory dir = newDirectory();
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    w.close();
+    
+    final SearcherManager sm = new SearcherManager(dir, null);
+    
+    Thread t = new Thread() {
+      @Override
+      public void run() {
+        try {
+          // this used to not release the lock, preventing other threads from obtaining it.
+          sm.maybeRefreshBlocking();
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }
+    };
+    t.start();
+    t.join();
+    
+    // if maybeRefreshBlocking didn't release the lock, this will fail.
+    assertTrue("failde to obtain the refreshLock!", sm.maybeRefresh());
+    
+    sm.close();
+    dir.close();
+  }
+  
 }

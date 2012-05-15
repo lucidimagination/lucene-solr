@@ -32,6 +32,7 @@ import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
 import org.apache.solr.common.cloud.CloudState;
 import org.apache.solr.common.cloud.Slice;
@@ -45,6 +46,7 @@ import org.apache.solr.common.params.UpdateParams;
 import org.apache.solr.common.util.Hash;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.CoreDescriptor;
+import org.apache.solr.handler.component.RealTimeGetComponent;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
@@ -425,6 +427,24 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
           long bucketVersion = bucket.highest;
 
           if (leaderLogic) {
+
+            boolean updated = getUpdatedDocument(cmd);
+            if (updated && versionOnUpdate == -1) {
+              versionOnUpdate = 1;  // implied "doc must exist" for now...
+            }
+
+            if (versionOnUpdate != 0) {
+              Long lastVersion = vinfo.lookupVersion(cmd.getIndexedId());
+              long foundVersion = lastVersion == null ? -1 : lastVersion;
+              if ( versionOnUpdate == foundVersion || (versionOnUpdate < 0 && foundVersion < 0) || (versionOnUpdate==1 && foundVersion > 0) ) {
+                // we're ok if versions match, or if both are negative (all missing docs are equal), or if cmd
+                // specified it must exist (versionOnUpdate==1) and it does.
+              } else {
+                throw new SolrException(ErrorCode.CONFLICT, "version conflict for " + cmd.getPrintableId() + " expected=" + versionOnUpdate + " actual=" + foundVersion);
+              }
+            }
+
+
             long version = vinfo.getNewClock();
             cmd.setVersion(version);
             cmd.getSolrInputDocument().setField(VersionInfo.VERSION_FIELD, version);
@@ -465,6 +485,86 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     }
     return false;
   }
+
+
+  // TODO: may want to switch to using optimistic locking in the future for better concurrency
+  // that's why this code is here... need to retry in a loop closely around/in versionAdd
+  boolean getUpdatedDocument(AddUpdateCommand cmd) throws IOException {
+    SolrInputDocument sdoc = cmd.getSolrInputDocument();
+    boolean update = false;
+    for (SolrInputField sif : sdoc.values()) {
+      if (sif.getValue() instanceof Map) {
+        update = true;
+        break;
+      }
+    }
+
+    if (!update) return false;
+
+    BytesRef id = cmd.getIndexedId();
+    SolrInputDocument oldDoc = RealTimeGetComponent.getInputDocument(cmd.getReq().getCore(), id);
+
+    if (oldDoc == null) {
+      // not found... allow this in the future (depending on the details of the update, or if the user explicitly sets it).
+      // could also just not change anything here and let the optimistic locking throw the error
+      throw new SolrException(ErrorCode.CONFLICT, "Document not found for update.  id=" + cmd.getPrintableId());
+    }
+
+    oldDoc.remove(VERSION_FIELD);
+
+    for (SolrInputField sif : sdoc.values()) {
+      Object val = sif.getValue();
+      if (val instanceof Map) {
+        for (Entry<String,Object> entry : ((Map<String,Object>) val).entrySet()) {
+          String key = entry.getKey();
+          Object fieldVal = entry.getValue();
+          if ("add".equals(key)) {
+            oldDoc.addField( sif.getName(), fieldVal, sif.getBoost());
+          } else if ("set".equals(key)) {
+            oldDoc.setField(sif.getName(),  fieldVal, sif.getBoost());
+          } else if ("inc".equals(key)) {
+            SolrInputField numericField = oldDoc.get(sif.getName());
+            if (numericField == null) {
+              oldDoc.setField(sif.getName(),  fieldVal, sif.getBoost());
+            } else {
+              // TODO: fieldtype needs externalToObject?
+              String oldValS = numericField.getFirstValue().toString();
+              SchemaField sf = cmd.getReq().getSchema().getField(sif.getName());
+              BytesRef term = new BytesRef();
+              sf.getType().readableToIndexed(oldValS, term);
+              Object oldVal = sf.getType().toObject(sf, term);
+
+              String fieldValS = fieldVal.toString();
+              Number result;
+              if (oldVal instanceof Long) {
+                result = ((Long) oldVal).longValue() + Long.parseLong(fieldValS);
+              } else if (oldVal instanceof Float) {
+                result = ((Float) oldVal).floatValue() + Float.parseFloat(fieldValS);
+              } else if (oldVal instanceof Double) {
+                result = ((Double) oldVal).doubleValue() + Double.parseDouble(fieldValS);
+              } else {
+                // int, short, byte
+                result = ((Integer) oldVal).intValue() + Integer.parseInt(fieldValS);
+              }
+
+              oldDoc.setField(sif.getName(),  result, sif.getBoost());
+            }
+
+          }
+        }
+      } else {
+        // normal fields are treated as a "set"
+        oldDoc.put(sif.getName(), sif);
+      }
+
+    }
+
+    cmd.solrDoc = oldDoc;
+    return true;
+  }
+
+
+
   
   @Override
   public void processDelete(DeleteUpdateCommand cmd) throws IOException {
@@ -626,10 +726,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
           cmd.setVersion(-version);
           // TODO update versions in all buckets
 
-          // TODO: flush any adds to these replicas so they do not get reordered w.r.t. this DBQ
-
           doLocalDelete(cmd);
-
 
         } else {
           cmd.setVersion(-versionOnUpdate);
@@ -715,6 +812,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
       String versionOnUpdateS = req.getParams().get(VERSION_FIELD);
       versionOnUpdate = versionOnUpdateS == null ? 0 : Long.parseLong(versionOnUpdateS);
     }
+    long signedVersionOnUpdate = versionOnUpdate;
     versionOnUpdate = Math.abs(versionOnUpdate);  // normalize to positive version
 
     boolean isReplay = (cmd.getFlags() & UpdateCommand.REPLAY) != 0;
@@ -734,6 +832,18 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
           long bucketVersion = bucket.highest;
 
           if (leaderLogic) {
+
+            if (signedVersionOnUpdate != 0) {
+              Long lastVersion = vinfo.lookupVersion(cmd.getIndexedId());
+              long foundVersion = lastVersion == null ? -1 : lastVersion;
+              if ( (signedVersionOnUpdate == foundVersion) || (signedVersionOnUpdate < 0 && foundVersion < 0) || (signedVersionOnUpdate == 1 && foundVersion > 0) ) {
+                // we're ok if versions match, or if both are negative (all missing docs are equal), or if cmd
+                // specified it must exist (versionOnUpdate==1) and it does.
+              } else {
+                throw new SolrException(ErrorCode.CONFLICT, "version conflict for " + cmd.getId() + " expected=" + signedVersionOnUpdate + " actual=" + foundVersion);
+              }
+            }
+
             long version = vinfo.getNewClock();
             cmd.setVersion(-version);
             bucket.updateHighest(version);

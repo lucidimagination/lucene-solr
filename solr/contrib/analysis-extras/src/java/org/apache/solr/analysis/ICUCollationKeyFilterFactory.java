@@ -21,11 +21,10 @@ import java.io.InputStream;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.util.*;
 import org.apache.lucene.collation.ICUCollationKeyFilter;
-import org.apache.solr.common.ResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.util.plugin.ResourceLoaderAware;
 
 import com.ibm.icu.text.Collator;
 import com.ibm.icu.text.RuleBasedCollator;
@@ -70,7 +69,7 @@ import com.ibm.icu.util.ULocale;
  * @deprecated use {@link org.apache.solr.schema.ICUCollationField} instead.
  */
 @Deprecated
-public class ICUCollationKeyFilterFactory extends BaseTokenFilterFactory implements MultiTermAwareComponent,ResourceLoaderAware {
+public class ICUCollationKeyFilterFactory extends TokenFilterFactory implements MultiTermAwareComponent, ResourceLoaderAware {
   private Collator collator;
 
   public void inform(ResourceLoader loader) {
@@ -189,7 +188,7 @@ public class ICUCollationKeyFilterFactory extends BaseTokenFilterFactory impleme
   }
   
   @Override
-  public Object getMultiTermComponent() {
+  public AbstractAnalysisFactory getMultiTermComponent() {
     return this;
   }
 }

@@ -141,9 +141,10 @@ Changes in backwards compatibility policy
   ParallelMultiSearcher into IndexSearcher as an optional
   ExecutorServiced passed to its ctor.  (Mike McCandless)
 
-* LUCENE-2908: Removed serialization code from lucene classes. It is recommended
-  that you serialize user search needs at a higher level in your application.
-  (Robert Muir)
+* LUCENE-2908, LUCENE-4037: Removed serialization code from lucene classes. 
+  It is recommended that you serialize user search needs at a higher level 
+  in your application.
+  (Robert Muir, Benson Margulies)
 
 * LUCENE-2831: Changed Weight#scorer, Weight#explain & Filter#getDocIdSet to
   operate on a AtomicReaderContext instead of directly on IndexReader to enable
@@ -503,6 +504,10 @@ API Changes
   and sometimes different depending on the type of set, and ultimately a CharArraySet
   or CharArrayMap was always used anyway.  (Robert Muir)
 
+* LUCENE-3830: Switched to NormalizeCharMap.Builder to create
+  immutable instances of NormalizeCharMap. (Dawid Weiss, Mike
+  McCandless)
+
 New features
 
 * LUCENE-2604: Added RegexpQuery support to QueryParser. Regular expressions
@@ -846,6 +851,12 @@ New features
 * LUCENE-4004: Add DisjunctionMaxQuery support to the xml query parser.
   (Benson Margulies via Robert Muir)
 
+* LUCENE-4025: Add maybeRefreshBlocking to ReferenceManager, to let a caller 
+  block until the refresh logic has been executed. (Shai Erera, Mike McCandless)
+  
+* LUCENE-4039: Add AddIndexesTask to benchmark, which uses IW.addIndexes. 
+  (Shai Erera)
+
 Optimizations
 
 * LUCENE-2588: Don't store unnecessary suffixes when writing the terms
@@ -889,6 +900,11 @@ Optimizations
 
 * LUCENE-3468: Replaced last() and remove() with pollLast() in
   FirstPassGroupingCollector (Martijn van Groningen)
+
+* LUCENE-3830: Changed MappingCharFilter/NormalizeCharMap to use an
+  FST under the hood, which requires less RAM.  NormalizeCharMap no
+  longer accepts empty string match (it did previously, but ignored
+  it).  (Dawid Weiss, Mike McCandless)
              
 Bug fixes
 
@@ -943,6 +959,8 @@ Documentation
   (Iulius Curt via Robert Muir)
 
 Build
+
+* LUCENE-4016: Require ANT 1.8.2+ for the build. 
 
 * LUCENE-3808: Refactoring of testing infrastructure to use randomizedtesting
   package: http://labs.carrotsearch.com/randomizedtesting.html (Dawid Weiss)
