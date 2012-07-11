@@ -1155,7 +1155,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     if (random.nextInt(10)==0) {
       assertU(optimize());
     } else {
-      if (random().nextInt(10) == 0) {
+      if (random.nextInt(10) == 0) {
         assertU(commit());
       } else {
         assertU(commit("softCommit","true"));
