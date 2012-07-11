@@ -50,7 +50,7 @@ public class TestRandomFaceting extends SolrTestCaseJ4 {
   boolean validateResponses = true;
 
   void init() {
-    Random rand = random();
+    Random rand = random;
     clearIndex();
     model = null;
     indexSize = rand.nextBoolean() ? (rand.nextInt(10) + 1) : (rand.nextInt(100) + 10);
@@ -81,7 +81,7 @@ public class TestRandomFaceting extends SolrTestCaseJ4 {
   }
 
   void deleteSomeDocs() throws Exception {
-    Random rand = random();
+    Random rand = random;
     int percent = rand.nextInt(100);
     if (model == null) return;
     ArrayList<String> ids = new ArrayList<String>(model.size());
@@ -111,7 +111,7 @@ public class TestRandomFaceting extends SolrTestCaseJ4 {
   @Test
   public void testRandomFaceting() throws Exception {
     try {
-      Random rand = random();
+      Random rand = random;
       int iter = atLeast(100);
       init();
       addMoreDocs(0);
@@ -149,7 +149,7 @@ public class TestRandomFaceting extends SolrTestCaseJ4 {
   void doFacetTests(FldType ftype) throws Exception {
     SolrQueryRequest req = req();
     try {
-      Random rand = random();
+      Random rand = random;
       boolean validate = validateResponses;
       ModifiableSolrParams params = params("facet","true", "wt","json", "indent","true", "omitHeader","true");
       params.add("q","*:*", "rows","0");  // TODO: select subsets
@@ -199,7 +199,7 @@ public class TestRandomFaceting extends SolrTestCaseJ4 {
       // TODO: randomly add other facet params
       String key = ftype.fname;
       String facet_field = ftype.fname;
-      if (random().nextBoolean()) {
+      if (random.nextBoolean()) {
         key = "alternate_key";
         facet_field = "{!key="+key+"}"+ftype.fname;
       }
