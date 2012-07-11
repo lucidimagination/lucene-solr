@@ -34,6 +34,7 @@ import org.apache.solr.core.SolrCore;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.ConnectionLossException;
+import org.apache.zookeeper.Watcher.Event.EventType;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
@@ -116,6 +117,11 @@ public  class LeaderElector {
               
               @Override
               public void process(WatchedEvent event) {
+                // session events are not change events,
+                // and do not remove the watcher
+                if (EventType.None.equals(event.getType())) {
+                  return;
+                }
                 // am I the next leader?
                 try {
                   checkIfIamLeader(seq, context, true);

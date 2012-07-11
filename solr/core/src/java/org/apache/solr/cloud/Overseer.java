@@ -44,6 +44,7 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.cloud.ZooKeeperException;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
+import org.apache.zookeeper.Watcher.Event.EventType;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
@@ -390,6 +391,11 @@ public class Overseer implements NodeStateChangeListener, ShardLeaderListener {
     List<String> collections = zkClient.getChildren(ZkStateReader.COLLECTIONS_ZKNODE, new Watcher(){
       @Override
       public void process(WatchedEvent event) {
+        // session events are not change events,
+        // and do not remove the watcher
+        if (EventType.None.equals(event.getType())) {
+          return;
+        }
         try {
           List<String> collections = zkClient.getChildren(ZkStateReader.COLLECTIONS_ZKNODE, this, true);
           collectionsChanged(collections);
@@ -437,6 +443,11 @@ public class Overseer implements NodeStateChangeListener, ShardLeaderListener {
           
           @Override
           public void process(WatchedEvent event) {
+            // session events are not change events,
+            // and do not remove the watcher
+            if (EventType.None.equals(event.getType())) {
+              return;
+            }
             try {
               List<String> leaderNodes = zkClient.getChildren(
                   ZkStateReader.getShardLeadersPath(collection, null), this, true);
@@ -509,6 +520,11 @@ public class Overseer implements NodeStateChangeListener, ShardLeaderListener {
               
               @Override
               public void process(WatchedEvent event) {
+                // session events are not change events,
+                // and do not remove the watcher
+                if (EventType.None.equals(event.getType())) {
+                  return;
+                }
                 try {
                     List<String> liveNodes = zkClient.getChildren(
                         ZkStateReader.LIVE_NODES_ZKNODE, this, true);

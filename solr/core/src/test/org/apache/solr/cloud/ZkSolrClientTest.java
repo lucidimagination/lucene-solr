@@ -28,6 +28,7 @@ import org.apache.solr.util.AbstractSolrTestCase;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.Watcher.Event.EventType;
 import org.junit.AfterClass;
 
 public class ZkSolrClientTest extends AbstractSolrTestCase {
@@ -176,6 +177,11 @@ public class ZkSolrClientTest extends AbstractSolrTestCase {
       zkClient.getChildren("/collections", new Watcher() {
 
         public void process(WatchedEvent event) {
+          // session events are not change events,
+          // and do not remove the watcher
+          if (EventType.None.equals(event.getType())) {
+            return;
+          }
           if (DEBUG) {
             System.out.println("children changed");
           }
