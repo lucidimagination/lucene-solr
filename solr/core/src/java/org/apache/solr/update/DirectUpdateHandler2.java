@@ -172,7 +172,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
 
         Document luceneDocument = cmd.getLuceneDocument();
         // SolrCore.verbose("updateDocument",updateTerm,luceneDocument,writer);
-        writer.updateDocument(updateTerm, luceneDocument);
+        writer.updateDocument(updateTerm, luceneDocument, schema.getAnalyzer());
         // SolrCore.verbose("updateDocument",updateTerm,"DONE");
 
         if(del) { // ensure id remains unique
@@ -183,7 +183,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
         }
       } else {
         // allow duplicates
-        writer.addDocument(cmd.getLuceneDocument());
+        writer.addDocument(cmd.getLuceneDocument(), schema.getAnalyzer());
       }
 
       // Add to the transaction log *after* successfully adding to the index, if there was no error.
