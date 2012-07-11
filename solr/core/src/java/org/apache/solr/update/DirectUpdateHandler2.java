@@ -59,7 +59,9 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionRangeQuery;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryUtils;
+import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
+import org.apache.solr.util.RefCounted;
 
 /**
  *  TODO: add soft commitWithin support
