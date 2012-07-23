@@ -24,12 +24,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -46,14 +50,10 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 
 
-
-
 public class SolrCmdDistributor {
   // TODO: shut this thing down
   // TODO: this cannot be per instance...
-  static ThreadPoolExecutor commExecutor = new ThreadPoolExecutor(0,
-      Integer.MAX_VALUE, 5, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
-      new DefaultSolrThreadFactory("cmdDistribExecutor"));
+  static BoundedExecutor commExecutor;
 
   static HttpClient client;
   
@@ -85,8 +85,22 @@ public class SolrCmdDistributor {
     ModifiableSolrParams params;
   }
   
-  public SolrCmdDistributor() {
-   
+  public SolrCmdDistributor(int numHosts) {
+
+    BoundedExecutor executor = null;
+    synchronized (SolrCmdDistributor.class) {
+      if (commExecutor == null || commExecutor.getMaximumPoolSize() != numHosts) {
+        // we don't shutdown the previous because all it's threads will die
+        int maxPoolSize = Math.max(8, (numHosts-1) * 8);
+        commExecutor = new BoundedExecutor(0, maxPoolSize, 5,
+            TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(maxPoolSize * 2),
+            new DefaultSolrThreadFactory("cmdDistribExecutor"));
+      }
+      executor = commExecutor;
+    }
+    
+    completionService = new ExecutorCompletionService<Request>(executor);
+    pending = new HashSet<Future<Request>>();
   }
   
   public void finish() {
@@ -291,10 +305,7 @@ public class SolrCmdDistributor {
   }
   
   public void submit(final Request sreq) {
-    if (completionService == null) {
-      completionService = new ExecutorCompletionService<Request>(commExecutor);
-      pending = new HashSet<Future<Request>>();
-    }
+
     final String url = sreq.node.getUrl();
 
     Callable<Request> task = new Callable<Request>() {
@@ -475,4 +486,40 @@ public class SolrCmdDistributor {
       return nodeProps;
     }
   }
+  
+  public class BoundedExecutor extends ThreadPoolExecutor {
+    private final Semaphore semaphore;
+    
+    public BoundedExecutor(int corePoolSize,
+        int maximumPoolSize, long keepAliveTime, TimeUnit unit,
+        BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory) {
+      super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
+      this.semaphore = new Semaphore(maximumPoolSize);
+    }
+
+    @Override
+    public void execute(final Runnable command) {
+      try {
+        semaphore.acquire();
+      } catch (InterruptedException e1) {
+        throw new RuntimeException();
+      }
+      try {
+        super.execute(new Runnable() {
+          public void run() {
+            try {
+              command.run();
+            } finally {
+              semaphore.release();
+            }
+          }
+        });
+      } catch (RejectedExecutionException e) {
+        semaphore.release();
+        throw e;
+      }
+    }
 }
+}
+
+

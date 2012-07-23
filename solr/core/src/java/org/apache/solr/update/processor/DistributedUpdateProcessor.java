@@ -106,6 +106,8 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
   private boolean forwardToLeader = false;
   private List<Node> nodes;
 
+  private int numNodes;
+
   
   public DistributedUpdateProcessor(SolrQueryRequest req,
       SolrQueryResponse rsp, UpdateRequestProcessor next) {
@@ -140,7 +142,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
       collection = cloudDesc.getCollectionName();
     }
     
-    cmdDistrib = new SolrCmdDistributor();
+    cmdDistrib = new SolrCmdDistributor(numNodes);
   }
 
   private List<Node> setupRequest(int hash) {
@@ -148,6 +150,9 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
     // if we are in zk mode...
     if (zkEnabled) {
+      // set num nodes
+      numNodes = zkController.getCloudState().getLiveNodes().size();
+      
       // the leader is...
       // TODO: if there is no leader, wait and look again
       // TODO: we are reading the leader from zk every time - we should cache
