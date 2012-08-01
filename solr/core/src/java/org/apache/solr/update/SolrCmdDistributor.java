@@ -89,9 +89,9 @@ public class SolrCmdDistributor {
 
     BoundedExecutor executor = null;
     synchronized (SolrCmdDistributor.class) {
-      if (commExecutor == null || commExecutor.getMaximumPoolSize() != numHosts) {
+      int maxPoolSize = Math.max(8, (numHosts-1) * 8);
+      if (commExecutor == null || commExecutor.getMaximumPoolSize() != maxPoolSize) {
         // we don't shutdown the previous because all it's threads will die
-        int maxPoolSize = Math.max(8, (numHosts-1) * 8);
         commExecutor = new BoundedExecutor(0, maxPoolSize, 5,
             TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(maxPoolSize * 2),
             new DefaultSolrThreadFactory("cmdDistribExecutor"));
