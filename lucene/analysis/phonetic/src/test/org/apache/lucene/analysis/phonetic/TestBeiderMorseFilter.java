@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.phonetic;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -88,8 +88,7 @@ public class TestBeiderMorseFilter extends BaseTokenStreamTestCase {
         new int[] { 4 },
         new int[] { 1 });
   }
-  
-  @Ignore("broken: causes OOM on some strings (https://issues.apache.org/jira/browse/CODEC-132)")
+
   public void testRandom() throws Exception {
     checkRandomData(random(), analyzer, 1000 * RANDOM_MULTIPLIER); 
   }

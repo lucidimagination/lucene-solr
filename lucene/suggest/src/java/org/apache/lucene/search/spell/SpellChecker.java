@@ -1,6 +1,6 @@
 package org.apache.lucene.search.spell;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,6 @@ package org.apache.lucene.search.spell;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
 
 import org.apache.lucene.document.Document;
@@ -29,10 +28,12 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.Terms;
@@ -47,7 +48,6 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefIterator;
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.Version;
 
 /**
@@ -58,7 +58,7 @@ import org.apache.lucene.util.Version;
  *
  * <p>Example Usage:
  * 
- * <pre>
+ * <pre class="prettyprint">
  *  SpellChecker spellchecker = new SpellChecker(spellIndexDirectory);
  *  // To index a field of a user index:
  *  spellchecker.indexDictionary(new LuceneDictionary(my_lucene_reader, a_field));
@@ -187,6 +187,10 @@ public class SpellChecker implements java.io.Closeable {
     this.comparator = comparator;
   }
 
+  /**
+   * Gets the comparator in use for ranking suggestions.
+   * @see #setComparator(Comparator)
+   */
   public Comparator<SuggestWord> getComparator() {
     return comparator;
   }
@@ -283,7 +287,7 @@ public class SpellChecker implements java.io.Closeable {
    */
   public String[] suggestSimilar(String word, int numSug, IndexReader ir,
       String field, SuggestMode suggestMode) throws IOException {
-  	return suggestSimilar(word, numSug, ir, field, suggestMode, this.accuracy);
+    return suggestSimilar(word, numSug, ir, field, suggestMode, this.accuracy);
   }
   
   /**
@@ -445,7 +449,7 @@ public class SpellChecker implements java.io.Closeable {
 
   /**
    * Removes all terms from the spell check index.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    * @throws AlreadyClosedException if the Spellchecker is already closed
    */
   public void clearIndex() throws IOException {
@@ -463,8 +467,8 @@ public class SpellChecker implements java.io.Closeable {
 
   /**
    * Check whether the word exists in the index.
-   * @param word
-   * @throws IOException
+   * @param word word to check
+   * @throws IOException If there is a low-level I/O error.
    * @throws AlreadyClosedException if the Spellchecker is already closed
    * @return true if the word exists in the index
    */
@@ -486,7 +490,7 @@ public class SpellChecker implements java.io.Closeable {
    * @param config {@link IndexWriterConfig} to use
    * @param fullMerge whether or not the spellcheck index should be fully merged
    * @throws AlreadyClosedException if the Spellchecker is already closed
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public final void indexDictionary(Dictionary dict, IndexWriterConfig config, boolean fullMerge) throws IOException {
     synchronized (modifyCurrentIndexLock) {
@@ -498,14 +502,11 @@ public class SpellChecker implements java.io.Closeable {
 
       final IndexReader reader = searcher.getIndexReader();
       if (reader.maxDoc() > 0) {
-        new ReaderUtil.Gather(reader) {
-          @Override
-          protected void add(int base, AtomicReader r) throws IOException {
-            Terms terms = r.terms(F_WORD);
-            if (terms != null)
-              termsEnums.add(terms.iterator(null));
-          }
-        }.run();
+        for (final AtomicReaderContext ctx : reader.leaves()) {
+          Terms terms = ctx.reader().terms(F_WORD);
+          if (terms != null)
+            termsEnums.add(terms.iterator(null));
+        }
       }
       
       boolean isEmpty = termsEnums.isEmpty();
@@ -575,7 +576,7 @@ public class SpellChecker implements java.io.Closeable {
     Document doc = new Document();
     // the word field is never queried on... its indexed so it can be quickly
     // checked for rebuild (and stored for retrieval). Doesn't need norms or TF/pos
-    Field f = new Field(F_WORD, text, StringField.TYPE_STORED);
+    Field f = new StringField(F_WORD, text, Field.Store.YES);
     doc.add(f); // orig term
     addGram(text, doc, ng1, ng2);
     return doc;
@@ -588,7 +589,7 @@ public class SpellChecker implements java.io.Closeable {
       String end = null;
       for (int i = 0; i < len - ng + 1; i++) {
         String gram = text.substring(i, i + ng);
-        FieldType ft = new FieldType(StringField.TYPE_UNSTORED);
+        FieldType ft = new FieldType(StringField.TYPE_NOT_STORED);
         ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS);
         Field ngramField = new Field(key, gram, ft);
         // spellchecker does not use positional queries, but we want freqs
@@ -596,14 +597,14 @@ public class SpellChecker implements java.io.Closeable {
         doc.add(ngramField);
         if (i == 0) {
           // only one term possible in the startXXField, TF/pos and norms aren't needed.
-          Field startField = new StringField("start" + ng, gram);
+          Field startField = new StringField("start" + ng, gram, Field.Store.NO);
           doc.add(startField);
         }
         end = gram;
       }
       if (end != null) { // may not be present if len==ng1
         // only one term possible in the endXXField, TF/pos and norms aren't needed.
-        Field endField = new StringField("end" + ng, end);
+        Field endField = new StringField("end" + ng, end, Field.Store.NO);
         doc.add(endField);
       }
     }
@@ -674,7 +675,7 @@ public class SpellChecker implements java.io.Closeable {
    */
   // for testing purposes
   IndexSearcher createSearcher(final Directory dir) throws IOException{
-    return new IndexSearcher(IndexReader.open(dir));
+    return new IndexSearcher(DirectoryReader.open(dir));
   }
   
   /**

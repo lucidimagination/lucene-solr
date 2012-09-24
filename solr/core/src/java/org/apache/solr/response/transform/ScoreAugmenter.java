@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,7 @@ import org.apache.solr.common.SolrDocument;
 import org.apache.solr.request.SolrQueryRequest;
 
 /**
- * Simple Augmenter that adds the docId
+ * Simple Augmenter that adds the score
  *
  *
  * @since solr 4.0

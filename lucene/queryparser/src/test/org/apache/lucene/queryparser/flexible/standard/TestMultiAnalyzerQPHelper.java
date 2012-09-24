@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.standard;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -131,11 +131,11 @@ public class TestMultiAnalyzerQPHelper extends LuceneTestCase {
     qp.setAnalyzer(new PosIncrementAnalyzer());
 
     assertEquals("quick brown", qp.parse("the quick brown", "").toString());
-    assertEquals("\"quick brown\"", qp.parse("\"the quick brown\"", "")
+    assertEquals("\"? quick brown\"", qp.parse("\"the quick brown\"", "")
         .toString());
     assertEquals("quick brown fox", qp.parse("the quick brown fox", "")
         .toString());
-    assertEquals("\"quick brown fox\"", qp.parse("\"the quick brown fox\"", "")
+    assertEquals("\"? quick brown fox\"", qp.parse("\"the quick brown fox\"", "")
         .toString());
   }
 

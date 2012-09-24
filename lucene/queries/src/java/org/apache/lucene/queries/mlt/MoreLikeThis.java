@@ -290,6 +290,7 @@ public final class MoreLikeThis {
    * Returns the boost factor used when boosting terms
    *
    * @return the boost factor used when boosting terms
+   * @see #setBoostFactor(float)
    */
   public float getBoostFactor() {
     return boostFactor;
@@ -298,7 +299,7 @@ public final class MoreLikeThis {
   /**
    * Sets the boost factor to use when boosting terms
    *
-   * @param boostFactor
+   * @see #getBoostFactor()
    */
   public void setBoostFactor(float boostFactor) {
     this.boostFactor = boostFactor;
@@ -717,8 +718,8 @@ public final class MoreLikeThis {
       if (vector == null) {
         Document d = ir.document(docNum);
         IndexableField fields[] = d.getFields(fieldName);
-        for (int j = 0; j < fields.length; j++) {
-          final String stringValue = fields[j].stringValue();
+        for (IndexableField field : fields) {
+          final String stringValue = field.stringValue();
           if (stringValue != null) {
             addTermFrequencies(new StringReader(stringValue), termFreqMap, fieldName);
           }

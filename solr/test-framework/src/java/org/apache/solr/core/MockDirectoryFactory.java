@@ -1,6 +1,6 @@
 package org.apache.solr.core;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,12 +31,16 @@ public class MockDirectoryFactory extends CachingDirectoryFactory {
 
   @Override
   protected Directory create(String path) throws IOException {
-    MockDirectoryWrapper dir = LuceneTestCase.newDirectory();
-    // Somehow removing unref'd files in Solr tests causes
-    // problems... there's some interaction w/
-    // CachingDirectoryFactory.  Once we track down where Solr
-    // isn't closing an IW, we can re-enable this:
-    dir.setAssertNoUnrefencedFilesOnClose(false);
+    Directory dir = LuceneTestCase.newDirectory();
+    // we can't currently do this check because of how
+    // Solr has to reboot a new Directory sometimes when replicating
+    // or rolling back - the old directory is closed and the following
+    // test assumes it can open an IndexWriter when that happens - we
+    // have a new Directory for the same dir and still an open IW at 
+    // this point
+    if (dir instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)dir).setAssertNoUnrefencedFilesOnClose(false);
+    }
     return dir;
   }
   

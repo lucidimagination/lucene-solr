@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.core;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -66,6 +66,7 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
     assertNotNull(stream);
     CharTermAttribute termAtt = stream.getAttribute(CharTermAttribute.class);
     
+    stream.reset();
     while (stream.incrementToken()) {
       String text = termAtt.toString();
       assertFalse(stopWordsSet.contains(text));
@@ -83,6 +84,7 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
     CharTermAttribute termAtt = stream.getAttribute(CharTermAttribute.class);
     PositionIncrementAttribute posIncrAtt = stream.addAttribute(PositionIncrementAttribute.class);
 
+    stream.reset();
     while (stream.incrementToken()) {
       String text = termAtt.toString();
       assertFalse(stopWordsSet.contains(text));

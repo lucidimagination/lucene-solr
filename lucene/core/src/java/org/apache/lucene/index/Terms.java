@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,6 +29,11 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
  */
 
 public abstract class Terms {
+
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected Terms() {
+  }
 
   /** Returns an iterator that will step through all
    *  terms. This method will not return null.  If you have
@@ -104,6 +109,16 @@ public abstract class Terms {
    *  measures, this measure does not take deleted documents
    *  into account. */
   public abstract int getDocCount() throws IOException;
+  
+  /** Returns true if documents in this field store offsets. */
+  public abstract boolean hasOffsets();
+  
+  /** Returns true if documents in this field store positions. */
+  public abstract boolean hasPositions();
+  
+  /** Returns true if documents in this field store payloads. */
+  public abstract boolean hasPayloads();
 
+  /** Zero-length array of {@link Terms}. */
   public final static Terms[] EMPTY_ARRAY = new Terms[0];
 }

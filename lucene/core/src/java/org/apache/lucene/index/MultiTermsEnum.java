@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,16 +20,13 @@ package org.apache.lucene.index;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BitsSlice;
-import org.apache.lucene.util.MultiBits;
-import org.apache.lucene.util.ReaderUtil;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
 
 /**
- * Exposes flex API, merged from flex API of sub-segments.
+ * Exposes {@link TermsEnum} API, merged from {@link TermsEnum} API of sub-segments.
  * This does a merge sort, by term text, of the sub-readers.
  *
  * @lucene.experimental
@@ -63,15 +60,21 @@ public final class MultiTermsEnum extends TermsEnum {
     }
   }
 
+  /** Returns how many sub-reader slices contain the current
+   *  term.  @see #getMatchArray */
   public int getMatchCount() {
     return numTop;
   }
 
+  /** Returns sub-reader slices positioned to the current term. */
   public TermsEnumWithSlice[] getMatchArray() {
     return top;
   }
 
-  public MultiTermsEnum(ReaderUtil.Slice[] slices) {
+  /** Sole constructor.
+   *  @param slices Which sub-reader slices we should
+   *  merge. */
+  public MultiTermsEnum(ReaderSlice[] slices) {
     queue = new TermMergeQueue(slices.length);
     top = new TermsEnumWithSlice[slices.length];
     subs = new TermsEnumWithSlice[slices.length];
@@ -261,12 +264,12 @@ public final class MultiTermsEnum extends TermsEnum {
   }
 
   @Override
-  public void seekExact(long ord) throws IOException {
+  public void seekExact(long ord) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public long ord() throws IOException {
+  public long ord() {
     throw new UnsupportedOperationException();
   }
 
@@ -347,7 +350,7 @@ public final class MultiTermsEnum extends TermsEnum {
   }
 
   @Override
-  public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+  public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
     MultiDocsEnum docsEnum;
     // Can only reuse if incoming enum is also a MultiDocsEnum
     if (reuse != null && reuse instanceof MultiDocsEnum) {
@@ -397,16 +400,15 @@ public final class MultiTermsEnum extends TermsEnum {
       }
 
       assert entry.index < docsEnum.subDocsEnum.length: entry.index + " vs " + docsEnum.subDocsEnum.length + "; " + subs.length;
-      final DocsEnum subDocsEnum = entry.terms.docs(b, docsEnum.subDocsEnum[entry.index], needsFreqs);
+      final DocsEnum subDocsEnum = entry.terms.docs(b, docsEnum.subDocsEnum[entry.index], flags);
       if (subDocsEnum != null) {
         docsEnum.subDocsEnum[entry.index] = subDocsEnum;
         subDocs[upto].docsEnum = subDocsEnum;
         subDocs[upto].slice = entry.subSlice;
         upto++;
       } else {
-        // One of our subs cannot provide freqs:
-        assert needsFreqs;
-        return null;
+        // should this be an error?
+        assert false : "One of our subs cannot provide a docsenum";
       }
     }
 
@@ -418,7 +420,7 @@ public final class MultiTermsEnum extends TermsEnum {
   }
 
   @Override
-  public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
+  public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
     MultiDocsAndPositionsEnum docsAndPositionsEnum;
     // Can only reuse if incoming enum is also a MultiDocsAndPositionsEnum
     if (reuse != null && reuse instanceof MultiDocsAndPositionsEnum) {
@@ -469,7 +471,7 @@ public final class MultiTermsEnum extends TermsEnum {
       }
 
       assert entry.index < docsAndPositionsEnum.subDocsAndPositionsEnum.length: entry.index + " vs " + docsAndPositionsEnum.subDocsAndPositionsEnum.length + "; " + subs.length;
-      final DocsAndPositionsEnum subPostings = entry.terms.docsAndPositions(b, docsAndPositionsEnum.subDocsAndPositionsEnum[entry.index], needsOffsets);
+      final DocsAndPositionsEnum subPostings = entry.terms.docsAndPositions(b, docsAndPositionsEnum.subDocsAndPositionsEnum[entry.index], flags);
 
       if (subPostings != null) {
         docsAndPositionsEnum.subDocsAndPositionsEnum[entry.index] = subPostings;
@@ -477,7 +479,7 @@ public final class MultiTermsEnum extends TermsEnum {
         subDocsAndPositions[upto].slice = entry.subSlice;
         upto++;
       } else {
-        if (entry.terms.docs(b, null, false) != null) {
+        if (entry.terms.docs(b, null, 0) != null) {
           // At least one of our subs does not store
           // offsets or positions -- we can't correctly
           // produce a MultiDocsAndPositions enum
@@ -494,12 +496,12 @@ public final class MultiTermsEnum extends TermsEnum {
   }
 
   private final static class TermsEnumWithSlice {
-    private final ReaderUtil.Slice subSlice;
+    private final ReaderSlice subSlice;
     private TermsEnum terms;
     public BytesRef current;
     final int index;
 
-    public TermsEnumWithSlice(int index, ReaderUtil.Slice subSlice) {
+    public TermsEnumWithSlice(int index, ReaderSlice subSlice) {
       this.subSlice = subSlice;
       this.index = index;
       assert subSlice.length >= 0: "length=" + subSlice.length;

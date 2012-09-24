@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,17 +20,21 @@ package org.apache.lucene.codecs.lucene40;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
+import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.LiveDocsFormat;
 import org.apache.lucene.codecs.NormsFormat;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.SegmentInfosFormat;
+import org.apache.lucene.codecs.SegmentInfoFormat;
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.TermVectorsFormat;
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
 
 /**
  * Implements the Lucene 4.0 index format, with configurable per-field postings formats.
- * 
+ * <p>
+ * If you want to reuse functionality of this codec in another codec, extend
+ * {@link FilterCodec}.
+ *
  * @see org.apache.lucene.codecs.lucene40 package documentation for file format details.
  * @lucene.experimental
  */
@@ -42,7 +46,7 @@ public class Lucene40Codec extends Codec {
   private final TermVectorsFormat vectorsFormat = new Lucene40TermVectorsFormat();
   private final FieldInfosFormat fieldInfosFormat = new Lucene40FieldInfosFormat();
   private final DocValuesFormat docValuesFormat = new Lucene40DocValuesFormat();
-  private final SegmentInfosFormat infosFormat = new Lucene40SegmentInfosFormat();
+  private final SegmentInfoFormat infosFormat = new Lucene40SegmentInfoFormat();
   private final NormsFormat normsFormat = new Lucene40NormsFormat();
   private final LiveDocsFormat liveDocsFormat = new Lucene40LiveDocsFormat();
   
@@ -53,47 +57,48 @@ public class Lucene40Codec extends Codec {
     }
   };
 
+  /** Sole constructor. */
   public Lucene40Codec() {
     super("Lucene40");
   }
   
   @Override
-  public StoredFieldsFormat storedFieldsFormat() {
+  public final StoredFieldsFormat storedFieldsFormat() {
     return fieldsFormat;
   }
   
   @Override
-  public TermVectorsFormat termVectorsFormat() {
+  public final TermVectorsFormat termVectorsFormat() {
     return vectorsFormat;
   }
 
   @Override
-  public DocValuesFormat docValuesFormat() {
+  public final DocValuesFormat docValuesFormat() {
     return docValuesFormat;
   }
 
   @Override
-  public PostingsFormat postingsFormat() {
+  public final PostingsFormat postingsFormat() {
     return postingsFormat;
   }
   
   @Override
-  public FieldInfosFormat fieldInfosFormat() {
+  public final FieldInfosFormat fieldInfosFormat() {
     return fieldInfosFormat;
   }
   
   @Override
-  public SegmentInfosFormat segmentInfosFormat() {
+  public final SegmentInfoFormat segmentInfoFormat() {
     return infosFormat;
   }
 
   @Override
-  public NormsFormat normsFormat() {
+  public final NormsFormat normsFormat() {
     return normsFormat;
   }
   
   @Override
-  public LiveDocsFormat liveDocsFormat() {
+  public final LiveDocsFormat liveDocsFormat() {
     return liveDocsFormat;
   }
 

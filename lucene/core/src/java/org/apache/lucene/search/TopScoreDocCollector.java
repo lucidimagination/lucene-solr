@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,7 +30,7 @@ import org.apache.lucene.index.AtomicReaderContext;
  * going to be collected in doc Id order or not.
  *
  * <p><b>NOTE</b>: The values {@link Float#NaN} and
- * {Float#NEGATIVE_INFINITY} are not valid scores.  This
+ * {@link Float#NEGATIVE_INFINITY} are not valid scores.  This
  * collector will not properly collect hits with such
  * scores.
  */

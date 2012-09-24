@@ -1,6 +1,6 @@
 package org.apache.lucene.search.vectorhighlight;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,17 +17,17 @@ package org.apache.lucene.search.vectorhighlight;
  * limitations under the License.
  */
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.apache.lucene.search.vectorhighlight.FieldPhraseList.WeightedPhraseInfo;
 import org.apache.lucene.search.vectorhighlight.FieldPhraseList.WeightedPhraseInfo.Toffs;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * FieldFragList has a list of "frag info" that is used by FragmentsBuilder class
  * to create fragments (snippets).
  */
-public class FieldFragList {
+public abstract class FieldFragList {
 
   private List<WeightedFragInfo> fragInfos = new ArrayList<WeightedFragInfo>();
 
@@ -46,9 +46,7 @@ public class FieldFragList {
    * @param endOffset end offset of the fragment
    * @param phraseInfoList list of WeightedPhraseInfo objects
    */
-  public void add( int startOffset, int endOffset, List<WeightedPhraseInfo> phraseInfoList ){
-    fragInfos.add( new WeightedFragInfo( startOffset, endOffset, phraseInfoList ) );
-  }
+  public abstract void add( int startOffset, int endOffset, List<WeightedPhraseInfo> phraseInfoList );
   
   /**
    * return the list of WeightedFragInfos.
@@ -59,22 +57,21 @@ public class FieldFragList {
     return fragInfos;
   }
 
+  /**
+   * List of term offsets + weight for a frag info
+   */
   public static class WeightedFragInfo {
 
-    List<SubInfo> subInfos;
-    float totalBoost;
-    int startOffset;
-    int endOffset;
+    private List<SubInfo> subInfos;
+    private float totalBoost;
+    private int startOffset;
+    private int endOffset;
 
-    public WeightedFragInfo( int startOffset, int endOffset, List<WeightedPhraseInfo> phraseInfoList ){
+    public WeightedFragInfo( int startOffset, int endOffset, List<SubInfo> subInfos, float totalBoost ){
       this.startOffset = startOffset;
       this.endOffset = endOffset;
-      subInfos = new ArrayList<SubInfo>();
-      for( WeightedPhraseInfo phraseInfo : phraseInfoList ){
-        SubInfo subInfo = new SubInfo( phraseInfo.text, phraseInfo.termsOffsets, phraseInfo.seqnum );
-        subInfos.add( subInfo );
-        totalBoost += phraseInfo.boost;
-      }
+      this.totalBoost = totalBoost;
+      this.subInfos = subInfos;
     }
     
     public List<SubInfo> getSubInfos(){
@@ -103,13 +100,16 @@ public class FieldFragList {
       return sb.toString();
     }
     
+    /**
+     * Represents the list of term offsets for some text
+     */
     public static class SubInfo {
-      final String text;  // unnecessary member, just exists for debugging purpose
-      final List<Toffs> termsOffsets;   // usually termsOffsets.size() == 1,
+      private final String text;  // unnecessary member, just exists for debugging purpose
+      private final List<Toffs> termsOffsets;   // usually termsOffsets.size() == 1,
                               // but if position-gap > 1 and slop > 0 then size() could be greater than 1
-      int seqnum;
+      private int seqnum;
 
-      SubInfo( String text, List<Toffs> termsOffsets, int seqnum ){
+      public SubInfo( String text, List<Toffs> termsOffsets, int seqnum ){
         this.text = text;
         this.termsOffsets = termsOffsets;
         this.seqnum = seqnum;
@@ -122,7 +122,11 @@ public class FieldFragList {
       public int getSeqnum(){
         return seqnum;
       }
-      
+
+      public String getText(){
+        return text;
+      }
+
       @Override
       public String toString(){
         StringBuilder sb = new StringBuilder();

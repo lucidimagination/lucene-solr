@@ -1,6 +1,6 @@
 package org.apache.lucene.document;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,29 +22,40 @@ import org.apache.lucene.index.AtomicReader;      // javadocs
 
 /**
  * <p>
- * This class provides a {@link Field} that enables storing
- * of a per-document long value for scoring, sorting or
- * value retrieval.  The values are encoded in the index an
- * in RAM (when loaded via {@link AtomicReader#docValues})
+ * Field that stores a per-document <code>long</code> value 
+ * for scoring, sorting or value retrieval.  The values are 
+ * encoded in the index an in RAM (when loaded via 
+ * {@link AtomicReader#docValues})
  * using packed ints. Here's an example usage:
  * 
- * <pre>
+ * <pre class="prettyprint">
  *   document.add(new PackedLongDocValuesField(name, 22L));
  * </pre>
  * 
  * <p>
  * If you also need to store the value, you should add a
  * separate {@link StoredField} instance.
+ * 
+ * @see DocValues
  * */
 
 public class PackedLongDocValuesField extends Field {
 
+  /**
+   * Type for packed long DocValues.
+   */
   public static final FieldType TYPE = new FieldType();
   static {
     TYPE.setDocValueType(DocValues.Type.VAR_INTS);
     TYPE.freeze();
   }
 
+  /** 
+   * Creates a new DocValues field with the specified long value 
+   * @param name field name
+   * @param value 64-bit long value
+   * @throws IllegalArgumentException if the field name is null
+   */
   public PackedLongDocValuesField(String name, long value) {
     super(name, TYPE);
     fieldsData = Long.valueOf(value);

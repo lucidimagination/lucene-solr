@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,8 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.PostingsFormat; // javadocs
+import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat; // javadocs
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.InfoStream;
@@ -28,24 +29,42 @@ import org.apache.lucene.util.MutableBits;
  * @lucene.experimental
  */
 public class SegmentWriteState {
+
+  /** {@link InfoStream} used for debugging messages. */
   public final InfoStream infoStream;
+
+  /** {@link Directory} where this segment will be written
+   *  to. */
   public final Directory directory;
-  public final String segmentName;
+
+  /** {@link SegmentInfo} describing this segment. */
+  public final SegmentInfo segmentInfo;
+
+  /** {@link FieldInfos} describing all fields in this
+   *  segment. */
   public final FieldInfos fieldInfos;
-  public final int numDocs;
+
+  /** Number of deleted documents set while flushing the
+   *  segment. */
   public int delCountOnFlush;
 
-  // Deletes to apply while we are flushing the segment.  A
-  // Term is enrolled in here if it was deleted at one
-  // point, and it's mapped to the docIDUpto, meaning any
-  // docID < docIDUpto containing this term should be
-  // deleted.
+  /** Deletes to apply while we are flushing the segment.  A
+   *  Term is enrolled in here if it was deleted at one
+   *  point, and it's mapped to the docIDUpto, meaning any
+   *  docID &lt; docIDUpto containing this term should be
+   *  deleted. */
   public final BufferedDeletes segDeletes;
 
-  // Lazily created:
+  /** {@link MutableBits} recording live documents; this is
+   *  only set if there is one or more deleted documents. */
   public MutableBits liveDocs;
 
-  public final Codec codec;
+  /** Unique suffix for any postings files written for this
+   *  segment.  {@link PerFieldPostingsFormat} sets this for
+   *  each of the postings formats it wraps.  If you create
+   *  a new {@link PostingsFormat} then any files you
+   *  write/read must be derived using this suffix (use
+   *  {@link IndexFileNames#segmentFileName(String,String,String)}). */
   public final String segmentSuffix;
 
   /** Expert: The fraction of terms in the "dictionary" which should be stored
@@ -55,18 +74,19 @@ public class SegmentWriteState {
    * tweaking this is rarely useful.*/
   public int termIndexInterval;                   // TODO: this should be private to the codec, not settable here or in IWC
   
+  /** {@link IOContext} for all writes; you should pass this
+   *  to {@link Directory#createOutput(String,IOContext)}. */
   public final IOContext context;
 
-  public SegmentWriteState(InfoStream infoStream, Directory directory, String segmentName, FieldInfos fieldInfos,
-      int numDocs, int termIndexInterval, Codec codec, BufferedDeletes segDeletes, IOContext context) {
+  /** Sole constructor. */
+  public SegmentWriteState(InfoStream infoStream, Directory directory, SegmentInfo segmentInfo, FieldInfos fieldInfos,
+      int termIndexInterval, BufferedDeletes segDeletes, IOContext context) {
     this.infoStream = infoStream;
     this.segDeletes = segDeletes;
     this.directory = directory;
-    this.segmentName = segmentName;
+    this.segmentInfo = segmentInfo;
     this.fieldInfos = fieldInfos;
-    this.numDocs = numDocs;
     this.termIndexInterval = termIndexInterval;
-    this.codec = codec;
     segmentSuffix = "";
     this.context = context;
   }
@@ -77,12 +97,10 @@ public class SegmentWriteState {
   public SegmentWriteState(SegmentWriteState state, String segmentSuffix) {
     infoStream = state.infoStream;
     directory = state.directory;
-    segmentName = state.segmentName;
+    segmentInfo = state.segmentInfo;
     fieldInfos = state.fieldInfos;
-    numDocs = state.numDocs;
     termIndexInterval = state.termIndexInterval;
     context = state.context;
-    codec = state.codec;
     this.segmentSuffix = segmentSuffix;
     segDeletes = state.segDeletes;
     delCountOnFlush = state.delCountOnFlush;

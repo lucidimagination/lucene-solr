@@ -1,5 +1,5 @@
 package org.apache.lucene.search.vectorhighlight;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -292,8 +292,6 @@ public class FieldQuery {
 
   /**
    * 
-   * @param fieldName
-   * @param term
    * @return QueryPhraseMap
    */
   public QueryPhraseMap getFieldTermMap( String fieldName, String term ){
@@ -303,8 +301,6 @@ public class FieldQuery {
 
   /**
    * 
-   * @param fieldName
-   * @param phraseCandidate
    * @return QueryPhraseMap
    */
   public QueryPhraseMap searchPhrase( String fieldName, final List<TermInfo> phraseCandidate ){
@@ -321,6 +317,10 @@ public class FieldQuery {
     return termOrPhraseNumber++;
   }
   
+  /**
+   * Internal structure of a query for highlighting: represents
+   * a nested query structure
+   */
   public static class QueryPhraseMap {
 
     boolean terminal;
@@ -348,7 +348,7 @@ public class FieldQuery {
       return map;
     }
 
-      void add( Query query, IndexReader reader ) throws IOException {
+      void add( Query query, IndexReader reader ) {
       if( query instanceof TermQuery ){
         addTerm( ((TermQuery)query).getTerm(), query.getBoost() );
       }

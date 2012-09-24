@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,7 @@ package org.apache.lucene.index;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -39,7 +38,7 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     IndexWriter w = new IndexWriter(dir, conf);
     for(int i=0;i<80;i++) {
       Document doc = new Document();
-      doc.add(newField("content", "aaa " + (i%4), TextField.TYPE_UNSTORED));
+      doc.add(newTextField("content", "aaa " + (i%4), Field.Store.NO));
       w.addDocument(doc);
     }
     assertEquals(80, w.maxDoc());
@@ -57,7 +56,7 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("\nTEST: forceMergeDeletes2");
     }
-    tmp.setForceMergeDeletesPctAllowed(10.0);
+    ((TieredMergePolicy) w.getConfig().getMergePolicy()).setForceMergeDeletesPctAllowed(10.0);
     w.forceMergeDeletes();
     assertEquals(60, w.maxDoc());
     assertEquals(60, w.numDocs());
@@ -85,7 +84,7 @@ public class TestTieredMergePolicy extends LuceneTestCase {
       final int numDocs = _TestUtil.nextInt(random(), 20, 100);
       for(int i=0;i<numDocs;i++) {
         Document doc = new Document();
-        doc.add(newField("content", "aaa " + (i%4), TextField.TYPE_UNSTORED));
+        doc.add(newTextField("content", "aaa " + (i%4), Field.Store.NO));
         w.addDocument(doc);
         int count = w.getSegmentCount();
         maxCount = Math.max(count, maxCount);
@@ -121,8 +120,8 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     final int numDocs = atLeast(200);
     for(int i=0;i<numDocs;i++) {
       Document doc = new Document();
-      doc.add(newField("id", "" + i, StringField.TYPE_UNSTORED));
-      doc.add(newField("content", "aaa " + i, TextField.TYPE_UNSTORED));
+      doc.add(newStringField("id", "" + i, Field.Store.NO));
+      doc.add(newTextField("content", "aaa " + i, Field.Store.NO));
       w.addDocument(doc);
     }
 
@@ -153,5 +152,61 @@ public class TestTieredMergePolicy extends LuceneTestCase {
     w.close();
 
     dir.close();
+  }
+  
+  private static final double EPSILON = 1E-14;
+  
+  public void testSetters() {
+    final TieredMergePolicy tmp = new TieredMergePolicy();
+    
+    tmp.setMaxMergedSegmentMB(0.5);
+    assertEquals(0.5, tmp.getMaxMergedSegmentMB(), EPSILON);
+    
+    tmp.setMaxMergedSegmentMB(Double.POSITIVE_INFINITY);
+    assertEquals(Long.MAX_VALUE/1024/1024., tmp.getMaxMergedSegmentMB(), EPSILON*Long.MAX_VALUE);
+    
+    tmp.setMaxMergedSegmentMB(Long.MAX_VALUE/1024/1024.);
+    assertEquals(Long.MAX_VALUE/1024/1024., tmp.getMaxMergedSegmentMB(), EPSILON*Long.MAX_VALUE);
+    
+    try {
+      tmp.setMaxMergedSegmentMB(-2.0);
+      fail("Didn't throw IllegalArgumentException");
+    } catch (IllegalArgumentException iae) {
+      // pass
+    }
+    
+    tmp.setFloorSegmentMB(2.0);
+    assertEquals(2.0, tmp.getFloorSegmentMB(), EPSILON);
+    
+    tmp.setFloorSegmentMB(Double.POSITIVE_INFINITY);
+    assertEquals(Long.MAX_VALUE/1024/1024., tmp.getFloorSegmentMB(), EPSILON*Long.MAX_VALUE);
+    
+    tmp.setFloorSegmentMB(Long.MAX_VALUE/1024/1024.);
+    assertEquals(Long.MAX_VALUE/1024/1024., tmp.getFloorSegmentMB(), EPSILON*Long.MAX_VALUE);
+    
+    try {
+      tmp.setFloorSegmentMB(-2.0);
+      fail("Didn't throw IllegalArgumentException");
+    } catch (IllegalArgumentException iae) {
+      // pass
+    }
+    
+    tmp.setMaxCFSSegmentSizeMB(2.0);
+    assertEquals(2.0, tmp.getMaxCFSSegmentSizeMB(), EPSILON);
+    
+    tmp.setMaxCFSSegmentSizeMB(Double.POSITIVE_INFINITY);
+    assertEquals(Long.MAX_VALUE/1024/1024., tmp.getMaxCFSSegmentSizeMB(), EPSILON*Long.MAX_VALUE);
+    
+    tmp.setMaxCFSSegmentSizeMB(Long.MAX_VALUE/1024/1024.);
+    assertEquals(Long.MAX_VALUE/1024/1024., tmp.getMaxCFSSegmentSizeMB(), EPSILON*Long.MAX_VALUE);
+    
+    try {
+      tmp.setMaxCFSSegmentSizeMB(-2.0);
+      fail("Didn't throw IllegalArgumentException");
+    } catch (IllegalArgumentException iae) {
+      // pass
+    }
+    
+    // TODO: Add more checks for other non-double setters!
   }
 }

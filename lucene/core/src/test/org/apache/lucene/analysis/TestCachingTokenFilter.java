@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,7 @@ public class TestCachingTokenFilter extends BaseTokenStreamTestCase {
       private OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
       
       @Override
-      public boolean incrementToken() throws IOException {
+      public boolean incrementToken() {
         if (index == tokens.length) {
           return false;
         } else {
@@ -75,8 +75,7 @@ public class TestCachingTokenFilter extends BaseTokenStreamTestCase {
     DocsAndPositionsEnum termPositions = MultiFields.getTermPositionsEnum(reader,
                                                                           MultiFields.getLiveDocs(reader),
                                                                           "preanalyzed",
-                                                                          new BytesRef("term1"),
-                                                                          false);
+                                                                          new BytesRef("term1"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(1, termPositions.freq());
     assertEquals(0, termPositions.nextPosition());
@@ -84,8 +83,7 @@ public class TestCachingTokenFilter extends BaseTokenStreamTestCase {
     termPositions = MultiFields.getTermPositionsEnum(reader,
                                                      MultiFields.getLiveDocs(reader),
                                                      "preanalyzed",
-                                                     new BytesRef("term2"),
-                                                     false);
+                                                     new BytesRef("term2"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(2, termPositions.freq());
     assertEquals(1, termPositions.nextPosition());
@@ -94,8 +92,7 @@ public class TestCachingTokenFilter extends BaseTokenStreamTestCase {
     termPositions = MultiFields.getTermPositionsEnum(reader,
                                                      MultiFields.getLiveDocs(reader),
                                                      "preanalyzed",
-                                                     new BytesRef("term3"),
-                                                     false);
+                                                     new BytesRef("term3"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(1, termPositions.freq());
     assertEquals(2, termPositions.nextPosition());

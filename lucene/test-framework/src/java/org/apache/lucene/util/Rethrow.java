@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,8 @@ package org.apache.lucene.util;
  * Sneaky: rethrowing checked exceptions as unchecked
  * ones. Eh, it is sometimes useful...
  *
- * <p>Pulled from http://www.javapuzzlers.com (I
- * think?).</p>
+ * <p>Pulled from <a href="http://www.javapuzzlers.com">Java Puzzlers</a>.</p>
+ * @see "http://www.amazon.com/Java-Puzzlers-Traps-Pitfalls-Corner/dp/032133678X"
  */
 @SuppressWarnings({"unchecked","rawtypes"})
 public final class Rethrow {

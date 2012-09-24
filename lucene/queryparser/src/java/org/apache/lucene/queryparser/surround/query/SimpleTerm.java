@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,9 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Query;
 
+/**
+ * Base class for queries that expand to sets of simple terms.
+ */
 public abstract class SimpleTerm
   extends SrndQuery
   implements DistanceSubQuery, Comparable<SimpleTerm>
@@ -67,6 +70,10 @@ public abstract class SimpleTerm
                             String fieldName,
                             MatchingTermVisitor mtv) throws IOException;
   
+  /**
+   * Callback to visit each matching term during "rewrite"
+   * in {@link #visitMatchingTerm(Term)}
+   */
   public interface MatchingTermVisitor {
     void visitMatchingTerm(Term t)throws IOException;
   }

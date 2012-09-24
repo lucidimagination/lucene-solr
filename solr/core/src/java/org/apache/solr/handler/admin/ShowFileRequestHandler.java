@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -70,7 +70,7 @@ import java.util.Set;
  * the registered invariant param for wt.
  * 
  * If you want to override the contentType header returned for a given file, you can
- * set it directly using: {@link #USE_CONTENT_TYPE}.  For example, to get a plain text 
+ * set it directly using: {@link #USE_CONTENT_TYPE}.  For example, to get a plain text
  * version of schema.xml, try:
  * <pre>
  *   http://localhost:8983/solr/admin/file?file=schema.xml&contentType=text/plain
@@ -101,7 +101,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
       String[] hidden = invariants.getParams( HIDDEN );
       if( hidden != null ) {
         for( String s : hidden ) {
-          hiddenFiles.add( s.toUpperCase(Locale.ENGLISH) );
+          hiddenFiles.add( s.toUpperCase(Locale.ROOT) );
         }
       }
     }
@@ -138,11 +138,14 @@ public class ShowFileRequestHandler extends RequestHandlerBase
       adminFile = confPath;
     } else {
       fname = fname.replace('\\', '/'); // normalize slashes
-      if (hiddenFiles.contains(fname.toUpperCase(Locale.ENGLISH))) {
+      if (hiddenFiles.contains(fname.toUpperCase(Locale.ROOT))) {
         throw new SolrException(ErrorCode.FORBIDDEN, "Can not access: " + fname);
       }
       if (fname.indexOf("..") >= 0) {
         throw new SolrException(ErrorCode.FORBIDDEN, "Invalid path: " + fname);
+      }
+      if (fname.startsWith("/")) { // Only files relative to conf are valid
+        fname = fname.substring(1);
       }
       adminFile = confPath + "/" + fname;
     }
@@ -159,7 +162,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
       
       NamedList<SimpleOrderedMap<Object>> files = new SimpleOrderedMap<SimpleOrderedMap<Object>>();
       for (String f : children) {
-        if (hiddenFiles.contains(f.toUpperCase(Locale.ENGLISH))) {
+        if (hiddenFiles.contains(f.toUpperCase(Locale.ROOT))) {
           continue; // don't show 'hidden' files
         }
         if (f.startsWith(".")) {
@@ -195,8 +198,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
     rsp.setHttpCaching(false);
   }
 
-  private void showFromFileSystem(SolrQueryRequest req, SolrQueryResponse rsp)
-      throws IOException {
+  private void showFromFileSystem(SolrQueryRequest req, SolrQueryResponse rsp) {
     File adminFile = null;
     
     final SolrResourceLoader loader = req.getCore().getResourceLoader();
@@ -215,7 +217,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
     }
     else {
       fname = fname.replace( '\\', '/' ); // normalize slashes
-      if( hiddenFiles.contains( fname.toUpperCase(Locale.ENGLISH) ) ) {
+      if( hiddenFiles.contains( fname.toUpperCase(Locale.ROOT) ) ) {
         throw new SolrException( ErrorCode.FORBIDDEN, "Can not access: "+fname );
       }
       if( fname.indexOf( ".." ) >= 0 ) {
@@ -242,7 +244,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
       for( File f : adminFile.listFiles() ) {
         String path = f.getAbsolutePath().substring( basePath );
         path = path.replace( '\\', '/' ); // normalize slashes
-        if( hiddenFiles.contains( path.toUpperCase(Locale.ENGLISH) ) ) {
+        if( hiddenFiles.contains( path.toUpperCase(Locale.ROOT) ) ) {
           continue; // don't show 'hidden' files
         }
         if( f.isHidden() || f.getName().startsWith( "." ) ) {

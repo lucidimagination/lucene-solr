@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.compound;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,7 +24,6 @@ import java.util.Arrays;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.CharReader;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -236,11 +235,12 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         CompoundWordTokenFilterBase.DEFAULT_MAX_SUBWORD_SIZE, false);
     
     CharTermAttribute termAtt = tf.getAttribute(CharTermAttribute.class);
+    tf.reset();
     assertTrue(tf.incrementToken());
     assertEquals("Rindfleischüberwachungsgesetz", termAtt.toString());
     assertTrue(tf.incrementToken());
     assertEquals("Rind", termAtt.toString());
-    wsTokenizer.reset(new StringReader("Rindfleischüberwachungsgesetz"));
+    wsTokenizer.setReader(new StringReader("Rindfleischüberwachungsgesetz"));
     tf.reset();
     assertTrue(tf.incrementToken());
     assertEquals("Rindfleischüberwachungsgesetz", termAtt.toString());
@@ -257,6 +257,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE,
         CompoundWordTokenFilterBase.DEFAULT_MAX_SUBWORD_SIZE, false);
     MockRetainAttribute retAtt = stream.addAttribute(MockRetainAttribute.class);
+    stream.reset();
     while (stream.incrementToken()) {
       assertTrue("Custom attribute value was lost", retAtt.getRetain());
     }
@@ -326,8 +327,8 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
       }
 
       @Override
-      protected Reader initReader(Reader reader) {
-        return new MappingCharFilter(normMap, CharReader.get(reader));
+      protected Reader initReader(String fieldName, Reader reader) {
+        return new MappingCharFilter(normMap, reader);
       }
     };
 
@@ -348,7 +349,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         return new TokenStreamComponents(tokenizer, new DictionaryCompoundWordTokenFilter(TEST_VERSION_CURRENT, tokenizer, dict));
       }
     };
-    checkRandomData(random(), a, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
     
     InputSource is = new InputSource(getClass().getResource("da_UTF8.xml").toExternalForm());
     final HyphenationTree hyphenator = HyphenationCompoundWordTokenFilter.getHyphenationTree(is);
@@ -361,7 +362,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         return new TokenStreamComponents(tokenizer, filter);
       }
     };
-    checkRandomData(random(), b, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), b, 1000*RANDOM_MULTIPLIER);
   }
   
   public void testEmptyTerm() throws Exception {

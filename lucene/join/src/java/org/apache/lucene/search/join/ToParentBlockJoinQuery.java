@@ -1,6 +1,6 @@
 package org.apache.lucene.search.join;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,12 +20,14 @@ package org.apache.lucene.search.join;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Set;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;       // javadocs
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
@@ -33,7 +35,6 @@ import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Scorer.ChildScorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.ArrayUtil;
@@ -82,23 +83,7 @@ import org.apache.lucene.util.FixedBitSet;
  *
  * @lucene.experimental
  */
-
 public class ToParentBlockJoinQuery extends Query {
-
-  /** How to aggregate multiple child hit scores into a
-   *  single parent score. */
-  public static enum ScoreMode {
-    /** Do no scoring. */
-    None,
-    /** Parent hit's score is the average of all child
-        scores. */
-    Avg,
-    /** Parent hit's score is the max of all child
-        scores. */
-    Max,
-    /** Parent hit's score is the sum of all child
-        scores. */
-    Total};
 
   private final Filter parentsFilter;
   private final Query childQuery;
@@ -115,7 +100,7 @@ public class ToParentBlockJoinQuery extends Query {
    * 
    * @param childQuery Query matching child documents.
    * @param parentsFilter Filter (must produce FixedBitSet
-   * per-seegment) identifying the parent documents.
+   * per-segment) identifying the parent documents.
    * @param scoreMode How to aggregate multiple child scores
    * into a single parent score.
    **/
@@ -196,7 +181,8 @@ public class ToParentBlockJoinQuery extends Query {
       // acceptDocs when we score:
       final DocIdSet parents = parentsFilter.getDocIdSet(readerContext, null);
 
-      if (parents == null) {
+      if (parents == null
+          || parents.iterator().docID() == DocIdSetIterator.NO_MORE_DOCS) { // <-- means DocIdSet#EMPTY_DOCIDSET
         // No matches
         return null;
       }
@@ -208,10 +194,14 @@ public class ToParentBlockJoinQuery extends Query {
     }
 
     @Override
-    public Explanation explain(AtomicReaderContext reader, int doc) throws IOException {
-      // TODO
-      throw new UnsupportedOperationException(getClass().getName() +
-                                              " cannot explain match on parent document");
+    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
+      BlockJoinScorer scorer = (BlockJoinScorer) scorer(context, true, false, context.reader().getLiveDocs());
+      if (scorer != null) {
+        if (scorer.advance(doc) == doc) {
+          return scorer.explain(context.docBase);
+        }
+      }
+      return new ComplexExplanation(false, 0.0f, "Not a match");
     }
 
     @Override
@@ -226,7 +216,9 @@ public class ToParentBlockJoinQuery extends Query {
     private final ScoreMode scoreMode;
     private final Bits acceptDocs;
     private int parentDoc = -1;
+    private int prevParentDoc;
     private float parentScore;
+    private float parentFreq;
     private int nextChildDoc;
 
     private int[] pendingChildDocs = new int[5];
@@ -248,7 +240,7 @@ public class ToParentBlockJoinQuery extends Query {
 
     @Override
     public Collection<ChildScorer> getChildren() {
-      return Collections.singletonList(new ChildScorer(childScorer, "BLOCK_JOIN"));
+      return Collections.singleton(new ChildScorer(childScorer, "BLOCK_JOIN"));
     }
 
     int getChildCount() {
@@ -308,7 +300,9 @@ public class ToParentBlockJoinQuery extends Query {
         }
 
         float totalScore = 0;
+        float totalFreq = 0;
         float maxScore = Float.NEGATIVE_INFINITY;
+        float maxFreq = 0;
 
         childDocUpto = 0;
         do {
@@ -324,9 +318,12 @@ public class ToParentBlockJoinQuery extends Query {
           if (scoreMode != ScoreMode.None) {
             // TODO: specialize this into dedicated classes per-scoreMode
             final float childScore = childScorer.score();
+            final float childFreq = childScorer.freq();
             pendingChildScores[childDocUpto] = childScore;
             maxScore = Math.max(childScore, maxScore);
+            maxFreq = Math.max(childFreq, maxFreq);
             totalScore += childScore;
+            totalFreq += childFreq;
           }
           childDocUpto++;
           nextChildDoc = childScorer.nextDoc();
@@ -338,12 +335,15 @@ public class ToParentBlockJoinQuery extends Query {
         switch(scoreMode) {
         case Avg:
           parentScore = totalScore / childDocUpto;
+          parentFreq = totalFreq / childDocUpto;
           break;
         case Max:
           parentScore = maxScore;
+          parentFreq = maxFreq;
           break;
         case Total:
           parentScore = totalScore;
+          parentFreq = totalFreq;
           break;
         case None:
           break;
@@ -362,6 +362,11 @@ public class ToParentBlockJoinQuery extends Query {
     @Override
     public float score() throws IOException {
       return parentScore;
+    }
+    
+    @Override
+    public float freq() {
+      return parentFreq;
     }
 
     @Override
@@ -382,7 +387,7 @@ public class ToParentBlockJoinQuery extends Query {
         return nextDoc();
       }
 
-      final int prevParentDoc = parentBits.prevSetBit(parentTarget-1);
+      prevParentDoc = parentBits.prevSetBit(parentTarget-1);
 
       //System.out.println("  rolled back to prevParentDoc=" + prevParentDoc + " vs parentDoc=" + parentDoc);
       assert prevParentDoc >= parentDoc;
@@ -400,6 +405,15 @@ public class ToParentBlockJoinQuery extends Query {
       //System.out.println("  return nextParentDoc=" + nd);
       return nd;
     }
+
+    public Explanation explain(int docBase) throws IOException {
+      int start = docBase + prevParentDoc + 1; // +1 b/c prevParentDoc is previous parent doc
+      int end = docBase + parentDoc - 1; // -1 b/c parentDoc is parent doc
+      return new ComplexExplanation(
+          true, score(), String.format(Locale.ROOT, "Score based on child doc range from %d to %d", start, end)
+      );
+    }
+
   }
 
   @Override

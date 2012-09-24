@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.core.nodes;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -179,12 +179,12 @@ public class FieldQueryNode extends QueryNodeImpl implements FieldValuePairQuery
 
   }
 
-	public CharSequence getValue() {
-		return getText();
-	}
+  public CharSequence getValue() {
+    return getText();
+  }
 
-	public void setValue(CharSequence value) {
-		setText(value);
-	}
+  public void setValue(CharSequence value) {
+    setText(value);
+  }
 
 }

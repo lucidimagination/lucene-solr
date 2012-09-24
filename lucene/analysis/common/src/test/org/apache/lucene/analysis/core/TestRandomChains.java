@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.core;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,6 +25,7 @@ import java.io.StringReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 import java.net.URL;
 import java.nio.CharBuffer;
 import java.util.ArrayList;
@@ -44,8 +45,7 @@ import java.util.regex.Pattern;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.CachingTokenFilter;
-import org.apache.lucene.analysis.CharReader;
-import org.apache.lucene.analysis.CharStream;
+import org.apache.lucene.analysis.CharFilter;
 import org.apache.lucene.analysis.EmptyTokenizer;
 import org.apache.lucene.analysis.MockGraphTokenFilter;
 import org.apache.lucene.analysis.MockRandomLookaheadTokenFilter;
@@ -101,7 +101,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
 
   static List<Constructor<? extends Tokenizer>> tokenizers;
   static List<Constructor<? extends TokenFilter>> tokenfilters;
-  static List<Constructor<? extends CharStream>> charfilters;
+  static List<Constructor<? extends CharFilter>> charfilters;
 
   // TODO: fix those and remove
   private static final Set<Class<?>> brokenComponents = Collections.newSetFromMap(new IdentityHashMap<Class<?>,Boolean>());
@@ -158,17 +158,18 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
       // TODO: doesn't handle graph inputs
       CJKBigramFilter.class,
       // TODO: doesn't handle graph inputs (or even look at positionIncrement)
-      HyphenatedWordsFilter.class
+      HyphenatedWordsFilter.class,
+      // LUCENE-4065: only if you pass 'false' to enablePositionIncrements!
+      TypeTokenFilter.class
     );
   }
   
   @BeforeClass
   public static void beforeClass() throws Exception {
-    List<Class<?>> analysisClasses = new ArrayList<Class<?>>();
-    getClassesForPackage("org.apache.lucene.analysis", analysisClasses);
+    List<Class<?>> analysisClasses = getClassesForPackage("org.apache.lucene.analysis");
     tokenizers = new ArrayList<Constructor<? extends Tokenizer>>();
     tokenfilters = new ArrayList<Constructor<? extends TokenFilter>>();
-    charfilters = new ArrayList<Constructor<? extends CharStream>>();
+    charfilters = new ArrayList<Constructor<? extends CharFilter>>();
     for (final Class<?> c : analysisClasses) {
       final int modifiers = c.getModifiers();
       if (
@@ -177,7 +178,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
         || c.isSynthetic() || c.isAnonymousClass() || c.isMemberClass() || c.isInterface()
         || brokenComponents.contains(c)
         || c.isAnnotationPresent(Deprecated.class)
-        || !(Tokenizer.class.isAssignableFrom(c) || TokenFilter.class.isAssignableFrom(c) || CharStream.class.isAssignableFrom(c))
+        || !(Tokenizer.class.isAssignableFrom(c) || TokenFilter.class.isAssignableFrom(c) || CharFilter.class.isAssignableFrom(c))
       ) {
         continue;
       }
@@ -195,10 +196,10 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
           assertTrue(ctor.toGenericString() + " has unsupported parameter types",
             allowedTokenFilterArgs.containsAll(Arrays.asList(ctor.getParameterTypes())));
           tokenfilters.add(castConstructor(TokenFilter.class, ctor));
-        } else if (CharStream.class.isAssignableFrom(c)) {
+        } else if (CharFilter.class.isAssignableFrom(c)) {
           assertTrue(ctor.toGenericString() + " has unsupported parameter types",
             allowedCharFilterArgs.containsAll(Arrays.asList(ctor.getParameterTypes())));
-          charfilters.add(castConstructor(CharStream.class, ctor));
+          charfilters.add(castConstructor(CharFilter.class, ctor));
         } else {
           fail("Cannot get here");
         }
@@ -222,7 +223,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
   }
   
   @AfterClass
-  public static void afterClass() throws Exception {
+  public static void afterClass() {
     tokenizers = null;
     tokenfilters = null;
     charfilters = null;
@@ -234,19 +235,30 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
   private static <T> Constructor<T> castConstructor(Class<T> instanceClazz, Constructor<?> ctor) {
     return (Constructor<T>) ctor;
   }
-  private static void getClassesForPackage(String pckgname, List<Class<?>> classes) throws Exception {
+  
+  public static List<Class<?>> getClassesForPackage(String pckgname) throws Exception {
+    final List<Class<?>> classes = new ArrayList<Class<?>>();
+    collectClassesForPackage(pckgname, classes);
+    assertFalse("No classes found in package '"+pckgname+"'; maybe your test classes are packaged as JAR file?", classes.isEmpty());
+    return classes;
+  }
+  
+  private static void collectClassesForPackage(String pckgname, List<Class<?>> classes) throws Exception {
     final ClassLoader cld = TestRandomChains.class.getClassLoader();
     final String path = pckgname.replace('.', '/');
     final Enumeration<URL> resources = cld.getResources(path);
     while (resources.hasMoreElements()) {
-      final File directory = new File(resources.nextElement().toURI());
+      final URI uri = resources.nextElement().toURI();
+      if (!"file".equalsIgnoreCase(uri.getScheme()))
+        continue;
+      final File directory = new File(uri);
       if (directory.exists()) {
         String[] files = directory.list();
         for (String file : files) {
           if (new File(directory, file).isDirectory()) {
             // recurse
             String subPackage = pckgname + "." + file;
-            getClassesForPackage(subPackage, classes);
+            collectClassesForPackage(subPackage, classes);
           }
           if (file.endsWith(".class")) {
             String clazzName = file.substring(0, file.length() - 6);
@@ -522,7 +534,6 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
     allowedCharFilterArgs = Collections.newSetFromMap(new IdentityHashMap<Class<?>,Boolean>());
     allowedCharFilterArgs.addAll(argProducers.keySet());
     allowedCharFilterArgs.add(Reader.class);
-    allowedCharFilterArgs.add(CharStream.class);
   }
   
   @SuppressWarnings("unchecked")
@@ -558,8 +569,6 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
       Class<?> paramType = paramTypes[i];
       if (paramType == Reader.class) {
         args[i] = reader;
-      } else if (paramType == CharStream.class) {
-        args[i] = CharReader.get(reader);
       } else {
         args[i] = newRandomArg(random, paramType);
       }
@@ -609,7 +618,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
     }
 
     @Override
-    protected Reader initReader(Reader reader) {
+    protected Reader initReader(String fieldName, Reader reader) {
       Random random = new Random(seed);
       CharFilterSpec charfilterspec = newCharFilterChain(random, reader);
       return charfilterspec.reader;
@@ -699,7 +708,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
       int numFilters = random.nextInt(3);
       for (int i = 0; i < numFilters; i++) {
         while (true) {
-          final Constructor<? extends CharStream> ctor = charfilters.get(random.nextInt(charfilters.size()));
+          final Constructor<? extends CharFilter> ctor = charfilters.get(random.nextInt(charfilters.size()));
           final Object args[] = newCharFilterArgs(random, spec.reader, ctor.getParameterTypes());
           reader = createComponent(ctor, args, descr);
           if (reader != null) {
@@ -758,74 +767,66 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
     }
   }
   
-  // wants charfilter to be a filterreader...
-  // do *NOT*, do *NOT* refactor me to be a charfilter: LUCENE-3990
-  static class CheckThatYouDidntReadAnythingReaderWrapper extends CharStream {
+  static class CheckThatYouDidntReadAnythingReaderWrapper extends CharFilter {
     boolean readSomething;
-    CharStream in;
     
     CheckThatYouDidntReadAnythingReaderWrapper(Reader in) {
-      this.in = CharReader.get(in);
+      super(in);
     }
     
     @Override
-    public int correctOffset(int currentOff) {
-      return in.correctOffset(currentOff);
-    }
-
-    @Override
-    public void close() throws IOException {
-      in.close();
+    public int correct(int currentOff) {
+      return currentOff; // we don't change any offsets
     }
 
     @Override
     public int read(char[] cbuf, int off, int len) throws IOException {
       readSomething = true;
-      return in.read(cbuf, off, len);
+      return input.read(cbuf, off, len);
     }
 
     @Override
     public int read() throws IOException {
       readSomething = true;
-      return in.read();
+      return input.read();
     }
 
     @Override
     public int read(CharBuffer target) throws IOException {
       readSomething = true;
-      return in.read(target);
-    }
-
-    @Override
-    public void mark(int readAheadLimit) throws IOException {
-      in.mark(readAheadLimit);
-    }
-
-    @Override
-    public boolean markSupported() {
-      return in.markSupported();
+      return input.read(target);
     }
 
     @Override
     public int read(char[] cbuf) throws IOException {
       readSomething = true;
-      return in.read(cbuf);
-    }
-
-    @Override
-    public boolean ready() throws IOException {
-      return in.ready();
-    }
-
-    @Override
-    public void reset() throws IOException {
-      in.reset();
+      return input.read(cbuf);
     }
 
     @Override
     public long skip(long n) throws IOException {
       readSomething = true;
-      return in.skip(n);
+      return input.skip(n);
+    }
+
+    @Override
+    public void mark(int readAheadLimit) throws IOException {
+      input.mark(readAheadLimit);
+    }
+
+    @Override
+    public boolean markSupported() {
+      return input.markSupported();
+    }
+
+    @Override
+    public boolean ready() throws IOException {
+      return input.ready();
+    }
+
+    @Override
+    public void reset() throws IOException {
+      input.reset();
     }
   }
   

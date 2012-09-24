@@ -1,5 +1,5 @@
 package org.apache.solr.core;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -63,7 +63,7 @@ public abstract class IndexReaderFactory implements NamedListInitializedPlugin {
    * {@link SolrCore#getCoreDescriptor()}, {@link SolrCore#getSchema()} and
    * {@link SolrCore#getSolrConfig()} are valid.
    * @return An IndexReader instance
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public abstract DirectoryReader newReader(Directory indexDir, SolrCore core)
       throws IOException;

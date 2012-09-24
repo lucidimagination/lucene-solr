@@ -23,16 +23,19 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.apache.lucene.analysis.*;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.TokenFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Payload;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
@@ -42,7 +45,7 @@ import org.apache.lucene.search.payloads.PayloadSpanUtil;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestPayloadSpans extends LuceneTestCase {
@@ -64,12 +67,12 @@ public class TestPayloadSpans extends LuceneTestCase {
     SpanTermQuery stq;
     Spans spans;
     stq = new SpanTermQuery(new Term(PayloadHelper.FIELD, "seventy"));
-    spans = MultiSpansWrapper.wrap(indexReader.getTopReaderContext(), stq);
+    spans = MultiSpansWrapper.wrap(indexReader.getContext(), stq);
     assertTrue("spans is null and it shouldn't be", spans != null);
     checkSpans(spans, 100, 1, 1, 1);
 
     stq = new SpanTermQuery(new Term(PayloadHelper.NO_PAYLOAD_FIELD, "seventy"));  
-    spans = MultiSpansWrapper.wrap(indexReader.getTopReaderContext(), stq);
+    spans = MultiSpansWrapper.wrap(indexReader.getContext(), stq);
     assertTrue("spans is null and it shouldn't be", spans != null);
     checkSpans(spans, 100, 0, 0, 0);
   }
@@ -80,7 +83,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     SpanFirstQuery sfq;
     match = new SpanTermQuery(new Term(PayloadHelper.FIELD, "one"));
     sfq = new SpanFirstQuery(match, 2);
-    Spans spans = MultiSpansWrapper.wrap(indexReader.getTopReaderContext(), sfq);
+    Spans spans = MultiSpansWrapper.wrap(indexReader.getContext(), sfq);
     checkSpans(spans, 109, 1, 1, 1);
     //Test more complicated subclause
     SpanQuery[] clauses = new SpanQuery[2];
@@ -88,11 +91,11 @@ public class TestPayloadSpans extends LuceneTestCase {
     clauses[1] = new SpanTermQuery(new Term(PayloadHelper.FIELD, "hundred"));
     match = new SpanNearQuery(clauses, 0, true);
     sfq = new SpanFirstQuery(match, 2);
-    checkSpans(MultiSpansWrapper.wrap(indexReader.getTopReaderContext(), sfq), 100, 2, 1, 1);
+    checkSpans(MultiSpansWrapper.wrap(indexReader.getContext(), sfq), 100, 2, 1, 1);
 
     match = new SpanNearQuery(clauses, 0, false);
     sfq = new SpanFirstQuery(match, 2);
-    checkSpans(MultiSpansWrapper.wrap(indexReader.getTopReaderContext(), sfq), 100, 2, 1, 1);
+    checkSpans(MultiSpansWrapper.wrap(indexReader.getContext(), sfq), 100, 2, 1, 1);
     
   }
   
@@ -110,13 +113,13 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer()).setSimilarity(similarity));
 
     Document doc = new Document();
-    doc.add(newField(PayloadHelper.FIELD, "one two three one four three", TextField.TYPE_STORED));
+    doc.add(newTextField(PayloadHelper.FIELD, "one two three one four three", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
     writer.close();
     
 
-    checkSpans(MultiSpansWrapper.wrap(reader.getTopReaderContext(), snq), 1,new int[]{2});
+    checkSpans(MultiSpansWrapper.wrap(reader.getContext(), snq), 1,new int[]{2});
     reader.close();
     directory.close();
   }
@@ -247,8 +250,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     directory.close();
   }
   
-  public void testShrinkToAfterShortestMatch() throws CorruptIndexException,
-      LockObtainFailedException, IOException {
+  public void testShrinkToAfterShortestMatch() throws IOException {
     Directory directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new TestPayloadAnalyzer()));
@@ -274,7 +276,7 @@ public class TestPayloadSpans extends LuceneTestCase {
         Collection<byte[]> payloads = spans.getPayload();
 
         for (final byte [] payload : payloads) {
-          payloadSet.add(new String(payload));
+          payloadSet.add(new String(payload, "UTF-8"));
         }
       }
     }
@@ -285,8 +287,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     directory.close();
   }
   
-  public void testShrinkToAfterShortestMatch2() throws CorruptIndexException,
-      LockObtainFailedException, IOException {
+  public void testShrinkToAfterShortestMatch2() throws IOException {
     Directory directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new TestPayloadAnalyzer()));
@@ -310,7 +311,7 @@ public class TestPayloadSpans extends LuceneTestCase {
       while (spans.next()) {
         Collection<byte[]> payloads = spans.getPayload();
         for (final byte[] payload : payloads) {
-          payloadSet.add(new String(payload));
+          payloadSet.add(new String(payload, "UTF-8"));
         }
       }
     }
@@ -321,8 +322,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     directory.close();
   }
   
-  public void testShrinkToAfterShortestMatch3() throws CorruptIndexException,
-      LockObtainFailedException, IOException {
+  public void testShrinkToAfterShortestMatch3() throws IOException {
     Directory directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new TestPayloadAnalyzer()));
@@ -347,7 +347,7 @@ public class TestPayloadSpans extends LuceneTestCase {
         Collection<byte[]> payloads = spans.getPayload();
 
         for (final byte [] payload : payloads) {
-          payloadSet.add(new String(payload));
+          payloadSet.add(new String(payload, "UTF-8"));
         }
       }
     }
@@ -369,7 +369,7 @@ public class TestPayloadSpans extends LuceneTestCase {
                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer()).setSimilarity(similarity));
 
     Document doc = new Document();
-    doc.add(newField(PayloadHelper.FIELD,"xx rr yy mm  pp", TextField.TYPE_STORED));
+    doc.add(newTextField(PayloadHelper.FIELD, "xx rr yy mm  pp", Field.Store.YES));
     writer.addDocument(doc);
   
     IndexReader reader = writer.getReader();
@@ -383,7 +383,7 @@ public class TestPayloadSpans extends LuceneTestCase {
       System.out.println("Num payloads:" + payloads.size());
     for (final byte [] bytes : payloads) {
       if(VERBOSE)
-        System.out.println(new String(bytes));
+        System.out.println(new String(bytes, "UTF-8"));
     }
     reader.close();
     directory.close();
@@ -432,7 +432,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     for(int i = 0; i < docs.length; i++) {
       doc = new Document();
       String docText = docs[i];
-      doc.add(newField(PayloadHelper.FIELD,docText, TextField.TYPE_STORED));
+      doc.add(newTextField(PayloadHelper.FIELD, docText, Field.Store.YES));
       writer.addDocument(doc);
     }
 
@@ -456,7 +456,7 @@ public class TestPayloadSpans extends LuceneTestCase {
         for (final byte [] bytes : payload) {
           if(VERBOSE)
             System.out.println("doc:" + spans.doc() + " s:" + spans.start() + " e:" + spans.end() + " "
-              + new String(bytes));
+              + new String(bytes, "UTF-8"));
         }
 
         assertEquals(numPayloads[cnt],payload.size());
@@ -505,9 +505,9 @@ public class TestPayloadSpans extends LuceneTestCase {
 
         if (!nopayload.contains(token)) {
           if (entities.contains(token)) {
-            payloadAtt.setPayload(new Payload((token + ":Entity:"+ pos ).getBytes()));
+            payloadAtt.setPayload(new BytesRef(token + ":Entity:"+ pos ));
           } else {
-            payloadAtt.setPayload(new Payload((token + ":Noise:" + pos ).getBytes()));
+            payloadAtt.setPayload(new BytesRef(token + ":Noise:" + pos ));
           }
         }
         pos += posIncrAtt.getPositionIncrement();

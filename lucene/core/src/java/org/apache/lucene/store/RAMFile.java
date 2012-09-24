@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,9 @@ package org.apache.lucene.store;
 
 import java.util.ArrayList;
 
-/** @lucene.internal */
+/** 
+ * Represents a file in RAM as a list of byte[] buffers.
+ * @lucene.internal */
 public class RAMFile {
   protected ArrayList<byte[]> buffers = new ArrayList<byte[]>();
   long length;

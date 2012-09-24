@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -37,18 +37,20 @@ import org.apache.lucene.util.PriorityQueue;
  * @lucene.internal
  */
 public final class Sort {
-  public final static int MB = 1024 * 1024;
-  public final static int GB = MB * 1024;
+  /** Convenience constant for megabytes */
+  public final static long MB = 1024 * 1024;
+  /** Convenience constant for gigabytes */
+  public final static long GB = MB * 1024;
   
   /**
    * Minimum recommended buffer size for sorting.
    */
-  public final static int MIN_BUFFER_SIZE_MB = 32;
+  public final static long MIN_BUFFER_SIZE_MB = 32;
 
   /**
    * Absolute minimum required buffer size for sorting.
    */
-  public static final int ABSOLUTE_MIN_SORT_BUFFER_SIZE = MB / 2;
+  public static final long ABSOLUTE_MIN_SORT_BUFFER_SIZE = MB / 2;
   private static final String MIN_BUFFER_SIZE_MSG = "At least 0.5MB RAM buffer is needed";
 
   /**
@@ -60,7 +62,7 @@ public final class Sort {
    * A bit more descriptive unit for constructors.
    * 
    * @see #automatic()
-   * @see #megabytes(int)
+   * @see #megabytes(long)
    */
   public static final class BufferSize {
     final int bytes;
@@ -70,11 +72,19 @@ public final class Sort {
         throw new IllegalArgumentException("Buffer too large for Java ("
             + (Integer.MAX_VALUE / MB) + "mb max): " + bytes);
       }
+      
+      if (bytes < ABSOLUTE_MIN_SORT_BUFFER_SIZE) {
+        throw new IllegalArgumentException(MIN_BUFFER_SIZE_MSG + ": " + bytes);
+      }
   
       this.bytes = (int) bytes;
     }
-  
-    public static BufferSize megabytes(int mb) {
+    
+    /**
+     * Creates a {@link BufferSize} in MB. The given 
+     * values must be $gt; 0 and &lt; 2048.
+     */
+    public static BufferSize megabytes(long mb) {
       return new BufferSize(mb * MB);
     }
   
@@ -105,7 +115,7 @@ public final class Sort {
           sortBufferByteSize = Math.max(ABSOLUTE_MIN_SORT_BUFFER_SIZE, sortBufferByteSize);
         }
       }
-      return new BufferSize(Math.min(Integer.MAX_VALUE, sortBufferByteSize));
+      return new BufferSize(Math.min((long)Integer.MAX_VALUE, sortBufferByteSize));
     }
   }
   
@@ -113,18 +123,29 @@ public final class Sort {
    * Sort info (debugging mostly).
    */
   public class SortInfo {
+    /** number of temporary files created when merging partitions */
     public int tempMergeFiles;
+    /** number of partition merges */
     public int mergeRounds;
+    /** number of lines of data read */
     public int lines;
+    /** time spent merging sorted partitions (in milliseconds) */
     public long mergeTime;
+    /** time spent sorting data (in milliseconds) */
     public long sortTime;
+    /** total time spent (in milliseconds) */
     public long totalTime;
+    /** time spent in i/o read (in milliseconds) */
     public long readTime;
+    /** read buffer size (in bytes) */
     public final long bufferSize = ramBufferSize.bytes;
+    
+    /** create a new SortInfo (with empty statistics) for debugging */
+    public SortInfo() {}
     
     @Override
     public String toString() {
-      return String.format(Locale.ENGLISH,
+      return String.format(Locale.ROOT,
           "time=%.2f sec. total (%.2f reading, %.2f sorting, %.2f merging), lines=%d, temp files=%d, merges=%d, soft ram limit=%.2f MB",
           totalTime / 1000.0d, readTime / 1000.0d, sortTime / 1000.0d, mergeTime / 1000.0d,
           lines, tempMergeFiles, mergeRounds,
@@ -140,6 +161,7 @@ public final class Sort {
   private int maxTempFiles;
   private final Comparator<BytesRef> comparator;
   
+  /** Default comparator: sorts in binary (codepoint) order */
   public static final Comparator<BytesRef> DEFAULT_COMPARATOR = BytesRef.getUTF8SortedAsUnicodeComparator();
 
   /**
@@ -152,6 +174,12 @@ public final class Sort {
     this(DEFAULT_COMPARATOR, BufferSize.automatic(), defaultTempDir(), MAX_TEMPFILES);
   }
   
+  /**
+   * Defaults constructor with a custom comparator.
+   * 
+   * @see #defaultTempDir()
+   * @see BufferSize#automatic()
+   */
   public Sort(Comparator<BytesRef> comparator) throws IOException {
     this(comparator, BufferSize.automatic(), defaultTempDir(), MAX_TEMPFILES);
   }
@@ -185,47 +213,59 @@ public final class Sort {
     output.delete();
 
     ArrayList<File> merges = new ArrayList<File>();
-    ByteSequencesReader is = new ByteSequencesReader(input);
-    boolean success = false;
+    boolean success2 = false;
     try {
-      int lines = 0;
-      while ((lines = readPartition(is)) > 0) {                    
-        merges.add(sortPartition(lines));
-        sortInfo.tempMergeFiles++;
-        sortInfo.lines += lines;
-
-        // Handle intermediate merges.
-        if (merges.size() == maxTempFiles) {
-          File intermediate = File.createTempFile("sort", "intermediate", tempDirectory);
-          mergePartitions(merges, intermediate);
-          for (File file : merges) {
-            file.delete();
-          }
-          merges.clear();
-          merges.add(intermediate);
+      ByteSequencesReader is = new ByteSequencesReader(input);
+      boolean success = false;
+      try {
+        int lines = 0;
+        while ((lines = readPartition(is)) > 0) {
+          merges.add(sortPartition(lines));
           sortInfo.tempMergeFiles++;
-        }
-      }
-      success = true;
-    } finally {
-      if (success)
-        IOUtils.close(is);
-      else
-        IOUtils.closeWhileHandlingException(is);
-    }
+          sortInfo.lines += lines;
 
-    // One partition, try to rename or copy if unsuccessful.
-    if (merges.size() == 1) {     
-      // If simple rename doesn't work this means the output is
-      // on a different volume or something. Copy the input then.
-      if (!merges.get(0).renameTo(output)) {
-        copy(merges.get(0), output);
+          // Handle intermediate merges.
+          if (merges.size() == maxTempFiles) {
+            File intermediate = File.createTempFile("sort", "intermediate", tempDirectory);
+            try {
+              mergePartitions(merges, intermediate);
+            } finally {
+              for (File file : merges) {
+                file.delete();
+              }
+              merges.clear();
+              merges.add(intermediate);
+            }
+            sortInfo.tempMergeFiles++;
+          }
+        }
+        success = true;
+      } finally {
+        if (success)
+          IOUtils.close(is);
+        else
+          IOUtils.closeWhileHandlingException(is);
       }
-    } else { 
-      // otherwise merge the partitions with a priority queue.                  
-      mergePartitions(merges, output);                            
+
+      // One partition, try to rename or copy if unsuccessful.
+      if (merges.size() == 1) {     
+        File single = merges.get(0);
+        // If simple rename doesn't work this means the output is
+        // on a different volume or something. Copy the input then.
+        if (!single.renameTo(output)) {
+          copy(single, output);
+        }
+      } else { 
+        // otherwise merge the partitions with a priority queue.
+        mergePartitions(merges, output);
+      }
+      success2 = true;
+    } finally {
       for (File file : merges) {
         file.delete();
+      }
+      if (!success2) {
+        output.delete();
       }
     }
 
@@ -381,25 +421,41 @@ public final class Sort {
   public static class ByteSequencesWriter implements Closeable {
     private final DataOutput os;
 
+    /** Constructs a ByteSequencesWriter to the provided File */
     public ByteSequencesWriter(File file) throws IOException {
       this(new DataOutputStream(
           new BufferedOutputStream(
               new FileOutputStream(file))));
     }
 
+    /** Constructs a ByteSequencesWriter to the provided DataOutput */
     public ByteSequencesWriter(DataOutput os) {
       this.os = os;
     }
 
+    /**
+     * Writes a BytesRef.
+     * @see #write(byte[], int, int)
+     */
     public void write(BytesRef ref) throws IOException {
       assert ref != null;
       write(ref.bytes, ref.offset, ref.length);
     }
 
+    /**
+     * Writes a byte array.
+     * @see #write(byte[], int, int)
+     */
     public void write(byte [] bytes) throws IOException {
       write(bytes, 0, bytes.length);
     }
 
+    /**
+     * Writes a byte array.
+     * <p>
+     * The length is written as a <code>short</code>, followed
+     * by the bytes.
+     */
     public void write(byte [] bytes, int off, int len) throws IOException {
       assert bytes != null;
       assert off >= 0 && off + len <= bytes.length;
@@ -426,12 +482,14 @@ public final class Sort {
   public static class ByteSequencesReader implements Closeable {
     private final DataInput is;
 
+    /** Constructs a ByteSequencesReader from the provided File */
     public ByteSequencesReader(File file) throws IOException {
       this(new DataInputStream(
           new BufferedInputStream(
               new FileInputStream(file))));
     }
 
+    /** Constructs a ByteSequencesReader from the provided DataInput */
     public ByteSequencesReader(DataInput is) {
       this.is = is;
     }
@@ -493,6 +551,7 @@ public final class Sort {
     }
   }
 
+  /** Returns the comparator in use to sort entries */
   public Comparator<BytesRef> getComparator() {
     return comparator;
   }  

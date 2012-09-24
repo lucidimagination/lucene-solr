@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,11 +31,11 @@ public abstract class DocIdSet {
     
     private final DocIdSetIterator iterator = new DocIdSetIterator() {
       @Override
-      public int advance(int target) throws IOException { return NO_MORE_DOCS; }
+      public int advance(int target) { return NO_MORE_DOCS; }
       @Override
       public int docID() { return NO_MORE_DOCS; }
       @Override
-      public int nextDoc() throws IOException { return NO_MORE_DOCS; }
+      public int nextDoc() { return NO_MORE_DOCS; }
     };
     
     @Override
@@ -50,7 +50,7 @@ public abstract class DocIdSet {
     
     // we explicitely provide no random access, as this filter is 100% sparse and iterator exits faster
     @Override
-    public Bits bits() throws IOException {
+    public Bits bits() {
       return null;
     }
   };
@@ -72,7 +72,7 @@ public abstract class DocIdSet {
    * external disk access (as {@link Bits} interface cannot throw
    * {@link IOException}). This is generally true for bit sets
    * like {@link org.apache.lucene.util.FixedBitSet}, which return
-   * itsself if they are used as {@code DocIdSet}.
+   * itself if they are used as {@code DocIdSet}.
    */
   public Bits bits() throws IOException {
     return null;

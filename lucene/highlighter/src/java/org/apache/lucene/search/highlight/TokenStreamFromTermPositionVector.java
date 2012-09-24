@@ -1,6 +1,6 @@
 package org.apache.lucene.search.highlight;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,6 +33,9 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CollectionUtil;
 
+/**
+ * TokenStream created from a term vector field.
+ */
 public final class TokenStreamFromTermPositionVector extends TokenStream {
 
   private final List<Token> positionedTokens = new ArrayList<Token>();
@@ -56,18 +59,13 @@ public final class TokenStreamFromTermPositionVector extends TokenStream {
     termAttribute = addAttribute(CharTermAttribute.class);
     positionIncrementAttribute = addAttribute(PositionIncrementAttribute.class);
     offsetAttribute = addAttribute(OffsetAttribute.class);
+    final boolean hasOffsets = vector.hasOffsets();
     final TermsEnum termsEnum = vector.iterator(null);
     BytesRef text;
     DocsAndPositionsEnum dpEnum = null;
     while((text = termsEnum.next()) != null) {
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
-      final boolean hasOffsets;
-      if (dpEnum == null) {
-        hasOffsets = false;
-        dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
-      } else {
-        hasOffsets = true;
-      }
+      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
+      assert dpEnum != null; // presumably checked by TokenSources.hasPositions earlier
       dpEnum.nextDoc();
       final int freq = dpEnum.freq();
       for (int j = 0; j < freq; j++) {
@@ -105,7 +103,7 @@ public final class TokenStreamFromTermPositionVector extends TokenStream {
   };
   
   @Override
-  public boolean incrementToken() throws IOException {
+  public boolean incrementToken() {
     if (this.tokensAtCurrentPosition.hasNext()) {
       final Token next = this.tokensAtCurrentPosition.next();
       clearAttributes();
@@ -119,7 +117,7 @@ public final class TokenStreamFromTermPositionVector extends TokenStream {
   }
 
   @Override
-  public void reset() throws IOException {
+  public void reset() {
     this.tokensAtCurrentPosition = this.positionedTokens.iterator();
   }
 }

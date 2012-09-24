@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -49,7 +49,8 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 class FixedSortedBytesImpl {
 
-  static final String CODEC_NAME = "FixedSortedBytes";
+  static final String CODEC_NAME_IDX = "FixedSortedBytesIdx";
+  static final String CODEC_NAME_DAT = "FixedSortedBytesDat";
   static final int VERSION_START = 0;
   static final int VERSION_CURRENT = VERSION_START;
 
@@ -57,8 +58,8 @@ class FixedSortedBytesImpl {
     private final Comparator<BytesRef> comp;
 
     public Writer(Directory dir, String id, Comparator<BytesRef> comp,
-        Counter bytesUsed, IOContext context, boolean fasterButMoreRam) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context, fasterButMoreRam, Type.BYTES_FIXED_SORTED);
+        Counter bytesUsed, IOContext context, float acceptableOverheadRatio) {
+      super(dir, id, CODEC_NAME_IDX, CODEC_NAME_DAT, VERSION_CURRENT, bytesUsed, context, acceptableOverheadRatio, Type.BYTES_FIXED_SORTED);
       this.comp = comp;
     }
 
@@ -67,7 +68,7 @@ class FixedSortedBytesImpl {
         throws IOException {
       boolean success = false;
       try {
-        final MergeContext ctx = SortedBytesMergeUtils.init(Type.BYTES_FIXED_SORTED, docValues, comp, mergeState.mergedDocCount);
+        final MergeContext ctx = SortedBytesMergeUtils.init(Type.BYTES_FIXED_SORTED, docValues, comp, mergeState.segmentInfo.getDocCount());
         List<SortedSourceSlice> slices = SortedBytesMergeUtils.buildSlices(mergeState.docBase, mergeState.docMaps, docValues, ctx);
         final IndexOutput datOut = getOrCreateDataOut();
         datOut.writeInt(ctx.sizePerValues);
@@ -76,7 +77,7 @@ class FixedSortedBytesImpl {
         final IndexOutput idxOut = getOrCreateIndexOut();
         idxOut.writeInt(maxOrd);
         final PackedInts.Writer ordsWriter = PackedInts.getWriter(idxOut, ctx.docToEntry.length,
-            PackedInts.bitsRequired(maxOrd));
+            PackedInts.bitsRequired(maxOrd), PackedInts.DEFAULT);
         for (SortedSourceSlice slice : slices) {
           slice.writeOrds(ordsWriter);
         }
@@ -127,7 +128,7 @@ class FixedSortedBytesImpl {
 
     public Reader(Directory dir, String id, int maxDoc, IOContext context,
         Type type, Comparator<BytesRef> comparator) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_START, true, context, type);
+      super(dir, id, CODEC_NAME_IDX, CODEC_NAME_DAT, VERSION_START, true, context, type);
       size = datIn.readInt();
       valueCount = idxIn.readInt();
       this.comparator = comparator;
@@ -212,10 +213,10 @@ class FixedSortedBytesImpl {
     public BytesRef getByOrd(int ord, BytesRef bytesRef) {
       try {
         datIn.seek(basePointer + size * ord);
+        bytesRef.offset = 0;
         bytesRef.grow(size);
         datIn.readBytes(bytesRef.bytes, 0, size);
         bytesRef.length = size;
-        bytesRef.offset = 0;
         return bytesRef;
       } catch (IOException ex) {
         throw new IllegalStateException("failed to getByOrd", ex);

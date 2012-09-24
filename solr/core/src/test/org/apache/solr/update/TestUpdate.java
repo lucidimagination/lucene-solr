@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -44,7 +44,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.apache.solr.core.SolrCore.verbose;
-import static org.apache.solr.update.processor.DistributedUpdateProcessor.SEEN_LEADER;
 
 public class TestUpdate extends SolrTestCaseJ4 {
   @BeforeClass
@@ -69,7 +68,7 @@ public class TestUpdate extends SolrTestCaseJ4 {
     doUpdateTest(new Callable() {
       @Override
       public Object call() throws Exception {
-        commit("softCommit","false");
+        assertU(commit("softCommit","false"));
         return null;
       }
     });
@@ -83,15 +82,15 @@ public class TestUpdate extends SolrTestCaseJ4 {
 
     long version;
 
-    version = addAndGetVersion(sdoc("id","1", "val_i",5), null);
+    version = addAndGetVersion(sdoc("id","1", "val_i",5, "copyfield_source","a"), null);
     afterUpdate.call();
-    version = addAndGetVersion(sdoc("id","1", "val_is",map("add",10)), null);
+    version = addAndGetVersion(sdoc("id","1", "val_is",map("add",10), "copyfield_source",map("add","b")), null);
     afterUpdate.call();
     version = addAndGetVersion(sdoc("id","1", "val_is",map("add",5)), null);
     afterUpdate.call();
 
-    assertJQ(req("qt","/get", "id","1", "fl","id,*_i,*_is")
-        ,"=={'doc':{'id':'1', 'val_i':5, 'val_is':[10,5]}}"
+    assertJQ(req("qt","/get", "id","1", "fl","id,*_i,*_is,copyfield_*")
+        ,"=={'doc':{'id':'1', 'val_i':5, 'val_is':[10,5], 'copyfield_source':['a','b']}}"     // real-time get should not return stored copyfield targets
     );
 
     version = addAndGetVersion(sdoc("id","1", "val_is",map("add",-1), "val_i",map("set",100)), null);
@@ -99,6 +98,14 @@ public class TestUpdate extends SolrTestCaseJ4 {
 
     assertJQ(req("qt","/get", "id","1", "fl","id,*_i,*_is")
         ,"=={'doc':{'id':'1', 'val_i':100, 'val_is':[10,5,-1]}}"
+    );
+
+
+    // Do a search to get all stored fields back and make sure that the stored copyfield target only
+    // has one copy of the source.  This may not be supported forever!
+    assertU(commit("softCommit","true"));
+    assertJQ(req("q","*:*", "fl","id,*_i,*_is,copyfield_*")
+        ,"/response/docs/[0]=={'id':'1', 'val_i':100, 'val_is':[10,5,-1], 'copyfield_source':['a','b'], 'copyfield_dest_ss':['a','b']}"
     );
 
 
@@ -151,13 +158,22 @@ public class TestUpdate extends SolrTestCaseJ4 {
     version = deleteAndGetVersion("1", null);
     afterUpdate.call();
 
+
     try {
-      // Currently, there is an implicit _version_=1 for updates (doc must exist).  This is subject to change!
-      version2 = addAndGetVersion(sdoc("id","1", "val_is",map("add",-100)), null);
+      // test that updating a non-existing doc fails if we set _version_=1
+      version2 = addAndGetVersion(sdoc("id","1", "val_is",map("add",-101), "_version_","1"), null);
       fail();
     } catch (SolrException se) {
       assertEquals(409, se.code());
     }
+
+
+    // test that by default we can update a non-existing doc
+    version = addAndGetVersion(sdoc("id","1", "val_i",102, "val_is",map("add",-102)), null);
+    afterUpdate.call();
+    assertJQ(req("qt","/get", "id","1", "fl","id,val*")
+        ,"=={'doc':{'id':'1', 'val_i':102, 'val_is':[-102]}}"
+    );
 
     version = addAndGetVersion(sdoc("id","1", "val_i",5), null);
     afterUpdate.call();

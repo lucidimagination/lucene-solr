@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,9 @@ import java.util.Iterator;
 
 import org.apache.lucene.search.Query;
 
+/**
+ * Forms an OR query of the provided query across multiple fields.
+ */
 public class FieldsQuery extends SrndQuery { /* mostly untested */
   private SrndQuery q;
   private List<String> fieldNames;
@@ -60,7 +63,7 @@ public class FieldsQuery extends SrndQuery { /* mostly untested */
       OrQuery oq = new OrQuery(queries,
                               true /* infix OR for field names */,
                               OrOperatorName);
-      System.out.println(getClass().toString() + ", fields expanded: " + oq.toString()); /* needs testing */
+      // System.out.println(getClass().toString() + ", fields expanded: " + oq.toString()); /* needs testing */
       return oq.makeLuceneQueryField(null, qf);
     }
   }

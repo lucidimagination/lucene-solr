@@ -1,6 +1,6 @@
 package org.apache.lucene.benchmark.byTask.feeds;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,6 @@ package org.apache.lucene.benchmark.byTask.feeds;
  */
 
 import java.io.File;
-import java.io.IOException;
 import java.io.PrintStream;
 import java.util.Properties;
 
@@ -28,7 +27,6 @@ import org.apache.lucene.benchmark.byTask.PerfRunData;
 import org.apache.lucene.benchmark.byTask.tasks.AddDocTask;
 import org.apache.lucene.benchmark.byTask.tasks.CloseIndexTask;
 import org.apache.lucene.benchmark.byTask.tasks.CreateIndexTask;
-import org.apache.lucene.benchmark.byTask.tasks.ResetInputsTask;
 import org.apache.lucene.benchmark.byTask.tasks.TaskSequence;
 import org.apache.lucene.benchmark.byTask.utils.Config;
 import org.apache.lucene.document.Document;
@@ -42,17 +40,16 @@ import org.apache.lucene.search.TopDocs;
 /** Tests the functionality of {@link DocMaker}. */
 public class DocMakerTest extends BenchmarkTestCase {
 
-  static final class OneDocSource extends ContentSource {
+  public static final class OneDocSource extends ContentSource {
 
     private boolean finish = false;
     
     @Override
-    public void close() throws IOException {
+    public void close() {
     }
 
     @Override
-    public DocData getNextDocData(DocData docData) throws NoMoreDataException,
-        IOException {
+    public DocData getNextDocData(DocData docData) throws NoMoreDataException {
       if (finish) {
         throw new NoMoreDataException();
       }
@@ -86,7 +83,7 @@ public class DocMakerTest extends BenchmarkTestCase {
     Config config = new Config(props);
     PerfRunData runData = new PerfRunData(config);
 
-    TaskSequence tasks = new TaskSequence(runData, getName(), null, false);
+    TaskSequence tasks = new TaskSequence(runData, getTestName(), null, false);
     tasks.addTask(new CreateIndexTask(runData));
     tasks.addTask(new AddDocTask(runData));
     tasks.addTask(new CloseIndexTask(runData));
@@ -106,7 +103,6 @@ public class DocMakerTest extends BenchmarkTestCase {
     
     // Indexing configuration.
     props.setProperty("analyzer", WhitespaceAnalyzer.class.getName());
-    props.setProperty("content.source", OneDocSource.class.getName());
     props.setProperty("directory", "RAMDirectory");
     if (setNormsProp) {
       props.setProperty("doc.tokenized.norms", Boolean.toString(normsPropVal));
@@ -119,7 +115,7 @@ public class DocMakerTest extends BenchmarkTestCase {
     Config config = new Config(props);
     
     DocMaker dm = new DocMaker();
-    dm.setConfig(config);
+    dm.setConfig(config, new OneDocSource());
     return dm.makeDocument();
   }
   
@@ -170,17 +166,20 @@ public class DocMakerTest extends BenchmarkTestCase {
     // DocMaker did not close its ContentSource if resetInputs was called twice,
     // leading to a file handle leak.
     File f = new File(getWorkDir(), "docMakerLeak.txt");
-    PrintStream ps = new PrintStream(f);
+    PrintStream ps = new PrintStream(f, "UTF-8");
     ps.println("one title\t" + System.currentTimeMillis() + "\tsome content");
     ps.close();
     
     Properties props = new Properties();
-    props.setProperty("content.source", "org.apache.lucene.benchmark.byTask.feeds.LineDocSource");
     props.setProperty("docs.file", f.getAbsolutePath());
     props.setProperty("content.source.forever", "false");
     Config config = new Config(props);
+    
+    ContentSource source = new LineDocSource();
+    source.setConfig(config);
+    
     DocMaker dm = new DocMaker();
-    dm.setConfig(config);
+    dm.setConfig(config, source);
     dm.resetInputs();
     dm.resetInputs();
     dm.close();

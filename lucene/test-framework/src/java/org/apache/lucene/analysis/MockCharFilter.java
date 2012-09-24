@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,13 +24,12 @@ import java.util.TreeMap;
 
 /** the purpose of this charfilter is to send offsets out of bounds
   if the analyzer doesn't use correctOffset or does incorrect offset math. */
-public class MockCharFilter extends CharStream {
-  final CharStream in;
+public class MockCharFilter extends CharFilter {
   final int remainder;
   
   // for testing only
   public MockCharFilter(Reader in, int remainder) {
-    this.in = CharReader.get(in);
+    super(in);
     // TODO: instead of fixed remainder... maybe a fixed
     // random seed?
     this.remainder = remainder;
@@ -42,11 +41,6 @@ public class MockCharFilter extends CharStream {
   // for testing only, uses a remainder of 0
   public MockCharFilter(Reader in) {
     this(in, 0);
-  }
-
-  @Override
-  public void close() throws IOException {
-    in.close();
   }
   
   int currentOffset = -1;
@@ -67,7 +61,7 @@ public class MockCharFilter extends CharStream {
     }
     
     // otherwise actually read one    
-    int ch = in.read();
+    int ch = input.read();
     if (ch < 0)
       return ch;
     
@@ -94,11 +88,11 @@ public class MockCharFilter extends CharStream {
   }
 
   @Override
-  public int correctOffset(int currentOff) {
+  public int correct(int currentOff) {
     SortedMap<Integer,Integer> subMap = corrections.subMap(0, currentOff+1);
     int ret = subMap.isEmpty() ? currentOff : currentOff + subMap.get(subMap.lastKey());
     assert ret >= 0 : "currentOff=" + currentOff + ",diff=" + (ret-currentOff);
-    return in.correctOffset(ret); // chain the call
+    return ret;
   }
   
   protected void addOffCorrectMap(int off, int cumulativeDiff) {

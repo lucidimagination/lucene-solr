@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,10 +27,10 @@ import org.apache.lucene.index.FieldInfo;
  * Extension of {@link PostingsConsumer} to support pluggable term dictionaries.
  * <p>
  * This class contains additional hooks to interact with the provided
- * term dictionaries such as {@link BlockTreeTermsWriter} and 
- * {@link BlockTermsWriter}. If you want to re-use one of these existing
- * implementations and are only interested in customizing the format of
- * the postings list, extend this class instead.
+ * term dictionaries such as {@link BlockTreeTermsWriter}. If you want
+ * to re-use an existing implementation and are only interested in
+ * customizing the format of the postings list, extend this class
+ * instead.
  * 
  * @see PostingsReaderBase
  * @lucene.experimental
@@ -40,8 +40,19 @@ import org.apache.lucene.index.FieldInfo;
 // TermsDict + PostingsReader/WriterBase == PostingsConsumer/Producer
 public abstract class PostingsWriterBase extends PostingsConsumer implements Closeable {
 
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected PostingsWriterBase() {
+  }
+
+  /** Called once after startup, before any terms have been
+   *  added.  Implementations typically write a header to
+   *  the provided {@code termsOut}. */
   public abstract void start(IndexOutput termsOut) throws IOException;
 
+  /** Start a new term.  Note that a matching call to {@link
+   *  #finishTerm(TermStats)} is done, only if the term has at least one
+   *  document. */
   public abstract void startTerm() throws IOException;
 
   /** Flush count terms starting at start "backwards", as a
@@ -50,10 +61,13 @@ public abstract class PostingsWriterBase extends PostingsConsumer implements Clo
    *  the stack. */
   public abstract void flushTermsBlock(int start, int count) throws IOException;
 
-  /** Finishes the current term */
+  /** Finishes the current term.  The provided {@link
+   *  TermStats} contains the term's summary statistics. */
   public abstract void finishTerm(TermStats stats) throws IOException;
 
+  /** Called when the writing switches to another field. */
   public abstract void setField(FieldInfo fieldInfo);
 
+  @Override
   public abstract void close() throws IOException;
 }

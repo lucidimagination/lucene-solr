@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,5 +28,12 @@ import org.apache.lucene.store.IOContext;
  * @lucene.experimental
  */
 public abstract class FieldInfosReader {
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected FieldInfosReader() {
+  }
+
+  /** Read the {@link FieldInfos} previously written with {@link
+   *  FieldInfosWriter}. */
   public abstract FieldInfos read(Directory directory, String segmentName, IOContext iocontext) throws IOException;
 }

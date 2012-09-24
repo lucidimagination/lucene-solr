@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,12 +20,12 @@ package org.apache.lucene.codecs.lucene40;
 import java.io.IOException;
 import java.util.Arrays;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.util.CodecUtil;
 import org.apache.lucene.util.MutableBits;
 
 /** Optimized implementation of a vector of bits.  This is more-or-less like
@@ -163,7 +163,7 @@ final class BitVector implements Cloneable, MutableBits {
       int c = 0;
       int end = bits.length;
       for (int i = 0; i < end; i++) {
-        c += BYTE_COUNTS[bits[i] & 0xFF];	  // sum bits per byte
+        c += BYTE_COUNTS[bits[i] & 0xFF];  // sum bits per byte
       }
       count = c;
     }
@@ -176,12 +176,12 @@ final class BitVector implements Cloneable, MutableBits {
     int c = 0;
     int end = bits.length;
     for (int i = 0; i < end; i++) {
-      c += BYTE_COUNTS[bits[i] & 0xFF];	  // sum bits per byte
+      c += BYTE_COUNTS[bits[i] & 0xFF];  // sum bits per byte
     }
     return c;
   }
 
-  private static final byte[] BYTE_COUNTS = {	  // table of bits/byte
+  private static final byte[] BYTE_COUNTS = {  // table of bits/byte
     0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
     1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
     1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,

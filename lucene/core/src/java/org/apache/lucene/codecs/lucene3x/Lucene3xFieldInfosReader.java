@@ -1,5 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
-/**
+
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,8 +16,9 @@ package org.apache.lucene.codecs.lucene3x;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import java.io.IOException;
-import java.util.Set;
+import java.util.Collections;
 
 import org.apache.lucene.codecs.FieldInfosReader;
 import org.apache.lucene.index.CorruptIndexException;
@@ -26,7 +28,6 @@ import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexFormatTooNewException;
 import org.apache.lucene.index.IndexFormatTooOldException;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -34,7 +35,7 @@ import org.apache.lucene.store.IndexInput;
 
 /**
  * @lucene.experimental
- * @deprecated
+ * @deprecated Only for reading existing 3.x indexes
  */
 @Deprecated
 class Lucene3xFieldInfosReader extends FieldInfosReader {
@@ -58,10 +59,6 @@ class Lucene3xFieldInfosReader extends FieldInfosReader {
   public FieldInfos read(Directory directory, String segmentName, IOContext iocontext) throws IOException {
     final String fileName = IndexFileNames.segmentFileName(segmentName, "", FIELD_INFOS_EXTENSION);
     IndexInput input = directory.openInput(fileName, iocontext);
-
-    boolean hasVectors = false;
-    boolean hasFreq = false;
-    boolean hasProx = false;
     
     try {
       final int format = input.readVInt();
@@ -85,7 +82,9 @@ class Lucene3xFieldInfosReader extends FieldInfosReader {
         boolean omitNorms = (bits & OMIT_NORMS) != 0;
         boolean storePayloads = (bits & STORE_PAYLOADS) != 0;
         final IndexOptions indexOptions;
-        if ((bits & OMIT_TERM_FREQ_AND_POSITIONS) != 0) {
+        if (!isIndexed) {
+          indexOptions = null;
+        } else if ((bits & OMIT_TERM_FREQ_AND_POSITIONS) != 0) {
           indexOptions = IndexOptions.DOCS_ONLY;
         } else if ((bits & OMIT_POSITIONS) != 0) {
           if (format <= FORMAT_OMIT_POSITIONS) {
@@ -103,23 +102,16 @@ class Lucene3xFieldInfosReader extends FieldInfosReader {
         if (indexOptions != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
           storePayloads = false;
         }
-        hasVectors |= storeTermVector;
-        hasProx |= isIndexed && indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
-        hasFreq |= isIndexed && indexOptions != IndexOptions.DOCS_ONLY;
         infos[i] = new FieldInfo(name, isIndexed, fieldNumber, storeTermVector, 
-          omitNorms, storePayloads, indexOptions, null, isIndexed && !omitNorms? Type.FIXED_INTS_8 : null);
+          omitNorms, storePayloads, indexOptions, null, isIndexed && !omitNorms? Type.FIXED_INTS_8 : null, Collections.<String,String>emptyMap());
       }
 
       if (input.getFilePointer() != input.length()) {
         throw new CorruptIndexException("did not read all bytes from file \"" + fileName + "\": read " + input.getFilePointer() + " vs size " + input.length() + " (resource: " + input + ")");
       }
-      return new FieldInfos(infos, hasFreq, hasProx, hasVectors);
+      return new FieldInfos(infos);
     } finally {
       input.close();
     }
-  }
-  
-  public static void files(SegmentInfo info, Set<String> files) throws IOException {
-    files.add(IndexFileNames.segmentFileName(info.name, "", FIELD_INFOS_EXTENSION));
   }
 }

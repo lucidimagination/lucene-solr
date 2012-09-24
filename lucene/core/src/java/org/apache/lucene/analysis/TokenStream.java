@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -160,7 +160,7 @@ public abstract class TokenStream extends AttributeSource implements Closeable {
    * differ from the offset of the last token eg in case one or more whitespaces
    * followed after the last token, but a WhitespaceTokenizer was used.
    * 
-   * @throws IOException
+   * @throws IOException If an I/O error occurs
    */
   public void end() throws IOException {
     // do nothing by default
@@ -170,12 +170,8 @@ public abstract class TokenStream extends AttributeSource implements Closeable {
    * This method is called by a consumer before it begins consumption using
    * {@link #incrementToken()}.
    * <p/>
-   * Resets this stream to the beginning.  As all TokenStreams must be reusable,
-   * any implementations which have state that needs to be reset between usages
-   * of the TokenStream, must implement this method. Note that if your TokenStream
-   * caches tokens and feeds them back again after a reset, it is imperative
-   * that you clone the tokens when you store them away (on the first pass) as
-   * well as when you return them (on future passes after {@link #reset()}).
+   * Resets this stream to a clean state. Stateful implementations must implement
+   * this method so that they can be reused, just as if they had been created fresh.
    */
   public void reset() throws IOException {}
   

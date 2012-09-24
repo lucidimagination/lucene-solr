@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -50,7 +50,9 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 class VarStraightBytesImpl {
 
-  static final String CODEC_NAME = "VarStraightBytes";
+  static final String CODEC_NAME_IDX = "VarStraightBytesIdx";
+  static final String CODEC_NAME_DAT = "VarStraightBytesDat";
+
   static final int VERSION_START = 0;
   static final int VERSION_CURRENT = VERSION_START;
 
@@ -62,9 +64,8 @@ class VarStraightBytesImpl {
     private final ByteBlockPool pool;
     private IndexOutput datOut;
     private boolean merge = false;
-    public Writer(Directory dir, String id, Counter bytesUsed, IOContext context)
-        throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context, Type.BYTES_VAR_STRAIGHT);
+    public Writer(Directory dir, String id, Counter bytesUsed, IOContext context) {
+      super(dir, id, CODEC_NAME_IDX, CODEC_NAME_DAT, VERSION_CURRENT, bytesUsed, context, Type.BYTES_VAR_STRAIGHT);
       pool = new ByteBlockPool(new DirectTrackingAllocator(bytesUsed));
       docToAddress = new long[1];
       pool.nextBuffer(); // init
@@ -120,7 +121,7 @@ class VarStraightBytesImpl {
           final IndexInput cloneIdx = reader.cloneIndex();
           try {
             numDataBytes = cloneIdx.readVLong();
-            final ReaderIterator iter = PackedInts.getReaderIterator(cloneIdx);
+            final ReaderIterator iter = PackedInts.getReaderIterator(cloneIdx, PackedInts.DEFAULT_BUFFER_SIZE);
             for (int i = 0; i < maxDocs; i++) {
               long offset = iter.next();
               ++lastDocID;
@@ -196,7 +197,7 @@ class VarStraightBytesImpl {
         if (lastDocID == -1) {
           idxOut.writeVLong(0);
           final PackedInts.Writer w = PackedInts.getWriter(idxOut, docCount+1,
-              PackedInts.bitsRequired(0));
+              PackedInts.bitsRequired(0), PackedInts.DEFAULT);
           // docCount+1 so we write sentinel
           for (int i = 0; i < docCount+1; i++) {
             w.add(0);
@@ -206,7 +207,7 @@ class VarStraightBytesImpl {
           fill(docCount, address);
           idxOut.writeVLong(address);
           final PackedInts.Writer w = PackedInts.getWriter(idxOut, docCount+1,
-              PackedInts.bitsRequired(address));
+              PackedInts.bitsRequired(address), PackedInts.DEFAULT);
           for (int i = 0; i < docCount; i++) {
             w.add(docToAddress[i]);
           }
@@ -230,13 +231,18 @@ class VarStraightBytesImpl {
     public long ramBytesUsed() {
       return bytesUsed.get();
     }
+
+    @Override
+    public int getValueSize() {
+      return -1;
+    }
   }
 
   public static class VarStraightReader extends BytesReaderBase {
     final int maxDoc;
 
     VarStraightReader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_START, true, context, Type.BYTES_VAR_STRAIGHT);
+      super(dir, id, CODEC_NAME_IDX, CODEC_NAME_DAT, VERSION_START, true, context, Type.BYTES_VAR_STRAIGHT);
       this.maxDoc = maxDoc;
     }
 

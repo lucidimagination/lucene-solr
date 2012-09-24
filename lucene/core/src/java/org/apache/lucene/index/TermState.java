@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,11 @@ package org.apache.lucene.index;
  * @lucene.experimental
  */
 public abstract class TermState implements Cloneable {
+
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected TermState() {
+  }
 
   /**
    * Copies the content of the given {@link TermState} to this instance

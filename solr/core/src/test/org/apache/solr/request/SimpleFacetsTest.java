@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,14 +26,9 @@ import org.apache.solr.util.TimeZoneUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.TimeZone;
 
 
 public class SimpleFacetsTest extends SolrTestCaseJ4 {
@@ -88,27 +83,39 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     add_doc("id", "42", 
             "range_facet_f", "35.3", 
             "trait_s", "Tool", "trait_s", "Obnoxious",
-            "name", "Zapp Brannigan");
+            "name", "Zapp Brannigan",
+             "foo_s","A", "foo_s","B"
+    );
     add_doc("id", "43" ,
             "range_facet_f", "28.789", 
-            "title", "Democratic Order of Planets");
+            "title", "Democratic Order of Planets",
+            "foo_s","A", "foo_s","B"
+    );
     add_doc("id", "44", 
             "range_facet_f", "15.97", 
             "trait_s", "Tool",
-            "name", "The Zapper");
+            "name", "The Zapper",
+            "foo_s","A", "foo_s","B", "foo_s","C"
+    );
     add_doc("id", "45", 
             "range_facet_f", "30.0", 
             "trait_s", "Chauvinist",
-            "title", "25 star General");
+            "title", "25 star General",
+            "foo_s","A", "foo_s","B"
+    );
     add_doc("id", "46", 
             "range_facet_f", "20.0", 
             "trait_s", "Obnoxious",
-            "subject", "Defeated the pacifists of the Gandhi nebula");
+            "subject", "Defeated the pacifists of the Gandhi nebula",
+            "foo_s","A", "foo_s","B"
+    );
     add_doc("id", "47", 
             "range_facet_f", "28.62", 
             "trait_s", "Pig",
             "text", "line up and fly directly at the enemy death cannons, clogging them with wreckage!",
-            "zerolen_s","");   
+            "zerolen_s","",
+            "foo_s","A", "foo_s","B", "foo_s","C"
+    );
   }
 
   static void indexSimpleGroupedFacetCounts() {
@@ -117,6 +124,64 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     add_doc("id", "2002", "hotel_s1", "b", "airport_s1", "ams", "duration_i1", "10");
     add_doc("id", "2003", "hotel_s1", "b", "airport_s1", "ams", "duration_i1", "5");
     add_doc("id", "2004", "hotel_s1", "b", "airport_s1", "ams", "duration_i1", "5");
+  }
+
+  @Test
+  public void testCachingBigTerms() throws Exception {
+    assertQ( req("indent","true", "q", "id:[42 TO 47]",
+            "facet", "true",
+            "facet.field", "foo_s"  // big terms should cause foo_s:A to be cached
+             ),
+        "*[count(//doc)=6]"
+    );
+
+    // now use the cached term as a filter to make sure deleted docs are accounted for
+    assertQ( req("indent","true", "fl","id", "q", "foo_s:B",
+        "facet", "true",
+        "facet.field", "foo_s",
+        "fq","foo_s:A"
+    ),
+        "*[count(//doc)=6]"
+    );
+
+
+  }
+
+
+  @Test
+  public void testSimpleGroupedQueryRangeFacets() throws Exception {
+    assertQ(
+        req(
+            "q", "*:*",
+            "fq", "id:[2000 TO 2004]",
+            "group", "true",
+            "group.facet", "true",
+            "group.field", "hotel_s1",
+            "facet", "true",
+            "facet.query", "airport_s1:ams"
+        ),
+        "//lst[@name='facet_queries']/int[@name='airport_s1:ams'][.='2']"
+    );
+    assertQ(
+        req(
+            "q", "*:*",
+            "fq", "id:[2000 TO 2004]",
+            "group", "true",
+            "group.facet", "true",
+            "group.field", "hotel_s1",
+            "facet", "true",
+            "facet.range", "duration_i1",
+            "facet.range.start", "5",
+            "facet.range.end", "11",
+            "facet.range.gap", "1"
+        ),
+        "//lst[@name='facet_ranges']/lst[@name='duration_i1']/lst[@name='counts']/int[@name='5'][.='2']",
+        "//lst[@name='facet_ranges']/lst[@name='duration_i1']/lst[@name='counts']/int[@name='6'][.='0']",
+        "//lst[@name='facet_ranges']/lst[@name='duration_i1']/lst[@name='counts']/int[@name='7'][.='0']",
+        "//lst[@name='facet_ranges']/lst[@name='duration_i1']/lst[@name='counts']/int[@name='8'][.='0']",
+        "//lst[@name='facet_ranges']/lst[@name='duration_i1']/lst[@name='counts']/int[@name='9'][.='0']",
+        "//lst[@name='facet_ranges']/lst[@name='duration_i1']/lst[@name='counts']/int[@name='10'][.='2']"
+    );
   }
 
   @Test
@@ -1973,4 +2038,61 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
             ,"*[count(//lst[@name='facet_fields']/lst/int)=0]"
     );
   }
+
+  /** 
+   * kind of an absurd tests because if there is an inifnite loop, it 
+   * would ver finish -- but at least it ensures that <i>if</i> one of 
+   * these requests return, they return an error 
+   */
+  public void testRangeFacetInfiniteLoopDetection() {
+
+    for (String field : new String[] {"foo_f", "foo_sf", 
+                                      "foo_d", "foo_sd",
+                                      "foo_i", "foo_si"}) {
+      assertQEx("no zero gap error: " + field,
+                req("q", "*:*",
+                    "facet", "true",
+                    "facet.range", field,
+                    "facet.range.start", "23",
+                    "facet.range.gap", "0",
+                    "facet.range.end", "100"),
+                400);
+    }
+    for (String field : new String[] {"foo_pdt", "foo_dt"}) {
+      for (String type : new String[] {"date", "range"}) {
+      assertQEx("no zero gap error for facet." + type + ": " + field,
+                req("q", "*:*",
+                    "facet", "true",
+                    "facet." + type, field,
+                    "facet."+type+".start", "NOW",
+                    "facet."+type+".gap", "+0DAYS",
+                    "facet."+type+".end", "NOW+10DAY"),
+                400);
+      }
+    }
+    
+    for (String field : new String[] {"foo_f", "foo_sf"}) {
+      assertQEx("no float underflow error: " + field,
+                req("q", "*:*",
+                    "facet", "true",
+                    "facet.range", field,
+                    "facet.range.start", "100000000000",
+                    "facet.range.end", "100000086200",
+                    "facet.range.gap", "2160"),
+                400);
+    }
+
+    for (String field : new String[] {"foo_d", "foo_sd"}) {
+      assertQEx("no double underflow error: " + field,
+                req("q", "*:*",
+                    "facet", "true",
+                    "facet.range", field,
+                    "facet.range.start", "9900000000000",
+                    "facet.range.end", "9900000086200",
+                    "facet.range.gap", "0.0003"),
+                400);
+    }
+    
+  }
+
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,10 @@ import static org.apache.lucene.search.similarities.SimilarityBase.log2;
  * @lucene.experimental
  */
 public class BasicModelG extends BasicModel {
+  
+  /** Sole constructor: parameter-free */
+  public BasicModelG() {}
+
   @Override
   public final float score(BasicStats stats, float tfn) {
     // just like in BE, approximation only holds true when F << N, so we use lambda = F / (N + F)

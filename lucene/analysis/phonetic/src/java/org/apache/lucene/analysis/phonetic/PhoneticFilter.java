@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,19 +27,24 @@ import java.io.IOException;
 
 /**
  * Create tokens for phonetic matches.
- * @see <a href="
- * http://commons.apache.org/codec/api-release/org/apache/commons/codec/language/package-summary.html
- * ">Apache Commons Codec</a>
+ * @see <a href="http://commons.apache.org/codec/api-release/org/apache/commons/codec/language/package-summary.html">
+ * Apache Commons Codec</a>
  */
 public final class PhoneticFilter extends TokenFilter 
 {
+  /** true if encoded tokens should be added as synonyms */
   protected boolean inject = true; 
+  /** phonetic encoder */
   protected Encoder encoder = null;
-  
+  /** captured state, non-null when <code>inject=true</code> and a token is buffered */
   protected State save = null;
   private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
   private final PositionIncrementAttribute posAtt = addAttribute(PositionIncrementAttribute.class);
 
+  /** Creates a PhoneticFilter with the specified encoder, and either
+   *  adding encoded forms as synonyms (<code>inject=true</code>) or
+   *  replacing them.
+   */
   public PhoneticFilter(TokenStream in, Encoder encoder, boolean inject) {
     super(in);
     this.encoder = encoder;

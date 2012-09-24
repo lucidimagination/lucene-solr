@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,9 +16,11 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import java.util.concurrent.locks.AbstractQueuedSynchronizer;
+import java.util.IdentityHashMap;
+import java.util.Map;
 
 import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
+import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
  * Controls the health status of a {@link DocumentsWriter} sessions. This class
@@ -36,85 +38,80 @@ import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
  * continue indexing.
  */
 final class DocumentsWriterStallControl {
-  @SuppressWarnings("serial")
-  private static final class Sync extends AbstractQueuedSynchronizer {
-    volatile boolean hasBlockedThreads = false; // only with assert
-
-    Sync() {
-      setState(0);
-    }
-
-    boolean isHealthy() {
-      return getState() == 0;
-    }
-
-    boolean trySetStalled() {
-      int state = getState();
-      return compareAndSetState(state, state + 1);
-    }
-
-    boolean tryReset() {
-      final int oldState = getState();
-      if (oldState == 0)
-        return true;
-      if (compareAndSetState(oldState, 0)) {
-        releaseShared(0);
-        return true;
-      }
-      return false;
-    }
-
-    @Override
-    public int tryAcquireShared(int acquires) {
-      assert maybeSetHasBlocked(getState());
-      return getState() == 0 ? 1 : -1;
-    }
-
-    // only used for testing
-    private boolean maybeSetHasBlocked(int state) {
-      hasBlockedThreads |= getState() != 0;
-      return true;
-    }
-
-    @Override
-    public boolean tryReleaseShared(int newState) {
-      return (getState() == 0);
-    }
-  }
-
-  private final Sync sync = new Sync();
-  volatile boolean wasStalled = false; // only with asserts
-
-  boolean anyStalledThreads() {
-    return !sync.isHealthy();
-  }
-
+  
+  private volatile boolean stalled;
+  private int numWaiting; // only with assert
+  private boolean wasStalled; // only with assert
+  private final Map<Thread, Boolean> waiting = new IdentityHashMap<Thread, Boolean>(); // only with assert
+  
   /**
    * Update the stalled flag status. This method will set the stalled flag to
    * <code>true</code> iff the number of flushing
    * {@link DocumentsWriterPerThread} is greater than the number of active
    * {@link DocumentsWriterPerThread}. Otherwise it will reset the
-   * {@link DocumentsWriterStallControl} to healthy and release all threads waiting on
-   * {@link #waitIfStalled()}
+   * {@link DocumentsWriterStallControl} to healthy and release all threads
+   * waiting on {@link #waitIfStalled()}
    */
-  void updateStalled(DocumentsWriterFlushControl flushControl) {
-    do {
-      // if we have more flushing / blocked DWPT than numActiveDWPT we stall!
-      // don't stall if we have queued flushes - threads should be hijacked instead
-      while (flushControl.netBytes() > flushControl.stallLimitBytes()) {
-        if (sync.trySetStalled()) {
-          assert wasStalled = true;
-          return;
-        }
-      }
-    } while (!sync.tryReset());
-  }
-
-  void waitIfStalled() {
-    sync.acquireShared(0);
+  synchronized void updateStalled(boolean stalled) {
+    this.stalled = stalled;
+    if (stalled) {
+      wasStalled = true;
+    }
+    notifyAll();
   }
   
-  boolean hasBlocked() { // for tests
-    return sync.hasBlockedThreads;
+  /**
+   * Blocks if documents writing is currently in a stalled state. 
+   * 
+   */
+  void waitIfStalled() {
+    if (stalled) {
+      synchronized (this) {
+        if (stalled) { // react on the first wakeup call!
+          // don't loop here, higher level logic will re-stall!
+          try {
+            assert incWaiters();
+            wait();
+            assert  decrWaiters();
+          } catch (InterruptedException e) {
+            throw new ThreadInterruptedException(e);
+          }
+        }
+      }
+    }
+  }
+  
+  boolean anyStalledThreads() {
+    return stalled;
+  }
+  
+  
+  private boolean incWaiters() {
+    numWaiting++;
+    assert waiting.put(Thread.currentThread(), Boolean.TRUE) == null;
+    
+    return numWaiting > 0;
+  }
+  
+  private boolean decrWaiters() {
+    numWaiting--;
+    assert waiting.remove(Thread.currentThread()) != null;
+    return numWaiting >= 0;
+  }
+  
+  synchronized boolean hasBlocked() { // for tests
+    return numWaiting > 0;
+  }
+  
+  boolean isHealthy() { // for tests
+    return !stalled; // volatile read!
+  }
+  
+  synchronized boolean isThreadQueued(Thread t) { // for tests
+    return waiting.containsKey(t);
+  }
+
+  synchronized boolean wasStalled() { // for tests
+    return wasStalled;
   }
 }

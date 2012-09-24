@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,6 @@ import java.io.IOException;
 
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState; // javadocs
 import org.apache.lucene.index.Terms;
@@ -46,20 +45,27 @@ import org.apache.lucene.index.Terms;
  */
 public abstract class FieldsConsumer implements Closeable {
 
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected FieldsConsumer() {
+  }
+
   /** Add a new field */
   public abstract TermsConsumer addField(FieldInfo field) throws IOException;
   
   /** Called when we are done adding everything. */
   public abstract void close() throws IOException;
 
+  /** Called during merging to merge all {@link Fields} from
+   *  sub-readers.  This must recurse to merge all postings
+   *  (terms, docs, positions, etc.).  A {@link
+   *  PostingsFormat} can override this default
+   *  implementation to do its own merging. */
   public void merge(MergeState mergeState, Fields fields) throws IOException {
-    FieldsEnum fieldsEnum = fields.iterator();
-    assert fieldsEnum != null;
-    String field;
-    while((field = fieldsEnum.next()) != null) {
+    for (String field : fields) {
       mergeState.fieldInfo = mergeState.fieldInfos.fieldInfo(field);
       assert mergeState.fieldInfo != null : "FieldInfo for field is null: "+ field;
-      Terms terms = fieldsEnum.terms();
+      Terms terms = fields.terms(field);
       if (terms != null) {
         final TermsConsumer termsConsumer = addField(mergeState.fieldInfo);
         termsConsumer.merge(mergeState, terms.iterator(null));

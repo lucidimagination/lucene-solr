@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -79,14 +79,9 @@ class BigramDictionary extends AbstractDictionary {
     try {
       loadFromInputStream(new FileInputStream(serialObj));
       return true;
-    } catch (FileNotFoundException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
-      e.printStackTrace();
-    } catch (ClassNotFoundException e) {
-      e.printStackTrace();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
-    return false;
   }
 
   private void loadFromInputStream(InputStream serialObjectInputStream)
@@ -144,12 +139,9 @@ class BigramDictionary extends AbstractDictionary {
    * Load the datafile into this BigramDictionary
    * 
    * @param dctFilePath path to the Bigramdictionary (bigramdict.dct)
-   * @throws FileNotFoundException
-   * @throws IOException
-   * @throws UnsupportedEncodingException
+   * @throws IOException If there is a low-level I/O error
    */
-  public void loadFromFile(String dctFilePath) throws FileNotFoundException,
-      IOException, UnsupportedEncodingException {
+  public void loadFromFile(String dctFilePath) throws IOException {
 
     int i, cnt, length, total = 0;
     // The file only counted 6763 Chinese characters plus 5 reserved slots 3756~3760.  

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,7 +36,7 @@ import org.apache.lucene.util.Bits;
  */
 public final class SegmentReader extends AtomicReader {
 
-  private final SegmentInfo si;
+  private final SegmentInfoPerCommit si;
   private final Bits liveDocs;
 
   // Normally set to si.docCount - si.delDocCount, unless we
@@ -47,22 +47,24 @@ public final class SegmentReader extends AtomicReader {
   final SegmentCoreReaders core;
 
   /**
+   * Constructs a new SegmentReader with a new core.
    * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
-  public SegmentReader(SegmentInfo si, int termInfosIndexDivisor, IOContext context) throws IOException {
+  // TODO: why is this public?
+  public SegmentReader(SegmentInfoPerCommit si, int termInfosIndexDivisor, IOContext context) throws IOException {
     this.si = si;
-    core = new SegmentCoreReaders(this, si.dir, si, context, termInfosIndexDivisor);
+    core = new SegmentCoreReaders(this, si.info.dir, si, context, termInfosIndexDivisor);
     boolean success = false;
     try {
       if (si.hasDeletions()) {
         // NOTE: the bitvector is stored using the regular directory, not cfs
-        liveDocs = si.getCodec().liveDocsFormat().readLiveDocs(directory(), si, new IOContext(IOContext.READ, true));
+        liveDocs = si.info.getCodec().liveDocsFormat().readLiveDocs(directory(), si, new IOContext(IOContext.READ, true));
       } else {
         assert si.getDelCount() == 0;
         liveDocs = null;
       }
-      numDocs = si.docCount - si.getDelCount();
+      numDocs = si.info.getDocCount() - si.getDelCount();
       success = true;
     } finally {
       // With lock-less commits, it's entirely possible (and
@@ -76,18 +78,20 @@ public final class SegmentReader extends AtomicReader {
     }
   }
 
-  // Create new SegmentReader sharing core from a previous
-  // SegmentReader and loading new live docs from a new
-  // deletes file.  Used by openIfChanged.
-  SegmentReader(SegmentInfo si, SegmentCoreReaders core, IOContext context) throws IOException {
-    this(si, core, si.getCodec().liveDocsFormat().readLiveDocs(si.dir, si, context), si.docCount - si.getDelCount());
+  /** Create new SegmentReader sharing core from a previous
+   *  SegmentReader and loading new live docs from a new
+   *  deletes file.  Used by openIfChanged. */
+  SegmentReader(SegmentInfoPerCommit si, SegmentCoreReaders core, IOContext context) throws IOException {
+    this(si, core,
+         si.info.getCodec().liveDocsFormat().readLiveDocs(si.info.dir, si, context),
+         si.info.getDocCount() - si.getDelCount());
   }
 
-  // Create new SegmentReader sharing core from a previous
-  // SegmentReader and using the provided in-memory
-  // liveDocs.  Used by IndexWriter to provide a new NRT
-  // reader:
-  SegmentReader(SegmentInfo si, SegmentCoreReaders core, Bits liveDocs, int numDocs) throws IOException {
+  /** Create new SegmentReader sharing core from a previous
+   *  SegmentReader and using the provided in-memory
+   *  liveDocs.  Used by IndexWriter to provide a new NRT
+   *  reader */
+  SegmentReader(SegmentInfoPerCommit si, SegmentCoreReaders core, Bits liveDocs, int numDocs) {
     this.si = si;
     this.core = core;
     core.incRef();
@@ -122,14 +126,16 @@ public final class SegmentReader extends AtomicReader {
     return core.fieldInfos;
   }
 
-  /** @lucene.internal */
+  /** Expert: retrieve thread-private {@link
+   *  StoredFieldsReader}
+   *  @lucene.internal */
   public StoredFieldsReader getFieldsReader() {
     ensureOpen();
     return core.fieldsReaderLocal.get();
   }
   
   @Override
-  public void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
+  public void document(int docID, StoredFieldVisitor visitor) throws IOException {
     if (docID < 0 || docID >= maxDoc()) {       
       throw new IllegalArgumentException("docID must be >= 0 and < maxDoc=" + maxDoc() + " (got docID=" + docID + ")");
     }
@@ -137,7 +143,7 @@ public final class SegmentReader extends AtomicReader {
   }
 
   @Override
-  public Fields fields() throws IOException {
+  public Fields fields() {
     ensureOpen();
     return core.fields;
   }
@@ -151,21 +157,17 @@ public final class SegmentReader extends AtomicReader {
   @Override
   public int maxDoc() {
     // Don't call ensureOpen() here (it could affect performance)
-    return si.docCount;
+    return si.info.getDocCount();
   }
 
-  /** @lucene.internal */
+  /** Expert: retrieve thread-private {@link
+   *  TermVectorsReader}
+   *  @lucene.internal */
   public TermVectorsReader getTermVectorsReader() {
     ensureOpen();
     return core.termVectorsLocal.get();
   }
 
-  /** Return a term frequency vector for the specified document and field. The
-   *  vector returned contains term numbers and frequencies for all terms in
-   *  the specified field of this document, if the field had storeTermVector
-   *  flag set.  If the flag was not set, the method returns null.
-   * @throws IOException
-   */
   @Override
   public Fields getTermVectors(int docID) throws IOException {
     TermVectorsReader termVectorsReader = getTermVectorsReader();
@@ -179,20 +181,20 @@ public final class SegmentReader extends AtomicReader {
   public String toString() {
     // SegmentInfo.toString takes dir and number of
     // *pending* deletions; so we reverse compute that here:
-    return si.toString(si.dir, si.docCount - numDocs - si.getDelCount());
+    return si.toString(si.info.dir, si.info.getDocCount() - numDocs - si.getDelCount());
   }
   
   /**
    * Return the name of the segment this reader is reading.
    */
   public String getSegmentName() {
-    return si.name;
+    return si.info.name;
   }
   
   /**
-   * Return the SegmentInfo of the segment this reader is reading.
+   * Return the SegmentInfoPerCommit of the segment this reader is reading.
    */
-  SegmentInfo getSegmentInfo() {
+  SegmentInfoPerCommit getSegmentInfo() {
     return si;
   }
 
@@ -201,7 +203,7 @@ public final class SegmentReader extends AtomicReader {
     // Don't ensureOpen here -- in certain cases, when a
     // cloned/reopened reader needs to commit, it may call
     // this method on the closed original reader
-    return si.dir;
+    return si.info.dir;
   }
 
   // This is necessary so that cloned SegmentReaders (which
@@ -216,7 +218,9 @@ public final class SegmentReader extends AtomicReader {
   public Object getCombinedCoreAndDeletesKey() {
     return this;
   }
-  
+
+  /** Returns term infos index divisor originally passed to
+   *  {@link #SegmentReader(SegmentInfoPerCommit, int, IOContext)}. */
   public int getTermInfosIndexDivisor() {
     return core.termsIndexDivisor;
   }
@@ -256,6 +260,8 @@ public final class SegmentReader extends AtomicReader {
    * @lucene.experimental
    */
   public static interface CoreClosedListener {
+    /** Invoked when the shared core of the provided {@link
+     *  SegmentReader} has closed. */
     public void onClose(SegmentReader owner);
   }
   

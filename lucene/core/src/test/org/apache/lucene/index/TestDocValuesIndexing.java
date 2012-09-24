@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,8 +18,17 @@ package org.apache.lucene.index;
  */
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Random;
+import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
@@ -40,16 +49,20 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DocValues.SortedSource;
 import org.apache.lucene.index.DocValues.Source;
 import org.apache.lucene.index.DocValues.Type;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
-import org.junit.Before;
 
 /**
  * 
@@ -66,13 +79,13 @@ public class TestDocValuesIndexing extends LuceneTestCase {
   /*
    * Simple test case to show how to use the API
    */
-  public void testDocValuesSimple() throws CorruptIndexException, IOException {
+  public void testDocValuesSimple() throws IOException {
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(dir, writerConfig(false));
     for (int i = 0; i < 5; i++) {
       Document doc = new Document();
       doc.add(new PackedLongDocValuesField("docId", i));
-      doc.add(new TextField("docId", "" + i));
+      doc.add(new TextField("docId", "" + i, Field.Store.NO));
       writer.addDocument(doc);
     }
     writer.commit();
@@ -81,7 +94,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     writer.close(true);
 
     DirectoryReader reader = DirectoryReader.open(dir, 1);
-    assertEquals(1, reader.getSequentialSubReaders().length);
+    assertEquals(1, reader.leaves().size());
 
     IndexSearcher searcher = new IndexSearcher(reader);
 
@@ -125,7 +138,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     Directory d1 = newDirectory();
     RandomIndexWriter w = new RandomIndexWriter(random(), d1);
     Document doc = new Document();
-    doc.add(newField("id", "1", StringField.TYPE_STORED));
+    doc.add(newStringField("id", "1", Field.Store.YES));
     doc.add(new PackedLongDocValuesField("dv", 1));
     w.addDocument(doc);
     IndexReader r1 = w.getReader();
@@ -134,7 +147,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     Directory d2 = newDirectory();
     w = new RandomIndexWriter(random(), d2);
     doc = new Document();
-    doc.add(newField("id", "2", StringField.TYPE_STORED));
+    doc.add(newStringField("id", "2", Field.Store.YES));
     doc.add(new PackedLongDocValuesField("dv", 2));
     w.addDocument(doc);
     IndexReader r2 = w.getReader();
@@ -361,7 +374,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
   }
   
   public void runTestIndexBytes(IndexWriterConfig cfg, boolean withDeletions)
-      throws CorruptIndexException, LockObtainFailedException, IOException {
+      throws IOException {
     final Directory d = newDirectory();
     IndexWriter w = new IndexWriter(d, cfg);
     final List<Type> byteVariantList = new ArrayList<Type>(BYTES);
@@ -447,7 +460,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     d.close();
   }
   
-  public void testGetArrayNumerics() throws CorruptIndexException, IOException {
+  public void testGetArrayNumerics() throws IOException {
     Directory d = newDirectory();
     IndexWriterConfig cfg = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
     IndexWriter w = new IndexWriter(d, cfg);
@@ -529,7 +542,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     d.close();
   }
   
-  public void testGetArrayBytes() throws CorruptIndexException, IOException {
+  public void testGetArrayBytes() throws IOException {
     Directory d = newDirectory();
     IndexWriterConfig cfg = newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random()));
@@ -600,7 +613,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
 
   private FixedBitSet indexValues(IndexWriter w, int numValues, Type valueType,
       List<Type> valueVarList, boolean withDeletions, int bytesSize)
-      throws CorruptIndexException, IOException {
+      throws IOException {
     final boolean isNumeric = NUMERICS.contains(valueType);
     FixedBitSet deleted = new FixedBitSet(numValues);
     Document doc = new Document();
@@ -704,7 +717,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
         }
       }
       doc.removeFields("id");
-      doc.add(new Field("id", idBase + i, StringField.TYPE_STORED));
+      doc.add(new StringField("id", idBase + i, Field.Store.YES));
       w.addDocument(doc);
 
       if (i % 7 == 0) {
@@ -754,7 +767,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
     w.close();
-    assertEquals(17, r.getSequentialSubReaders()[0].docValues("field").load().getInt(0));
+    assertEquals(17, getOnlySegmentReader(r).docValues("field").load().getInt(0));
     r.close();
     d.close();
   }
@@ -800,7 +813,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
       int len = 1 + random().nextInt(50);
       for (int i = 0; i < numDocs; i++) {
         Document doc = new Document();
-        doc.add(newField("id", "" + i, TextField.TYPE_STORED));
+        doc.add(newTextField("id", "" + i, Field.Store.YES));
         String string = fixed ? _TestUtil.randomFixedByteLengthUnicodeString(random(),
             len) : _TestUtil.randomRealisticUnicodeString(random(), 1, len);
         BytesRef br = new BytesRef(string);
@@ -815,7 +828,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
       int numDocsNoValue = atLeast(10);
       for (int i = 0; i < numDocsNoValue; i++) {
         Document doc = new Document();
-        doc.add(newField("id", "noValue", TextField.TYPE_STORED));
+        doc.add(newTextField("id", "noValue", Field.Store.YES));
         w.addDocument(doc);
       }
       BytesRef bytesRef = new BytesRef(fixed ? len : 0);
@@ -828,7 +841,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
       for (int i = 0; i < numDocs; i++) {
         Document doc = new Document();
         String id = "" + i + numDocs;
-        doc.add(newField("id", id, TextField.TYPE_STORED));
+        doc.add(newTextField("id", id, Field.Store.YES));
         String string = fixed ? _TestUtil.randomFixedByteLengthUnicodeString(random(),
             len) : _TestUtil.randomRealisticUnicodeString(random(), 1, len);
         BytesRef br = new BytesRef(string);
@@ -858,7 +871,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
 
       for (Entry<String, String> entry : entrySet) {
         int docId = docId(slowR, new Term("id", entry.getKey()));
-        expected.copyChars(entry.getValue());
+        expected = new BytesRef(entry.getValue());
         assertEquals(expected, asSortedSource.getBytes(docId, actual));
       }
 
@@ -871,7 +884,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
   public int docId(AtomicReader reader, Term term) throws IOException {
     int docFreq = reader.docFreq(term);
     assertEquals(1, docFreq);
-    DocsEnum termDocsEnum = reader.termDocsEnum(null, term.field, term.bytes, false);
+    DocsEnum termDocsEnum = reader.termDocsEnum(term);
     int nextDoc = termDocsEnum.nextDoc();
     assertEquals(DocIdSetIterator.NO_MORE_DOCS, termDocsEnum.nextDoc());
     return nextDoc;
@@ -998,8 +1011,9 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     w.addDocument(doc);
     bytes[0] = 1;
     w.addDocument(doc);
+    w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    Source s = r.getSequentialSubReaders()[0].docValues("field").getSource();
+    Source s = getOnlySegmentReader(r).docValues("field").getSource();
 
     BytesRef bytes1 = s.getBytes(0, new BytesRef());
     assertEquals(bytes.length, bytes1.length);
@@ -1013,5 +1027,52 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     r.close();
     w.close();
     d.close();
+  }
+  
+  public void testFixedLengthNotReallyFixed() throws IOException {
+    Directory d = newDirectory();
+    IndexWriter w = new IndexWriter(d, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    Document doc = new Document();
+    doc.add(new DerefBytesDocValuesField("foo", new BytesRef("bar"), true));
+    w.addDocument(doc);
+    doc = new Document();
+    doc.add(new DerefBytesDocValuesField("foo", new BytesRef("bazz"), true));
+    try {
+      w.addDocument(doc);
+    } catch (IllegalArgumentException expected) {
+      // expected
+    }
+    w.close();
+    d.close();
+  }
+  
+  public void testDocValuesUnstored() throws IOException {
+    Directory dir = newDirectory();
+    IndexWriterConfig iwconfig = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    iwconfig.setMergePolicy(newLogMergePolicy());
+    IndexWriter writer = new IndexWriter(dir, iwconfig);
+    for (int i = 0; i < 50; i++) {
+      Document doc = new Document();
+      doc.add(new PackedLongDocValuesField("dv", i));
+      doc.add(new TextField("docId", "" + i, Field.Store.YES));
+      writer.addDocument(doc);
+    }
+    DirectoryReader r = writer.getReader();
+    SlowCompositeReaderWrapper slow = new SlowCompositeReaderWrapper(r);
+    FieldInfos fi = slow.getFieldInfos();
+    FieldInfo dvInfo = fi.fieldInfo("dv");
+    assertTrue(dvInfo.hasDocValues());
+    DocValues dv = slow.docValues("dv");
+    Source source = dv.getDirectSource();
+    for (int i = 0; i < 50; i++) {
+      assertEquals(i, source.getInt(i));
+      Document d = slow.document(i);
+      // cannot use d.get("dv") due to another bug!
+      assertNull(d.getField("dv"));
+      assertEquals(Integer.toString(i), d.get("docId"));
+    }
+    slow.close();
+    writer.close();
+    dir.close();
   }
 }

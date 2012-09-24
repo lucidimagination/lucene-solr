@@ -1,6 +1,6 @@
 package org.apache.lucene.validation;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -58,6 +58,11 @@ public class LicenseCheckTask extends Task {
    * All JAR files to check.
    */
   private Resources jarResources = new Resources();
+  
+  /**
+   * Directory containing licenses
+   */
+  private File licenseDirectory;
 
   /**
    * License file mapper.
@@ -93,6 +98,10 @@ public class LicenseCheckTask extends Task {
 
   public void setVerbose(boolean verbose) {
     verboseLevel = (verbose ? Project.MSG_INFO : Project.MSG_VERBOSE);
+  }
+  
+  public void setLicenseDirectory(File file) {
+    licenseDirectory = file;
   }
 
   /**
@@ -140,7 +149,7 @@ public class LicenseCheckTask extends Task {
       checked++;
     }
 
-    log(String.format(Locale.ENGLISH, 
+    log(String.format(Locale.ROOT, 
         "Scanned %d JAR file(s) for licenses (in %.2fs.), %d error(s).",
         checked, (System.currentTimeMillis() - start) / 1000.0, errors),
         errors > 0 ? Project.MSG_ERR : Project.MSG_INFO);
@@ -153,7 +162,7 @@ public class LicenseCheckTask extends Task {
     log("Scanning: " + jarFile.getPath(), verboseLevel);
 
     // validate the jar matches against our expected hash
-    final File checksumFile = new File(jarFile.getParent(), 
+    final File checksumFile = new File(licenseDirectory, 
                                        jarFile.getName() + "." + CHECKSUM_TYPE);
     if (! (checksumFile.exists() && checksumFile.canRead()) ) {
       log("MISSING " +CHECKSUM_TYPE+ " checksum file for: " + jarFile.getPath(), Project.MSG_ERR);
@@ -200,9 +209,9 @@ public class LicenseCheckTask extends Task {
     Map<File, LicenseType> foundLicenses = new LinkedHashMap<File, LicenseType>();
     List<File> expectedLocations = new ArrayList<File>();
 outer:
-    for (String mappedPath : licenseMapper.mapFileName(jarFile.getPath())) {
+    for (String mappedPath : licenseMapper.mapFileName(jarFile.getName())) {
       for (LicenseType licenseType : LicenseType.values()) {
-        File licensePath = new File(mappedPath + licenseType.licenseFileSuffix());
+        File licensePath = new File(licenseDirectory, mappedPath + licenseType.licenseFileSuffix());
         if (licensePath.exists()) {
           foundLicenses.put(licensePath, licenseType);
           log(" FOUND " + licenseType.name() + " license at " + licensePath.getPath(), 
@@ -218,10 +227,10 @@ outer:
     // Check for NOTICE files.
     for (Map.Entry<File, LicenseType> e : foundLicenses.entrySet()) {
       LicenseType license = e.getValue();
-      String licensePath = e.getKey().getAbsolutePath();
+      String licensePath = e.getKey().getName();
       String baseName = licensePath.substring(
           0, licensePath.length() - license.licenseFileSuffix().length());
-      File noticeFile = new File(baseName + license.noticeFileSuffix());
+      File noticeFile = new File(licenseDirectory, baseName + license.noticeFileSuffix());
 
       if (noticeFile.exists()) {
         log(" FOUND NOTICE file at " + noticeFile.getAbsolutePath(), verboseLevel);
@@ -255,7 +264,7 @@ outer:
   private static final String createChecksumString(byte[] digest) {
     StringBuilder checksum = new StringBuilder();
     for (int i = 0; i < digest.length; i++) {
-      checksum.append(String.format(Locale.ENGLISH, "%02x", 
+      checksum.append(String.format(Locale.ROOT, "%02x", 
                                     CHECKSUM_BYTE_MASK & digest[i]));
     }
     return checksum.toString();

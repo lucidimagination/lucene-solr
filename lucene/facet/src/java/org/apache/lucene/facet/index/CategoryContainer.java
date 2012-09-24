@@ -16,7 +16,7 @@ import org.apache.lucene.facet.index.attributes.CategoryAttributeImpl;
 import org.apache.lucene.facet.index.attributes.CategoryProperty;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -204,7 +204,7 @@ public class CategoryContainer implements Iterable<CategoryAttribute>, Serializa
    * {@link ObjectOutputStream}.<br>
    * NOTE: {@link CategoryProperty}s are {@link Serializable}, but do not
    * assume that Lucene's {@link Attribute}s are as well
-   * @throws IOException 
+   * @throws IOException If there is a low-level I/O error.
    */
   protected void serializeCategoryAttribute(ObjectOutputStream out,
       CategoryAttribute ca) throws IOException {

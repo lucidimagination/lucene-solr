@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,12 +23,10 @@ import java.io.StringReader;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.CharReader;
-import org.apache.lucene.analysis.CharStream;
+import org.apache.lucene.analysis.CharFilter;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
@@ -103,8 +101,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
 
   private void checkOutput(String input, String pattern, String replacement,
       String expectedOutput, String expectedIndexMatchedOutput) throws IOException {
-    CharStream cs = new PatternReplaceCharFilter(pattern(pattern), replacement,
-        CharReader.get(new StringReader(input)));
+      CharFilter cs = new PatternReplaceCharFilter(pattern(pattern), replacement,
+        new StringReader(input));
 
     StringBuilder output = new StringBuilder();
     for (int chr = cs.read(); chr > 0; chr = cs.read()) {
@@ -139,8 +137,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   // this is test.
   public void testNothingChange() throws IOException {
     final String BLOCK = "this is test.";
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1$2$3",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1$2$3",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "this", "is", "test." },
@@ -153,8 +151,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   // aa bb cc
   public void testReplaceByEmpty() throws IOException {
     final String BLOCK = "aa bb cc";
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts, new String[] {});
   }
@@ -164,8 +162,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   // aa#bb#cc
   public void test1block1matchSameLength() throws IOException {
     final String BLOCK = "aa bb cc";
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1#$2#$3",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1#$2#$3",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "aa#bb#cc" },
@@ -180,8 +178,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   // aa##bb###cc dd
   public void test1block1matchLonger() throws IOException {
     final String BLOCK = "aa bb cc dd";
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1##$2###$3",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1##$2###$3",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "aa##bb###cc", "dd" },
@@ -195,8 +193,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   //  aa  aa
   public void test1block2matchLonger() throws IOException {
     final String BLOCK = " a  a";
-    CharStream cs = new PatternReplaceCharFilter( pattern("a"), "aa",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("a"), "aa",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "aa", "aa" },
@@ -211,8 +209,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   // aa#bb dd
   public void test1block1matchShorter() throws IOException {
     final String BLOCK = "aa  bb   cc dd";
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1#$2",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1#$2",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "aa#bb", "dd" },
@@ -227,8 +225,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   //   aa  bb  cc --- aa bb aa  bb  cc
   public void test1blockMultiMatches() throws IOException {
     final String BLOCK = "  aa bb cc --- aa bb aa   bb   cc";
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1  $2  $3",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1  $2  $3",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "aa", "bb", "cc", "---", "aa", "bb", "aa", "bb", "cc" },
@@ -247,8 +245,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   public void test2blocksMultiMatches() throws IOException {
     final String BLOCK = "  aa bb cc --- aa bb aa. bb aa   bb cc";
 
-    CharStream cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)"), "$1##$2",
-          CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)"), "$1##$2",
+          new StringReader( BLOCK ) );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
     assertTokenStreamContents(ts,
         new String[] { "aa##bb", "cc", "---", "aa##bb", "aa.", "bb", "aa##bb", "cc" },
@@ -263,8 +261,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
   //  aa b - c . --- b aa . c c b
   public void testChain() throws IOException {
     final String BLOCK = " a bb - ccc . --- bb a . ccc ccc bb";
-    CharStream cs = new PatternReplaceCharFilter( pattern("a"), "aa",
-        CharReader.get( new StringReader( BLOCK ) ) );
+    CharFilter cs = new PatternReplaceCharFilter( pattern("a"), "aa",
+        new StringReader( BLOCK ) );
     cs = new PatternReplaceCharFilter( pattern("bb"), "b", cs );
     cs = new PatternReplaceCharFilter( pattern("ccc"), "c", cs );
     TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
@@ -301,12 +299,11 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
 
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    int numPatterns = atLeast(100);
-    long start = System.currentTimeMillis();
-    long maxTime = 1000 * 2;
+    int numPatterns = 10 + random().nextInt(20);
     Random random = new Random(random().nextLong());
-    for (int i = 0; i < numPatterns && start + maxTime > System.currentTimeMillis(); i++) {
-      final Pattern p = randomPattern();
+    for (int i = 0; i < numPatterns; i++) {
+      final Pattern p = _TestUtil.randomPattern(random());
+
       final String replacement = _TestUtil.randomSimpleString(random);
       Analyzer a = new Analyzer() {
         @Override
@@ -316,23 +313,17 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
         }
 
         @Override
-        protected Reader initReader(Reader reader) {
-          return new PatternReplaceCharFilter(p, replacement, CharReader.get(reader));
+        protected Reader initReader(String fieldName, Reader reader) {
+          return new PatternReplaceCharFilter(p, replacement, reader);
         }
       };
-      checkRandomData(random, a, 1000 * RANDOM_MULTIPLIER, 
-          /* max input length. don't make it longer -- exponential processing
-           * time for certain patterns. */ 40, true); // only ascii
-    }
-  }
-  
-  public Pattern randomPattern() {
-    while (true) {
-      try {
-        return Pattern.compile(_TestUtil.randomRegexpishString(random()));
-      } catch (PatternSyntaxException ignored) {
-        // if at first you don't succeed...
-      }
+
+      /* max input length. don't make it longer -- exponential processing
+       * time for certain patterns. */ 
+      final int maxInputLength = 30;
+      /* ASCII only input?: */
+      final boolean asciiOnly = true;
+      checkRandomData(random, a, 250 * RANDOM_MULTIPLIER, maxInputLength, asciiOnly);
     }
   }
  }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,6 +23,7 @@ import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.CompositeReaderContext;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.IndexReaderContext;
@@ -44,7 +45,6 @@ import org.apache.lucene.search.grouping.term.TermSecondPassGroupingCollector;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueStr;
@@ -77,48 +77,48 @@ public class TestGrouping extends LuceneTestCase {
     // 0
     Document doc = new Document();
     addGroupField(doc, groupField, "author1", canUseIDV);
-    doc.add(new Field("content", "random text", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "random text", Field.Store.YES));
     doc.add(new Field("id", "1", customType));
     w.addDocument(doc);
 
     // 1
     doc = new Document();
     addGroupField(doc, groupField, "author1", canUseIDV);
-    doc.add(new Field("content", "some more random text", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "some more random text", Field.Store.YES));
     doc.add(new Field("id", "2", customType));
     w.addDocument(doc);
 
     // 2
     doc = new Document();
     addGroupField(doc, groupField, "author1", canUseIDV);
-    doc.add(new Field("content", "some more random textual data", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "some more random textual data", Field.Store.YES));
     doc.add(new Field("id", "3", customType));
     w.addDocument(doc);
 
     // 3
     doc = new Document();
     addGroupField(doc, groupField, "author2", canUseIDV);
-    doc.add(new Field("content", "some random text", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "some random text", Field.Store.YES));
     doc.add(new Field("id", "4", customType));
     w.addDocument(doc);
 
     // 4
     doc = new Document();
     addGroupField(doc, groupField, "author3", canUseIDV);
-    doc.add(new Field("content", "some more random text", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "some more random text", Field.Store.YES));
     doc.add(new Field("id", "5", customType));
     w.addDocument(doc);
 
     // 5
     doc = new Document();
     addGroupField(doc, groupField, "author3", canUseIDV);
-    doc.add(new Field("content", "random", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "random", Field.Store.YES));
     doc.add(new Field("id", "6", customType));
     w.addDocument(doc);
 
     // 6 -- no author field
     doc = new Document();
-    doc.add(new Field("content", "random word stuck in alot of other text", TextField.TYPE_STORED));
+    doc.add(new TextField("content", "random word stuck in alot of other text", Field.Store.YES));
     doc.add(new Field("id", "6", customType));
     w.addDocument(doc);
 
@@ -129,10 +129,11 @@ public class TestGrouping extends LuceneTestCase {
     final AbstractFirstPassGroupingCollector<?> c1 = createRandomFirstPassCollector(groupField, groupSort, 10, canUseIDV);
     indexSearcher.search(new TermQuery(new Term("content", "random")), c1);
 
-    final AbstractSecondPassGroupingCollector<?> c2 = createSecondPassCollector(c1, groupField, groupSort, null, 0, 5, true, false, true);
+    final AbstractSecondPassGroupingCollector<?> c2 = createSecondPassCollector(c1, groupField, groupSort, null, 0, 5, true, true, true);
     indexSearcher.search(new TermQuery(new Term("content", "random")), c2);
 
     final TopGroups<?> groups = c2.getTopGroups(0);
+    assertFalse(Float.isNaN(groups.maxScore));
 
     assertEquals(7, groups.totalHitCount);
     assertEquals(7, groups.totalGroupedHitCount);
@@ -173,7 +174,7 @@ public class TestGrouping extends LuceneTestCase {
   }
 
   private void addGroupField(Document doc, String groupField, String value, boolean canUseIDV) {
-    doc.add(new Field(groupField, value, TextField.TYPE_STORED));
+    doc.add(new TextField(groupField, value, Field.Store.YES));
     if (canUseIDV) {
       doc.add(new SortedBytesDocValuesField(groupField, new BytesRef(value)));
     }
@@ -341,9 +342,9 @@ public class TestGrouping extends LuceneTestCase {
       List<GroupDocs<BytesRef>> groups = new ArrayList<GroupDocs<BytesRef>>(mvalTopGroups.groups.length);
       for (GroupDocs<MutableValue> mvalGd : mvalTopGroups.groups) {
         BytesRef groupValue = mvalGd.groupValue.exists() ? ((MutableValueStr) mvalGd.groupValue).value : null;
-        groups.add(new GroupDocs<BytesRef>(mvalGd.maxScore, mvalGd.totalHits, mvalGd.scoreDocs, groupValue, mvalGd.groupSortValues));
+        groups.add(new GroupDocs<BytesRef>(Float.NaN, mvalGd.maxScore, mvalGd.totalHits, mvalGd.scoreDocs, groupValue, mvalGd.groupSortValues));
       }
-      return new TopGroups<BytesRef>(mvalTopGroups.groupSort, mvalTopGroups.withinGroupSort, mvalTopGroups.totalHitCount, mvalTopGroups.totalGroupedHitCount, groups.toArray(new GroupDocs[groups.size()]));
+      return new TopGroups<BytesRef>(mvalTopGroups.groupSort, mvalTopGroups.withinGroupSort, mvalTopGroups.totalHitCount, mvalTopGroups.totalGroupedHitCount, groups.toArray(new GroupDocs[groups.size()]), Float.NaN);
     } else if (DVSecondPassGroupingCollector.class.isAssignableFrom(c.getClass())) {
       return ((DVSecondPassGroupingCollector<BytesRef>) c).getTopGroups(withinGroupOffset);
     }
@@ -541,20 +542,21 @@ public class TestGrouping extends LuceneTestCase {
         hits = new ScoreDoc[0];
       }
 
-      result[idx-groupOffset] = new GroupDocs<BytesRef>(0.0f,
-                                              docs.size(),
-                                              hits,
-                                              group,
-                                              fillFields ? sortedGroupFields.get(idx) : null);
+      result[idx-groupOffset] = new GroupDocs<BytesRef>(Float.NaN,
+                                                        0.0f,
+                                                        docs.size(),
+                                                        hits,
+                                                        group,
+                                                        fillFields ? sortedGroupFields.get(idx) : null);
     }
 
     if (doAllGroups) {
       return new TopGroups<BytesRef>(
-          new TopGroups<BytesRef>(groupSort.getSort(), docSort.getSort(), totalHitCount, totalGroupedHitCount, result),
-          knownGroups.size()
+                                     new TopGroups<BytesRef>(groupSort.getSort(), docSort.getSort(), totalHitCount, totalGroupedHitCount, result, Float.NaN),
+                                     knownGroups.size()
       );
     } else {
-      return new TopGroups<BytesRef>(groupSort.getSort(), docSort.getSort(), totalHitCount, totalGroupedHitCount, result);
+      return new TopGroups<BytesRef>(groupSort.getSort(), docSort.getSort(), totalHitCount, totalGroupedHitCount, result, Float.NaN);
     }
   }
 
@@ -580,7 +582,7 @@ public class TestGrouping extends LuceneTestCase {
 
     final List<List<Document>> updateDocs = new ArrayList<List<Document>>();
 
-    FieldType groupEndType = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType groupEndType = new FieldType(StringField.TYPE_NOT_STORED);
     groupEndType.setIndexOptions(IndexOptions.DOCS_ONLY);
     groupEndType.setOmitNorms(true);
 
@@ -592,12 +594,12 @@ public class TestGrouping extends LuceneTestCase {
         Document doc = new Document();
         docs.add(doc);
         if (groupValue.group != null) {
-          doc.add(newField("group", groupValue.group.utf8ToString(), StringField.TYPE_UNSTORED));
+          doc.add(newStringField("group", groupValue.group.utf8ToString(), Field.Store.NO));
         }
-        doc.add(newField("sort1", groupValue.sort1.utf8ToString(), StringField.TYPE_UNSTORED));
-        doc.add(newField("sort2", groupValue.sort2.utf8ToString(), StringField.TYPE_UNSTORED));
-        doc.add(new IntField("id", groupValue.id));
-        doc.add(newField("content", groupValue.content, TextField.TYPE_UNSTORED));
+        doc.add(newStringField("sort1", groupValue.sort1.utf8ToString(), Field.Store.NO));
+        doc.add(newStringField("sort2", groupValue.sort2.utf8ToString(), Field.Store.NO));
+        doc.add(new IntField("id", groupValue.id, Field.Store.NO));
+        doc.add(newTextField("content", groupValue.content, Field.Store.NO));
         //System.out.println("TEST:     doc content=" + groupValue.content + " group=" + (groupValue.group == null ? "null" : groupValue.group.utf8ToString()) + " sort1=" + groupValue.sort1.utf8ToString() + " id=" + groupValue.id);
       }
       // So we can pull filter marking last doc in block:
@@ -627,25 +629,16 @@ public class TestGrouping extends LuceneTestCase {
     public final int[] docStarts;
 
     public ShardState(IndexSearcher s) {
-      List<AtomicReader> subReaders = new ArrayList<AtomicReader>();
-      ReaderUtil.gatherSubReaders(subReaders, s.getIndexReader());
-      subSearchers = new ShardSearcher[subReaders.size()];
       final IndexReaderContext ctx = s.getTopReaderContext();
-      if (ctx instanceof AtomicReaderContext) {
-        assert subSearchers.length == 1;
-        subSearchers[0] = new ShardSearcher((AtomicReaderContext) ctx, ctx);
-      } else {
-        final CompositeReaderContext compCTX = (CompositeReaderContext) ctx;
-        for(int searcherIDX=0;searcherIDX<subSearchers.length;searcherIDX++) {
-          subSearchers[searcherIDX] = new ShardSearcher(compCTX.leaves()[searcherIDX], compCTX);
-        }
+      final List<AtomicReaderContext> leaves = ctx.leaves();
+      subSearchers = new ShardSearcher[leaves.size()];
+      for(int searcherIDX=0;searcherIDX<subSearchers.length;searcherIDX++) {
+        subSearchers[searcherIDX] = new ShardSearcher(leaves.get(searcherIDX), ctx);
       }
 
       docStarts = new int[subSearchers.length];
-      int docBase = 0;
       for(int subIDX=0;subIDX<docStarts.length;subIDX++) {
-        docStarts[subIDX] = docBase;
-        docBase += subReaders.get(subIDX).maxDoc();
+        docStarts[subIDX] = leaves.get(subIDX).docBase;
         //System.out.println("docStarts[" + subIDX + "]=" + docStarts[subIDX]);
       }
     }
@@ -711,18 +704,18 @@ public class TestGrouping extends LuceneTestCase {
         doc.add(idvGroupField);
       }
 
-      Field group = newField("group", "", StringField.TYPE_UNSTORED);
+      Field group = newStringField("group", "", Field.Store.NO);
       doc.add(group);
-      Field sort1 = newField("sort1", "", StringField.TYPE_UNSTORED);
+      Field sort1 = newStringField("sort1", "", Field.Store.NO);
       doc.add(sort1);
       docNoGroup.add(sort1);
-      Field sort2 = newField("sort2", "", StringField.TYPE_UNSTORED);
+      Field sort2 = newStringField("sort2", "", Field.Store.NO);
       doc.add(sort2);
       docNoGroup.add(sort2);
-      Field content = newField("content", "", TextField.TYPE_UNSTORED);
+      Field content = newTextField("content", "", Field.Store.NO);
       doc.add(content);
       docNoGroup.add(content);
-      IntField id = new IntField("id", 0);
+      IntField id = new IntField("id", 0, Field.Store.NO);
       doc.add(id);
       docNoGroup.add(id);
       final GroupDoc[] groupDocs = new GroupDoc[numDocs];
@@ -872,7 +865,7 @@ public class TestGrouping extends LuceneTestCase {
           final boolean doCache = random().nextBoolean();
           final boolean doAllGroups = random().nextBoolean();
           if (VERBOSE) {
-            System.out.println("TEST: groupSort=" + groupSort + " docSort=" + docSort + " searchTerm=" + searchTerm + " dF=" + r.docFreq("content", new BytesRef(searchTerm))  +" dFBlock=" + rBlocks.docFreq("content", new BytesRef(searchTerm)) + " topNGroups=" + topNGroups + " groupOffset=" + groupOffset + " docOffset=" + docOffset + " doCache=" + doCache + " docsPerGroup=" + docsPerGroup + " doAllGroups=" + doAllGroups + " getScores=" + getScores + " getMaxScores=" + getMaxScores);
+            System.out.println("TEST: groupSort=" + groupSort + " docSort=" + docSort + " searchTerm=" + searchTerm + " dF=" + r.docFreq(new Term("content", searchTerm))  +" dFBlock=" + rBlocks.docFreq(new Term("content", searchTerm)) + " topNGroups=" + topNGroups + " groupOffset=" + groupOffset + " docOffset=" + docOffset + " doCache=" + doCache + " docsPerGroup=" + docsPerGroup + " doAllGroups=" + doAllGroups + " getScores=" + getScores + " getMaxScores=" + getMaxScores);
           }
 
           final AbstractFirstPassGroupingCollector<?> c1 = createRandomFirstPassCollector("group", groupSort, groupOffset+topNGroups, canUseIDV);
@@ -1238,7 +1231,7 @@ public class TestGrouping extends LuceneTestCase {
         }
       }
 
-      TopGroups<BytesRef> mergedGroups = TopGroups.merge(shardTopGroups, groupSort, docSort, docOffset, topNDocs);
+      TopGroups<BytesRef> mergedGroups = TopGroups.merge(shardTopGroups, groupSort, docSort, docOffset, topNDocs, TopGroups.ScoreMergeMode.None);
       if (VERBOSE) {
         System.out.println(" " + mergedGroups.groups.length + " merged groups:");
         for(GroupDocs<BytesRef> group : mergedGroups.groups) {
@@ -1314,24 +1307,20 @@ public class TestGrouping extends LuceneTestCase {
   }
 
   private static class ShardSearcher extends IndexSearcher {
-    private final AtomicReaderContext[] ctx;
+    private final List<AtomicReaderContext> ctx;
 
     public ShardSearcher(AtomicReaderContext ctx, IndexReaderContext parent) {
       super(parent);
-      this.ctx = new AtomicReaderContext[] {ctx};
+      this.ctx = Collections.singletonList(ctx);
     }
 
     public void search(Weight weight, Collector collector) throws IOException {
       search(ctx, weight, collector);
     }
 
-    public TopDocs search(Weight weight, int topN) throws IOException {
-      return search(ctx, weight, null, topN);
-    }
-
     @Override
     public String toString() {
-      return "ShardSearcher(" + ctx[0].reader() + ")";
+      return "ShardSearcher(" + ctx.get(0).reader() + ")";
     }
   }
 

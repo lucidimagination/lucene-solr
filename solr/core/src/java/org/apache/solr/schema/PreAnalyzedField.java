@@ -1,5 +1,5 @@
 package org.apache.solr.schema;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -81,13 +81,8 @@ public class PreAnalyzedField extends FieldType {
     return new SolrAnalyzer() {
       
       @Override
-      protected TokenStreamComponents createComponents(String fieldName,
-          Reader reader) {
-        try {
-          return new TokenStreamComponents(new PreAnalyzedTokenizer(reader, parser));
-        } catch (IOException e) {
-          return null;
-        }
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        return new TokenStreamComponents(new PreAnalyzedTokenizer(reader, parser));
       }
       
     };
@@ -126,7 +121,7 @@ public class PreAnalyzedField extends FieldType {
    * class.
    * @param f field to convert
    * @return string that is compatible with the serialization format
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public String toFormattedString(Field f) throws IOException {
     return parser.toFormattedString(f);
@@ -158,7 +153,7 @@ public class PreAnalyzedField extends FieldType {
      * Format a field so that the resulting String is valid for parsing with {@link #parse(Reader, AttributeSource)}.
      * @param f field instance
      * @return formatted string
-     * @throws IOException
+     * @throws IOException If there is a low-level I/O error.
      */
     public String toFormattedString(Field f) throws IOException;
   }
@@ -169,6 +164,7 @@ public class PreAnalyzedField extends FieldType {
       return null;
     }
     PreAnalyzedTokenizer parse = new PreAnalyzedTokenizer(new StringReader(val), parser);
+    parse.reset(); // consume
     Field f = (Field)super.createField(field, val, boost);
     if (parse.getStringValue() != null) {
       f.setStringValue(parse.getStringValue());
@@ -195,11 +191,11 @@ public class PreAnalyzedField extends FieldType {
     private String stringValue = null;
     private byte[] binaryValue = null;
     private PreAnalyzedParser parser;
+    private Reader lastReader;
     
-    public PreAnalyzedTokenizer(Reader reader, PreAnalyzedParser parser) throws IOException {
+    public PreAnalyzedTokenizer(Reader reader, PreAnalyzedParser parser) {
       super(reader);
       this.parser = parser;
-      reset(reader);
     }
     
     public boolean hasTokenStream() {
@@ -214,7 +210,7 @@ public class PreAnalyzedField extends FieldType {
       return binaryValue;
     }
     
-    public final boolean incrementToken() throws IOException {
+    public final boolean incrementToken() {
       // lazy init the iterator
       if (it == null) {
         it = cachedStates.iterator();
@@ -229,24 +225,30 @@ public class PreAnalyzedField extends FieldType {
       return true;
     }
   
-    public final void reset() {
+    @Override
+    public final void reset() throws IOException {
+      // NOTE: this acts like rewind if you call it again
+      if (input != lastReader) {
+        lastReader = input;
+        cachedStates.clear();
+        stringValue = null;
+        binaryValue = null;
+        ParseResult res = parser.parse(input, this);
+        if (res != null) {
+          stringValue = res.str;
+          binaryValue = res.bin;
+          if (res.states != null) {
+            cachedStates.addAll(res.states);
+          }
+        }
+      }
       it = cachedStates.iterator();
     }
 
     @Override
-    public void reset(Reader input) throws IOException {
-      super.reset(input);
-      cachedStates.clear();
-      stringValue = null;
-      binaryValue = null;
-      ParseResult res = parser.parse(input, this);
-      if (res != null) {
-        stringValue = res.str;
-        binaryValue = res.bin;
-        if (res.states != null) {
-          cachedStates.addAll(res.states);
-        }
-      }
+    public void close() throws IOException {
+      super.close();
+      lastReader = null; // just a ref, null for gc
     }
   }
   

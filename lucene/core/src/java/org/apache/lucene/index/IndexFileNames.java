@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+import java.util.regex.Pattern;
 
 import org.apache.lucene.codecs.Codec;
 
@@ -38,6 +40,9 @@ import org.apache.lucene.codecs.Codec;
  */
 
 public final class IndexFileNames {
+  
+  /** No instance */
+  private IndexFileNames() {}
 
   /** Name of the index segment file */
   public static final String SEGMENTS = "segments";
@@ -80,11 +85,12 @@ public final class IndexFileNames {
    * @param gen generation
    */
   public static String fileNameFromGeneration(String base, String ext, long gen) {
-    if (gen == SegmentInfo.NO) {
+    if (gen == -1) {
       return null;
-    } else if (gen == SegmentInfo.WITHOUT_GEN) {
+    } else if (gen == 0) {
       return segmentFileName(base, "", ext);
     } else {
+      assert gen > 0;
       // The '6' part in the length is: 1 for '.', 1 for '_' and 4 as estimate
       // to the gen length as string (hopefully an upper limit so SB won't
       // expand in the middle.
@@ -139,6 +145,17 @@ public final class IndexFileNames {
     return filename.endsWith("." + ext);
   }
 
+  /** locates the boundary of the segment name, or -1 */
+  private static int indexOfSegmentName(String filename) {
+    // If it is a .del file, there's an '_' after the first character
+    int idx = filename.indexOf('_', 1);
+    if (idx == -1) {
+      // If it's not, strip everything that's before the '.'
+      idx = filename.indexOf('.');
+    }
+    return idx;
+  }
+  
   /**
    * Strips the segment name out of the given file name. If you used
    * {@link #segmentFileName} or {@link #fileNameFromGeneration} to create your
@@ -149,18 +166,31 @@ public final class IndexFileNames {
    *         if it does not contain a '.' and '_'.
    */
   public static String stripSegmentName(String filename) {
-    // If it is a .del file, there's an '_' after the first character
-    int idx = filename.indexOf('_', 1);
-    if (idx == -1) {
-      // If it's not, strip everything that's before the '.'
-      idx = filename.indexOf('.');
-    }
+    int idx = indexOfSegmentName(filename);
     if (idx != -1) {
       filename = filename.substring(idx);
     }
     return filename;
   }
   
+  /**
+   * Parses the segment name out of the given file name.
+   * 
+   * @return the segment name only, or filename
+   *         if it does not contain a '.' and '_'.
+   */
+  public static String parseSegmentName(String filename) {
+    int idx = indexOfSegmentName(filename);
+    if (idx != -1) {
+      filename = filename.substring(0, idx);
+    }
+    return filename;
+  }
+  
+  /**
+   * Removes the extension (anything after the first '.'),
+   * otherwise returns the original filename.
+   */
   public static String stripExtension(String filename) {
     int idx = filename.indexOf('.');
     if (idx != -1) {
@@ -168,4 +198,8 @@ public final class IndexFileNames {
     }
     return filename;
   }  
+
+  // All files created by codecs much match this pattern (we
+  // check this in SegmentInfo.java):
+  static final Pattern CODEC_FILE_PATTERN = Pattern.compile("_[a-z0-9]+(_.*)?\\..*");
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -41,16 +41,29 @@ import org.apache.lucene.util.IOUtils;
  * @lucene.experimental
  */
 public class Floats {
-  
+
+  /** Codec name, written in the header. */
   protected static final String CODEC_NAME = "Floats";
+
+  /** Initial version. */
   protected static final int VERSION_START = 0;
+
+  /** Current version. */
   protected static final int VERSION_CURRENT = VERSION_START;
-  
+
+  /** Sole constructor. */
+  private Floats() {
+  }
+
+  /** Creates and returns a {@link DocValuesConsumer} to
+   *  write float values. */
   public static DocValuesConsumer getWriter(Directory dir, String id, Counter bytesUsed,
-      IOContext context, Type type) throws IOException {
+      IOContext context, Type type) {
     return new FloatsWriter(dir, id, bytesUsed, context, type);
   }
 
+  /** Creates and returns a {@link DocValues} to
+   *  read previously written float values. */
   public static DocValues getValues(Directory dir, String id, int maxDoc, IOContext context, Type type)
       throws IOException {
     return new FloatsReader(dir, id, maxDoc, context, type);
@@ -72,7 +85,7 @@ public class Floats {
     private final int size; 
     private final DocValuesArraySource template;
     public FloatsWriter(Directory dir, String id, Counter bytesUsed,
-        IOContext context, Type type) throws IOException {
+        IOContext context, Type type) {
       super(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context);
       size = typeToSize(type);
       this.bytesRef = new BytesRef(size);

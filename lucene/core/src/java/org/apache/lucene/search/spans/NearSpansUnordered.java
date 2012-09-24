@@ -1,6 +1,6 @@
 package org.apache.lucene.search.spans;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,9 +19,9 @@ package org.apache.lucene.search.spans;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.PriorityQueue;
-import org.apache.lucene.util.TermContext;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -126,7 +126,7 @@ public class NearSpansUnordered extends Spans {
 
     // TODO: Remove warning after API has been finalized
     @Override
-    public boolean isPayloadAvailable() {
+    public boolean isPayloadAvailable() throws IOException {
       return spans.isPayloadAvailable();
     }
 
@@ -151,7 +151,7 @@ public class NearSpansUnordered extends Spans {
     }
   }
   public Spans[] getSubSpans() {
-	  return subSpans;
+    return subSpans;
   }
   @Override
   public boolean next() throws IOException {
@@ -241,7 +241,7 @@ public class NearSpansUnordered extends Spans {
   /**
    * WARNING: The List is not necessarily in order of the the positions
    * @return Collection of <code>byte[]</code> payloads
-   * @throws IOException
+   * @throws IOException if there is a low-level I/O error
    */
   @Override
   public Collection<byte[]> getPayload() throws IOException {
@@ -256,7 +256,7 @@ public class NearSpansUnordered extends Spans {
 
   // TODO: Remove warning after API has been finalized
   @Override
-  public boolean isPayloadAvailable() {
+  public boolean isPayloadAvailable() throws IOException {
     SpansCell pointer = min();
     while (pointer != null) {
       if (pointer.isPayloadAvailable()) {
@@ -285,8 +285,8 @@ public class NearSpansUnordered extends Spans {
     }
   }
 
-  private void addToList(SpansCell cell) throws IOException {
-    if (last != null) {			  // add next to end of list
+  private void addToList(SpansCell cell) {
+    if (last != null) {  // add next to end of list
       last.next = cell;
     } else
       first = cell;
@@ -295,13 +295,13 @@ public class NearSpansUnordered extends Spans {
   }
 
   private void firstToLast() {
-    last.next = first;			  // move first to end of list
+    last.next = first;  // move first to end of list
     last = first;
     first = first.next;
     last.next = null;
   }
 
-  private void queueToList() throws IOException {
+  private void queueToList() {
     last = first = null;
     while (queue.top() != null) {
       addToList(queue.pop());

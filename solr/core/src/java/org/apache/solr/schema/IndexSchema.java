@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,14 +20,12 @@ package org.apache.solr.schema;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.AnalyzerWrapper;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.util.DOMUtil;
-import org.apache.solr.common.util.NamedList;
 import org.apache.solr.util.SystemIdResolver;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.Config;
@@ -39,10 +37,18 @@ import org.xml.sax.InputSource;
 
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
-import javax.xml.xpath.XPathExpressionException;
-import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 
 /**
  * <code>IndexSchema</code> contains information about the valid fields in an index
@@ -99,12 +105,16 @@ public final class IndexSchema {
       name = DEFAULT_SCHEMA_FILE;
     this.resourceName = name;
     loader = solrConfig.getResourceLoader();
-    if (is == null) {
-      is = new InputSource(loader.openSchema(name));
-      is.setSystemId(SystemIdResolver.createSystemIdFromResourceName(name));
+    try {
+      if (is == null) {
+        is = new InputSource(loader.openSchema(name));
+        is.setSystemId(SystemIdResolver.createSystemIdFromResourceName(name));
+      }
+      readSchema(is);
+      loader.inform( loader );
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
-    readSchema(is);
-    loader.inform( loader );
   }
   
   /**
@@ -211,7 +221,9 @@ public final class IndexSchema {
 
   
   /**
-   * Name of the default search field specified in the schema file
+   * Name of the default search field specified in the schema file.
+   * <br/><b>Note:</b>Avoid calling this, try to use this method so that the 'df' param is consulted as an override:
+   * {@link org.apache.solr.search.QueryParsing#getDefaultField(IndexSchema, String)}
    */
   public String getDefaultSearchFieldName() {
     return defaultSearchFieldName;
@@ -433,12 +445,22 @@ public final class IndexSchema {
     }
     if (simFactory instanceof SchemaAware) {
       ((SchemaAware)simFactory).inform(this);
+    } else {
+      // if the sim facotry isn't schema aware, then we are responsible for
+      // erroring if a field type is trying to specify a sim.
+      for (FieldType ft : fieldTypes.values()) {
+        if (null != ft.getSimilarity()) {
+          String msg = "FieldType '" + ft.getTypeName() + "' is configured with a similarity, but the global similarity does not support it: " + simFactory.getClass();
+          log.error(msg);
+          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, msg);
+        }
+      }
     }
     similarity = simFactory.getSimilarity();
 
     node = (Node) xpath.evaluate("/schema/defaultSearchField/text()", document, XPathConstants.NODE);
     if (node==null) {
-      log.warn("no default search field specified in schema.");
+      log.debug("no default search field specified in schema.");
     } else {
       defaultSearchFieldName=node.getNodeValue().trim();
       // throw exception if specified, but not found or not indexed
@@ -449,7 +471,7 @@ public final class IndexSchema {
           throw new SolrException( SolrException.ErrorCode.SERVER_ERROR, msg );
         }
       }
-      log.info("default search field is "+defaultSearchFieldName);
+      log.info("default search field in schema is "+defaultSearchFieldName);
     }
 
     node = (Node) xpath.evaluate("/schema/solrQueryParser/@defaultOperator", document, XPathConstants.NODE);
@@ -465,11 +487,22 @@ public final class IndexSchema {
       log.warn("no uniqueKey specified in schema.");
     } else {
       uniqueKeyField=getIndexedField(node.getNodeValue().trim());
+      if (null != uniqueKeyField.getDefaultValue()) {
+        String msg = "uniqueKey field ("+uniqueKeyFieldName+
+          ") can not be configured with a default value ("+
+          uniqueKeyField.getDefaultValue()+")";
+        log.error(msg);
+        throw new SolrException( SolrException.ErrorCode.SERVER_ERROR, msg );
+      }
+
       if (!uniqueKeyField.stored()) {
         log.error("uniqueKey is not stored - distributed search will not work");
       }
       if (uniqueKeyField.multiValued()) {
-        log.error("uniqueKey should not be multivalued");
+        String msg = "uniqueKey field ("+uniqueKeyFieldName+
+          ") can not be configured to be multivalued";
+        log.error(msg);
+        throw new SolrException( SolrException.ErrorCode.SERVER_ERROR, msg );
       }
       uniqueKeyFieldName=uniqueKeyField.getName();
       uniqueKeyFieldType=uniqueKeyField.getType();
@@ -507,6 +540,14 @@ public final class IndexSchema {
           }
         }
 
+        if (dest.equals(uniqueKeyFieldName)) {
+          String msg = "uniqueKey field ("+uniqueKeyFieldName+
+            ") can not be the dest of a copyField (src="+source+")";
+          log.error(msg);
+          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, msg);
+          
+        }
+
         registerCopyField(source, dest, maxCharsInt);
      }
       
@@ -517,6 +558,8 @@ public final class IndexSchema {
                       entry.getValue()+")");
         }
       }
+
+
       //Run the callbacks on SchemaAware now that everything else is done
       for (SchemaAware aware : schemaAware) {
         aware.inform(this);
@@ -658,7 +701,7 @@ public final class IndexSchema {
     return newArr;
   }
 
-  static SimilarityFactory readSimilarity(ResourceLoader loader, Node node) throws XPathExpressionException {
+  static SimilarityFactory readSimilarity(SolrResourceLoader loader, Node node) {
     if (node==null) {
       return null;
     } else {
@@ -847,7 +890,6 @@ public final class IndexSchema {
    * not as a result of a copyField declaration with a wildcard?  We
    * consider it explicitly defined if it matches a field or dynamicField
    * declaration.
-   * @param fieldName
    * @return true if explicitly declared in the schema.
    */
   public boolean hasExplicitField(String fieldName) {
@@ -864,7 +906,6 @@ public final class IndexSchema {
 
   /**
    * Is the specified field dynamic or not.
-   * @param fieldName
    * @return true if the specified field is dynamic
    */
   public boolean isDynamicField(String fieldName) {
@@ -1002,7 +1043,6 @@ public final class IndexSchema {
 
   /**
    * Get all copy fields, both the static and the dynamic ones.
-   * @param destField
    * @return Array of fields copied into this field
    */
 
@@ -1025,7 +1065,6 @@ public final class IndexSchema {
   /**
    * Get all copy fields for a specified source field, both static
    * and dynamic ones.
-   * @param sourceField
    * @return List of CopyFields to copy to.
    * @since solr 1.4
    */
@@ -1058,7 +1097,6 @@ public final class IndexSchema {
 
   /**
    * Is the given field name a wildcard?  I.e. does it begin or end with *?
-   * @param name
    * @return true/false
    */
   private static boolean isWildCard(String name) {

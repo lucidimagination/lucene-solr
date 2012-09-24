@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,6 +27,9 @@ import org.apache.lucene.index.MultiFields;
 import java.io.IOException;
 
 
+/**
+ * Query that matches String prefixes
+ */
 public class SrndPrefixQuery extends SimpleTerm {
   private final BytesRef prefixRef;
   public SrndPrefixQuery(String prefix, boolean quoted, char truncator) {

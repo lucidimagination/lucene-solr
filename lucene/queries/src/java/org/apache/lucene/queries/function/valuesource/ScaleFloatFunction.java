@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,13 +18,14 @@
 package org.apache.lucene.queries.function.valuesource;
 
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.util.ReaderUtil;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -60,7 +61,7 @@ public class ScaleFloatFunction extends ValueSource {
   }
 
   private ScaleInfo createScaleInfo(Map context, AtomicReaderContext readerContext) throws IOException {
-    final AtomicReaderContext[] leaves = ReaderUtil.getTopLevelContext(readerContext).leaves();
+    final List<AtomicReaderContext> leaves = ReaderUtil.getTopLevelContext(readerContext).leaves();
 
     float minVal = Float.POSITIVE_INFINITY;
     float maxVal = Float.NEGATIVE_INFINITY;
@@ -114,11 +115,11 @@ public class ScaleFloatFunction extends ValueSource {
     return new FloatDocValues(this) {
       @Override
       public float floatVal(int doc) {
-	return (vals.floatVal(doc) - minSource) * scale + min;
+        return (vals.floatVal(doc) - minSource) * scale + min;
       }
       @Override
       public String toString(int doc) {
-	return "scale(" + vals.toString(doc) + ",toMin=" + min + ",toMax=" + max
+        return "scale(" + vals.toString(doc) + ",toMin=" + min + ",toMax=" + max
                 + ",fromMin=" + minSource
                 + ",fromMax=" + maxSource
                 + ")";

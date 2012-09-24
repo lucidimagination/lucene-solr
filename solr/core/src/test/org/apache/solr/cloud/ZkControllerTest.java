@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -22,18 +22,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import junit.framework.Assert;
-
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
+import org.apache.solr.util.ExternalPaths;
 import org.apache.zookeeper.CreateMode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+@Slow
 public class ZkControllerTest extends SolrTestCaseJ4 {
 
   private static final String COLLECTION_NAME = "collection1";
@@ -51,6 +53,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
   public void testReadConfigName() throws Exception {
     String zkDir = dataDir.getAbsolutePath() + File.separator
         + "zookeeper/server1/data";
+    CoreContainer cc = null;
 
     ZkTestServer server = new ZkTestServer(zkDir);
     try {
@@ -64,7 +67,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
 
       zkClient.makePath(ZkController.CONFIGS_ZKNODE + "/" + actualConfigName, true);
       
-      Map<String,String> props = new HashMap<String,String>();
+      Map<String,Object> props = new HashMap<String,Object>();
       props.put("configName", actualConfigName);
       ZkNodeProps zkProps = new ZkNodeProps(props);
       zkClient.makePath(ZkStateReader.COLLECTIONS_ZKNODE + "/"
@@ -75,8 +78,11 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
         zkClient.printLayoutToStdOut();
       }
       zkClient.close();
-      ZkController zkController = new ZkController(null, server.getZkAddress(), TIMEOUT, 10000,
-          "localhost", "8983", "solr", new CurrentCoreDescriptorProvider() {
+      
+      cc = getCoreContainer();
+      
+      ZkController zkController = new ZkController(cc, server.getZkAddress(), TIMEOUT, 10000,
+          "127.0.0.1", "8983", "solr", new CurrentCoreDescriptorProvider() {
             
             @Override
             public List<CoreDescriptor> getCurrentDescriptors() {
@@ -91,7 +97,9 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
         zkController.close();
       }
     } finally {
-
+      if (cc != null) {
+        cc.shutdown();
+      }
       server.shutdown();
     }
 
@@ -105,13 +113,16 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
     ZkTestServer server = new ZkTestServer(zkDir);
     ZkController zkController = null;
     boolean testFinished = false;
+    CoreContainer cc = null;
     try {
       server.run();
 
       AbstractZkTestCase.makeSolrZkNode(server.getZkHost());
 
-      zkController = new ZkController(null, server.getZkAddress(),
-          TIMEOUT, 10000, "localhost", "8983", "solr", new CurrentCoreDescriptorProvider() {
+      cc = getCoreContainer();
+      
+      zkController = new ZkController(cc, server.getZkAddress(),
+          TIMEOUT, 10000, "127.0.0.1", "8983", "solr", new CurrentCoreDescriptorProvider() {
             
             @Override
             public List<CoreDescriptor> getCurrentDescriptors() {
@@ -120,11 +131,11 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
             }
           });
 
-      zkController.uploadToZK(getFile("solr/conf"),
+      zkController.uploadToZK(new File(ExternalPaths.EXAMPLE_HOME + "/collection1/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
       
       // uploading again should overwrite, not error...
-      zkController.uploadToZK(getFile("solr/conf"),
+      zkController.uploadToZK(new File(ExternalPaths.EXAMPLE_HOME + "/collection1/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
 
       if (DEBUG) {
@@ -139,106 +150,16 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
       if (zkController != null) {
         zkController.close();
       }
+      if (cc != null) {
+        cc.shutdown();
+      }
       server.shutdown();
     }
 
   }
-  
-  @Test
-  public void testCoreUnload() throws Exception {
-    
-    String zkDir = dataDir.getAbsolutePath() + File.separator
-        + "zookeeper/server1/data";
-    
-    ZkTestServer server = new ZkTestServer(zkDir);
-    
-    ZkController zkController = null;
-    SolrZkClient zkClient = null;
-    try {
-      server.run();
-      AbstractZkTestCase.tryCleanSolrZkNode(server.getZkHost());
-      AbstractZkTestCase.makeSolrZkNode(server.getZkHost());
-      
-      zkClient = new SolrZkClient(server.getZkAddress(), TIMEOUT);
-      zkClient.makePath(ZkStateReader.LIVE_NODES_ZKNODE, true);
-      
-      ZkStateReader reader = new ZkStateReader(zkClient);
-      reader.createClusterStateWatchersAndUpdate();
-      
-      System.setProperty(ZkStateReader.NUM_SHARDS_PROP, "1");
-      System.setProperty("solrcloud.skip.autorecovery", "true");
-      
-      zkController = new ZkController(null, server.getZkAddress(), TIMEOUT,
-          10000, "localhost", "8983", "solr",
-          new CurrentCoreDescriptorProvider() {
-            
-            @Override
-            public List<CoreDescriptor> getCurrentDescriptors() {
-              // do nothing
-              return null;
-            }
-          });
-      
-      System.setProperty("bootstrap_confdir", getFile("solr/conf")
-          .getAbsolutePath());
-      
-      final int numShards = 2;
-      final String[] ids = new String[numShards];
-      
-      for (int i = 0; i < numShards; i++) {
-        CloudDescriptor collection1Desc = new CloudDescriptor();
-        collection1Desc.setCollectionName("collection1");
-        CoreDescriptor desc1 = new CoreDescriptor(null, "core" + (i + 1), "");
-        desc1.setCloudDescriptor(collection1Desc);
-        zkController.preRegister(desc1);
-        ids[i] = zkController.register("core" + (i + 1), desc1);
-      }
-      
-      assertEquals("shard1", ids[0]);
-      assertEquals("shard1", ids[1]);
-      
-      assertNotNull(reader.getLeaderUrl("collection1", "shard1", 15000));
-      
-      assertEquals("Shard(s) missing from cloudstate", 2, zkController.getZkStateReader().getCloudState().getSlice("collection1", "shard1").getShards().size());
-      
-      // unregister current leader
-      final ZkNodeProps shard1LeaderProps = reader.getLeaderProps(
-          "collection1", "shard1");
-      final String leaderUrl = reader.getLeaderUrl("collection1", "shard1",
-          15000);
-      
-      final CloudDescriptor collection1Desc = new CloudDescriptor();
-      collection1Desc.setCollectionName("collection1");
-      final CoreDescriptor desc1 = new CoreDescriptor(null,
-          shard1LeaderProps.get(ZkStateReader.CORE_NAME_PROP), "");
-      desc1.setCloudDescriptor(collection1Desc);
-      zkController.unregister(
-          shard1LeaderProps.get(ZkStateReader.CORE_NAME_PROP), collection1Desc);
-      assertNotSame(
-          "New leader was not promoted after unregistering the current leader.",
-          leaderUrl, reader.getLeaderUrl("collection1", "shard1", 15000));
-      assertNotNull("New leader was null.",
-          reader.getLeaderUrl("collection1", "shard1", 15000));
 
-      Thread.sleep(2000);
-      assertEquals("shard was not unregistered", 1, zkController.getZkStateReader().getCloudState().getSlice("collection1", "shard1").getShards().size());
-    } finally {
-      System.clearProperty("solrcloud.skip.autorecovery");
-      System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
-      System.clearProperty("bootstrap_confdir");
-      if (DEBUG) {
-        if (zkController != null) {
-          zkClient.printLayoutToStdOut();
-        }
-      }
-      if (zkClient != null) {
-        zkClient.close();
-      }
-      if (zkController != null) {
-        zkController.close();
-      }
-      server.shutdown();
-    }
+  private CoreContainer getCoreContainer() {
+    return new CoreContainer(TEMP_DIR.getAbsolutePath());
   }
 
   @Override

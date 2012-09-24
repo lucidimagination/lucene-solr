@@ -1,7 +1,7 @@
 package org.apache.solr.analysis;
 
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.solr.analysis;
  * limitations under the License.
  */
 
-import org.apache.lucene.analysis.CharStream;
+import java.io.Reader;
+
+import org.apache.lucene.analysis.charfilter.HTMLStripCharFilterFactory;
 import org.apache.lucene.analysis.util.CharFilterFactory;
 
 /**
@@ -52,7 +54,7 @@ import org.apache.lucene.analysis.util.CharFilterFactory;
 @Deprecated
 public class LegacyHTMLStripCharFilterFactory extends CharFilterFactory {
 
-  public LegacyHTMLStripCharFilter create(CharStream input) {
+  public LegacyHTMLStripCharFilter create(Reader input) {
     return new LegacyHTMLStripCharFilter(input);
   }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -164,7 +164,7 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
    * @param fieldName The name of the field
    * @param request The current SolrQueryRequest
    * @param tokenStream document text CachingTokenStream
-   * @throws IOException 
+   * @throws IOException If there is a low-level I/O error.
    */
   protected Highlighter getPhraseHighlighter(Query query, String fieldName, SolrQueryRequest request, CachingTokenFilter tokenStream) throws IOException {
     SolrParams params = request.getParams();
@@ -202,9 +202,8 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
    * @param tokenStream document text CachingTokenStream
    * @param fieldName The name of the field
    * @param request The SolrQueryRequest
-   * @throws IOException 
    */
-  private QueryScorer getSpanQueryScorer(Query query, String fieldName, TokenStream tokenStream, SolrQueryRequest request) throws IOException {
+  private QueryScorer getSpanQueryScorer(Query query, String fieldName, TokenStream tokenStream, SolrQueryRequest request) {
     boolean reqFieldMatch = request.getParams().getFieldBool(fieldName, HighlightParams.FIELD_MATCH, false);
     Boolean highlightMultiTerm = request.getParams().getBool(HighlightParams.HIGHLIGHT_MULTI_TERM, true);
     if(highlightMultiTerm == null) {

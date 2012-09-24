@@ -1,22 +1,26 @@
 package org.apache.lucene.facet.example.merge;
 
 import java.io.IOException;
+import java.util.List;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.PayloadProcessorProvider;
+import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.store.Directory;
 
 import org.apache.lucene.facet.example.ExampleUtils;
-import org.apache.lucene.facet.index.FacetsPayloadProcessorProvider;
+import org.apache.lucene.facet.index.OrdinalMappingAtomicReader;
 import org.apache.lucene.facet.index.params.DefaultFacetIndexingParams;
+import org.apache.lucene.facet.index.params.FacetIndexingParams;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter.DiskOrdinalMap;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter.MemoryOrdinalMap;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter.OrdinalMap;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -81,15 +85,19 @@ public class TaxonomyMergeUtils {
                             OrdinalMap map, IndexWriter destIndexWriter,
                             DirectoryTaxonomyWriter destTaxWriter) throws IOException {
     // merge the taxonomies
-    destTaxWriter.addTaxonomies(new Directory[] { srcTaxDir }, new OrdinalMap[] { map });
+    destTaxWriter.addTaxonomy(srcTaxDir, map);
 
-    PayloadProcessorProvider payloadProcessor = new FacetsPayloadProcessorProvider(
-        srcIndexDir, map.getMap(), new DefaultFacetIndexingParams());
-    destIndexWriter.setPayloadProcessorProvider(payloadProcessor);
+    int ordinalMap[] = map.getMap();
+    FacetIndexingParams params = new DefaultFacetIndexingParams();
 
-    IndexReader reader = IndexReader.open(srcIndexDir);
+    DirectoryReader reader = DirectoryReader.open(srcIndexDir, -1);
+    List<AtomicReaderContext> leaves = reader.leaves();
+    AtomicReader wrappedLeaves[] = new AtomicReader[leaves.size()];
+    for (int i = 0; i < leaves.size(); i++) {
+      wrappedLeaves[i] = new OrdinalMappingAtomicReader(leaves.get(i).reader(), ordinalMap, params);
+    }
     try {
-      destIndexWriter.addIndexes(reader);
+      destIndexWriter.addIndexes(new MultiReader(wrappedLeaves));
       
       // commit changes to taxonomy and index respectively.
       destTaxWriter.commit();

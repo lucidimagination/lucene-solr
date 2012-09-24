@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,14 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.zookeeper.KeeperException;
+import org.apache.solr.core.SolrCore;
+import org.apache.solr.servlet.SolrDispatchFilter;
+import org.apache.solr.update.DirectUpdateHandler2;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -33,15 +32,17 @@ import org.junit.BeforeClass;
 import org.junit.Ignore;
 
 @Ignore("SOLR-3126")
-public class ChaosMonkeySafeLeaderTest extends FullSolrCloudTest {
+public class ChaosMonkeySafeLeaderTest extends AbstractFullDistribZkTestBase {
   
+  private static final int BASE_RUN_LENGTH = 120000;
+
   @BeforeClass
-  public static void beforeSuperClass() throws Exception {
-    
+  public static void beforeSuperClass() {
+
   }
   
   @AfterClass
-  public static void afterSuperClass() throws Exception {
+  public static void afterSuperClass() {
     
   }
   
@@ -49,11 +50,6 @@ public class ChaosMonkeySafeLeaderTest extends FullSolrCloudTest {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    // we expect this time of exception as shards go up and down...
-    //ignoreException(".*");
-    
-    // sometimes we cannot get the same port
-    ignoreException("java\\.net\\.BindException: Address already in use");
     
     System.setProperty("numShards", Integer.toString(sliceCount));
   }
@@ -68,8 +64,8 @@ public class ChaosMonkeySafeLeaderTest extends FullSolrCloudTest {
   
   public ChaosMonkeySafeLeaderTest() {
     super();
-    sliceCount = atLeast(2);
-    shardCount = atLeast(sliceCount);
+    sliceCount = 3;//atLeast(2);
+    shardCount = 12;//atLeast(sliceCount*2);
   }
   
   @Override
@@ -79,9 +75,10 @@ public class ChaosMonkeySafeLeaderTest extends FullSolrCloudTest {
     handle.put("QTime", SKIPVAL);
     handle.put("timestamp", SKIPVAL);
     
-    // we cannot do delete by query
-    // as it's not supported for recovery
-    //del("*:*");
+    // randomly turn on 5 seconds 'soft' commit
+    randomlyEnableAutoSoftCommit();
+
+    del("*:*");
     
     List<StopableIndexingThread> threads = new ArrayList<StopableIndexingThread>();
     int threadCount = 2;
@@ -92,8 +89,8 @@ public class ChaosMonkeySafeLeaderTest extends FullSolrCloudTest {
     }
     
     chaosMonkey.startTheMonkey(false, 500);
-    
-    Thread.sleep(atLeast(8000));
+    int runLength = atLeast(BASE_RUN_LENGTH);
+    Thread.sleep(runLength);
     
     chaosMonkey.stopTheMonkey();
     
@@ -112,40 +109,29 @@ public class ChaosMonkeySafeLeaderTest extends FullSolrCloudTest {
     
     // try and wait for any replications and what not to finish...
     
-    waitForThingsToLevelOut();
+    waitForThingsToLevelOut(Integer.MAX_VALUE);//Math.round((runLength / 1000.0f / 3.0f)));
 
     checkShardConsistency(true, true);
     
     if (VERBOSE) System.out.println("control docs:" + controlClient.query(new SolrQuery("*:*")).getResults().getNumFound() + "\n\n");
   }
 
-  private void waitForThingsToLevelOut() throws KeeperException,
-      InterruptedException, Exception, IOException, URISyntaxException {
-    int cnt = 0;
-    boolean retry = false;
-    do {
-      waitForRecoveriesToFinish(false);
-      
-      commit();
-      
-      updateMappingsFromZk(jettys, clients);
-      
-      Set<String> theShards = shardToClient.keySet();
-      String failMessage = null;
-      for (String shard : theShards) {
-        failMessage = checkShardConsistency(shard, false);
+  private void randomlyEnableAutoSoftCommit() {
+    if (r.nextBoolean()) {
+      log.info("Turning on auto soft commit");
+      for (CloudJettyRunner jetty : shardToJetty.get("shard1")) {
+        SolrCore core = ((SolrDispatchFilter) jetty.jetty.getDispatchFilter()
+            .getFilter()).getCores().getCore("collection1");
+        try {
+          ((DirectUpdateHandler2) core.getUpdateHandler()).getCommitTracker()
+              .setTimeUpperBound(5000);
+        } finally {
+          core.close();
+        }
       }
-      
-      if (failMessage != null) {
-        retry = true;
-      } else {
-        retry = false;
-      }
-      
-      cnt++;
-      if (cnt > 10) break;
-      Thread.sleep(2000);
-    } while (retry);
+    } else {
+      log.info("Not turning on auto soft commit");
+    }
   }
   
   // skip the randoms - they can deadlock...

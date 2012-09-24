@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.nestedpulsing;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,6 @@ package org.apache.lucene.codecs.nestedpulsing;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
 import org.apache.lucene.codecs.BlockTreeTermsReader;
 import org.apache.lucene.codecs.BlockTreeTermsWriter;
@@ -31,9 +30,9 @@ import org.apache.lucene.codecs.lucene40.Lucene40PostingsReader;
 import org.apache.lucene.codecs.lucene40.Lucene40PostingsWriter;
 import org.apache.lucene.codecs.pulsing.PulsingPostingsReader;
 import org.apache.lucene.codecs.pulsing.PulsingPostingsWriter;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
+import org.apache.lucene.util.IOUtils;
 
 /**
  * Pulsing(1, Pulsing(2, Lucene40))
@@ -42,41 +41,47 @@ import org.apache.lucene.index.SegmentWriteState;
 // TODO: if we create PulsingPostingsBaseFormat then we
 // can simplify this? note: I don't like the *BaseFormat
 // hierarchy, maybe we can clean that up...
-public class NestedPulsingPostingsFormat extends PostingsFormat {
+public final class NestedPulsingPostingsFormat extends PostingsFormat {
   public NestedPulsingPostingsFormat() {
     super("NestedPulsing");
   }
   
   @Override
   public FieldsConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
-    PostingsWriterBase docsWriter = new Lucene40PostingsWriter(state);
-
-    PostingsWriterBase pulsingWriterInner = new PulsingPostingsWriter(2, docsWriter);
-    PostingsWriterBase pulsingWriter = new PulsingPostingsWriter(1, pulsingWriterInner);
+    PostingsWriterBase docsWriter = null;
+    PostingsWriterBase pulsingWriterInner = null;
+    PostingsWriterBase pulsingWriter = null;
     
     // Terms dict
     boolean success = false;
     try {
+      docsWriter = new Lucene40PostingsWriter(state);
+
+      pulsingWriterInner = new PulsingPostingsWriter(2, docsWriter);
+      pulsingWriter = new PulsingPostingsWriter(1, pulsingWriterInner);
       FieldsConsumer ret = new BlockTreeTermsWriter(state, pulsingWriter, 
           BlockTreeTermsWriter.DEFAULT_MIN_BLOCK_SIZE, BlockTreeTermsWriter.DEFAULT_MAX_BLOCK_SIZE);
       success = true;
       return ret;
     } finally {
       if (!success) {
-        pulsingWriter.close();
+        IOUtils.closeWhileHandlingException(docsWriter, pulsingWriterInner, pulsingWriter);
       }
     }
   }
 
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
-    PostingsReaderBase docsReader = new Lucene40PostingsReader(state.dir, state.segmentInfo, state.context, state.segmentSuffix);
-    PostingsReaderBase pulsingReaderInner = new PulsingPostingsReader(docsReader);
-    PostingsReaderBase pulsingReader = new PulsingPostingsReader(pulsingReaderInner);
+    PostingsReaderBase docsReader = null;
+    PostingsReaderBase pulsingReaderInner = null;
+    PostingsReaderBase pulsingReader = null;
     boolean success = false;
     try {
+      docsReader = new Lucene40PostingsReader(state.dir, state.fieldInfos, state.segmentInfo, state.context, state.segmentSuffix);
+      pulsingReaderInner = new PulsingPostingsReader(docsReader);
+      pulsingReader = new PulsingPostingsReader(pulsingReaderInner);
       FieldsProducer ret = new BlockTreeTermsReader(
-                                                    state.dir, state.fieldInfos, state.segmentInfo.name,
+                                                    state.dir, state.fieldInfos, state.segmentInfo,
                                                     pulsingReader,
                                                     state.context,
                                                     state.segmentSuffix,
@@ -85,14 +90,8 @@ public class NestedPulsingPostingsFormat extends PostingsFormat {
       return ret;
     } finally {
       if (!success) {
-        pulsingReader.close();
+        IOUtils.closeWhileHandlingException(docsReader, pulsingReaderInner, pulsingReader);
       }
     }
-  }
-
-  @Override
-  public void files(SegmentInfo segmentInfo, String segmentSuffix, Set<String> files) throws IOException {
-    Lucene40PostingsReader.files(segmentInfo, segmentSuffix, files);
-    BlockTreeTermsReader.files(segmentInfo, segmentSuffix, files);
   }
 }

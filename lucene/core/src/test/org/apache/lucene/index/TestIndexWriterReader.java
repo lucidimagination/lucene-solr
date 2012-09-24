@@ -29,7 +29,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
@@ -55,7 +54,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
                                  t.field(), new BytesRef(t.text()),
                                  MultiFields.getLiveDocs(r),
                                  null,
-                                 false);
+                                 0);
 
     if (td != null) {
       while (td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
@@ -145,7 +144,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     
     Document newDoc = r1.document(10);
     newDoc.removeField("id");
-    newDoc.add(newField("id", Integer.toString(8000), StringField.TYPE_STORED));
+    newDoc.add(newStringField("id", Integer.toString(8000), Field.Store.YES));
     writer.updateDocument(new Term("id", id10), newDoc);
     assertFalse(r1.isCurrent());
 
@@ -161,7 +160,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     writer.close();
     assertTrue(r2.isCurrent());
     
-    DirectoryReader r3 = IndexReader.open(dir1);
+    DirectoryReader r3 = DirectoryReader.open(dir1);
     assertTrue(r3.isCurrent());
     assertTrue(r2.isCurrent());
     assertEquals(0, count(new Term("id", id10), r3));
@@ -169,7 +168,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     writer = new IndexWriter(dir1, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    doc.add(newField("field", "a b c", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("field", "a b c", Field.Store.NO));
     writer.addDocument(doc);
     assertTrue(r2.isCurrent());
     assertTrue(r3.isCurrent());
@@ -191,14 +190,14 @@ public class TestIndexWriterReader extends LuceneTestCase {
     
     IndexWriter writer = new IndexWriter(dir, iwc);
     Document doc = new Document();
-    doc.add(newField("field", "a b c", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("field", "a b c", Field.Store.NO));
     writer.addDocument(doc);
     writer.close();
     
     iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
     writer = new IndexWriter(dir, iwc);
     doc = new Document();
-    doc.add(newField("field", "a b c", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("field", "a b c", Field.Store.NO));
     DirectoryReader nrtReader = writer.getReader();
     assertTrue(nrtReader.isCurrent());
     writer.addDocument(doc);
@@ -207,7 +206,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     assertFalse(nrtReader.isCurrent());
     nrtReader.close();
     
-    DirectoryReader dirReader = IndexReader.open(dir);
+    DirectoryReader dirReader = DirectoryReader.open(dir);
     nrtReader = writer.getReader();
     
     assertTrue(dirReader.isCurrent());
@@ -225,8 +224,6 @@ public class TestIndexWriterReader extends LuceneTestCase {
   
   /**
    * Test using IW.addIndexes
-   * 
-   * @throws Exception
    */
   public void testAddIndexes() throws Exception {
     boolean doFullMerge = false;
@@ -312,8 +309,6 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
   /**
    * Deletes using IW.deleteDocuments
-   * 
-   * @throws Exception
    */
   public void testDeleteFromIndexWriter() throws Exception {
     boolean doFullMerge = true;
@@ -386,7 +381,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     _TestUtil.checkIndex(mainDir);
 
-    IndexReader reader = IndexReader.open(mainDir);
+    IndexReader reader = DirectoryReader.open(mainDir);
     assertEquals(addDirThreads.count.intValue(), reader.numDocs());
     //assertEquals(100 + numDirs * (3 * numIter / 4) * addDirThreads.numThreads
     //    * addDirThreads.NUM_INIT_DOCS, reader.numDocs());
@@ -413,6 +408,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
       this.mainWriter = mainWriter;
       addDir = newDirectory();
       IndexWriter writer = new IndexWriter(addDir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(2));
+      _TestUtil.reduceOpenFiles(writer);
       for (int i = 0; i < NUM_INIT_DOCS; i++) {
         Document doc = DocHelper.createDocument(i, "addindex", 4);
         writer.addDocument(doc);
@@ -422,7 +418,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
       
       readers = new IndexReader[numDirs];
       for (int i = 0; i < numDirs; i++)
-        readers[i] = IndexReader.open(addDir);
+        readers[i] = DirectoryReader.open(addDir);
     }
     
     void joinThreads() {
@@ -709,7 +705,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
   // Stress test reopen during addIndexes
   public void testDuringAddIndexes() throws Exception {
-    MockDirectoryWrapper dir1 = newDirectory();
+    Directory dir1 = newDirectory();
     final IndexWriter writer = new IndexWriter(
         dir1,
         newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).
@@ -782,8 +778,10 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     assertEquals(0, excs.size());
     r.close();
-    final Collection<String> openDeletedFiles = dir1.getOpenDeletedFiles();
-    assertEquals("openDeleted=" + openDeletedFiles, 0, openDeletedFiles.size());
+    if (dir1 instanceof MockDirectoryWrapper) {
+      final Collection<String> openDeletedFiles = ((MockDirectoryWrapper)dir1).getOpenDeletedFiles();
+      assertEquals("openDeleted=" + openDeletedFiles, 0, openDeletedFiles.size());
+    }
 
     writer.close();
 
@@ -877,8 +875,8 @@ public class TestIndexWriterReader extends LuceneTestCase {
     Directory dir = newDirectory();
     final IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     Document doc = new Document();
-    doc.add(newField("field", "a b c", TextField.TYPE_UNSTORED));
-    Field id = newField("id", "", StringField.TYPE_UNSTORED);
+    doc.add(newTextField("field", "a b c", Field.Store.NO));
+    Field id = newStringField("id", "", Field.Store.NO);
     doc.add(id);
     id.setStringValue("0");
     w.addDocument(doc);
@@ -890,7 +888,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     w.forceMergeDeletes();
     w.close();
     r.close();
-    r = IndexReader.open(dir);
+    r = DirectoryReader.open(dir);
     assertEquals(1, r.numDocs());
     assertFalse(r.hasDeletions());
     r.close();
@@ -901,8 +899,8 @@ public class TestIndexWriterReader extends LuceneTestCase {
     Directory dir = newDirectory();
     final IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    doc.add(newField("field", "a b c", TextField.TYPE_UNSTORED));
-    Field id = newField("id", "", StringField.TYPE_UNSTORED);
+    doc.add(newTextField("field", "a b c", Field.Store.NO));
+    Field id = newStringField("id", "", Field.Store.NO);
     doc.add(id);
     id.setStringValue("0");
     w.addDocument(doc);
@@ -958,7 +956,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     );
 
     Document doc = new Document();
-    doc.add(newField("foo", "bar", StringField.TYPE_UNSTORED));
+    doc.add(newStringField("foo", "bar", Field.Store.NO));
     for(int i=0;i<20;i++) {
       w.addDocument(doc);
     }
@@ -980,16 +978,16 @@ public class TestIndexWriterReader extends LuceneTestCase {
     // Don't proceed if picked Codec is in the list of illegal ones.
     final String format = _TestUtil.getPostingsFormat("f");
     assumeFalse("Format: " + format + " does not support ReaderTermsIndexDivisor!",
-        (format.equals("SimpleText") || format.equals("Memory")));
+                (format.equals("SimpleText") || format.equals("Memory") || format.equals("Direct")));
 
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, conf);
     Document doc = new Document();
-    doc.add(new TextField("f", "val"));
+    doc.add(new TextField("f", "val", Field.Store.NO));
     w.addDocument(doc);
-    IndexReader r = IndexReader.open(w, true).getSequentialSubReaders()[0];
+    SegmentReader r = getOnlySegmentReader(DirectoryReader.open(w, true));
     try {
-      _TestUtil.docs(random(), r, "f", new BytesRef("val"), null, null, false);
+      _TestUtil.docs(random(), r, "f", new BytesRef("val"), null, null, 0);
       fail("should have failed to seek since terms index was not loaded.");
     } catch (IllegalStateException e) {
       // expected - we didn't load the term index

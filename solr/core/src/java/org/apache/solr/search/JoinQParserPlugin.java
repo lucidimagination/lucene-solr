@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -59,11 +59,13 @@ public class JoinQParserPlugin extends QParserPlugin {
         String toField = getParam("to");
         String v = localParams.get("v");
         Query fromQuery;
+        long fromCoreOpenTime = 0;
 
-        if (fromIndex != null) {
+        if (fromIndex != null && !fromIndex.equals(req.getCore().getCoreDescriptor().getName()) ) {
           CoreContainer container = req.getCore().getCoreDescriptor().getCoreContainer();
 
           final SolrCore fromCore = container.getCore(fromIndex);
+          RefCounted<SolrIndexSearcher> fromHolder = null;
 
           if (fromCore == null) {
             throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + fromIndex);
@@ -73,9 +75,12 @@ public class JoinQParserPlugin extends QParserPlugin {
           try {
             QParser parser = QParser.getParser(v, "lucene", otherReq);
             fromQuery = parser.getQuery();
+            fromHolder = fromCore.getRegisteredSearcher();
+            if (fromHolder != null) fromCoreOpenTime = fromHolder.get().getOpenTime();
           } finally {
             otherReq.close();
             fromCore.close();
+            if (fromHolder != null) fromHolder.decref();
           }
         } else {
           QParser fromQueryParser = subQuery(v, null);
@@ -83,6 +88,7 @@ public class JoinQParserPlugin extends QParserPlugin {
         }
 
         JoinQuery jq = new JoinQuery(fromField, toField, fromIndex, fromQuery);
+        jq.fromCoreOpenTime = fromCoreOpenTime;
         return jq;
       }
     };
@@ -95,6 +101,7 @@ class JoinQuery extends Query {
   String toField;
   String fromIndex;
   Query q;
+  long fromCoreOpenTime;
 
   public JoinQuery(String fromField, String toField, String fromIndex, Query subQuery) {
     this.fromField = fromField;
@@ -128,7 +135,7 @@ class JoinQuery extends Query {
     private float queryWeight;
     ResponseBuilder rb;
 
-    public JoinQueryWeight(SolrIndexSearcher searcher) throws IOException {
+    public JoinQueryWeight(SolrIndexSearcher searcher) {
       this.fromSearcher = searcher;
       SolrRequestInfo info = SolrRequestInfo.getRequestInfo();
       if (info != null) {
@@ -168,7 +175,7 @@ class JoinQuery extends Query {
           final RefCounted<SolrIndexSearcher> ref = fromRef;
           info.addCloseHook(new Closeable() {
             @Override
-            public void close() throws IOException {
+            public void close() {
               ref.decref();
             }
           });
@@ -176,7 +183,7 @@ class JoinQuery extends Query {
 
         info.addCloseHook(new Closeable() {
           @Override
-          public void close() throws IOException {
+          public void close() {
             fromCore.close();
           }
         });
@@ -334,7 +341,7 @@ class JoinQuery extends Query {
         if (freq < minDocFreqFrom) {
           fromTermDirectCount++;
           // OK to skip liveDocs, since we check for intersection with docs matching query
-          fromDeState.docsEnum = fromDeState.termsEnum.docs(null, fromDeState.docsEnum, false);
+          fromDeState.docsEnum = fromDeState.termsEnum.docs(null, fromDeState.docsEnum, 0);
           DocsEnum docsEnum = fromDeState.docsEnum;
 
           if (docsEnum instanceof MultiDocsEnum) {
@@ -399,7 +406,7 @@ class JoinQuery extends Query {
               toTermDirectCount++;
 
               // need to use liveDocs here so we don't map to any deleted ones
-              toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, false);
+              toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, 0);
               DocsEnum docsEnum = toDeState.docsEnum;              
 
               if (docsEnum instanceof MultiDocsEnum) {
@@ -525,6 +532,11 @@ class JoinQuery extends Query {
     public float score() throws IOException {
       return score;
     }
+    
+    @Override
+    public float freq() throws IOException {
+      return 1;
+    }
 
     @Override
     public int advance(int target) throws IOException {
@@ -542,18 +554,22 @@ class JoinQuery extends Query {
 
   @Override
   public boolean equals(Object o) {
-    if (getClass() != o.getClass()) return false;
+    if (!super.equals(o)) return false;
     JoinQuery other = (JoinQuery)o;
     return this.fromField.equals(other.fromField)
            && this.toField.equals(other.toField)
            && this.getBoost() == other.getBoost()
            && this.q.equals(other.q)
-           && (this.fromIndex == other.fromIndex || this.fromIndex != null && this.fromIndex.equals(other.fromIndex));
+           && (this.fromIndex == other.fromIndex || this.fromIndex != null && this.fromIndex.equals(other.fromIndex))
+           && this.fromCoreOpenTime == other.fromCoreOpenTime
+        ;
   }
 
   @Override
   public int hashCode() {
-    int h = q.hashCode();
+    int h = super.hashCode();
+    h = h * 31 + q.hashCode();
+    h = h * 31 + (int)fromCoreOpenTime;
     h = h * 31 + fromField.hashCode();
     h = h * 31 + toField.hashCode();
     return h;

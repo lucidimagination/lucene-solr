@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,8 +30,8 @@ import org.apache.lucene.util.LuceneTestCase;
 class PreFlexRWTermVectorsFormat extends Lucene3xTermVectorsFormat {
 
   @Override
-  public TermVectorsWriter vectorsWriter(Directory directory, String segment, IOContext context) throws IOException {
-    return new PreFlexRWTermVectorsWriter(directory, segment, context);
+  public TermVectorsWriter vectorsWriter(Directory directory, SegmentInfo segmentInfo, IOContext context) throws IOException {
+    return new PreFlexRWTermVectorsWriter(directory, segmentInfo.name, context);
   }
 
   @Override

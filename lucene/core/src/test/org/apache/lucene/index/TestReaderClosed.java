@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.store.AlreadyClosedException;
@@ -42,7 +41,7 @@ public class TestReaderClosed extends LuceneTestCase {
         .setMaxBufferedDocs(_TestUtil.nextInt(random(), 50, 1000)));
     
     Document doc = new Document();
-    Field field = newField("field", "", StringField.TYPE_UNSTORED);
+    Field field = newStringField("field", "", Field.Store.NO);
     doc.add(field);
 
     // we generate aweful prefixes: good for testing.
@@ -68,12 +67,13 @@ public class TestReaderClosed extends LuceneTestCase {
       // expected
     }
   }
-  
+
   // LUCENE-3800
   public void testReaderChaining() throws Exception {
     assertTrue(reader.getRefCount() > 0);
     IndexReader wrappedReader = SlowCompositeReaderWrapper.wrap(reader);
     wrappedReader = new ParallelAtomicReader((AtomicReader) wrappedReader);
+
     IndexSearcher searcher = newSearcher(wrappedReader);
     TermRangeQuery query = TermRangeQuery.newStringRange("field", "a", "z", true, true);
     searcher.search(query, 5);
@@ -85,6 +85,9 @@ public class TestReaderClosed extends LuceneTestCase {
         "this IndexReader cannot be used anymore as one of its child readers was closed",
         ace.getMessage()
       );
+    } finally {
+      // shutdown executor: in case of wrap-wrap-wrapping
+      searcher.getIndexReader().close();
     }
   }
   

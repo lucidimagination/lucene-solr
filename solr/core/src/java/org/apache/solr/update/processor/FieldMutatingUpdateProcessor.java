@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Reusable base class for UpdateProcessors that will consider 
- * AddUpdateCommands and mutate the values assocaited with configured 
+ * AddUpdateCommands and mutate the values associated with configured
  * fields.
  * <p>
  * Subclasses should override the mutate method to specify how individual 

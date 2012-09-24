@@ -13,7 +13,7 @@ import org.apache.lucene.facet.search.params.FacetSearchParams;
 import org.apache.lucene.facet.search.results.FacetResult;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -72,12 +72,14 @@ public class FacetsCollector extends Collector {
   protected ScoredDocIdCollector initScoredDocCollector(
       FacetSearchParams facetSearchParams, IndexReader indexReader,
       TaxonomyReader taxonomyReader) {
+    boolean scoresNeeded = false;
     for (FacetRequest frq : facetSearchParams.getFacetRequests()) {
       if (frq.requireDocumentScore()) {
-        return ScoredDocIdCollector.create(1000, true);
+        scoresNeeded = true;
+        break;
       }
     }
-    return ScoredDocIdCollector.create(indexReader.maxDoc(), false);
+    return ScoredDocIdCollector.create(indexReader.maxDoc(), scoresNeeded);
   }
 
   /**

@@ -1,5 +1,5 @@
 package org.apache.lucene.search.vectorhighlight;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,7 @@ import java.util.Set;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.BytesRef;
@@ -69,7 +70,7 @@ public class FieldTermStack {
    * @param docId document id to be highlighted
    * @param fieldName field of the document to be highlighted
    * @param fieldQuery FieldQuery object
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public FieldTermStack( IndexReader reader, int docId, String fieldName, final FieldQuery fieldQuery ) throws IOException {
     this.fieldName = fieldName;
@@ -94,25 +95,34 @@ public class FieldTermStack {
     final TermsEnum termsEnum = vector.iterator(null);
     DocsAndPositionsEnum dpEnum = null;
     BytesRef text;
+    
+    int numDocs = reader.maxDoc();
+    
     while ((text = termsEnum.next()) != null) {
       UnicodeUtil.UTF8toUTF16(text, spare);
       final String term = spare.toString();
       if (!termSet.contains(term)) {
         continue;
       }
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
       if (dpEnum == null) {
         // null snippet
         return;
       }
 
       dpEnum.nextDoc();
+      
+      // For weight look here: http://lucene.apache.org/core/3_6_0/api/core/org/apache/lucene/search/DefaultSimilarity.html
+      final float weight = ( float ) ( Math.log( numDocs / ( double ) ( reader.docFreq( new Term(fieldName, text) ) + 1 ) ) + 1.0 );
 
       final int freq = dpEnum.freq();
       
       for(int i = 0;i < freq;i++) {
         int pos = dpEnum.nextPosition();
-        termList.add(new TermInfo(term, dpEnum.startOffset(), dpEnum.endOffset(), pos));
+        if (dpEnum.startOffset() < 0) {
+          return; // no offsets, null snippet
+        }
+        termList.add( new TermInfo( term, dpEnum.startOffset(), dpEnum.endOffset(), pos, weight ) );
       }
     }
     
@@ -150,24 +160,32 @@ public class FieldTermStack {
     return termList == null || termList.size() == 0;
   }
   
+  /**
+   * Single term with its position/offsets in the document and IDF weight
+   */
   public static class TermInfo implements Comparable<TermInfo>{
 
-    final String text;
-    final int startOffset;
-    final int endOffset;
-    final int position;
+    private final String text;
+    private final int startOffset;
+    private final int endOffset;
+    private final int position;    
 
-    TermInfo( String text, int startOffset, int endOffset, int position ){
+    // IDF-weight of this term
+    private final float weight;
+
+    public TermInfo( String text, int startOffset, int endOffset, int position, float weight ){
       this.text = text;
       this.startOffset = startOffset;
       this.endOffset = endOffset;
       this.position = position;
+      this.weight = weight;
     }
     
     public String getText(){ return text; }
     public int getStartOffset(){ return startOffset; }
     public int getEndOffset(){ return endOffset; }
     public int getPosition(){ return position; }
+    public float getWeight(){ return weight; }
     
     @Override
     public String toString(){
@@ -176,7 +194,8 @@ public class FieldTermStack {
       return sb.toString();
     }
 
-    public int compareTo( TermInfo o ) {
+    @Override
+    public int compareTo( TermInfo o ){
       return ( this.position - o.position );
     }
   }

@@ -1,5 +1,5 @@
 package org.apache.lucene.codecs;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,11 +26,20 @@ import org.apache.lucene.index.TermState;
  * terms dict.
  */
 public class BlockTermState extends OrdTermState {
-  public int docFreq;            // how many docs have this term
-  public long totalTermFreq;     // total number of occurrences of this term
+  /** how many docs have this term */
+  public int docFreq;
+  /** total number of occurrences of this term */
+  public long totalTermFreq;
 
-  public int termBlockOrd;          // the term's ord in the current block
-  public long blockFilePointer;  // fp into the terms dict primary file (_X.tim) that holds this term
+  /** the term's ord in the current block */
+  public int termBlockOrd;
+  /** fp into the terms dict primary file (_X.tim) that holds this term */
+  public long blockFilePointer;
+
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected BlockTermState() {
+  }
 
   @Override
   public void copyFrom(TermState _other) {

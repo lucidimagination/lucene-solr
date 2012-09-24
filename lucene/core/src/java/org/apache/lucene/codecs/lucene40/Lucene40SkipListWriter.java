@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -49,6 +49,7 @@ public class Lucene40SkipListWriter extends MultiLevelSkipListWriter {
   private long curFreqPointer;
   private long curProxPointer;
 
+  /** Sole constructor. */
   public Lucene40SkipListWriter(int skipInterval, int numberOfSkipLevels, int docCount, IndexOutput freqOutput, IndexOutput proxOutput) {
     super(skipInterval, numberOfSkipLevels, docCount);
     this.freqOutput = freqOutput;

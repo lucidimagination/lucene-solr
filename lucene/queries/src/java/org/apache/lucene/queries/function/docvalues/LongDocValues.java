@@ -1,6 +1,6 @@
 package org.apache.lucene.queries.function.docvalues;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,10 @@ import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueLong;
 
-
+/**
+ * Abstract {@link FunctionValues} implementation which supports retrieving long values.
+ * Implementations can control how the long values are loaded through {@link #longVal(int)}}
+ */
 public abstract class LongDocValues extends FunctionValues {
   protected final ValueSource vs;
 

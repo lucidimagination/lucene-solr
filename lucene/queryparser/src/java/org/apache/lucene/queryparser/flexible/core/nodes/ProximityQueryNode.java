@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.core.nodes;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,6 +33,9 @@ import org.apache.lucene.queryparser.flexible.core.messages.QueryParserMessages;
  */
 public class ProximityQueryNode extends BooleanQueryNode {
 
+  /**
+   * Distance condition: PARAGRAPH, SENTENCE, or NUMBER
+   */
   public enum Type {
     PARAGRAPH {
       @Override
@@ -50,7 +53,7 @@ public class ProximityQueryNode extends BooleanQueryNode {
     abstract CharSequence toQueryString();
   }
 
-  // utility class
+  /** utility class containing the distance condition and number */
   static public class ProximityType {
     int pDistance = 0;
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -539,7 +539,7 @@ public abstract class FieldType extends FieldProperties {
   public abstract SortField getSortField(SchemaField field, boolean top);
 
   /**
-   * Utility usable by subclasses when they want to get basic String sorting 
+   * Utility usable by subclasses when they want to get basic String sorting
    * using common checks.
    * @see SchemaField#checkSortability
    */
@@ -566,7 +566,6 @@ public abstract class FieldType extends FieldProperties {
    * Sub-classes should override this method to provide their own range query implementation. They should strive to
    * handle nulls in part1 and/or part2 as well as unequal minInclusive and maxInclusive parameters gracefully.
    *
-   * @param parser
    * @param field        the schema field
    * @param part1        the lower boundary of the range, nulls are allowed.
    * @param part2        the upper boundary of the range, nulls are allowed
@@ -596,5 +595,21 @@ public abstract class FieldType extends FieldProperties {
     BytesRef br = new BytesRef();
     readableToIndexed(externalVal, br);
     return new TermQuery(new Term(field.getName(), br));
+  }
+
+  /**
+   * Check's {@link org.apache.solr.schema.SchemaField} instances constructed 
+   * using this field type to ensure that they are valid.
+   *
+   * <p>
+   * This method is called by the <code>SchemaField</code> constructor to 
+   * check that it's initialization does not violate any fundemental 
+   * requirements of the <code>FieldType</code>.  The default implementation 
+   * does nothing, but subclasses may chose to throw a {@link SolrException}  
+   * if invariants are violated by the <code>SchemaField.</code>
+   * </p>
+   */
+  public void checkSchemaField(final SchemaField field) throws SolrException {
+    // :NOOP:
   }
 }

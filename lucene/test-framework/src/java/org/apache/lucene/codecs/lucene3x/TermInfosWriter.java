@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,10 @@ package org.apache.lucene.codecs.lucene3x;
 import java.io.Closeable;
 import java.io.IOException;
 
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
@@ -65,8 +67,8 @@ final class TermInfosWriter implements Closeable {
    * tweaking this is rarely useful.*/
   int indexInterval = 128;
 
-  /** Expert: The fraction of {@link TermDocs} entries stored in skip tables,
-   * used to accelerate {@link TermDocs#skipTo(int)}.  Larger values result in
+  /** Expert: The fraction of term entries stored in skip tables,
+   * used to accelerate skipping.  Larger values result in
    * smaller indexes, greater acceleration, but fewer accelerable cases, while
    * smaller values result in bigger indexes, less acceleration and more
    * accelerable cases. More detailed experiments would be useful here. */
@@ -154,12 +156,18 @@ final class TermInfosWriter implements Closeable {
     utf16Result2 = new CharsRef(10);
     return true;
   }
+  
+  /** note: -1 is the empty field: "" !!!! */
+  static String fieldName(FieldInfos infos, int fieldNumber) {
+    FieldInfo fi = infos.fieldInfo(fieldNumber);
+    return (fi != null) ? fi.name : "";
+  }
 
   // Currently used only by assert statement
   private int compareToLastTerm(int fieldNumber, BytesRef term) {
 
     if (lastFieldNumber != fieldNumber) {
-      final int cmp = fieldInfos.fieldName(lastFieldNumber).compareTo(fieldInfos.fieldName(fieldNumber));
+      final int cmp = fieldName(fieldInfos, lastFieldNumber).compareTo(fieldName(fieldInfos, fieldNumber));
       // If there is a field named "" (empty string) then we
       // will get 0 on this comparison, yet, it's "OK".  But
       // it's not OK if two different field numbers map to
@@ -203,8 +211,8 @@ final class TermInfosWriter implements Closeable {
 
     assert compareToLastTerm(fieldNumber, term) < 0 ||
       (isIndex && term.length == 0 && lastTerm.length == 0) :
-      "Terms are out of order: field=" + fieldInfos.fieldName(fieldNumber) + " (number " + fieldNumber + ")" +
-        " lastField=" + fieldInfos.fieldName(lastFieldNumber) + " (number " + lastFieldNumber + ")" +
+      "Terms are out of order: field=" + fieldName(fieldInfos, fieldNumber) + " (number " + fieldNumber + ")" +
+        " lastField=" + fieldName(fieldInfos, lastFieldNumber) + " (number " + lastFieldNumber + ")" +
         " text=" + term.utf8ToString() + " lastText=" + lastTerm.utf8ToString();
 
     assert ti.freqPointer >= lastTi.freqPointer: "freqPointer out of order (" + ti.freqPointer + " < " + lastTi.freqPointer + ")";

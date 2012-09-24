@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.standard.parser;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,6 +25,8 @@ import org.apache.lucene.queryparser.flexible.core.parser.EscapeQuerySyntax;
 import org.apache.lucene.queryparser.flexible.core.util.UnescapedCharSequence;
 
 /**
+ * Implementation of {@link EscapeQuerySyntax} for the standard lucene
+ * syntax.
  */
 public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 
@@ -50,7 +52,7 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 
     // regular escapable Char for terms
     for (int i = 0; i < escapableTermChars.length; i++) {
-      buffer = replaceIgnoreCase(buffer, escapableTermChars[i].toLowerCase(),
+      buffer = replaceIgnoreCase(buffer, escapableTermChars[i].toLowerCase(locale),
           "\\", locale);
     }
 
@@ -73,7 +75,7 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
     CharSequence buffer = str;
 
     for (int i = 0; i < escapableQuotedChars.length; i++) {
-      buffer = replaceIgnoreCase(buffer, escapableTermChars[i].toLowerCase(),
+      buffer = replaceIgnoreCase(buffer, escapableTermChars[i].toLowerCase(locale),
           "\\", locale);
     }
     return buffer;
@@ -178,7 +180,7 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
     CharSequence buffer = str;
 
     for (int i = 0; i < escapableWhiteChars.length; i++) {
-      buffer = replaceIgnoreCase(buffer, escapableWhiteChars[i].toLowerCase(),
+      buffer = replaceIgnoreCase(buffer, escapableWhiteChars[i].toLowerCase(locale),
           "\\", locale);
     }
     return buffer;

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -72,19 +72,11 @@ final class TrieTokenizer extends Tokenizer {
     this.type = type;
     this.precisionStep = precisionStep;
     this.ts = ts;
-
-   try {
-     reset(input);
-   } catch (IOException e) {
-     throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unable to create TrieIndexTokenizer", e);
-   }
   }
 
   @Override
-  public void reset(Reader input) throws IOException {
+  public void reset() {
    try {
-      super.reset(input);
-      input = super.input;
       char[] buf = new char[32];
       int len = input.read(buf);
       this.startOfs = correctOffset(0);
@@ -117,6 +109,7 @@ final class TrieTokenizer extends Tokenizer {
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unable to create TrieIndexTokenizer", e);
     }
+    ts.reset();
   }
 
   @Override
@@ -124,15 +117,9 @@ final class TrieTokenizer extends Tokenizer {
     super.close();
     ts.close();
   }
-  
-  @Override
-  public void reset() throws IOException {
-    super.reset();
-    ts.reset();
-  }
 
   @Override
-  public boolean incrementToken() throws IOException {
+  public boolean incrementToken() {
     if (ts.incrementToken()) {
       ofsAtt.setOffset(startOfs, endOfs);
       return true;

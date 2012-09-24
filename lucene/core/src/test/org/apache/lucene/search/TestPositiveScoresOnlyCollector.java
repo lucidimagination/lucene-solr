@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -34,17 +32,21 @@ public class TestPositiveScoresOnlyCollector extends LuceneTestCase {
       super(weight);
     }
     
-    @Override public float score() throws IOException {
+    @Override public float score() {
       return idx == scores.length ? Float.NaN : scores[idx];
+    }
+    
+    @Override public float freq() {
+      return 1;
     }
 
     @Override public int docID() { return idx; }
 
-    @Override public int nextDoc() throws IOException {
+    @Override public int nextDoc() {
       return ++idx != scores.length ? idx : NO_MORE_DOCS;
     }
     
-    @Override public int advance(int target) throws IOException {
+    @Override public int advance(int target) {
       idx = target;
       return idx < scores.length ? idx : NO_MORE_DOCS;
     }

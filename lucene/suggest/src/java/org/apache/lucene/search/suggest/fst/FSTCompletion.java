@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,7 +42,9 @@ public class FSTCompletion {
    * A single completion for a given key.
    */
   public static final class Completion implements Comparable<Completion> {
+    /** UTF-8 bytes of the suggestion */
     public final BytesRef utf8;
+    /** source bucket (weight) of the suggestion */
     public final int bucket;
 
     Completion(BytesRef key, int bucket) {
@@ -95,6 +97,7 @@ public class FSTCompletion {
   private boolean higherWeightsFirst;
 
   /**
+   * Constructs an FSTCompletion, specifying higherWeightsFirst and exactFirst.
    * @param automaton
    *          Automaton with completions. See {@link FSTCompletionBuilder}.
    * @param higherWeightsFirst
@@ -135,11 +138,12 @@ public class FSTCompletion {
     try {
       List<Arc<Object>> rootArcs = new ArrayList<Arc<Object>>();
       Arc<Object> arc = automaton.getFirstArc(new Arc<Object>());
-      automaton.readFirstTargetArc(arc, arc);
+      FST.BytesReader fstReader = automaton.getBytesReader(0);
+      automaton.readFirstTargetArc(arc, arc, fstReader);
       while (true) {
         rootArcs.add(new Arc<Object>().copyFrom(arc));
         if (arc.isLast()) break;
-        automaton.readNextArc(arc);
+        automaton.readNextArc(arc, fstReader);
       }
       
       Collections.reverse(rootArcs); // we want highest weights first.
@@ -168,13 +172,14 @@ public class FSTCompletion {
     // Get the UTF-8 bytes representation of the input key.
     try {
       final FST.Arc<Object> scratch = new FST.Arc<Object>();
+      FST.BytesReader fstReader = automaton.getBytesReader(0);
       for (; rootArcIndex < rootArcs.length; rootArcIndex++) {
         final FST.Arc<Object> rootArc = rootArcs[rootArcIndex];
         final FST.Arc<Object> arc = scratch.copyFrom(rootArc);
         
         // Descend into the automaton using the key as prefix.
         if (descendWithPrefix(arc, utf8)) {
-          automaton.readFirstTargetArc(arc, arc);
+          automaton.readFirstTargetArc(arc, arc, fstReader);
           if (arc.label == FST.END_LABEL) {
             // Normalize prefix-encoded weight.
             return rootArc.label;
@@ -356,8 +361,8 @@ public class FSTCompletion {
     }
     assert output.offset == 0;
     output.bytes[output.length++] = (byte) arc.label;
-    
-    automaton.readFirstTargetArc(arc, arc);
+    FST.BytesReader fstReader = automaton.getBytesReader(0);
+    automaton.readFirstTargetArc(arc, arc, fstReader);
     while (true) {
       if (arc.label == FST.END_LABEL) {
         res.add(new Completion(output, bucket));
@@ -373,7 +378,7 @@ public class FSTCompletion {
       if (arc.isLast()) {
         break;
       }
-      automaton.readNextArc(arc);
+      automaton.readNextArc(arc, fstReader);
     }
     return false;
   }

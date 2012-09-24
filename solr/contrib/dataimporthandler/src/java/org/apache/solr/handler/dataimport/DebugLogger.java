@@ -1,5 +1,5 @@
 package org.apache.solr.handler.dataimport;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -143,7 +143,7 @@ class DebugLogger {
 
   private void popAllTransformers() {
     while (true) {
-    	DIHLogLevels type = debugStack.peek().type;
+      DIHLogLevels type = debugStack.peek().type;
       if (type == DIHLogLevels.START_DOC || type == DIHLogLevels.START_ENTITY)
         break;
       debugStack.pop();

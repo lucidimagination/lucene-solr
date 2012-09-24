@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,7 @@ package org.apache.lucene.index;
  */
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.FixedBitSet;
@@ -53,7 +53,7 @@ public class TestDocCount extends LuceneTestCase {
     Document doc = new Document();
     int numFields = _TestUtil.nextInt(random(), 1, 10);
     for (int i = 0; i < numFields; i++) {
-      doc.add(newField("" + _TestUtil.nextInt(random(), 'a', 'z'), "" + _TestUtil.nextInt(random(), 'a', 'z'), StringField.TYPE_UNSTORED));
+      doc.add(newStringField("" + _TestUtil.nextInt(random(), 'a', 'z'), "" + _TestUtil.nextInt(random(), 'a', 'z'), Field.Store.NO));
     }
     return doc;
   }
@@ -63,9 +63,7 @@ public class TestDocCount extends LuceneTestCase {
     if (fields == null) {
       return;
     }
-    FieldsEnum e = fields.iterator();
-    String field;
-    while ((field = e.next()) != null) {
+    for (String field : fields) {
       Terms terms = fields.terms(field);
       if (terms == null) {
         continue;
@@ -74,7 +72,7 @@ public class TestDocCount extends LuceneTestCase {
       FixedBitSet visited = new FixedBitSet(ir.maxDoc());
       TermsEnum te = terms.iterator(null);
       while (te.next() != null) {
-        DocsEnum de = _TestUtil.docs(random(), te, null, null, false);
+        DocsEnum de = _TestUtil.docs(random(), te, null, null, 0);
         while (de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
           visited.set(de.docID());
         }

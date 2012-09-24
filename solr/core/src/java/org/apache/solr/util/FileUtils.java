@@ -29,9 +29,9 @@ public class FileUtils {
    * Resolves a path relative a base directory.
    *
    * <p>
-   * This method does what "new File(base,path)" <b>Should</b> do, it wasn't
+   * This method does what "new File(base,path)" <b>Should</b> do, if it wasn't
    * completely lame: If path is absolute, then a File for that path is returned;
-   * if it's not absoluve, then a File is returnd using "path" as a child 
+   * if it's not absolute, then a File is returned using "path" as a child
    * of "base")
    * </p>
    */
@@ -54,7 +54,7 @@ public class FileUtils {
   }
 
   /**
-   * Copied from Lucene's FSDirectory.fsync(String) <!-- protected -->
+   * Copied from Lucene's FSDirectory.fsync(String)
    *
    * @param fullFile the File to be synced to disk
    * @throws IOException if the file could not be synced

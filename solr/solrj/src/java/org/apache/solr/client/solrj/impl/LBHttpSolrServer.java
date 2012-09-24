@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,13 +17,11 @@
 package org.apache.solr.client.solrj.impl;
 
 import org.apache.http.client.HttpClient;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.CoreConnectionPNames;
 import org.apache.solr.client.solrj.*;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SolrjNamedThreadFactory;
 import org.apache.solr.common.SolrException;
 
 import java.io.IOException;
@@ -82,7 +80,8 @@ public class LBHttpSolrServer extends SolrServer {
 
   private ScheduledExecutorService aliveCheckExecutor;
 
-  private HttpClient httpClient;
+  private final HttpClient httpClient;
+  private final boolean clientIsInternal;
   private final AtomicInteger counter = new AtomicInteger(-1);
 
   private static final SolrQuery solrQuery = new SolrQuery("*:*");
@@ -177,14 +176,7 @@ public class LBHttpSolrServer extends SolrServer {
   }
 
   public LBHttpSolrServer(String... solrServerUrls) throws MalformedURLException {
-    this(getDefaultClient(), solrServerUrls);
-  }
-
-  private static HttpClient getDefaultClient(){
-    DefaultHttpClient client = new DefaultHttpClient(new ThreadSafeClientConnManager());;
-    DefaultHttpRequestRetryHandler retryhandler = new DefaultHttpRequestRetryHandler(0, false);
-    client.setHttpRequestRetryHandler(retryhandler);
-    return client;
+    this(null, solrServerUrls);
   }
   
   /** The provided httpClient should use a multi-threaded connection manager */ 
@@ -196,7 +188,14 @@ public class LBHttpSolrServer extends SolrServer {
   /** The provided httpClient should use a multi-threaded connection manager */  
   public LBHttpSolrServer(HttpClient httpClient, ResponseParser parser, String... solrServerUrl)
           throws MalformedURLException {
-    this.httpClient = httpClient;
+    clientIsInternal = (httpClient == null);
+    if (httpClient == null) {
+      ModifiableSolrParams params = new ModifiableSolrParams();
+      params.set(HttpClientUtil.PROP_USE_RETRY, false);
+      this.httpClient = HttpClientUtil.createClient(params);
+    } else {
+      this.httpClient = httpClient;
+    }
     for (String s : solrServerUrl) {
       ServerWrapper wrapper = new ServerWrapper(makeServer(s));
       aliveServers.put(wrapper.getKey(), wrapper);
@@ -231,8 +230,7 @@ public class LBHttpSolrServer extends SolrServer {
    *
    * @return the result of the request
    *
-   * @throws SolrServerException
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public Rsp request(Req req) throws SolrServerException, IOException {
     Rsp rsp = new Rsp();
@@ -389,7 +387,7 @@ public class LBHttpSolrServer extends SolrServer {
   }
 
   public void setConnectionTimeout(int timeout) {
-    httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, timeout);
+    HttpClientUtil.setConnectionTimeout(httpClient, timeout);
   }
 
   /**
@@ -397,12 +395,16 @@ public class LBHttpSolrServer extends SolrServer {
    * not for indexing.
    */
   public void setSoTimeout(int timeout) {
-    httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, timeout);
+    HttpClientUtil.setSoTimeout(httpClient, timeout);
   }
-  
+
+  @Override
   public void shutdown() {
     if (aliveCheckExecutor != null) {
       aliveCheckExecutor.shutdownNow();
+    }
+    if(clientIsInternal) {
+      httpClient.getConnectionManager().shutdown();
     }
   }
 
@@ -416,8 +418,7 @@ public class LBHttpSolrServer extends SolrServer {
    *
    * @return response
    *
-   * @throws SolrServerException
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   @Override
   public NamedList<Object> request(final SolrRequest request)
@@ -553,7 +554,8 @@ public class LBHttpSolrServer extends SolrServer {
     if (aliveCheckExecutor == null) {
       synchronized (this) {
         if (aliveCheckExecutor == null) {
-          aliveCheckExecutor = Executors.newSingleThreadScheduledExecutor();
+          aliveCheckExecutor = Executors.newSingleThreadScheduledExecutor(
+              new SolrjNamedThreadFactory("aliveCheckExecutor"));
           aliveCheckExecutor.scheduleAtFixedRate(
                   getAliveCheckRunner(new WeakReference<LBHttpSolrServer>(this)),
                   this.interval, this.interval, TimeUnit.MILLISECONDS);

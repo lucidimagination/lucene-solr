@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,7 @@ import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.store.Directory;
 
@@ -223,11 +223,11 @@ public class TestIndexWriterMergePolicy extends LuceneTestCase {
 
   private void addDoc(IndexWriter writer) throws IOException {
     Document doc = new Document();
-    doc.add(newField("content", "aaa", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("content", "aaa", Field.Store.NO));
     writer.addDocument(doc);
   }
 
-  private void checkInvariants(IndexWriter writer) throws IOException {
+  private void checkInvariants(IndexWriter writer) {
     writer.waitForMerges();
     int maxBufferedDocs = writer.getConfig().getMaxBufferedDocs();
     int mergeFactor = ((LogMergePolicy) writer.getConfig().getMergePolicy()).getMergeFactor();
@@ -262,5 +262,32 @@ public class TestIndexWriterMergePolicy extends LuceneTestCase {
     if (upperBound * mergeFactor <= maxMergeDocs) {
       assertTrue(numSegments < mergeFactor);
     }
+  }
+
+  private static final double EPSILON = 1E-14;
+  
+  public void testSetters() {
+    assertSetters(new LogByteSizeMergePolicy());
+    assertSetters(new LogDocMergePolicy());
+  }
+
+  private void assertSetters(LogMergePolicy lmp) {
+    lmp.setMaxCFSSegmentSizeMB(2.0);
+    assertEquals(2.0, lmp.getMaxCFSSegmentSizeMB(), EPSILON);
+    
+    lmp.setMaxCFSSegmentSizeMB(Double.POSITIVE_INFINITY);
+    assertEquals(Long.MAX_VALUE/1024/1024., lmp.getMaxCFSSegmentSizeMB(), EPSILON*Long.MAX_VALUE);
+    
+    lmp.setMaxCFSSegmentSizeMB(Long.MAX_VALUE/1024/1024.);
+    assertEquals(Long.MAX_VALUE/1024/1024., lmp.getMaxCFSSegmentSizeMB(), EPSILON*Long.MAX_VALUE);
+    
+    try {
+      lmp.setMaxCFSSegmentSizeMB(-2.0);
+      fail("Didn't throw IllegalArgumentException");
+    } catch (IllegalArgumentException iae) {
+      // pass
+    }
+    
+    // TODO: Add more checks for other non-double setters!
   }
 }

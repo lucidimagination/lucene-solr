@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,17 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-
-import java.util.LinkedList;
+import java.io.Writer;
 import java.util.Collection;
-
+import java.util.HashSet;
+import java.util.LinkedList;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
@@ -35,6 +37,8 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.TrackingDirectoryWrapper;
+import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -76,14 +80,14 @@ public class TestDoc extends LuceneTestCase {
     }
 
     private File createOutput(String name, String text) throws IOException {
-        FileWriter fw = null;
+        Writer fw = null;
         PrintWriter pw = null;
 
         try {
             File f = new File(workDir, name);
             if (f.exists()) f.delete();
 
-            fw = new FileWriter(f);
+            fw = new OutputStreamWriter(new FileOutputStream(f), "UTF-8");
             pw = new PrintWriter(fw);
             pw.println(text);
             return f;
@@ -116,20 +120,20 @@ public class TestDoc extends LuceneTestCase {
               setMergePolicy(newLogMergePolicy(10))
       );
 
-      SegmentInfo si1 = indexDoc(writer, "test.txt");
+      SegmentInfoPerCommit si1 = indexDoc(writer, "test.txt");
       printSegment(out, si1);
 
-      SegmentInfo si2 = indexDoc(writer, "test2.txt");
+      SegmentInfoPerCommit si2 = indexDoc(writer, "test2.txt");
       printSegment(out, si2);
       writer.close();
 
-      SegmentInfo siMerge = merge(directory, si1, si2, "merge", false);
+      SegmentInfoPerCommit siMerge = merge(directory, si1, si2, "_merge", false);
       printSegment(out, siMerge);
 
-      SegmentInfo siMerge2 = merge(directory, si1, si2, "merge2", false);
+      SegmentInfoPerCommit siMerge2 = merge(directory, si1, si2, "_merge2", false);
       printSegment(out, siMerge2);
 
-      SegmentInfo siMerge3 = merge(directory, siMerge, siMerge2, "merge3", false);
+      SegmentInfoPerCommit siMerge3 = merge(directory, siMerge, siMerge2, "_merge3", false);
       printSegment(out, siMerge3);
       
       directory.close();
@@ -158,13 +162,13 @@ public class TestDoc extends LuceneTestCase {
       printSegment(out, si2);
       writer.close();
 
-      siMerge = merge(directory, si1, si2, "merge", true);
+      siMerge = merge(directory, si1, si2, "_merge", true);
       printSegment(out, siMerge);
 
-      siMerge2 = merge(directory, si1, si2, "merge2", true);
+      siMerge2 = merge(directory, si1, si2, "_merge2", true);
       printSegment(out, siMerge2);
 
-      siMerge3 = merge(directory, siMerge, siMerge2, "merge3", true);
+      siMerge3 = merge(directory, siMerge, siMerge2, "_merge3", true);
       printSegment(out, siMerge3);
       
       directory.close();
@@ -175,58 +179,65 @@ public class TestDoc extends LuceneTestCase {
       assertEquals(multiFileOutput, singleFileOutput);
    }
 
-   private SegmentInfo indexDoc(IndexWriter writer, String fileName)
+   private SegmentInfoPerCommit indexDoc(IndexWriter writer, String fileName)
    throws Exception
    {
       File file = new File(workDir, fileName);
       Document doc = new Document();
-      doc.add(new TextField("contents", new FileReader(file)));
+      InputStreamReader is = new InputStreamReader(new FileInputStream(file), "UTF-8");
+      doc.add(new TextField("contents", is));
       writer.addDocument(doc);
       writer.commit();
+      is.close();
       return writer.newestSegment();
    }
 
 
-   private SegmentInfo merge(Directory dir, SegmentInfo si1, SegmentInfo si2, String merged, boolean useCompoundFile)
+   private SegmentInfoPerCommit merge(Directory dir, SegmentInfoPerCommit si1, SegmentInfoPerCommit si2, String merged, boolean useCompoundFile)
    throws Exception {
       IOContext context = newIOContext(random());
       SegmentReader r1 = new SegmentReader(si1, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, context);
       SegmentReader r2 = new SegmentReader(si2, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, context);
 
       final Codec codec = Codec.getDefault();
-      SegmentMerger merger = new SegmentMerger(InfoStream.getDefault(), si1.dir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL, merged, MergeState.CheckAbort.NONE, null, new FieldInfos(new FieldInfos.FieldNumberBiMap()), codec, context);
+      TrackingDirectoryWrapper trackingDir = new TrackingDirectoryWrapper(si1.info.dir);
+      final SegmentInfo si = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged, -1, false, codec, null, null);
+
+      SegmentMerger merger = new SegmentMerger(si, InfoStream.getDefault(), trackingDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL,
+                                               MergeState.CheckAbort.NONE, new FieldInfos.FieldNumbers(), context);
 
       merger.add(r1);
       merger.add(r2);
       MergeState mergeState = merger.merge();
       r1.close();
       r2.close();
-      final FieldInfos fieldInfos =  mergeState.fieldInfos;
-      final SegmentInfo info = new SegmentInfo(merged, si1.docCount + si2.docCount, si1.dir,
-                                               false, codec, fieldInfos);
+      final SegmentInfo info = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged,
+                                               si1.info.getDocCount() + si2.info.getDocCount(),
+                                               false, codec, null, null);
+      info.setFiles(new HashSet<String>(trackingDir.getCreatedFiles()));
       
       if (useCompoundFile) {
-        Collection<String> filesToDelete = IndexWriter.createCompoundFile(dir, merged + ".cfs", MergeState.CheckAbort.NONE, info, newIOContext(random()));
+        Collection<String> filesToDelete = IndexWriter.createCompoundFile(InfoStream.getDefault(), dir, MergeState.CheckAbort.NONE, info, newIOContext(random()));
         info.setUseCompoundFile(true);
-        for (final String fileToDelete : filesToDelete) 
-          si1.dir.deleteFile(fileToDelete);
+        for (final String fileToDelete : filesToDelete) {
+          si1.info.dir.deleteFile(fileToDelete);
+        }
       }
 
-      return info;
+      return new SegmentInfoPerCommit(info, 0, -1L);
    }
 
 
-   private void printSegment(PrintWriter out, SegmentInfo si)
+   private void printSegment(PrintWriter out, SegmentInfoPerCommit si)
    throws Exception {
       SegmentReader reader = new SegmentReader(si, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
 
       for (int i = 0; i < reader.numDocs(); i++)
         out.println(reader.document(i));
 
-      FieldsEnum fis = reader.fields().iterator();
-      String field = fis.next();
-      while(field != null)  {
-        Terms terms = fis.terms();
+      Fields fields = reader.fields();
+      for (String field : fields)  {
+        Terms terms = fields.terms(field);
         assertNotNull(terms);
         TermsEnum tis = terms.iterator(null);
         while(tis.next() != null) {
@@ -234,7 +245,7 @@ public class TestDoc extends LuceneTestCase {
           out.print("  term=" + field + ":" + tis.term());
           out.println("    DF=" + tis.docFreq());
 
-          DocsAndPositionsEnum positions = tis.docsAndPositions(reader.getLiveDocs(), null, false);
+          DocsAndPositionsEnum positions = tis.docsAndPositions(reader.getLiveDocs(), null);
 
           while (positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             out.print(" doc=" + positions.docID());
@@ -246,7 +257,6 @@ public class TestDoc extends LuceneTestCase {
             out.println("");
           }
         }
-        field = fis.next();
       }
       reader.close();
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -127,9 +127,11 @@ public abstract class UpdateHandler implements SolrInfoMBean {
    * Called when the Writer should be opened again - eg when replication replaces
    * all of the index files.
    * 
-   * @throws IOException
+   * @param rollback IndexWriter if true else close
+   * 
+   * @throws IOException If there is a low-level I/O error.
    */
-  public abstract void newIndexWriter() throws IOException;
+  public abstract void newIndexWriter(boolean rollback) throws IOException;
 
   public abstract SolrCoreState getSolrCoreState();
 
@@ -177,4 +179,6 @@ public abstract class UpdateHandler implements SolrInfoMBean {
   {
     optimizeCallbacks.add( listener );
   }
+
+  public abstract void split(SplitIndexCommand cmd) throws IOException;
 }

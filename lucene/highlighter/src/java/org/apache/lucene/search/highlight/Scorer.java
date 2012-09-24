@@ -1,6 +1,6 @@
 package org.apache.lucene.search.highlight;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -35,7 +35,7 @@ public interface Scorer {
    * @return either a {@link TokenStream} that the Highlighter should continue using (eg
    *         if you read the tokenSream in this method) or null to continue
    *         using the same {@link TokenStream} that was passed in.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public TokenStream init(TokenStream tokenStream) throws IOException;
 

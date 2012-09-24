@@ -1,6 +1,8 @@
 package org.apache.lucene.analysis.br;
 
-/**
+import java.util.Locale;
+
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,38 +23,39 @@ package org.apache.lucene.analysis.br;
  * A stemmer for Brazilian Portuguese words.
  */
 public class BrazilianStemmer {
+  private static final Locale locale = new Locale("pt", "BR");
 
-	/**
-	 * Changed term
-	 */
-	private   String TERM ;
-	private   String CT ;
-	private   String R1 ;
-	private   String R2 ;
-	private   String RV ;
+  /**
+   * Changed term
+   */
+  private   String TERM ;
+  private   String CT ;
+  private   String R1 ;
+  private   String R2 ;
+  private   String RV ;
 
 
-	public BrazilianStemmer() {
-	}
+  public BrazilianStemmer() {
+  }
 
-	/**
-	 * Stems the given term to an unique <tt>discriminator</tt>.
-	 *
-	 * @param term  The term that should be stemmed.
-	 * @return      Discriminator for <tt>term</tt>
-	 */
-	protected String stem( String term ) {
+  /**
+   * Stems the given term to an unique <tt>discriminator</tt>.
+   *
+   * @param term  The term that should be stemmed.
+   * @return      Discriminator for <tt>term</tt>
+   */
+  protected String stem( String term ) {
     boolean altered = false ; // altered the term
 
     // creates CT
     createCT(term) ;
 
-		if ( !isIndexable( CT ) ) {
-			return null;
-		}
-		if ( !isStemmable( CT ) ) {
-			return CT ;
-		}
+    if ( !isIndexable( CT ) ) {
+      return null;
+    }
+    if ( !isStemmable( CT ) ) {
+      return CT ;
+    }
 
     R1 = getR1(CT) ;
     R2 = getR1(R1) ;
@@ -73,38 +76,38 @@ public class BrazilianStemmer {
     step5() ;
 
     return CT ;
-	}
+  }
 
-	/**
-	 * Checks a term if it can be processed correctly.
-	 *
-	 * @return  true if, and only if, the given term consists in letters.
-	 */
-	private boolean isStemmable( String term ) {
-		for ( int c = 0; c < term.length(); c++ ) {
-			// Discard terms that contain non-letter characters.
-			if ( !Character.isLetter(term.charAt(c))) {
-				return false;
-			}
-		}
-		return true;
-	}
+  /**
+   * Checks a term if it can be processed correctly.
+   *
+   * @return  true if, and only if, the given term consists in letters.
+   */
+  private boolean isStemmable( String term ) {
+    for ( int c = 0; c < term.length(); c++ ) {
+      // Discard terms that contain non-letter characters.
+      if ( !Character.isLetter(term.charAt(c))) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-	/**
-	 * Checks a term if it can be processed indexed.
-	 *
-	 * @return  true if it can be indexed
-	 */
-	private boolean isIndexable( String term ) {
-		return (term.length() < 30) && (term.length() > 2) ;
-	}
+  /**
+   * Checks a term if it can be processed indexed.
+   *
+   * @return  true if it can be indexed
+   */
+  private boolean isIndexable( String term ) {
+    return (term.length() < 30) && (term.length() > 2) ;
+  }
 
-	/**
-	 * See if string is 'a','e','i','o','u'
+  /**
+   * See if string is 'a','e','i','o','u'
    *
    * @return true if is vowel
-	 */
-	private boolean isVowel( char value ) {
+   */
+  private boolean isVowel( char value ) {
     return (value == 'a') ||
            (value == 'e') ||
            (value == 'i') ||
@@ -112,16 +115,16 @@ public class BrazilianStemmer {
            (value == 'u') ;
   }
 
-	/**
-	 * Gets R1
+  /**
+   * Gets R1
    *
    * R1 - is the region after the first non-vowel following a vowel,
    *      or is the null region at the end of the word if there is
    *      no such non-vowel.
    *
    * @return null or a string representing R1
-	 */
-	private String getR1( String value ) {
+   */
+  private String getR1( String value ) {
     int     i;
     int     j;
 
@@ -156,8 +159,8 @@ public class BrazilianStemmer {
     return value.substring(j+1) ;
   }
 
-	/**
-	 * Gets RV
+  /**
+   * Gets RV
    *
    * RV - IF the second letter is a consonant, RV is the region after
    *      the next following vowel,
@@ -172,8 +175,8 @@ public class BrazilianStemmer {
    *      found.
    *
    * @return null or a string representing RV
-	 */
-	private String getRV( String value ) {
+   */
+  private String getRV( String value ) {
     int     i;
     int     j;
 
@@ -226,15 +229,15 @@ public class BrazilianStemmer {
     return null ;
   }
 
-	/**
+  /**
    * 1) Turn to lowercase
    * 2) Remove accents
    * 3) ã -> a ; õ -> o
    * 4) ç -> c
    *
    * @return null or a string transformed
-	 */
-	private String changeTerm( String value ) {
+   */
+  private String changeTerm( String value ) {
     int     j;
     String  r = "" ;
 
@@ -243,7 +246,7 @@ public class BrazilianStemmer {
       return null ;
     }
 
-    value = value.toLowerCase() ;
+    value = value.toLowerCase(locale) ;
     for (j=0 ; j < value.length() ; j++) {
       if ((value.charAt(j) == 'á') ||
           (value.charAt(j) == 'â') ||
@@ -279,12 +282,12 @@ public class BrazilianStemmer {
     return r ;
   }
 
-	/**
+  /**
    * Check if a string ends with a suffix
    *
    * @return true if the string ends with the specified suffix
-	 */
-	private boolean suffix( String value, String suffix ) {
+   */
+  private boolean suffix( String value, String suffix ) {
 
     // be-safe !!!
     if ((value == null) || (suffix == null)) {
@@ -298,12 +301,12 @@ public class BrazilianStemmer {
     return value.substring(value.length()-suffix.length()).equals(suffix);
   }
 
-	/**
+  /**
    * Replace a string suffix by another
    *
    * @return the replaced String
-	 */
-	private String replaceSuffix( String value, String toReplace, String changeTo ) {
+   */
+  private String replaceSuffix( String value, String toReplace, String changeTo ) {
     String vvalue ;
 
     // be-safe !!!
@@ -322,12 +325,12 @@ public class BrazilianStemmer {
     }
   }
 
-	/**
+  /**
    * Remove a string suffix
    *
    * @return the String without the suffix
-	 */
-	private String removeSuffix( String value, String toRemove ) {
+   */
+  private String removeSuffix( String value, String toRemove ) {
     // be-safe !!!
     if ((value == null) ||
         (toRemove == null) ||
@@ -338,12 +341,12 @@ public class BrazilianStemmer {
     return value.substring(0,value.length()-toRemove.length()) ;
   }
 
-	/**
+  /**
    * See if a suffix is preceded by a String
    *
    * @return true if the suffix is preceded
-	 */
-	private boolean suffixPreceded( String value, String suffix, String preceded ) {
+   */
+  private boolean suffixPreceded( String value, String suffix, String preceded ) {
     // be-safe !!!
     if ((value == null) ||
         (suffix == null) ||
@@ -355,10 +358,10 @@ public class BrazilianStemmer {
     return suffix(removeSuffix(value,suffix),preceded) ;
   }
 
-	/**
-	 * Creates CT (changed term) , substituting * 'ã' and 'õ' for 'a~' and 'o~'.
-	 */
-	private void createCT( String term ) {
+  /**
+   * Creates CT (changed term) , substituting * 'ã' and 'õ' for 'a~' and 'o~'.
+   */
+  private void createCT( String term ) {
     CT = changeTerm(term) ;
 
     if (CT.length() < 2) return ;
@@ -393,14 +396,14 @@ public class BrazilianStemmer {
   }
 
 
-	/**
-	 * Standard suffix removal.
+  /**
+   * Standard suffix removal.
    * Search for the longest among the following suffixes, and perform
    * the following actions:
    *
    * @return false if no ending was removed
-	 */
-	private boolean step1() {
+   */
+  private boolean step1() {
     if (CT == null) return false ;
 
     // suffix length = 7
@@ -556,15 +559,15 @@ public class BrazilianStemmer {
   }
 
 
-	/**
-	 * Verb suffixes.
+  /**
+   * Verb suffixes.
    *
    * Search for the longest among the following suffixes in RV,
    * and if found, delete.
    *
    * @return false if no ending was removed
-	*/
-	private boolean step2() {
+  */
+  private boolean step2() {
     if (RV == null) return false ;
 
     // suffix lenght = 7
@@ -938,11 +941,11 @@ public class BrazilianStemmer {
     return false ;
   }
 
-	/**
-	 * Delete suffix 'i' if in RV and preceded by 'c'
+  /**
+   * Delete suffix 'i' if in RV and preceded by 'c'
    *
-	*/
-	private void step3() {
+  */
+  private void step3() {
     if (RV == null) return ;
 
     if (suffix(RV,"i") && suffixPreceded(RV,"i","c")) {
@@ -951,14 +954,14 @@ public class BrazilianStemmer {
 
   }
 
-	/**
-	 * Residual suffix
+  /**
+   * Residual suffix
    *
    * If the word ends with one of the suffixes (os a i o á í ó)
    * in RV, delete it
    *
-	*/
-	private void step4() {
+  */
+  private void step4() {
     if (RV == null) return  ;
 
     if (suffix(RV,"os")) {
@@ -976,15 +979,15 @@ public class BrazilianStemmer {
 
   }
 
-	/**
-	 * If the word ends with one of ( e é ê) in RV,delete it,
+  /**
+   * If the word ends with one of ( e é ê) in RV,delete it,
    * and if preceded by 'gu' (or 'ci') with the 'u' (or 'i') in RV,
    * delete the 'u' (or 'i')
    *
    * Or if the word ends ç remove the cedilha
    *
-	*/
-	private void step5() {
+  */
+  private void step5() {
     if (RV == null) return  ;
 
     if (suffix(RV,"e")) {
@@ -1004,18 +1007,18 @@ public class BrazilianStemmer {
     }
   }
 
-	/**
-	 * For log and debug purpose
-	 *
-	 * @return  TERM, CT, RV, R1 and R2
-	 */
-	public String log() {
+  /**
+   * For log and debug purpose
+   *
+   * @return  TERM, CT, RV, R1 and R2
+   */
+  public String log() {
     return " (TERM = " + TERM + ")" +
            " (CT = " + CT +")" +
            " (RV = " + RV +")" +
            " (R1 = " + R1 +")" +
            " (R2 = " + R2 +")" ;
-	}
+  }
 
 }
 

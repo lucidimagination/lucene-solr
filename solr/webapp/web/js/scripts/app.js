@@ -131,7 +131,7 @@ var sammy = $.sammy
 
 var solr_admin = function( app_config )
 {
-	self = this,
+  self = this,
 
   menu_element = null,
 
@@ -152,6 +152,24 @@ var solr_admin = function( app_config )
 
   this.timeout = null;
 
+  show_global_error = function( error )
+  {
+    var main = $( '#main' );
+
+    $( 'div[id$="-wrapper"]', main )
+      .remove();
+
+    main
+      .addClass( 'error' )
+      .append( error );
+
+    var pre_tags = $( 'pre', main );
+    if( 0 !== pre_tags.size() )
+    {
+      hljs.highlightBlock( pre_tags.get(0) ); 
+    }
+  };
+
   this.run = function()
   {
     $.ajax
@@ -167,42 +185,32 @@ var solr_admin = function( app_config )
         success : function( response )
         {
           self.cores_data = response.status;
-
-          var core_count = 0; for( var i in response.status ) { core_count++; }
-          is_multicore = core_count > 1;
-
-          if( is_multicore )
-          {
-            self.menu_element
-              .addClass( 'multicore' );
-
-            $( '#cores', menu_element )
-              .show();
-          }
-          else
-          {
-            self.menu_element 
-              .addClass( 'singlecore' );
-          }
+          var core_count = 0;
 
           for( var core_name in response.status )
           {
+            core_count++;
             var core_path = config.solr_path + '/' + core_name;
             var schema =  response['status'][core_name]['schema'];
             var solrconfig =  response['status'][core_name]['config'];
-			
-            if( !core_name )
-            {
-              core_name = 'singlecore';
-              core_path = config.solr_path
-            }
+            var classes = [];
 
             if( !environment_basepath )
             {
               environment_basepath = core_path;
             }
 
-            var core_tpl = '<li id="' + core_name + '" data-basepath="' + core_path + '" schema="' + schema + '" config="' + solrconfig + '">' + "\n"
+            if( response['status'][core_name]['isDefaultCore'] )
+            {
+              classes.push( 'default' );
+            }
+
+            var core_tpl = '<li id="' + core_name + '" '
+                         + '    class="' + classes.join( ' ' ) + '"'
+                         + '    data-basepath="' + core_path + '"'
+                         + '    schema="' + schema + '"'
+                         + '    config="' + solrconfig + '"'
+                         + '>' + "\n"
                          + '  <p><a href="#/' + core_name + '">' + core_name + '</a></p>' + "\n"
                          + '  <ul>' + "\n"
 
@@ -213,7 +221,7 @@ var solr_admin = function( app_config )
                          + '    <li class="replication"><a href="#/' + core_name + '/replication"><span>Replication</span></a></li>' + "\n"
                          + '    <li class="analysis"><a href="#/' + core_name + '/analysis"><span>Analysis</span></a></li>' + "\n"
                          + '    <li class="schema-browser"><a href="#/' + core_name + '/schema-browser"><span>Schema Browser</span></a></li>' + "\n"
-                         + '    <li class="plugins"><a href="#/' + core_name + '/plugins"><span>Plugins</span></a></li>' + "\n"
+                         + '    <li class="plugins"><a href="#/' + core_name + '/plugins"><span>Plugins / Stats</span></a></li>' + "\n"
                          + '    <li class="dataimport"><a href="#/' + core_name + '/dataimport"><span>Dataimport</span></a></li>' + "\n"
 
                          + '    </ul>' + "\n"
@@ -223,10 +231,43 @@ var solr_admin = function( app_config )
               .append( core_tpl );
           }
 
+          if( response.initFailures )
+          {
+            var failures = [];
+            for( var core_name in response.initFailures )
+            {
+              failures.push
+              (
+                '<li>' + 
+                  '<strong>' + core_name.esc() + ':</strong>' + "\n" +
+                  response.initFailures[core_name].esc() + "\n" +
+                '</li>'
+              );
+            }
+
+            if( 0 !== failures.length )
+            {
+              var init_failures = $( '#init-failures' );
+
+              init_failures.show();
+              $( 'ul', init_failures ).html( failures.join( "\n" ) );
+            }
+          }
+
+          if( 0 === core_count )
+          {
+            show_global_error
+            (
+              '<div class="message">There are no SolrCores running. <br/> Using the Solr Admin UI currently requires at least one SolrCore.</div>'
+            );
+            return;
+          } // else: we have at least one core....
+
+          var system_url = environment_basepath + '/admin/system?wt=json';
           $.ajax
           (
             {
-              url : environment_basepath + '/admin/system?wt=json',
+              url : system_url,
               dataType : 'json',
               beforeSend : function( arr, form, options )
               {
@@ -253,11 +294,12 @@ var solr_admin = function( app_config )
 
                 // environment
 
+                var wrapper = $( '#wrapper' );
                 var environment_element = $( '#environment' );
                 if( environment_args )
                 {
-                  environment_element
-                    .show();
+                  wrapper
+                    .addClass( 'has-environment' );
 
                   if( environment_args[1] )
                   {
@@ -273,8 +315,8 @@ var solr_admin = function( app_config )
                 }
                 else
                 {
-                  environment_element
-                    .remove();
+                  wrapper
+                    .removeClass( 'has-environment' );
                 }
 
                 // cloud
@@ -292,23 +334,17 @@ var solr_admin = function( app_config )
               },
               error : function()
               {
-                var main = $( '#main' );
+                show_global_error
+                (
+                  '<div class="message"><p>Unable to load environment info from <code>' + system_url.esc() + '</code>.</p>' +
+                  '<p>This interface requires that you activate the admin request handlers in all SolrCores by adding the ' +
+                  'following configuration to your <code>solrconfig.xml</code>:</p></div>' + "\n" +
 
-                $( 'div[id$="-wrapper"]', main )
-                  .remove();
-
-                main
-                  .addClass( 'error' )
-                  .append
-                  (
-                    '<div class="message">This interface requires that you activate the admin request handlers, add the following configuration to your <code>solrconfig.xml:</code></div>' +
-                    '<div class="code"><pre class="syntax language-xml"><code>' +
-                    '<!-- Admin Handlers - This will register all the standard admin RequestHandlers. -->'.esc() + "\n" +
-                    '<requestHandler name="/admin/" class="solr.admin.AdminHandlers" />'.esc() +
-                    '</code></pre></div>'
-                  );
-
-                hljs.highlightBlock( $( 'pre', main ).get(0) );
+                  '<div class="code"><pre class="syntax language-xml"><code>' +
+                  '<!-- Admin Handlers - This will register all the standard admin RequestHandlers. -->'.esc() + "\n" +
+                  '<requestHandler name="/admin/" class="solr.admin.AdminHandlers" />'.esc() +
+                  '</code></pre></div>'
+                );
               },
               complete : function()
               {

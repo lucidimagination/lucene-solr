@@ -20,7 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -424,7 +424,7 @@ public class TestUAX29URLEmailTokenizer extends BaseTokenStreamTestCase {
   }
 
   public void testUnicodeWordBreaks() throws Exception {
-    WordBreakTestUnicode_6_0_0 wordBreakTest = new WordBreakTestUnicode_6_0_0();
+    WordBreakTestUnicode_6_1_0 wordBreakTest = new WordBreakTestUnicode_6_1_0();
     wordBreakTest.test(a);
   }
   
@@ -486,14 +486,28 @@ public class TestUAX29URLEmailTokenizer extends BaseTokenStreamTestCase {
         new String[] { "mailto:test", "example.org" });
   }
 
+  /** @deprecated uses older unicode (6.0). simple test to make sure its basically working */
+  @Deprecated
+  public void testVersion36() throws Exception {
+    Analyzer a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer tokenizer = new UAX29URLEmailTokenizer(Version.LUCENE_36, reader);
+        return new TokenStreamComponents(tokenizer);
+      }
+    };
+    assertAnalyzesTo(a, "this is just a t\u08E6st lucene@apache.org", // new combining mark in 6.1
+        new String[] { "this", "is", "just", "a", "t", "st", "lucene@apache.org" });
+  };
+
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), a, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
   }
   
   /** blast some random large strings through the analyzer */
   public void testRandomHugeStrings() throws Exception {
     Random random = random();
-    checkRandomData(random, a, 200*RANDOM_MULTIPLIER, 8192);
+    checkRandomData(random, a, 100*RANDOM_MULTIPLIER, 8192);
   }
 }

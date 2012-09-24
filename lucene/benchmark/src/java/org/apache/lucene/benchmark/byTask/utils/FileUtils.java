@@ -1,6 +1,6 @@
 package org.apache.lucene.benchmark.byTask.utils;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,7 +30,7 @@ public class FileUtils {
    *
    * @param dir file or directory
    * @return true on success, false if no or part of files have been deleted
-   * @throws java.io.IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public static boolean fullyDelete(File dir) throws IOException {
     if (dir == null || !dir.exists()) return false;

@@ -1,6 +1,6 @@
 package org.apache.lucene.collation;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,7 +29,7 @@ import java.io.Reader;
 
 /**
  * <p>
- *   Filters {@link KeywordTokenizer} with {@link ICUCollationKeyFilter}.
+ *   Configures {@link KeywordTokenizer} with {@link ICUCollationAttributeFactory}.
  * <p>
  *   Converts the token into its {@link com.ibm.icu.text.CollationKey}, and
  *   then encodes the CollationKey either directly or with 

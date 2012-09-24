@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,8 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.MultiDocsAndPositionsEnum;
+import org.apache.lucene.index.MultiDocsAndPositionsEnum.EnumWithSlice;
+
 import java.io.IOException;
 
 /**
@@ -34,13 +36,17 @@ public final class MappingMultiDocsAndPositionsEnum extends DocsAndPositionsEnum
   private MultiDocsAndPositionsEnum.EnumWithSlice[] subs;
   int numSubs;
   int upto;
-  int[] currentMap;
+  MergeState.DocMap currentMap;
   DocsAndPositionsEnum current;
   int currentBase;
   int doc = -1;
   private MergeState mergeState;
 
-  MappingMultiDocsAndPositionsEnum reset(MultiDocsAndPositionsEnum postingsEnum) throws IOException {
+  /** Sole constructor. */
+  public MappingMultiDocsAndPositionsEnum() {
+  }
+
+  MappingMultiDocsAndPositionsEnum reset(MultiDocsAndPositionsEnum postingsEnum) {
     this.numSubs = postingsEnum.getNumSubs();
     this.subs = postingsEnum.getSubs();
     upto = -1;
@@ -48,12 +54,25 @@ public final class MappingMultiDocsAndPositionsEnum extends DocsAndPositionsEnum
     return this;
   }
 
+  /** Sets the {@link MergeState}, which is used to re-map
+   *  document IDs. */
   public void setMergeState(MergeState mergeState) {
     this.mergeState = mergeState;
   }
+  
+  /** How many sub-readers we are merging.
+   *  @see #getSubs */
+  public int getNumSubs() {
+    return numSubs;
+  }
+
+  /** Returns sub-readers we are merging. */
+  public EnumWithSlice[] getSubs() {
+    return subs;
+  }
 
   @Override
-  public int freq() {
+  public int freq() throws IOException {
     return current.freq();
   }
 
@@ -63,7 +82,7 @@ public final class MappingMultiDocsAndPositionsEnum extends DocsAndPositionsEnum
   }
 
   @Override
-  public int advance(int target) throws IOException {
+  public int advance(int target) {
     throw new UnsupportedOperationException();
   }
 
@@ -84,12 +103,10 @@ public final class MappingMultiDocsAndPositionsEnum extends DocsAndPositionsEnum
 
       int doc = current.nextDoc();
       if (doc != NO_MORE_DOCS) {
-        if (currentMap != null) {
-          // compact deletions
-          doc = currentMap[doc];
-          if (doc == -1) {
-            continue;
-          }
+        // compact deletions
+        doc = currentMap.get(doc);
+        if (doc == -1) {
+          continue;
         }
         return this.doc = currentBase + doc;
       } else {
@@ -115,16 +132,7 @@ public final class MappingMultiDocsAndPositionsEnum extends DocsAndPositionsEnum
   
   @Override
   public BytesRef getPayload() throws IOException {
-    BytesRef payload = current.getPayload();
-    if (mergeState.currentPayloadProcessor[upto] != null) {
-      mergeState.currentPayloadProcessor[upto].processPayload(payload);
-    }
-    return payload;
-  }
-
-  @Override
-  public boolean hasPayload() {
-    return current.hasPayload();
+    return current.getPayload();
   }
 }
 

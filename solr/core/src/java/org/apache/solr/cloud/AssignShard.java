@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -24,7 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.solr.common.cloud.CloudState;
+import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Slice;
 
 public class AssignShard {
@@ -32,11 +32,9 @@ public class AssignShard {
   /**
    * Assign a new unique id up to slices count - then add replicas evenly.
    * 
-   * @param collection
-   * @param state
    * @return the assigned shard id
    */
-  public static String assignShard(String collection, CloudState state, Integer numShards) {
+  public static String assignShard(String collection, ClusterState state, Integer numShards) {
     if (numShards == null) {
       numShards = 1;
     }
@@ -56,7 +54,7 @@ public class AssignShard {
     // else figure out which shard needs more replicas
     final Map<String, Integer> map = new HashMap<String, Integer>();
     for (String shardId : shardIdNames) {
-      int cnt = sliceMap.get(shardId).getShards().size();
+      int cnt = sliceMap.get(shardId).getReplicasMap().size();
       map.put(shardId, cnt);
     }
 

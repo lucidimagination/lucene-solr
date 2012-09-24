@@ -2,7 +2,7 @@
  * Created on 25-Jan-2006
  */
 package org.apache.lucene.queryparser.xml;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,36 +20,24 @@ package org.apache.lucene.queryparser.xml;
  */
 
 /**
- * 
+ * Thrown when the xml queryparser encounters 
+ * invalid syntax/configuration.
  */
 public class ParserException extends Exception {
 
-	/**
-	 * 
-	 */
-	public ParserException() {
-		super();
-	}
+  public ParserException() {
+    super();
+  }
 
-	/**
-	 * @param message
-	 */
-	public ParserException(String message) {
-		super(message);
-	}
+  public ParserException(String message) {
+    super(message);
+  }
 
-	/**
-	 * @param message
-	 * @param cause
-	 */
-	public ParserException(String message, Throwable cause) {
-		super(message, cause);
-	}
+  public ParserException(String message, Throwable cause) {
+    super(message, cause);
+  }
 
-	/**
-	 * @param cause
-	 */
-	public ParserException(Throwable cause) {
-		super(cause);
-	}
+  public ParserException(Throwable cause) {
+    super(cause);
+  }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.sandbox.queries;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -83,7 +83,7 @@ public final class SlowFuzzyTermsEnum extends FuzzyTermsEnum {
      * After calling the constructor the enumeration is already pointing to the first 
      * valid term if such a term exists.
      *
-     * @throws IOException
+     * @throws IOException If there is a low-level I/O error.
      */
     public LinearFuzzyTermsEnum() throws IOException {
       super(terms.iterator(null));

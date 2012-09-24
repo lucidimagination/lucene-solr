@@ -1,6 +1,8 @@
 package org.apache.lucene.queryparser.flexible.core.util;
 
-/**
+import java.util.Locale;
+
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,11 +29,6 @@ public final class UnescapedCharSequence implements CharSequence {
 
   /**
    * Create a escaped CharSequence
-   * 
-   * @param chars
-   * @param wasEscaped
-   * @param offset
-   * @param length
    */
   public UnescapedCharSequence(char[] chars, boolean[] wasEscaped, int offset,
       int length) {
@@ -43,8 +40,6 @@ public final class UnescapedCharSequence implements CharSequence {
 
   /**
    * Create a non-escaped CharSequence
-   * 
-   * @param text
    */
   public UnescapedCharSequence(CharSequence text) {
     this.chars = new char[text.length()];
@@ -57,8 +52,6 @@ public final class UnescapedCharSequence implements CharSequence {
 
   /**
    * Create a copy of an existent UnescapedCharSequence
-   * 
-   * @param text
    */
   @SuppressWarnings("unused")
   private UnescapedCharSequence(UnescapedCharSequence text) {
@@ -146,12 +139,12 @@ public final class UnescapedCharSequence implements CharSequence {
     else return false;
   }
   
-  public static CharSequence toLowerCase(CharSequence text) {
+  public static CharSequence toLowerCase(CharSequence text, Locale locale) {
     if (text instanceof UnescapedCharSequence) {
-      char[] chars = text.toString().toLowerCase().toCharArray();
+      char[] chars = text.toString().toLowerCase(locale).toCharArray();
       boolean[] wasEscaped = ((UnescapedCharSequence)text).wasEscaped;
       return new UnescapedCharSequence(chars, wasEscaped, 0, chars.length);
     } else 
-      return new UnescapedCharSequence(text.toString().toLowerCase());
+      return new UnescapedCharSequence(text.toString().toLowerCase(locale));
   }
 }

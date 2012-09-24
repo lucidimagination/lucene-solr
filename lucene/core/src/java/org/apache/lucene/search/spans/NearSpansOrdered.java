@@ -1,6 +1,6 @@
 package org.apache.lucene.search.spans;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,9 +19,9 @@ package org.apache.lucene.search.spans;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.TermContext;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -117,7 +117,7 @@ public class NearSpansOrdered extends Spans {
   public int end() { return matchEnd; }
   
   public Spans[] getSubSpans() {
-	  return subSpans;
+    return subSpans;
   }  
 
   // TODO: Remove warning after API has been finalized
@@ -219,8 +219,6 @@ public class NearSpansOrdered extends Spans {
   }
   
   /** Check whether two Spans in the same document are ordered.
-   * @param spans1 
-   * @param spans2 
    * @return true iff spans1 starts before spans2
    *              or the spans start at the same position,
    *              and spans1 ends before spans2.

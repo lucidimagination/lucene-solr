@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,13 +29,24 @@ import java.util.Map;
 import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.document.ByteDocValuesField;
+import org.apache.lucene.document.DerefBytesDocValuesField;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.DoubleDocValuesField;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.FloatDocValuesField;
+import org.apache.lucene.document.IntDocValuesField;
 import org.apache.lucene.document.IntField;
+import org.apache.lucene.document.LongDocValuesField;
 import org.apache.lucene.document.LongField;
+import org.apache.lucene.document.PackedLongDocValuesField;
+import org.apache.lucene.document.ShortDocValuesField;
+import org.apache.lucene.document.SortedBytesDocValuesField;
+import org.apache.lucene.document.StraightBytesDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.DocValues.Source;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -44,6 +55,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
@@ -51,18 +63,21 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 /*
-  Verify we can read the pre-4.0 file format, do searches
+  Verify we can read the pre-5.0 file format, do searches
   against it, and add documents to it.
 */
-// don't use 3.x codec, its unrealistic since it means
+// note: add this if we make a 4.x impersonator
+// TODO: don't use 4.x codec, its unrealistic since it means
 // we won't even be running the actual code, only the impostor
-@SuppressCodecs("Lucene3x")
+// @SuppressCodecs("Lucene4x")
+// Sep codec cannot yet handle the offsets in our 4.x index!
+@SuppressCodecs({"Lucene3x", "MockFixedIntBlock", "MockVariableIntBlock", "MockSep", "MockRandom"})
 public class TestBackwardsCompatibility extends LuceneTestCase {
 
   // Uncomment these cases & run them on an older Lucene
@@ -87,7 +102,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 /*
   // These are only needed for the special upgrade test to verify
   // that also single-segment indexes are correctly upgraded by IndexUpgrader.
-  // You don't need them to be build for non-3.1 (the test is happy with just one
+  // You don't need them to be build for non-4.0 (the test is happy with just one
   // "old" segment format, version is unimportant:
   
   public void testCreateSingleSegmentCFS() throws IOException {
@@ -99,14 +114,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   }
 
 */  
-  final static String[] oldNames = {"30.cfs",
-                             "30.nocfs",
-                             "31.cfs",
-                             "31.nocfs",
-                             "32.cfs",
-                             "32.nocfs",
-                             "34.cfs",
-                             "34.nocfs",
+  final static String[] oldNames = {"40.cfs",
+                             "40.nocfs",
   };
   
   final String[] unsupportedNames = {"19.cfs",
@@ -125,8 +134,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
                                      "29.nocfs",
   };
   
-  final static String[] oldSingleSegmentNames = {"31.optimized.cfs",
-                                          "31.optimized.nocfs",
+  final static String[] oldSingleSegmentNames = {"40.optimized.cfs",
+                                          "40.optimized.nocfs",
   };
   
   static Map<String,Directory> oldIndexDirs;
@@ -161,15 +170,15 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       }
       File oldIndxeDir = _TestUtil.getTempDir(unsupportedNames[i]);
       _TestUtil.unzip(getDataFile("unsupported." + unsupportedNames[i] + ".zip"), oldIndxeDir);
-      MockDirectoryWrapper dir = newFSDirectory(oldIndxeDir);
+      BaseDirectoryWrapper dir = newFSDirectory(oldIndxeDir);
       // don't checkindex, these are intentionally not supported
       dir.setCheckIndexOnClose(false);
 
       IndexReader reader = null;
       IndexWriter writer = null;
       try {
-        reader = IndexReader.open(dir);
-        fail("IndexReader.open should not pass for "+unsupportedNames[i]);
+        reader = DirectoryReader.open(dir);
+        fail("DirectoryReader.open should not pass for "+unsupportedNames[i]);
       } catch (IndexFormatTooOldException e) {
         // pass
       } finally {
@@ -203,10 +212,10 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       
       ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
       CheckIndex checker = new CheckIndex(dir);
-      checker.setInfoStream(new PrintStream(bos));
+      checker.setInfoStream(new PrintStream(bos, false, "UTF-8"));
       CheckIndex.Status indexStatus = checker.checkIndex();
       assertFalse(indexStatus.clean);
-      assertTrue(bos.toString().contains(IndexFormatTooOldException.class.getName()));
+      assertTrue(bos.toString("UTF-8").contains(IndexFormatTooOldException.class.getName()));
 
       dir.close();
       _TestUtil.rmDir(oldIndxeDir);
@@ -230,10 +239,16 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
   public void testAddOldIndexes() throws IOException {
     for (String name : oldNames) {
+      if (VERBOSE) {
+        System.out.println("\nTEST: old index " + name);
+      }
       Directory targetDir = newDirectory();
       IndexWriter w = new IndexWriter(targetDir, newIndexWriterConfig(
           TEST_VERSION_CURRENT, new MockAnalyzer(random())));
       w.addIndexes(oldIndexDirs.get(name));
+      if (VERBOSE) {
+        System.out.println("\nTEST: done adding indices; now close");
+      }
       w.close();
       
       targetDir.close();
@@ -242,7 +257,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
   public void testAddOldIndexesReader() throws IOException {
     for (String name : oldNames) {
-      IndexReader reader = IndexReader.open(oldIndexDirs.get(name));
+      IndexReader reader = DirectoryReader.open(oldIndexDirs.get(name));
       
       Directory targetDir = newDirectory();
       IndexWriter w = new IndexWriter(targetDir, newIndexWriterConfig(
@@ -293,10 +308,14 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     //QueryParser parser = new QueryParser("contents", new MockAnalyzer(random));
     //Query query = parser.parse("handle:1");
 
-    IndexReader reader = IndexReader.open(dir);
+    IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
 
     _TestUtil.checkIndex(dir);
+    
+    // true if this is a 4.0+ index
+    final boolean is40Index = MultiFields.getMergedFieldInfos(reader).fieldInfo("content5") != null;
+    assert is40Index; // NOTE: currently we can only do this on trunk!
 
     final Bits liveDocs = MultiFields.getLiveDocs(reader);
 
@@ -304,8 +323,9 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       if (liveDocs.get(i)) {
         Document d = reader.document(i);
         List<IndexableField> fields = d.getFields();
-        if (d.getField("content3") == null) {
-          final int numFields = 5;
+        boolean isProxDoc = d.getField("content3") == null;
+        if (isProxDoc) {
+          final int numFields = is40Index ? 7 : 5;
           assertEquals(numFields, fields.size());
           IndexableField f =  d.getField("id");
           assertEquals(""+i, f.stringValue());
@@ -323,25 +343,79 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
           assertEquals("field with non-ascii name", f.stringValue());
         }
 
-        Terms tfv = reader.getTermVectors(i).terms("utf8");
+        Fields tfvFields = reader.getTermVectors(i);
+        assertNotNull("i=" + i, tfvFields);
+        Terms tfv = tfvFields.terms("utf8");
         assertNotNull("docID=" + i + " index=" + oldName, tfv);
-      } else
+      } else {
         // Only ID 7 is deleted
         assertEquals(7, i);
+      }
     }
     
-    ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
+    if (is40Index) {
+      // check docvalues fields
+      Source dvByte = MultiDocValues.getDocValues(reader, "dvByte").getSource();
+      Source dvBytesDerefFixed = MultiDocValues.getDocValues(reader, "dvBytesDerefFixed").getSource();
+      Source dvBytesDerefVar = MultiDocValues.getDocValues(reader, "dvBytesDerefVar").getSource();
+      Source dvBytesSortedFixed = MultiDocValues.getDocValues(reader, "dvBytesSortedFixed").getSource();
+      Source dvBytesSortedVar = MultiDocValues.getDocValues(reader, "dvBytesSortedVar").getSource();
+      Source dvBytesStraightFixed = MultiDocValues.getDocValues(reader, "dvBytesStraightFixed").getSource();
+      Source dvBytesStraightVar = MultiDocValues.getDocValues(reader, "dvBytesStraightVar").getSource();
+      Source dvDouble = MultiDocValues.getDocValues(reader, "dvDouble").getSource();
+      Source dvFloat = MultiDocValues.getDocValues(reader, "dvFloat").getSource();
+      Source dvInt = MultiDocValues.getDocValues(reader, "dvInt").getSource();
+      Source dvLong = MultiDocValues.getDocValues(reader, "dvLong").getSource();
+      Source dvPacked = MultiDocValues.getDocValues(reader, "dvPacked").getSource();
+      Source dvShort = MultiDocValues.getDocValues(reader, "dvShort").getSource();
+      
+      for (int i=0;i<35;i++) {
+        int id = Integer.parseInt(reader.document(i).get("id"));
+        assertEquals((byte)id, dvByte.getInt(i));
+        
+        byte bytes[] = new byte[] {
+            (byte)(id >>> 24), (byte)(id >>> 16),(byte)(id >>> 8),(byte)id
+        };
+        BytesRef expectedRef = new BytesRef(bytes);
+        BytesRef scratch = new BytesRef();
+        
+        assertEquals(expectedRef, dvBytesDerefFixed.getBytes(i, scratch));
+        assertEquals(expectedRef, dvBytesDerefVar.getBytes(i, scratch));
+        assertEquals(expectedRef, dvBytesSortedFixed.getBytes(i, scratch));
+        assertEquals(expectedRef, dvBytesSortedVar.getBytes(i, scratch));
+        assertEquals(expectedRef, dvBytesStraightFixed.getBytes(i, scratch));
+        assertEquals(expectedRef, dvBytesStraightVar.getBytes(i, scratch));
+        
+        assertEquals((double)id, dvDouble.getFloat(i), 0D);
+        assertEquals((float)id, dvFloat.getFloat(i), 0F);
+        assertEquals(id, dvInt.getInt(i));
+        assertEquals(id, dvLong.getInt(i));
+        assertEquals(id, dvPacked.getInt(i));
+        assertEquals(id, dvShort.getInt(i));
+      }
+    }
+    
+    ScoreDoc[] hits = searcher.search(new TermQuery(new Term(new String("content"), "aaa")), null, 1000).scoreDocs;
 
-    // First document should be #21 since it's norm was
-    // increased:
+    // First document should be #0
     Document d = searcher.getIndexReader().document(hits[0].doc);
-    assertEquals("didn't get the right document first", "21", d.get("id"));
+    assertEquals("didn't get the right document first", "0", d.get("id"));
 
     doTestHits(hits, 34, searcher.getIndexReader());
+    
+    if (is40Index) {
+      hits = searcher.search(new TermQuery(new Term(new String("content5"), "aaa")), null, 1000).scoreDocs;
+
+      doTestHits(hits, 34, searcher.getIndexReader());
+    
+      hits = searcher.search(new TermQuery(new Term(new String("content6"), "aaa")), null, 1000).scoreDocs;
+
+      doTestHits(hits, 34, searcher.getIndexReader());
+    }
 
     hits = searcher.search(new TermQuery(new Term("utf8", "\u0000")), null, 1000).scoreDocs;
     assertEquals(34, hits.length);
-    hits = searcher.search(new TermQuery(new Term("utf8", "Lu\uD834\uDD1Ece\uD834\uDD60ne")), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(new Term(new String("utf8"), "lu\uD834\uDD1Ece\uD834\uDD60ne")), null, 1000).scoreDocs;
     assertEquals(34, hits.length);
     hits = searcher.search(new TermQuery(new Term("utf8", "ab\ud917\udc17cd")), null, 1000).scoreDocs;
     assertEquals(34, hits.length);
@@ -357,7 +431,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
   public void changeIndexWithAdds(Random random, Directory dir, String origOldName) throws IOException {
     // open writer
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND).setMergePolicy(newLogMergePolicy()));
     // add 10 docs
     for(int i=0;i<10;i++) {
       addDoc(writer, 35+i);
@@ -374,37 +448,37 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     writer.close();
 
     // make sure searching sees right # hits
-    IndexReader reader = IndexReader.open(dir);
+    IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
     ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
     Document d = searcher.getIndexReader().document(hits[0].doc);
-    assertEquals("wrong first document", "21", d.get("id"));
+    assertEquals("wrong first document", "0", d.get("id"));
     doTestHits(hits, 44, searcher.getIndexReader());
     reader.close();
 
     // fully merge
-    writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND));
+    writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setOpenMode(OpenMode.APPEND).setMergePolicy(newLogMergePolicy()));
     writer.forceMerge(1);
     writer.close();
 
-    reader = IndexReader.open(dir);
+    reader = DirectoryReader.open(dir);
     searcher = new IndexSearcher(reader);
     hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
     assertEquals("wrong number of hits", 44, hits.length);
     d = searcher.doc(hits[0].doc);
     doTestHits(hits, 44, searcher.getIndexReader());
-    assertEquals("wrong first document", "21", d.get("id"));
+    assertEquals("wrong first document", "0", d.get("id"));
     reader.close();
   }
 
   public void changeIndexNoAdds(Random random, Directory dir) throws IOException {
     // make sure searching sees right # hits
-    IndexReader reader = IndexReader.open(dir);
+    DirectoryReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
     ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
     assertEquals("wrong number of hits", 34, hits.length);
     Document d = searcher.doc(hits[0].doc);
-    assertEquals("wrong first document", "21", d.get("id"));
+    assertEquals("wrong first document", "0", d.get("id"));
     reader.close();
 
     // fully merge
@@ -412,7 +486,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
 
-    reader = IndexReader.open(dir);
+    reader = DirectoryReader.open(dir);
     searcher = new IndexSearcher(reader);
     hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
     assertEquals("wrong number of hits", 34, hits.length);
@@ -422,12 +496,13 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
   public File createIndex(String dirName, boolean doCFS, boolean fullyMerged) throws IOException {
     // we use a real directory name that is not cleaned up, because this method is only used to create backwards indexes:
-    File indexDir = new File(LuceneTestCase.TEMP_DIR, dirName);
+    File indexDir = new File("/tmp/4x", dirName);
     _TestUtil.rmDir(indexDir);
     Directory dir = newFSDirectory(indexDir);
     LogByteSizeMergePolicy mp = new LogByteSizeMergePolicy();
     mp.setUseCompoundFile(doCFS);
     mp.setNoCFSRatio(1.0);
+    mp.setMaxCFSSegmentSizeMB(Double.POSITIVE_INFINITY);
     // TODO: remove randomness
     IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
       .setMaxBufferedDocs(10).setMergePolicy(mp);
@@ -479,7 +554,10 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       Directory dir = newFSDirectory(outputDir);
 
       LogMergePolicy mergePolicy = newLogMergePolicy(true, 10);
-      mergePolicy.setNoCFSRatio(1); // This test expects all of its segments to be in CFS
+      
+      // This test expects all of its segments to be in CFS:
+      mergePolicy.setNoCFSRatio(1.0); 
+      mergePolicy.setMaxCFSSegmentSizeMB(Double.POSITIVE_INFINITY);
 
       IndexWriter writer = new IndexWriter(
           dir,
@@ -507,14 +585,16 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       // Now verify file names... TODO: fix this test better, we could populate from 
       // separateFiles() or something.
       String[] expected = new String[] {"_0.cfs", "_0.cfe",
-                               "_0_1.del",
-                               "segments_2",
-                               "segments.gen"};
+                                        "_0_1.del",
+                                        "_0.si",
+                                        "segments_2",
+                                        "segments.gen"};
       
       String[] expectedSimpleText = new String[] {"_0.cfs", "_0.cfe",
-          "_0_1.liv",
-          "segments_2",
-          "segments.gen"};
+                                                  "_0_1.liv",
+                                                  "_0.si",
+                                                  "segments_2",
+                                                  "segments.gen"};
 
       String[] actual = dir.listAll();
       Arrays.sort(expected);
@@ -544,8 +624,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   private void addDoc(IndexWriter writer, int id) throws IOException
   {
     Document doc = new Document();
-    doc.add(new TextField("content", "aaa"));
-    doc.add(new Field("id", Integer.toString(id), StringField.TYPE_STORED));
+    doc.add(new TextField("content", "aaa", Field.Store.NO));
+    doc.add(new StringField("id", Integer.toString(id), Field.Store.YES));
     FieldType customType2 = new FieldType(TextField.TYPE_STORED);
     customType2.setStoreTermVectors(true);
     customType2.setStoreTermVectorPositions(true);
@@ -555,8 +635,43 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     doc.add(new Field("content2", "here is more content with aaa aaa aaa", customType2));
     doc.add(new Field("fie\u2C77ld", "field with non-ascii name", customType2));
     // add numeric fields, to test if flex preserves encoding
-    doc.add(new IntField("trieInt", id));
-    doc.add(new LongField("trieLong", (long) id));
+    doc.add(new IntField("trieInt", id, Field.Store.NO));
+    doc.add(new LongField("trieLong", (long) id, Field.Store.NO));
+    // add docvalues fields
+    doc.add(new ByteDocValuesField("dvByte", (byte) id));
+    byte bytes[] = new byte[] {
+      (byte)(id >>> 24), (byte)(id >>> 16),(byte)(id >>> 8),(byte)id
+    };
+    BytesRef ref = new BytesRef(bytes);
+    doc.add(new DerefBytesDocValuesField("dvBytesDerefFixed", ref, true));
+    doc.add(new DerefBytesDocValuesField("dvBytesDerefVar", ref, false));
+    doc.add(new SortedBytesDocValuesField("dvBytesSortedFixed", ref, true));
+    doc.add(new SortedBytesDocValuesField("dvBytesSortedVar", ref, false));
+    doc.add(new StraightBytesDocValuesField("dvBytesStraightFixed", ref, true));
+    doc.add(new StraightBytesDocValuesField("dvBytesStraightVar", ref, false));
+    doc.add(new DoubleDocValuesField("dvDouble", (double)id));
+    doc.add(new FloatDocValuesField("dvFloat", (float)id));
+    doc.add(new IntDocValuesField("dvInt", id));
+    doc.add(new LongDocValuesField("dvLong", id));
+    doc.add(new PackedLongDocValuesField("dvPacked", id));
+    doc.add(new ShortDocValuesField("dvShort", (short)id));
+    // a field with both offsets and term vectors for a cross-check
+    FieldType customType3 = new FieldType(TextField.TYPE_STORED);
+    customType3.setStoreTermVectors(true);
+    customType3.setStoreTermVectorPositions(true);
+    customType3.setStoreTermVectorOffsets(true);
+    customType3.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
+    doc.add(new Field("content5", "here is more content with aaa aaa aaa", customType3));
+    // a field that omits only positions
+    FieldType customType4 = new FieldType(TextField.TYPE_STORED);
+    customType4.setStoreTermVectors(true);
+    customType4.setStoreTermVectorPositions(false);
+    customType4.setStoreTermVectorOffsets(true);
+    customType4.setIndexOptions(IndexOptions.DOCS_AND_FREQS);
+    doc.add(new Field("content6", "here is more content with aaa aaa aaa", customType4));
+    // TODO: 
+    //   index different norms types via similarity (we use a random one currently?!)
+    //   remove any analyzer randomness, explicitly add payloads for certain fields.
     writer.addDocument(doc);
   }
 
@@ -586,7 +701,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   public void testNextIntoWrongField() throws Exception {
     for (String name : oldNames) {
       Directory dir = oldIndexDirs.get(name);
-      IndexReader r = IndexReader.open(dir);
+      IndexReader r = DirectoryReader.open(dir);
       TermsEnum terms = MultiFields.getFields(r).terms("content").iterator(null);
       BytesRef t = terms.next();
       assertNotNull(t);
@@ -600,7 +715,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       // should be found exactly
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(_TestUtil.docs(random(), terms, null, null, false)));
+      assertEquals(35, countDocs(_TestUtil.docs(random(), terms, null, null, 0)));
       assertNull(terms.next());
 
       // should hit end of field
@@ -612,12 +727,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals(TermsEnum.SeekStatus.NOT_FOUND,
                    terms.seekCeil(new BytesRef("a")));
       assertTrue(terms.term().bytesEquals(aaaTerm));
-      assertEquals(35, countDocs(_TestUtil.docs(random(), terms, null, null, false)));
+      assertEquals(35, countDocs(_TestUtil.docs(random(), terms, null, null, 0)));
       assertNull(terms.next());
 
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(_TestUtil.docs(random(), terms,null, null, false)));
+      assertEquals(35, countDocs(_TestUtil.docs(random(), terms,null, null, 0)));
       assertNull(terms.next());
 
       r.close();
@@ -628,7 +743,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     for (String name : oldNames) {
       
       Directory dir = oldIndexDirs.get(name);
-      IndexReader reader = IndexReader.open(dir);
+      IndexReader reader = DirectoryReader.open(dir);
       IndexSearcher searcher = new IndexSearcher(reader);
       
       for (int id=10; id<15; id++) {
@@ -671,8 +786,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("checkAllSegmentsUpgraded: " + infos);
     }
-    for (SegmentInfo si : infos) {
-      assertEquals(Constants.LUCENE_MAIN_VERSION, si.getVersion());
+    for (SegmentInfoPerCommit si : infos) {
+      assertEquals(Constants.LUCENE_MAIN_VERSION, si.info.getVersion());
     }
     return infos.size();
   }
@@ -749,16 +864,4 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       dir.close();
     }
   }
-  
-  public static final String surrogatesIndexName = "index.36.surrogates.zip";
-
-  public void testSurrogates() throws Exception {
-    File oldIndexDir = _TestUtil.getTempDir("surrogates");
-    _TestUtil.unzip(getDataFile(surrogatesIndexName), oldIndexDir);
-    Directory dir = newFSDirectory(oldIndexDir);
-    // TODO: more tests
-    _TestUtil.checkIndex(dir);
-    dir.close();
-  }
-
 }

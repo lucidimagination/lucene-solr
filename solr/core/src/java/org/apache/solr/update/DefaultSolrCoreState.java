@@ -1,6 +1,6 @@
 package org.apache.solr.update;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,50 +25,130 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.util.RefCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class DefaultSolrCoreState extends SolrCoreState {
+public final class DefaultSolrCoreState extends SolrCoreState implements RecoveryStrategy.RecoveryListener {
   public static Logger log = LoggerFactory.getLogger(DefaultSolrCoreState.class);
   
   private final boolean SKIP_AUTO_RECOVERY = Boolean.getBoolean("solrcloud.skip.autorecovery");
   
   private final Object recoveryLock = new Object();
+  
+  // protects pauseWriter and writerFree
+  private final Object writerPauseLock = new Object();
+  
   private int refCnt = 1;
   private SolrIndexWriter indexWriter = null;
   private DirectoryFactory directoryFactory;
 
-  private boolean recoveryRunning;
+  private volatile boolean recoveryRunning;
   private RecoveryStrategy recoveryStrat;
   private boolean closed = false;
+
+  private RefCounted<IndexWriter> refCntWriter;
+
+  private boolean pauseWriter;
+  private boolean writerFree = true;
   
   public DefaultSolrCoreState(DirectoryFactory directoryFactory) {
     this.directoryFactory = directoryFactory;
   }
   
   @Override
-  public synchronized IndexWriter getIndexWriter(SolrCore core) throws IOException {
-    if (indexWriter == null) {
-      indexWriter = createMainIndexWriter(core, "DirectUpdateHandler2", false, false);
+  public synchronized RefCounted<IndexWriter> getIndexWriter(SolrCore core)
+      throws IOException {
+    synchronized (writerPauseLock) {
+      if (core == null) {
+        // core == null is a signal to just return the current writer, or null
+        // if none.
+        if (refCntWriter != null) refCntWriter.incref();
+        return refCntWriter;
+      }
+      
+      while (pauseWriter) {
+        try {
+          writerPauseLock.wait();
+        } catch (InterruptedException e) {}
+      }
+      
+      if (indexWriter == null) {
+        indexWriter = createMainIndexWriter(core, "DirectUpdateHandler2", false);
+      }
+      if (refCntWriter == null) {
+        refCntWriter = new RefCounted<IndexWriter>(indexWriter) {
+          @Override
+          public void close() {
+            synchronized (writerPauseLock) {
+              writerFree = true;
+              writerPauseLock.notifyAll();
+            }
+          }
+        };
+      }
+      writerFree = false;
+      writerPauseLock.notifyAll();
+      refCntWriter.incref();
+      return refCntWriter;
     }
-    return indexWriter;
   }
 
   @Override
-  public synchronized void newIndexWriter(SolrCore core) throws IOException {
-    if (indexWriter != null) {
-      indexWriter.close();
+  public synchronized void newIndexWriter(SolrCore core, boolean rollback) throws IOException {
+    log.info("Creating new IndexWriter...");
+    String coreName = core.getName();
+    synchronized (writerPauseLock) {
+      // we need to wait for the Writer to fall out of use
+      // first lets stop it from being lent out
+      pauseWriter = true;
+      // then lets wait until its out of use
+      log.info("Waiting until IndexWriter is unused... core=" + coreName);
+      while (!writerFree) {
+        try {
+          writerPauseLock.wait();
+        } catch (InterruptedException e) {}
+      }
+
+      try {
+        if (indexWriter != null) {
+          if (!rollback) {
+            try {
+              log.info("Closing old IndexWriter... core=" + coreName);
+              indexWriter.close();
+            } catch (Throwable t) {
+              SolrException.log(log, "Error closing old IndexWriter. core="
+                  + coreName, t);
+            }
+          } else {
+            try {
+              log.info("Rollback old IndexWriter... core=" + coreName);
+              indexWriter.rollback();
+            } catch (Throwable t) {
+              SolrException.log(log, "Error rolling back old IndexWriter. core="
+                  + coreName, t);
+            }
+          }
+        }
+        indexWriter = createMainIndexWriter(core, "DirectUpdateHandler2", true);
+        log.info("New IndexWriter is ready to be used.");
+        // we need to null this so it picks up the new writer next get call
+        refCntWriter = null;
+      } finally {
+        
+        pauseWriter = false;
+        writerPauseLock.notifyAll();
+      }
     }
-    indexWriter = createMainIndexWriter(core, "DirectUpdateHandler2",
-        false, true);
   }
 
   @Override
-  public  void decref(IndexWriterCloser closer) throws IOException {
+  public void decref(IndexWriterCloser closer) {
     synchronized (this) {
       refCnt--;
       if (refCnt == 0) {
         try {
+          log.info("SolrCoreState ref count has reached 0 - closing IndexWriter");
           if (closer != null) {
             closer.closeWriter(indexWriter);
           } else if (indexWriter != null) {
@@ -83,6 +163,7 @@ public final class DefaultSolrCoreState extends SolrCoreState {
           log.error("Error during shutdown of directory factory.", t);
         }
         try {
+          log.info("Closing SolrCoreState - canceling any ongoing recovery");
           cancelRecovery();
         } catch (Throwable t) {
           log.error("Error cancelling recovery", t);
@@ -103,14 +184,12 @@ public final class DefaultSolrCoreState extends SolrCoreState {
 
   @Override
   public synchronized void rollbackIndexWriter(SolrCore core) throws IOException {
-    indexWriter.rollback();
-    newIndexWriter(core);
+    newIndexWriter(core, true);
   }
   
-  protected SolrIndexWriter createMainIndexWriter(SolrCore core, String name,
-      boolean removeAllExisting, boolean forceNewDirectory) throws IOException {
-    return new SolrIndexWriter(name, core.getNewIndexDir(),
-        core.getDirectoryFactory(), removeAllExisting, core.getSchema(),
+  protected SolrIndexWriter createMainIndexWriter(SolrCore core, String name, boolean forceNewDirectory) throws IOException {
+    return SolrIndexWriter.create(name, core.getNewIndexDir(),
+        core.getDirectoryFactory(), false, core.getSchema(),
         core.getSolrConfig().indexConfig, core.getDeletionPolicy(), core.getCodec(), forceNewDirectory);
   }
 
@@ -126,13 +205,25 @@ public final class DefaultSolrCoreState extends SolrCoreState {
       return;
     }
     
-    cancelRecovery();
+    if (cc.isShutDown()) {
+      log.warn("Skipping recovery because Solr is shutdown");
+      return;
+    }
+    
     synchronized (recoveryLock) {
+      log.info("Running recovery - first canceling any ongoing recovery");
+      cancelRecovery();
+      
       while (recoveryRunning) {
         try {
           recoveryLock.wait(1000);
         } catch (InterruptedException e) {
 
+        }
+        // check again for those that were waiting
+        if (cc.isShutDown()) {
+          log.warn("Skipping recovery because Solr is shutdown");
+          return;
         }
         if (closed) return;
       }
@@ -140,7 +231,7 @@ public final class DefaultSolrCoreState extends SolrCoreState {
       // if true, we are recovering after startup and shouldn't have (or be receiving) additional updates (except for local tlog recovery)
       boolean recoveringAfterStartup = recoveryStrat == null;
 
-      recoveryStrat = new RecoveryStrategy(cc, name);
+      recoveryStrat = new RecoveryStrategy(cc, name, this);
       recoveryStrat.setRecoveringAfterStartup(recoveringAfterStartup);
       recoveryStrat.start();
       recoveryRunning = true;
@@ -151,19 +242,32 @@ public final class DefaultSolrCoreState extends SolrCoreState {
   @Override
   public void cancelRecovery() {
     synchronized (recoveryLock) {
-      if (recoveryStrat != null) {
+      if (recoveryStrat != null && recoveryRunning) {
         recoveryStrat.close();
-        
-        try {
-          recoveryStrat.join();
-        } catch (InterruptedException e) {
-          
+        while (true) {
+          try {
+            recoveryStrat.join();
+          } catch (InterruptedException e) {
+            // not interruptible - keep waiting
+            continue;
+          }
+          break;
         }
         
         recoveryRunning = false;
         recoveryLock.notifyAll();
       }
     }
+  }
+
+  @Override
+  public void recovered() {
+    recoveryRunning = false;
+  }
+
+  @Override
+  public void failed() {
+    recoveryRunning = false;
   }
   
 }

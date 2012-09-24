@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.tokenattributes;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,18 +19,27 @@ package org.apache.lucene.analysis.tokenattributes;
 
 import org.apache.lucene.util.Attribute;
 
-/** The positionLength determines how many positions this
+/** Determines how many positions this
  *  token spans.  Very few analyzer components actually
  *  produce this attribute, and indexing ignores it, but
  *  it's useful to express the graph structure naturally
  *  produced by decompounding, word splitting/joining,
  *  synonym filtering, etc.
  *
- * <p>The default value is one. */
+ * <p>NOTE: this is optional, and most analyzers
+ *  don't change the default value (1). */
 
 public interface PositionLengthAttribute extends Attribute {
-  /** @param positionLength how many positions this token
-   *  spans. */
+  /**
+   * Set the position length of this Token.
+   * <p>
+   * The default value is one. 
+   * @param positionLength how many positions this token
+   *  spans. 
+   * @throws IllegalArgumentException if <code>positionLength</code> 
+   *         is zero or negative.
+   * @see #getPositionLength()
+   */
   public void setPositionLength(int positionLength);
 
   /** Returns the position length of this Token.

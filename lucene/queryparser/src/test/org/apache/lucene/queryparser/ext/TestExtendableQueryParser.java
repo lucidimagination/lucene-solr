@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.ext;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,13 +17,15 @@ package org.apache.lucene.queryparser.ext;
  * limitations under the License.
  */
 
+import java.util.Locale;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.queryparser.classic.QueryParserBase;
-import org.apache.lucene.queryparser.util.QueryParserTestBase;
+import org.apache.lucene.queryparser.classic.TestQueryParser;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
@@ -32,7 +34,7 @@ import org.apache.lucene.search.TermQuery;
 /**
  * Testcase for the class {@link ExtendableQueryParser}
  */
-public class TestExtendableQueryParser extends QueryParserTestBase {
+public class TestExtendableQueryParser extends TestQueryParser {
   private static char[] DELIMITERS = new char[] {
       Extensions.DEFAULT_EXTENSION_FIELD_DELIMITER, '-', '|' };
 
@@ -46,8 +48,8 @@ public class TestExtendableQueryParser extends QueryParserTestBase {
     if (a == null)
       a = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
     QueryParser qp = extensions == null ? new ExtendableQueryParser(
-        TEST_VERSION_CURRENT, "field", a) : new ExtendableQueryParser(
-        TEST_VERSION_CURRENT, "field", a, extensions);
+        TEST_VERSION_CURRENT, getDefaultField(), a) : new ExtendableQueryParser(
+        TEST_VERSION_CURRENT, getDefaultField(), a, extensions);
     qp.setDefaultOperator(QueryParserBase.OR_OPERATOR);
     return qp;
   }
@@ -70,7 +72,7 @@ public class TestExtendableQueryParser extends QueryParserTestBase {
       ExtendableQueryParser parser = (ExtendableQueryParser) getParser(null,
           ext);
       String field = ext.buildExtensionField("testExt", "aField");
-      Query query = parser.parse(String.format("%s:foo bar", field));
+      Query query = parser.parse(String.format(Locale.ROOT, "%s:foo bar", field));
       assertTrue("expected instance of BooleanQuery but was "
           + query.getClass(), query instanceof BooleanQuery);
       BooleanQuery bquery = (BooleanQuery) query;
@@ -90,7 +92,7 @@ public class TestExtendableQueryParser extends QueryParserTestBase {
       assertTrue("expected instance of TermQuery but was " + query.getClass(),
           query instanceof TermQuery);
       tquery = (TermQuery) query;
-      assertEquals("field", tquery.getTerm().field());
+      assertEquals(getDefaultField(), tquery.getTerm().field());
       assertEquals("bar", tquery.getTerm().text());
     }
   }
@@ -102,11 +104,11 @@ public class TestExtendableQueryParser extends QueryParserTestBase {
       ExtendableQueryParser parser = (ExtendableQueryParser) getParser(null,
           ext);
       String field = ext.buildExtensionField("testExt");
-      Query parse = parser.parse(String.format("%s:\"foo \\& bar\"", field));
+      Query parse = parser.parse(String.format(Locale.ROOT, "%s:\"foo \\& bar\"", field));
       assertTrue("expected instance of TermQuery but was " + parse.getClass(),
           parse instanceof TermQuery);
       TermQuery tquery = (TermQuery) parse;
-      assertEquals("field", tquery.getTerm().field());
+      assertEquals(getDefaultField(), tquery.getTerm().field());
       assertEquals("foo & bar", tquery.getTerm().text());
     }
   }
@@ -122,7 +124,7 @@ public class TestExtendableQueryParser extends QueryParserTestBase {
       ExtendableQueryParser parser = (ExtendableQueryParser) getParser(null,
           ext);
       String field = ext.buildExtensionField("testExt", "afield");
-      Query parse = parser.parse(String.format("%s:\"foo \\& bar\"", field));
+      Query parse = parser.parse(String.format(Locale.ROOT, "%s:\"foo \\& bar\"", field));
       assertTrue("expected instance of TermQuery but was " + parse.getClass(),
           parse instanceof TermQuery);
       TermQuery tquery = (TermQuery) parse;

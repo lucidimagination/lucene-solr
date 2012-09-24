@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,7 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
 
 import java.io.IOException;
 import java.util.Comparator;
+import java.util.Iterator;
 
 /**  A <code>FilterAtomicReader</code> contains another AtomicReader, which it
  * uses as its basic source of data, possibly transforming the data along the
@@ -39,14 +40,19 @@ public class FilterAtomicReader extends AtomicReader {
   /** Base class for filtering {@link Fields}
    *  implementations. */
   public static class FilterFields extends Fields {
+    /** The underlying Fields instance. */
     protected final Fields in;
 
+    /**
+     * Creates a new FilterFields.
+     * @param in the underlying Fields instance.
+     */
     public FilterFields(Fields in) {
       this.in = in;
     }
 
     @Override
-    public FieldsEnum iterator() throws IOException {
+    public Iterator<String> iterator() {
       return in.iterator();
     }
 
@@ -56,7 +62,7 @@ public class FilterAtomicReader extends AtomicReader {
     }
 
     @Override
-    public int size() throws IOException {
+    public int size() {
       return in.size();
     }
 
@@ -69,8 +75,13 @@ public class FilterAtomicReader extends AtomicReader {
   /** Base class for filtering {@link Terms}
    *  implementations. */
   public static class FilterTerms extends Terms {
+    /** The underlying Terms instance. */
     protected final Terms in;
 
+    /**
+     * Creates a new FilterTerms
+     * @param in the underlying Terms instance.
+     */
     public FilterTerms(Terms in) {
       this.in = in;
     }
@@ -109,35 +120,32 @@ public class FilterAtomicReader extends AtomicReader {
     public TermsEnum intersect(CompiledAutomaton automaton, BytesRef bytes) throws java.io.IOException {
       return in.intersect(automaton, bytes);
     }
-  }
 
-  /** Base class for filtering {@link TermsEnum} implementations. */
-  public static class FilterFieldsEnum extends FieldsEnum {
-    protected final FieldsEnum in;
-    public FilterFieldsEnum(FieldsEnum in) {
-      this.in = in;
+    @Override
+    public boolean hasOffsets() {
+      return in.hasOffsets();
     }
 
     @Override
-    public String next() throws IOException {
-      return in.next();
-    }
-
-    @Override
-    public Terms terms() throws IOException {
-      return in.terms();
+    public boolean hasPositions() {
+      return in.hasPositions();
     }
     
     @Override
-    public AttributeSource attributes() {
-      return in.attributes();
+    public boolean hasPayloads() {
+      return in.hasPayloads();
     }
   }
 
   /** Base class for filtering {@link TermsEnum} implementations. */
   public static class FilterTermsEnum extends TermsEnum {
+    /** The underlying TermsEnum instance. */
     protected final TermsEnum in;
 
+    /**
+     * Creates a new FilterTermsEnum
+     * @param in the underlying TermsEnum instance.
+     */
     public FilterTermsEnum(TermsEnum in) { this.in = in; }
 
     @Override
@@ -181,13 +189,13 @@ public class FilterAtomicReader extends AtomicReader {
     }
 
     @Override
-    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
-      return in.docs(liveDocs, reuse, needsFreqs);
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
+      return in.docs(liveDocs, reuse, flags);
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
-      return in.docsAndPositions(liveDocs, reuse, needsOffsets);
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
+      return in.docsAndPositions(liveDocs, reuse, flags);
     }
 
     @Override
@@ -213,8 +221,13 @@ public class FilterAtomicReader extends AtomicReader {
 
   /** Base class for filtering {@link DocsEnum} implementations. */
   public static class FilterDocsEnum extends DocsEnum {
+    /** The underlying DocsEnum instance. */
     protected final DocsEnum in;
 
+    /**
+     * Create a new FilterDocsEnum
+     * @param in the underlying DocsEnum instance.
+     */
     public FilterDocsEnum(DocsEnum in) {
       this.in = in;
     }
@@ -225,7 +238,7 @@ public class FilterAtomicReader extends AtomicReader {
     }
 
     @Override
-    public int freq() {
+    public int freq() throws IOException {
       return in.freq();
     }
 
@@ -247,8 +260,13 @@ public class FilterAtomicReader extends AtomicReader {
 
   /** Base class for filtering {@link DocsAndPositionsEnum} implementations. */
   public static class FilterDocsAndPositionsEnum extends DocsAndPositionsEnum {
+    /** The underlying DocsAndPositionsEnum instance. */
     protected final DocsAndPositionsEnum in;
 
+    /**
+     * Create a new FilterDocsAndPositionsEnum
+     * @param in the underlying DocsAndPositionsEnum instance.
+     */
     public FilterDocsAndPositionsEnum(DocsAndPositionsEnum in) {
       this.in = in;
     }
@@ -259,7 +277,7 @@ public class FilterAtomicReader extends AtomicReader {
     }
 
     @Override
-    public int freq() {
+    public int freq() throws IOException {
       return in.freq();
     }
 
@@ -292,11 +310,6 @@ public class FilterAtomicReader extends AtomicReader {
     public BytesRef getPayload() throws IOException {
       return in.getPayload();
     }
-
-    @Override
-    public boolean hasPayload() {
-      return in.hasPayload();
-    }
     
     @Override
     public AttributeSource attributes() {
@@ -304,6 +317,7 @@ public class FilterAtomicReader extends AtomicReader {
     }
   }
 
+  /** The underlying AtomicReader. */
   protected final AtomicReader in;
 
   /**
@@ -348,7 +362,7 @@ public class FilterAtomicReader extends AtomicReader {
   }
 
   @Override
-  public void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
+  public void document(int docID, StoredFieldVisitor visitor) throws IOException {
     ensureOpen();
     in.document(docID, visitor);
   }

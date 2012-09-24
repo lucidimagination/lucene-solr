@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,8 @@ package org.apache.lucene.benchmark.byTask;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.text.Collator;
 import java.util.List;
@@ -42,7 +43,6 @@ import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
@@ -105,7 +105,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
         new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
             .setOpenMode(OpenMode.APPEND));
     iw.close();
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     assertEquals("1000 docs were added to the index, this is what we expect to find!",1000,ir.numDocs());
     ir.close();
   }
@@ -155,7 +155,12 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
 
     CountingSearchTestTask.numSearches = 0;
     execBenchmark(algLines);
-    assertTrue(CountingSearchTestTask.numSearches > 0);
+
+    // NOTE: cannot assert this, because on a super-slow
+    // system, it could be after waiting 0.5 seconds that
+    // the search threads hadn't yet succeeded in starting
+    // up and then they start up and do no searching:
+    //assertTrue(CountingSearchTestTask.numSearches > 0);
   }
 
   public void testHighlighting() throws Exception {
@@ -191,7 +196,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     // now we should be able to open the index for write.
     IndexWriter iw = new IndexWriter(benchmark.getRunData().getDirectory(), new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
     iw.close();
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     assertEquals("100 docs were added to the index, this is what we expect to find!",100,ir.numDocs());
     ir.close();
   }
@@ -200,6 +205,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     // 1. alg definition (required in every "logic" test)
     String algLines[] = {
         "doc.stored=true",//doc storage is required in order to have text to highlight
+        "doc.term.vector=true",
         "doc.term.vector.offsets=true",
         "content.source=org.apache.lucene.benchmark.byTask.feeds.LineDocSource",
         "docs.file=" + getReuters20LinesFile(),
@@ -230,7 +236,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     // now we should be able to open the index for write.
     IndexWriter iw = new IndexWriter(benchmark.getRunData().getDirectory(), new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
     iw.close();
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     assertEquals("1000 docs were added to the index, this is what we expect to find!",1000,ir.numDocs());
     ir.close();
   }
@@ -303,7 +309,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     // now we should be able to open the index for write. 
     IndexWriter iw = new IndexWriter(benchmark.getRunData().getDirectory(), new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
     iw.close();
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     assertEquals("1 docs were added to the index, this is what we expect to find!",1,ir.numDocs());
     ir.close();
   }
@@ -334,7 +340,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     // 3. execute the algorithm  (required in every "logic" test)
     Benchmark benchmark = execBenchmark(algLines);
 
-    DirectoryReader r = IndexReader.open(benchmark.getRunData().getDirectory());
+    DirectoryReader r = DirectoryReader.open(benchmark.getRunData().getDirectory());
     DocTermsIndex idx = FieldCache.DEFAULT.getTermsIndex(new SlowCompositeReaderWrapper(r), "country");
     final int maxDoc = r.maxDoc();
     assertEquals(1000, maxDoc);
@@ -370,7 +376,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     Benchmark benchmark = execBenchmark(algLines);
 
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 20; // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();
@@ -398,7 +404,9 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     // Run algo
     Benchmark benchmark = execBenchmark(algLines1);
 
-    BufferedReader r = new BufferedReader(new FileReader(lineFile));
+    BufferedReader r = new BufferedReader(
+        new InputStreamReader(
+            new FileInputStream(lineFile), "UTF-8"));
     int numLines = 0;
     String line;
     while((line = r.readLine()) != null) {
@@ -435,7 +443,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
             .setOpenMode(OpenMode.APPEND));
     iw.close();
 
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     assertEquals(numLines + " lines were created but " + ir.numDocs() + " docs are in the index", numLines, ir.numDocs());
     ir.close();
 
@@ -479,25 +487,25 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     }
 
     // Separately count how many tokens are actually in the index:
-    IndexReader reader = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader reader = DirectoryReader.open(benchmark.getRunData().getDirectory());
     assertEquals(NUM_DOCS, reader.numDocs());
 
     int totalTokenCount2 = 0;
 
-    FieldsEnum fields = MultiFields.getFields(reader).iterator();
-    String fieldName = null;
-    while((fieldName = fields.next()) != null) {
+    Fields fields = MultiFields.getFields(reader);
+
+    for (String fieldName : fields) {
       if (fieldName.equals(DocMaker.ID_FIELD) || fieldName.equals(DocMaker.DATE_MSEC_FIELD) || fieldName.equals(DocMaker.TIME_SEC_FIELD)) {
         continue;
       }
-      Terms terms = fields.terms();
+      Terms terms = fields.terms(fieldName);
       if (terms == null) {
         continue;
       }
       TermsEnum termsEnum = terms.iterator(null);
       DocsEnum docs = null;
       while(termsEnum.next() != null) {
-        docs = _TestUtil.docs(random(), termsEnum, MultiFields.getLiveDocs(reader), docs, true);
+        docs = _TestUtil.docs(random(), termsEnum, MultiFields.getLiveDocs(reader), docs, DocsEnum.FLAG_FREQS);
         while(docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
           totalTokenCount2 += docs.freq();
         }
@@ -538,7 +546,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     Benchmark benchmark = execBenchmark(algLines);
 
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 2 * 20; // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();
@@ -575,7 +583,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     Benchmark benchmark = execBenchmark(algLines);
 
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 20;  // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();
@@ -612,7 +620,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     Benchmark benchmark = execBenchmark(algLines);
 
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 20; // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();
@@ -659,7 +667,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     benchmark.getRunData().getIndexWriter().close();
 
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 20; // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();
@@ -705,7 +713,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     benchmark.getRunData().getIndexWriter().close();
     
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 20; // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();
@@ -749,7 +757,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     assertFalse(((LogMergePolicy) writer.getConfig().getMergePolicy()).getUseCompoundFile());
     writer.close();
     Directory dir = benchmark.getRunData().getDirectory();
-    IndexReader reader = IndexReader.open(dir);
+    IndexReader reader = DirectoryReader.open(dir);
     Fields tfv = reader.getTermVectors(0);
     assertNotNull(tfv);
     assertTrue(tfv.size() > 0);
@@ -825,7 +833,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     Benchmark benchmark = execBenchmark(algLines);
 
     // 3. test number of docs in the index
-    IndexReader ir = IndexReader.open(benchmark.getRunData().getDirectory());
+    IndexReader ir = DirectoryReader.open(benchmark.getRunData().getDirectory());
     int ndocsExpected = 20; // first 20 reuters docs.
     assertEquals("wrong number of docs in the index!", ndocsExpected, ir.numDocs());
     ir.close();

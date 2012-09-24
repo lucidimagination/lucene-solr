@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.core.parser;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,10 @@ import java.util.Locale;
  * to escape the queries, when the toQueryString method is called.
  */
 public interface EscapeQuerySyntax {
+  /**
+   * Type of escaping: String for escaping syntax,
+   * NORMAL for escaping reserved words (like AND) in terms
+   */
   public enum Type {
     STRING, NORMAL;
   }

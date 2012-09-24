@@ -9,6 +9,7 @@ rm -r -f example4
 rm -r -f dist
 rm -r -f build
 rm -r -f example/solr/zoo_data
+rm -r -f example/solr/collection1/data
 rm -f example/example.log
 
 ant example dist
@@ -19,8 +20,9 @@ cp -r -f example example4
 
 
 cd example
-java -DzkRun -DnumShards=2 -DSTOP.PORT=7983 -DSTOP.KEY=key -Dbootstrap_confdir=solr/conf -jar start.jar 1>example.log 2>&1 &
+java -DzkRun -DnumShards=2 -DSTOP.PORT=7983 -DSTOP.KEY=key -Dbootstrap_conf=true -jar start.jar 1>example.log 2>&1 &
 
+# wait for config to go up
 sleep 10
 
 cd ../example2

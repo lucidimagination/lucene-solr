@@ -1,6 +1,6 @@
 package org.apache.lucene.index.memory;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -32,9 +33,9 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
-import org.apache.lucene.document.Document;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.Norm;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
@@ -42,12 +43,12 @@ import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.OrdTermState;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.memory.MemoryIndexNormDocValues.SingleValueSource;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.IndexSearcher;
@@ -77,7 +78,7 @@ import org.apache.lucene.util.RamUsageEstimator;
  * numbers of queries over comparatively small transient realtime data (prospective 
  * search). 
  * For example as in 
- * <pre>
+ * <pre class="prettyprint">
  * float score = search(String text, Query query)
  * </pre>
  * <p>
@@ -113,13 +114,12 @@ import org.apache.lucene.util.RamUsageEstimator;
  * 
  * <h4>Example Usage</h4> 
  * 
- * <pre>
- * Analyzer analyzer = PatternAnalyzer.DEFAULT_ANALYZER;
- * //Analyzer analyzer = new SimpleAnalyzer();
+ * <pre class="prettyprint">
+ * Analyzer analyzer = new SimpleAnalyzer(version);
  * MemoryIndex index = new MemoryIndex();
  * index.addField("content", "Readings about Salmons and other select Alaska fishing Manuals", analyzer);
  * index.addField("author", "Tales of James", analyzer);
- * QueryParser parser = new QueryParser("content", analyzer);
+ * QueryParser parser = new QueryParser(version, "content", analyzer);
  * float score = index.search(parser.parse("+author:james +salmon~ +fish* manual~"));
  * if (score &gt; 0.0f) {
  *     System.out.println("it's a match");
@@ -132,7 +132,7 @@ import org.apache.lucene.util.RamUsageEstimator;
  * 
  * <h4>Example XQuery Usage</h4> 
  * 
- * <pre>
+ * <pre class="prettyprint">
  * (: An XQuery that finds all books authored by James that have something to do with "salmon fishing manuals", sorted by relevance :)
  * declare namespace lucene = "java:nux.xom.pool.FullTextUtil";
  * declare variable $query := "+salmon~ +fish* manual~"; (: any arbitrary Lucene query can go here :)
@@ -148,7 +148,7 @@ import org.apache.lucene.util.RamUsageEstimator;
  * 
  * An instance can be queried multiple times with the same or different queries,
  * but an instance is not thread-safe. If desired use idioms such as:
- * <pre>
+ * <pre class="prettyprint">
  * MemoryIndex index = ...
  * synchronized (index) {
  *    // read and/or write index (i.e. add fields and/or query)
@@ -199,7 +199,7 @@ public class MemoryIndex {
 
   private static final boolean DEBUG = false;
 
-  private final FieldInfos fieldInfos;
+  private HashMap<String,FieldInfo> fieldInfos = new HashMap<String,FieldInfo>();
   
   /**
    * Sorts term entries into ascending order; also works for
@@ -235,7 +235,6 @@ public class MemoryIndex {
    */
   protected MemoryIndex(boolean storeOffsets) {
     this.stride = storeOffsets ? 3 : 1;
-    fieldInfos = new FieldInfos();
   }
   
   /**
@@ -352,7 +351,10 @@ public class MemoryIndex {
       int numOverlapTokens = 0;
       int pos = -1;
 
-      fieldInfos.addOrUpdate(fieldName, true);
+      if (!fieldInfos.containsKey(fieldName)) {
+        fieldInfos.put(fieldName, 
+            new FieldInfo(fieldName, true, fieldInfos.size(), false, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS, null, null, null));
+      }
       
       TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
       PositionIncrementAttribute posIncrAttribute = stream.addAttribute(PositionIncrementAttribute.class);
@@ -439,7 +441,7 @@ public class MemoryIndex {
         }
 
         @Override
-        public void setScorer(Scorer scorer) throws IOException {
+        public void setScorer(Scorer scorer) {
           this.scorer = scorer;
         }
 
@@ -551,10 +553,6 @@ public class MemoryIndex {
     return result.toString();
   }
   
-  
-  ///////////////////////////////////////////////////////////////////////////////
-  // Nested classes:
-  ///////////////////////////////////////////////////////////////////////////////
   /**
    * Index data structure for a field; Contains the tokenized term texts and
    * their positions.
@@ -714,27 +712,32 @@ public class MemoryIndex {
     
     @Override
     public FieldInfos getFieldInfos() {
-      return fieldInfos;
+      return new FieldInfos(fieldInfos.values().toArray(new FieldInfo[fieldInfos.size()]));
     }
 
     private class MemoryFields extends Fields {
       @Override
-      public FieldsEnum iterator() {
-        return new FieldsEnum() {
+      public Iterator<String> iterator() {
+        return new Iterator<String>() {
           int upto = -1;
 
           @Override
           public String next() {
             upto++;
             if (upto >= sortedFields.length) {
-              return null;
+              throw new NoSuchElementException();
             }
             return sortedFields[upto].getKey();
           }
 
           @Override
-          public Terms terms() {
-            return MemoryFields.this.terms(sortedFields[upto].getKey());
+          public boolean hasNext() {
+            return upto+1 < sortedFields.length;
+          }
+
+          @Override
+          public void remove() {
+            throw new UnsupportedOperationException();
           }
         };
       }
@@ -770,17 +773,30 @@ public class MemoryIndex {
             }
 
             @Override
-            public long getSumDocFreq() throws IOException {
+            public long getSumDocFreq() {
               // each term has df=1
               return info.sortedTerms.length;
             }
 
             @Override
-            public int getDocCount() throws IOException {
+            public int getDocCount() {
               return info.sortedTerms.length > 0 ? 1 : 0;
             }
-              
-              
+
+            @Override
+            public boolean hasOffsets() {
+              return stride == 3;
+            }
+
+            @Override
+            public boolean hasPositions() {
+              return true;
+            }
+            
+            @Override
+            public boolean hasPayloads() {
+              return false;
+            }
           };
         }
       }
@@ -873,7 +889,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) {
+      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) {
         if (reuse == null || !(reuse instanceof MemoryDocsEnum)) {
           reuse = new MemoryDocsEnum();
         }
@@ -881,10 +897,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) {
-        if (needsOffsets) {
-          return null;
-        }
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) {
         if (reuse == null || !(reuse instanceof MemoryDocsAndPositionsEnum)) {
           reuse = new MemoryDocsAndPositionsEnum();
         }
@@ -945,7 +958,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public int freq() {
+      public int freq() throws IOException {
         return positions.size();
       }
     }
@@ -987,7 +1000,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public int freq() {
+      public int freq() throws IOException {
         return positions.size() / stride;
       }
 
@@ -1004,11 +1017,6 @@ public class MemoryIndex {
       @Override
       public int endOffset() {
         return stride == 1 ? -1 : positions.get((posUpto - 1) * stride + 2);
-      }
-
-      @Override
-      public boolean hasPayload() {
-        return false;
       }
 
       @Override
@@ -1065,7 +1073,7 @@ public class MemoryIndex {
     }
 
     @Override
-    public DocValues docValues(String field) throws IOException {
+    public DocValues docValues(String field) {
       return null;
     }
     
@@ -1075,7 +1083,7 @@ public class MemoryIndex {
     private Similarity cachedSimilarity;
     
     @Override
-    public DocValues normValues(String field) throws IOException {
+    public DocValues normValues(String field) {
       DocValues norms = cachedNormValues;
       Similarity sim = getSimilarity();
       if (!field.equals(cachedFieldName) || sim != cachedSimilarity) { // not cached?

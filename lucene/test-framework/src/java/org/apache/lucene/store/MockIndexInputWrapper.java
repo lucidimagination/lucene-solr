@@ -3,7 +3,7 @@ package org.apache.lucene.store;
 import java.io.IOException;
 import java.util.Map;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -68,7 +68,7 @@ public class MockIndexInputWrapper extends IndexInput {
   public MockIndexInputWrapper clone() {
     ensureOpen();
     dir.inputCloneCount.incrementAndGet();
-    IndexInput iiclone = (IndexInput) delegate.clone();
+    IndexInput iiclone = delegate.clone();
     MockIndexInputWrapper clone = new MockIndexInputWrapper(dir, name, iiclone);
     clone.isClone = true;
     // Pending resolution on LUCENE-686 we may want to
@@ -116,12 +116,6 @@ public class MockIndexInputWrapper extends IndexInput {
   public void readBytes(byte[] b, int offset, int len) throws IOException {
     ensureOpen();
     delegate.readBytes(b, offset, len);
-  }
-
-  @Override
-  public void copyBytes(IndexOutput out, long numBytes) throws IOException {
-    ensureOpen();
-    delegate.copyBytes(out, numBytes);
   }
 
   @Override

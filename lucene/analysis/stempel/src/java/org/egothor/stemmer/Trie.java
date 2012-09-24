@@ -57,6 +57,7 @@ package org.egothor.stemmer;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -331,7 +332,7 @@ public class Trie {
    * @param key the key
    * @param cmd the patch command
    */
-  public void add(CharSequence key, CharSequence cmd) {
+  void add(CharSequence key, CharSequence cmd) {
     if (key == null || cmd == null) {
       return;
     }
@@ -375,8 +376,9 @@ public class Trie {
     return by.optimize(this);
   }
   
-  public void printInfo(CharSequence prefix) {
-    System.out.println(prefix + "nds " + rows.size() + " cmds " + cmds.size()
+  /** writes debugging info to the printstream */
+  public void printInfo(PrintStream out, CharSequence prefix) {
+    out.println(prefix + "nds " + rows.size() + " cmds " + cmds.size()
         + " cells " + getCells() + " valcells " + getCellsVal() + " pntcells "
         + getCellsPnt());
   }

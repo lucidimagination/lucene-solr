@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,11 +27,12 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.codecs.FieldInfosReader;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.FieldsEnum;
+import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -108,7 +109,7 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
     input.close();
     
     reader = IndexReader.open(directory);
-    sampleTerms = sample(reader,1000);
+    sampleTerms = sample(random(),reader,1000);
   }
   
   @AfterClass
@@ -151,13 +152,11 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
     }
   }
 
-  private static List<Term> sample(IndexReader reader, int size) throws IOException {
+  private static List<Term> sample(Random random, IndexReader reader, int size) throws IOException {
     List<Term> sample = new ArrayList<Term>();
-    Random random = new Random();
-    FieldsEnum fieldsEnum = MultiFields.getFields(reader).iterator();
-    String field;
-    while((field = fieldsEnum.next()) != null) {
-      Terms terms = fieldsEnum.terms();
+    Fields fields = MultiFields.getFields(reader);
+    for (String field : fields) {
+      Terms terms = fields.terms(field);
       assertNotNull(terms);
       TermsEnum termsEnum = terms.iterator(null);
       while (termsEnum.next() != null) {
@@ -194,7 +193,7 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
     for (int i = 0; i < NUMBER_OF_DOCUMENTS; i++) {
       Document document = new Document();
       for (int f = 0; f < NUMBER_OF_FIELDS; f++) {
-        document.add(newField("field" + f, getText(), StringField.TYPE_UNSTORED));
+        document.add(newStringField("field" + f, getText(), Field.Store.NO));
       }
       writer.addDocument(document);
     }

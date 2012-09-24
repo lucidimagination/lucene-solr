@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,7 @@ import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -42,8 +42,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
     writer.close();
 
-    IndexReader reader = SlowCompositeReaderWrapper.wrap(IndexReader.open(dir));
-    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
+    IndexReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir));
+    AtomicReaderContext context = (AtomicReaderContext) reader.getContext();
     MockFilter filter = new MockFilter();
     CachingWrapperFilter cacher = new CachingWrapperFilter(filter);
 
@@ -68,8 +68,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
     writer.close();
 
-    IndexReader reader = SlowCompositeReaderWrapper.wrap(IndexReader.open(dir));
-    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
+    IndexReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir));
+    AtomicReaderContext context = (AtomicReaderContext) reader.getContext();
 
     final Filter filter = new Filter() {
       @Override
@@ -91,8 +91,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
     writer.close();
 
-    IndexReader reader = SlowCompositeReaderWrapper.wrap(IndexReader.open(dir));
-    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
+    IndexReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir));
+    AtomicReaderContext context = (AtomicReaderContext) reader.getContext();
 
     final Filter filter = new Filter() {
       @Override
@@ -115,8 +115,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
   }
   
   private static void assertDocIdSetCacheable(IndexReader reader, Filter filter, boolean shouldCacheable) throws IOException {
-    assertTrue(reader.getTopReaderContext() instanceof AtomicReaderContext);
-    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
+    assertTrue(reader.getContext() instanceof AtomicReaderContext);
+    AtomicReaderContext context = (AtomicReaderContext) reader.getContext();
     final CachingWrapperFilter cacher = new CachingWrapperFilter(filter);
     final DocIdSet originalSet = filter.getDocIdSet(context, context.reader().getLiveDocs());
     final DocIdSet cachedSet = cacher.getDocIdSet(context, context.reader().getLiveDocs());
@@ -136,7 +136,7 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.addDocument(new Document());
     writer.close();
 
-    IndexReader reader = SlowCompositeReaderWrapper.wrap(IndexReader.open(dir));
+    IndexReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir));
 
     // not cacheable:
     assertDocIdSetCacheable(reader, new QueryWrapperFilter(new TermQuery(new Term("test","value"))), false);
@@ -172,13 +172,13 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     // flipping a coin) may give us a newly opened reader,
     // but we use .reopen on this reader below and expect to
     // (must) get an NRT reader:
-    DirectoryReader reader = IndexReader.open(writer.w, true);
+    DirectoryReader reader = DirectoryReader.open(writer.w, true);
     // same reason we don't wrap?
     IndexSearcher searcher = newSearcher(reader, false);
 
     // add a doc, refresh the reader, and check that it's there
     Document doc = new Document();
-    doc.add(newField("id", "1", StringField.TYPE_STORED));
+    doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
 
     reader = refreshReader(reader);

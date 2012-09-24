@@ -1,5 +1,5 @@
 package org.apache.lucene.queries.function.valuesource;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,8 +25,9 @@ import org.apache.lucene.search.FieldCache;
 
 
 /**
- *
- *
+ * Obtains short field values from the {@link org.apache.lucene.search.FieldCache}
+ * using <code>getShorts()</code>
+ * and makes those values available as other numeric types, casting as needed.
  **/
 public class ShortFieldSource extends FieldCacheSource {
 

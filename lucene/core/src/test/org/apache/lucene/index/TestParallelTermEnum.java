@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,10 +18,11 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
+import java.util.Iterator;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
@@ -44,8 +45,8 @@ public class TestParallelTermEnum extends LuceneTestCase {
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
 
     doc = new Document();
-    doc.add(newField("field1", "the quick brown fox jumps", TextField.TYPE_STORED));
-    doc.add(newField("field2", "the quick brown fox jumps", TextField.TYPE_STORED));
+    doc.add(newTextField("field1", "the quick brown fox jumps", Field.Store.YES));
+    doc.add(newTextField("field2", "the quick brown fox jumps", Field.Store.YES));
     iw1.addDocument(doc);
 
     iw1.close();
@@ -54,8 +55,8 @@ public class TestParallelTermEnum extends LuceneTestCase {
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
 
     doc = new Document();
-    doc.add(newField("field1", "the fox jumps over the lazy dog", TextField.TYPE_STORED));
-    doc.add(newField("field3", "the fox jumps over the lazy dog", TextField.TYPE_STORED));
+    doc.add(newTextField("field1", "the fox jumps over the lazy dog", Field.Store.YES));
+    doc.add(newTextField("field3", "the fox jumps over the lazy dog", Field.Store.YES));
     iw2.addDocument(doc);
 
     iw2.close();
@@ -81,7 +82,7 @@ public class TestParallelTermEnum extends LuceneTestCase {
       BytesRef b = te.next();
       assertNotNull(b);
       assertEquals(t, b.utf8ToString());
-      DocsEnum td = _TestUtil.docs(random(), te, liveDocs, null, false);
+      DocsEnum td = _TestUtil.docs(random(), te, liveDocs, null, 0);
       assertTrue(td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(0, td.docID());
       assertEquals(td.nextDoc(), DocIdSetIterator.NO_MORE_DOCS);
@@ -94,20 +95,21 @@ public class TestParallelTermEnum extends LuceneTestCase {
 
     Bits liveDocs = pr.getLiveDocs();
 
-    FieldsEnum fe = pr.fields().iterator();
+    Fields fields = pr.fields();
+    Iterator<String> fe = fields.iterator();
 
     String f = fe.next();
     assertEquals("field1", f);
-    checkTerms(fe.terms(), liveDocs, "brown", "fox", "jumps", "quick", "the");
+    checkTerms(fields.terms(f), liveDocs, "brown", "fox", "jumps", "quick", "the");
 
     f = fe.next();
     assertEquals("field2", f);
-    checkTerms(fe.terms(), liveDocs, "brown", "fox", "jumps", "quick", "the");
+    checkTerms(fields.terms(f), liveDocs, "brown", "fox", "jumps", "quick", "the");
 
     f = fe.next();
     assertEquals("field3", f);
-    checkTerms(fe.terms(), liveDocs, "dog", "fox", "jumps", "lazy", "over", "the");
+    checkTerms(fields.terms(f), liveDocs, "dog", "fox", "jumps", "lazy", "over", "the");
 
-    assertNull(fe.next());
+    assertFalse(fe.hasNext());
   }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -20,12 +20,11 @@ package org.apache.lucene.store;
 import java.io.File;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException; // javadoc @link
 import java.nio.channels.FileChannel;
 import java.util.concurrent.Future; // javadoc
-
-import org.apache.lucene.store.SimpleFSDirectory.SimpleFSIndexInput.Descriptor;
 
 /**
  * An {@link FSDirectory} implementation that uses java.nio's FileChannel's
@@ -59,7 +58,7 @@ public class NIOFSDirectory extends FSDirectory {
    * @param path the path of the directory
    * @param lockFactory the lock factory to use, or null for the default
    * ({@link NativeFSLockFactory});
-   * @throws IOException
+   * @throws IOException if there is a low-level I/O error
    */
   public NIOFSDirectory(File path, LockFactory lockFactory) throws IOException {
     super(path, lockFactory);
@@ -68,7 +67,7 @@ public class NIOFSDirectory extends FSDirectory {
   /** Create a new NIOFSDirectory for the named location and {@link NativeFSLockFactory}.
    *
    * @param path the path of the directory
-   * @throws IOException
+   * @throws IOException if there is a low-level I/O error
    */
   public NIOFSDirectory(File path) throws IOException {
     super(path, null);
@@ -85,7 +84,7 @@ public class NIOFSDirectory extends FSDirectory {
       final IOContext context) throws IOException {
     ensureOpen();
     final File path = new File(getDirectory(), name);
-    final Descriptor descriptor = new Descriptor(path, "r");
+    final RandomAccessFile descriptor = new RandomAccessFile(path, "r");
     return new Directory.IndexInputSlicer() {
 
       @Override
@@ -94,19 +93,26 @@ public class NIOFSDirectory extends FSDirectory {
       }
 
       @Override
-      public IndexInput openSlice(String sliceDescription, long offset, long length) throws IOException {
+      public IndexInput openSlice(String sliceDescription, long offset, long length) {
         return new NIOFSIndexInput(sliceDescription, path, descriptor, descriptor.getChannel(), offset,
             length, BufferedIndexInput.bufferSize(context), getReadChunkSize());
       }
 
       @Override
-      public IndexInput openFullSlice() throws IOException {
-        return openSlice("full-slice", 0, descriptor.length);
+      public IndexInput openFullSlice() {
+        try {
+          return openSlice("full-slice", 0, descriptor.length());
+        } catch (IOException ex) {
+          throw new RuntimeException(ex);
+        }
       }
     };
   }
 
-  protected static class NIOFSIndexInput extends SimpleFSDirectory.SimpleFSIndexInput {
+  /**
+   * Reads bytes with {@link FileChannel#read(ByteBuffer, long)}
+   */
+  protected static class NIOFSIndexInput extends FSIndexInput {
 
     private ByteBuffer byteBuf; // wraps the buffer for NIO
 
@@ -117,7 +123,7 @@ public class NIOFSDirectory extends FSDirectory {
       channel = file.getChannel();
     }
     
-    public NIOFSIndexInput(String sliceDescription, File path, Descriptor file, FileChannel fc, long off, long length, int bufferSize, int chunkSize) throws IOException {
+    public NIOFSIndexInput(String sliceDescription, File path, RandomAccessFile file, FileChannel fc, long off, long length, int bufferSize, int chunkSize) {
       super("NIOFSIndexInput(" + sliceDescription + " in path=\"" + path + "\" slice=" + off + ":" + (off+length) + ")", file, off, length, bufferSize, chunkSize);
       channel = fc;
       isClone = true;
@@ -127,18 +133,6 @@ public class NIOFSDirectory extends FSDirectory {
     protected void newBuffer(byte[] newBuffer) {
       super.newBuffer(newBuffer);
       byteBuf = ByteBuffer.wrap(newBuffer);
-    }
-
-    @Override
-    public void close() throws IOException {
-      if (!isClone && file.isOpen) {
-        // Close the channel & file
-        try {
-          channel.close();
-        } finally {
-          file.close();
-        }
-      }
     }
 
     @Override
@@ -196,6 +190,9 @@ public class NIOFSDirectory extends FSDirectory {
         throw new IOException(ioe.getMessage() + ": " + this, ioe);
       }
     }
+
+    @Override
+    protected void seekInternal(long pos) throws IOException {}
   }
 
 }

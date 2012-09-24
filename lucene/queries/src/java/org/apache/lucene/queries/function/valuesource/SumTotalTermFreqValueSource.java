@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,11 +30,14 @@ import java.io.IOException;
 import java.util.Map;
 
 /**
- * <code>TotalTermFreqValueSource</code> returns the total term freq (sum of term freqs across all docuyments).
+ * <code>SumTotalTermFreqValueSource</code> returns the number of tokens.
+ * (sum of term freqs across all documents, across all terms).
+ * Returns -1 if frequencies were omitted for the field, or if 
+ * the codec doesn't support this statistic.
  * @lucene.internal
  */
 public class SumTotalTermFreqValueSource extends ValueSource {
-  protected String indexedField;
+  protected final String indexedField;
 
   public SumTotalTermFreqValueSource(String indexedField) {
     this.indexedField = indexedField;

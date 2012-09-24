@@ -1,6 +1,6 @@
 package org.apache.lucene.benchmark.byTask.utils;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -58,7 +58,7 @@ public class Config {
    * Read both algorithm and config properties.
    *
    * @param algReader from where to read algorithm and config properties.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public Config(Reader algReader) throws IOException {
     // read alg file to array of lines
@@ -80,7 +80,8 @@ public class Config {
     }
     // read props from string
     this.props = new Properties();
-    props.load(new ByteArrayInputStream(sb.toString().getBytes()));
+    // props.load always assumes iso8859-1...
+    props.load(new ByteArrayInputStream(sb.toString().getBytes("ISO-8859-1")));
 
     // make sure work dir is set properly 
     if (props.get("work.dir") == null) {
@@ -162,7 +163,6 @@ public class Config {
    *
    * @param name  name of property.
    * @param value either single or multiple property value (multiple values are separated by ":")
-   * @throws Exception
    */
   public void set(String name, String value) throws Exception {
     if (valByRound.get(name) != null) {

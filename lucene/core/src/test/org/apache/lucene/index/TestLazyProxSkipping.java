@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,7 @@ import java.io.Reader;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -97,7 +97,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
                 content = this.term3 + " " + this.term2;
             }
 
-            doc.add(newField(this.field, content, TextField.TYPE_STORED));
+            doc.add(newTextField(this.field, content, Field.Store.YES));
             writer.addDocument(doc);
         }
         
@@ -105,7 +105,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         writer.forceMerge(1);
         writer.close();
 
-      SegmentReader reader = getOnlySegmentReader(IndexReader.open(directory));
+      SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(directory));
 
       this.searcher = newSearcher(reader);
     }
@@ -128,12 +128,14 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         // check if the number of calls of seek() does not exceed the number of hits
         assertTrue(this.seeksCounter > 0);
         assertTrue("seeksCounter=" + this.seeksCounter + " numHits=" + numHits, this.seeksCounter <= numHits + 1);
+        searcher.getIndexReader().close();
     }
  
     public void testLazySkipping() throws IOException {
       final String fieldFormat = _TestUtil.getPostingsFormat(this.field);
-      assumeFalse("This test cannot run with Memory codec", fieldFormat.equals("Memory"));
-      assumeFalse("This test cannot run with SimpleText codec", fieldFormat.equals("SimpleText"));
+      assumeFalse("This test cannot run with Memory postings format", fieldFormat.equals("Memory"));
+      assumeFalse("This test cannot run with Direct postings format", fieldFormat.equals("Direct"));
+      assumeFalse("This test cannot run with SimpleText postings format", fieldFormat.equals("SimpleText"));
 
         // test whether only the minimum amount of seeks()
         // are performed
@@ -146,18 +148,17 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
         for (int i = 0; i < 10; i++) {
             Document doc = new Document();
-            doc.add(newField(this.field, "a b", TextField.TYPE_STORED));
+            doc.add(newTextField(this.field, "a b", Field.Store.YES));
             writer.addDocument(doc);
         }
         
         writer.close();
-        IndexReader reader = IndexReader.open(directory);
+        IndexReader reader = DirectoryReader.open(directory);
 
         DocsAndPositionsEnum tp = MultiFields.getTermPositionsEnum(reader,
                                                                    MultiFields.getLiveDocs(reader),
                                                                    this.field,
-                                                                   new BytesRef("b"),
-                                                                   false);
+                                                                   new BytesRef("b"));
 
         for (int i = 0; i < 10; i++) {
             tp.nextDoc();
@@ -168,8 +169,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         tp = MultiFields.getTermPositionsEnum(reader,
                                               MultiFields.getLiveDocs(reader),
                                               this.field,
-                                              new BytesRef("a"),
-                                              false);
+                                              new BytesRef("a"));
 
         for (int i = 0; i < 10; i++) {
             tp.nextDoc();
@@ -226,7 +226,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
           
           @Override
           public SeeksCountingStream clone() {
-              return new SeeksCountingStream((IndexInput) this.input.clone());
+              return new SeeksCountingStream(this.input.clone());
           }
       
     }

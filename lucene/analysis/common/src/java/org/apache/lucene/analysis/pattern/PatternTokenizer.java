@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -78,13 +78,10 @@ public final class PatternTokenizer extends Tokenizer {
     if (group >= 0 && group > matcher.groupCount()) {
       throw new IllegalArgumentException("invalid group specified: pattern only has: " + matcher.groupCount() + " capturing groups");
     }
-    fillBuffer(str, input);
-    matcher.reset(str);
-    index = 0;
   }
 
   @Override
-  public boolean incrementToken() throws IOException {
+  public boolean incrementToken() {
     if (index >= str.length()) return false;
     clearAttributes();
     if (group >= 0) {
@@ -130,14 +127,13 @@ public final class PatternTokenizer extends Tokenizer {
   }
 
   @Override
-  public void end() throws IOException {
+  public void end() {
     final int ofs = correctOffset(str.length());
     offsetAtt.setOffset(ofs, ofs);
   }
 
   @Override
-  public void reset(Reader input) throws IOException {
-    super.reset(input);
+  public void reset() throws IOException {
     fillBuffer(str, input);
     matcher.reset(str);
     index = 0;

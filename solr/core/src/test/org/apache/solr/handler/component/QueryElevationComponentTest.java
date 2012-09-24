@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.solr.handler.component;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IOUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.MapSolrParams;
@@ -34,6 +35,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.Map;
@@ -55,7 +57,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
   private void init(String config, String schema) throws Exception {
     //write out elevate-data.xml to the Data dir first by copying it from conf, which we know exists, this way we can test both conf and data configurations
     createTempDir();
-    File parent = new File(TEST_HOME(), "conf");
+    File parent = new File(TEST_HOME() + "/collection1", "conf");
     File elevateFile = new File(parent, "elevate.xml");
     File elevateDataFile = new File(dataDir, "elevate-data.xml");
     FileUtils.copyFile(elevateFile, elevateDataFile);
@@ -157,7 +159,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       req.close();
 
       // Make sure the boosts loaded properly
-      assertEquals(6, map.size());
+      assertEquals(7, map.size());
       assertEquals(1, map.get("XXXX").priority.size());
       assertEquals(2, map.get("YYYY").priority.size());
       assertEquals(3, map.get("ZZZZ").priority.size());
@@ -174,7 +176,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       comp.init(args);
       comp.inform(core);
       map = comp.getElevationMap(reader, core);
-      assertEquals(6, map.size());
+      assertEquals(7, map.size());
       assertEquals(null, map.get("XXXX"));
       assertEquals(null, map.get("YYYY"));
       assertEquals(null, map.get("ZZZZ"));
@@ -249,21 +251,28 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       assertU(adoc("id", "5", "title", "YYYY YYYY", "str_s1", "y"));
       assertU(adoc("id", "6", "title", "XXXX XXXX", "str_s1", "z"));
       assertU(adoc("id", "7", "title", "AAAA", "str_s1", "a"));
+      
+      assertU(adoc("id", "8", "title", "QQQQ", "str_s1", "q"));
+      assertU(adoc("id", "9", "title", "QQQQ QQQQ", "str_s1", "r"));
+      assertU(adoc("id", "10", "title", "QQQQ QQQQ QQQQ", "str_s1", "s"));
+      
       assertU(commit());
 
       assertQ("", req(CommonParams.Q, "XXXX XXXX", CommonParams.QT, "/elevate",
           QueryElevationParams.MARK_EXCLUDES, "true",
+          "indent", "true",
           CommonParams.FL, "id, score, [excluded]")
           , "//*[@numFound='4']"
           , "//result/doc[1]/str[@name='id'][.='5']"
-          , "//result/doc[2]/str[@name='id'][.='6']"
-          , "//result/doc[3]/str[@name='id'][.='1']"
-          , "//result/doc[4]/str[@name='id'][.='4']",
+          , "//result/doc[2]/str[@name='id'][.='1']"
+          , "//result/doc[3]/str[@name='id'][.='4']"
+          , "//result/doc[4]/str[@name='id'][.='6']",
           "//result/doc[1]/bool[@name='[excluded]'][.='false']",
-          "//result/doc[2]/bool[@name='[excluded]'][.='true']",
+          "//result/doc[2]/bool[@name='[excluded]'][.='false']",
           "//result/doc[3]/bool[@name='[excluded]'][.='false']",
-          "//result/doc[4]/bool[@name='[excluded]'][.='false']"
+          "//result/doc[4]/bool[@name='[excluded]'][.='true']"
       );
+      
       //ask for excluded as a field, but don't actually request the MARK_EXCLUDES
       //thus, number 6 should not be returned, b/c it is excluded
       assertQ("", req(CommonParams.Q, "XXXX XXXX", CommonParams.QT, "/elevate",
@@ -277,7 +286,32 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
           "//result/doc[2]/bool[@name='[excluded]'][.='false']",
           "//result/doc[3]/bool[@name='[excluded]'][.='false']"
       );
-
+      
+      // test that excluded results are on the same positions in the result list
+      // as when elevation component is disabled
+      // (i.e. test that elevation component with MARK_EXCLUDES does not boost
+      // excluded results)
+      assertQ("", req(CommonParams.Q, "QQQQ", CommonParams.QT, "/elevate",
+          QueryElevationParams.ENABLE, "false",
+          "indent", "true",
+          CommonParams.FL, "id, score")
+          , "//*[@numFound='3']"
+          , "//result/doc[1]/str[@name='id'][.='8']"
+          , "//result/doc[2]/str[@name='id'][.='9']"
+          , "//result/doc[3]/str[@name='id'][.='10']"
+      );
+      assertQ("", req(CommonParams.Q, "QQQQ", CommonParams.QT, "/elevate",
+          QueryElevationParams.MARK_EXCLUDES, "true",
+          "indent", "true",
+          CommonParams.FL, "id, score, [excluded]")
+          , "//*[@numFound='3']"
+          , "//result/doc[1]/str[@name='id'][.='8']"
+          , "//result/doc[2]/str[@name='id'][.='9']"
+          , "//result/doc[3]/str[@name='id'][.='10']",
+          "//result/doc[1]/bool[@name='[excluded]'][.='false']",
+          "//result/doc[2]/bool[@name='[excluded]'][.='false']",
+          "//result/doc[3]/bool[@name='[excluded]'][.='true']"
+      );
     } finally {
       delete();
     }
@@ -412,7 +446,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
 
   // write a test file to boost some docs
   private void writeFile(File file, String query, String... ids) throws Exception {
-    PrintWriter out = new PrintWriter(new FileOutputStream(file));
+    PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file), IOUtils.CHARSET_UTF_8));
     out.println("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>");
     out.println("<elevate>");
     out.println("<query text=\"" + query + "\">");

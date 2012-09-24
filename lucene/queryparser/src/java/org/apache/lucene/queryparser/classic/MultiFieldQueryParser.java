@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.classic;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -253,8 +253,9 @@ public class MultiFieldQueryParser extends QueryParser
    * Parses a query, searching on the fields specified.
    * Use this if you need to specify certain fields as required,
    * and others as prohibited.
-   * <p><pre>
+   * <p>
    * Usage:
+   * <pre class="prettyprint">
    * <code>
    * String[] fields = {"filename", "contents", "description"};
    * BooleanClause.Occur[] flags = {BooleanClause.Occur.SHOULD,
@@ -300,8 +301,9 @@ public class MultiFieldQueryParser extends QueryParser
    * Parses a query, searching on the fields specified.
    * Use this if you need to specify certain fields as required,
    * and others as prohibited.
-   * <p><pre>
+   * <p>
    * Usage:
+   * <pre class="prettyprint">
    * <code>
    * String[] query = {"query1", "query2", "query3"};
    * String[] fields = {"filename", "contents", "description"};

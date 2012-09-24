@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,12 @@
 
 package org.apache.lucene.search.grouping;
 
-/** @lucene.internal */
+import org.apache.lucene.search.FieldComparator; // javadocs
+
+/** 
+ * Expert: representation of a group in {@link AbstractFirstPassGroupingCollector},
+ * tracking the top doc and {@link FieldComparator} slot.
+ * @lucene.internal */
 public class CollectedSearchGroup<T> extends SearchGroup<T> {
   int topDoc;
   int comparatorSlot;

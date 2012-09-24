@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.mocksep;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,7 +25,10 @@ import org.apache.lucene.codecs.sep.IntStreamFactory;
 
 import java.io.IOException;
 
-/** @lucene.experimental */
+/** 
+ * Encodes ints directly as vInts with {@link MockSingleIntIndexOutput}
+ * @lucene.experimental 
+ */
 public class MockSingleIntFactory extends IntStreamFactory {
   @Override
   public IntIndexInput openInput(Directory dir, String fileName, IOContext context) throws IOException {

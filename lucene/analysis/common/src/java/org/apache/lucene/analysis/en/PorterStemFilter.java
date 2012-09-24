@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.en;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,10 +34,12 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
     To use this with LowerCaseTokenizer, for example, you'd write an
     analyzer like this:
     <P>
-    <PRE>
+    <PRE class="prettyprint">
     class MyAnalyzer extends Analyzer {
-      public final TokenStream tokenStream(String fieldName, Reader reader) {
-        return new PorterStemFilter(new LowerCaseTokenizer(reader));
+      {@literal @Override}
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer source = new LowerCaseTokenizer(version, reader);
+        return new TokenStreamComponents(source, new PorterStemFilter(source));
       }
     }
     </PRE>

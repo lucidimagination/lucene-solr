@@ -26,6 +26,15 @@ import java.io.IOException;
 import java.util.WeakHashMap;
 import java.util.logging.Logger;
 
+/**
+ * Provides access to a {@link ShapeFieldCache} for a given {@link AtomicReader}.
+ *
+ * If a Cache does not exist for the Reader, then it is built by iterating over
+ * the all terms for a given field, reconstructing the Shape from them, and adding
+ * them to the Cache.
+ *
+ * @lucene.internal
+ */
 public abstract class ShapeFieldCacheProvider<T extends Shape> {
   private Logger log = Logger.getLogger(getClass().getName());
 
@@ -61,7 +70,7 @@ public abstract class ShapeFieldCacheProvider<T extends Shape> {
       while (term != null) {
         T shape = readShape(term);
         if( shape != null ) {
-          docs = te.docs(null, docs, false);
+          docs = te.docs(null, docs, 0);
           Integer docid = docs.nextDoc();
           while (docid != DocIdSetIterator.NO_MORE_DOCS) {
             idx.add( docid, shape );

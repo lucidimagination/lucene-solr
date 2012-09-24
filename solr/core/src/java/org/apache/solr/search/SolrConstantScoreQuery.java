@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.Set;
 import java.util.Map;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -185,6 +185,11 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     @Override
     public float score() throws IOException {
       return theScore;
+    }
+    
+    @Override
+    public float freq() throws IOException {
+      return 1;
     }
 
     @Override

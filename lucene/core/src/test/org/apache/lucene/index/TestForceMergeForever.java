@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -40,7 +40,7 @@ public class TestForceMergeForever extends LuceneTestCase {
     }
 
     @Override
-    public void merge(MergePolicy.OneMerge merge) throws CorruptIndexException, IOException {
+    public void merge(MergePolicy.OneMerge merge) throws IOException {
       if (merge.maxNumSegments != -1 && (first || merge.segments.size() == 1)) {
         first = false;
         if (VERBOSE) {

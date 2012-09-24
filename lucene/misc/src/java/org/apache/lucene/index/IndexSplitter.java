@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,10 +23,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
-import org.apache.lucene.index.IndexWriter;  // Required for javadocs
 import org.apache.lucene.store.FSDirectory;
 
 /**
@@ -45,11 +47,6 @@ import org.apache.lucene.store.FSDirectory;
  * @lucene.experimental You can easily
  * accidentally remove segments from your index so be
  * careful!
- *
- * <p><b>NOTE</b>: this tool is unaware of documents added
- * atomically via {@link IndexWriter#addDocuments} or {@link
- * IndexWriter#updateDocuments}, which means it can easily
- * break up such document groups.
  */
 public class IndexSplitter {
   public SegmentInfos infos;
@@ -58,9 +55,6 @@ public class IndexSplitter {
 
   File dir;
 
-  /**
-   * @param args
-   */
   public static void main(String[] args) throws Exception {
     if (args.length < 2) {
       System.err
@@ -102,25 +96,25 @@ public class IndexSplitter {
   }
 
   public void listSegments() throws IOException {
-    DecimalFormat formatter = new DecimalFormat("###,###.###");
+    DecimalFormat formatter = new DecimalFormat("###,###.###", DecimalFormatSymbols.getInstance(Locale.ROOT));
     for (int x = 0; x < infos.size(); x++) {
-      SegmentInfo info = infos.info(x);
+      SegmentInfoPerCommit info = infos.info(x);
       String sizeStr = formatter.format(info.sizeInBytes());
-      System.out.println(info.name + " " + sizeStr);
+      System.out.println(info.info.name + " " + sizeStr);
     }
   }
 
   private int getIdx(String name) {
     for (int x = 0; x < infos.size(); x++) {
-      if (name.equals(infos.info(x).name))
+      if (name.equals(infos.info(x).info.name))
         return x;
     }
     return -1;
   }
 
-  private SegmentInfo getInfo(String name) {
+  private SegmentInfoPerCommit getInfo(String name) {
     for (int x = 0; x < infos.size(); x++) {
-      if (name.equals(infos.info(x).name))
+      if (name.equals(infos.info(x).info.name))
         return infos.info(x);
     }
     return null;
@@ -132,7 +126,7 @@ public class IndexSplitter {
       infos.remove(idx);
     }
     infos.changed();
-    infos.commit(fsDir, infos.codecFormat());
+    infos.commit(fsDir);
   }
 
   public void split(File destDir, String[] segs) throws IOException {
@@ -141,10 +135,15 @@ public class IndexSplitter {
     SegmentInfos destInfos = new SegmentInfos();
     destInfos.counter = infos.counter;
     for (String n : segs) {
-      SegmentInfo info = getInfo(n);
-      destInfos.add(info);
+      SegmentInfoPerCommit infoPerCommit = getInfo(n);
+      SegmentInfo info = infoPerCommit.info;
+      // Same info just changing the dir:
+      SegmentInfo newInfo = new SegmentInfo(destFSDir, info.getVersion(), info.name, info.getDocCount(), 
+                                            info.getUseCompoundFile(),
+                                            info.getCodec(), info.getDiagnostics(), info.attributes());
+      destInfos.add(new SegmentInfoPerCommit(newInfo, infoPerCommit.getDelCount(), infoPerCommit.getDelGen()));
       // now copy files over
-      List<String> files = info.files();
+      Collection<String> files = infoPerCommit.files();
       for (final String srcName : files) {
         File srcFile = new File(dir, srcName);
         File destFile = new File(destDir, srcName);
@@ -152,7 +151,7 @@ public class IndexSplitter {
       }
     }
     destInfos.changed();
-    destInfos.commit(destFSDir, infos.codecFormat());
+    destInfos.commit(destFSDir);
     // System.out.println("destDir:"+destDir.getAbsolutePath());
   }
 

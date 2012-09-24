@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,13 +29,13 @@ import java.util.regex.Pattern;
 
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreContainer.Initializer;
-import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -43,6 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
 
+@Slow
 public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
   protected static Logger log = LoggerFactory
       .getLogger(AbstractZkTestCase.class);
@@ -67,7 +68,7 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
   private ZkStateReader reader;
   
   @BeforeClass
-  public static void beforeClass() throws Exception {
+  public static void beforeClass() {
     System.setProperty("solrcloud.skip.autorecovery", "true");
   }
   
@@ -88,7 +89,7 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
     AbstractZkTestCase.buildZooKeeper(zkServer.getZkHost(),
         zkServer.getZkAddress(), "solrconfig.xml", "schema.xml");
     
-    log.info("####SETUP_START " + getName());
+    log.info("####SETUP_START " + getTestName());
     
     // set some system properties for use by tests
     System.setProperty("solr.test.sys.prop1", "propone");
@@ -129,7 +130,7 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
     if (!initSuccessful) {
       fail("Init was not successful!");
     }
-    log.info("####SETUP_END " + getName());
+    log.info("####SETUP_END " + getTestName());
   }
      
   private void setupContainer(int port, String shard) throws IOException,
@@ -190,7 +191,7 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
       int newLeaderPort = getLeaderPort(leader);
       int retry = 0;
       while (leaderPort == newLeaderPort) {
-        if (retry++ == 20) {
+        if (retry++ == 60) {
           break;
         }
         Thread.sleep(1000);
@@ -210,11 +211,12 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
   @Test
   public void testLeaderElectionAfterClientTimeout() throws Exception {
     // TODO: work out the best timing here...
-    System.setProperty("zkClientTimeout", "500");
+    System.setProperty("zkClientTimeout", Integer.toString(ZkTestServer.TICK_TIME * 2 + 100));
     // timeout the leader
     String leader = getLeader();
     int leaderPort = getLeaderPort(leader);
-    containerMap.get(leaderPort).getZkController().getZkClient().getSolrZooKeeper().pauseCnxn(2000);
+    ZkController zkController = containerMap.get(leaderPort).getZkController();
+    zkController.getZkClient().getSolrZooKeeper().pauseCnxn(zkController.getClientTimeout() + 100);
     
     for (int i = 0; i < 60; i++) { // wait till leader is changed
       if (leaderPort != getLeaderPort(getLeader())) {
@@ -222,6 +224,9 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
       }
       Thread.sleep(100);
     }
+    
+    // make sure we have waited long enough for the first leader to have come back
+    Thread.sleep(ZkTestServer.TICK_TIME * 2 + 100);
     
     if (VERBOSE) System.out.println("kill everyone");
     // kill everyone but the first leader that should have reconnected by now
@@ -231,11 +236,15 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
       }
     }
 
-    for (int i = 0; i < 60; i++) { // wait till leader is changed
-      if (leaderPort == getLeaderPort(getLeader())) {
-        break;
+    for (int i = 0; i < 320; i++) { // wait till leader is changed
+      try {
+        if (leaderPort == getLeaderPort(getLeader())) {
+          break;
+        }
+        Thread.sleep(100);
+      } catch (Exception e) {
+        continue;
       }
-      Thread.sleep(100);
     }
 
     // the original leader should be leader again now - everyone else is down
@@ -245,10 +254,10 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
     //Thread.sleep(100000);
   }
   
-  private String getLeader() throws InterruptedException, KeeperException {
+  private String getLeader() throws InterruptedException {
     
     ZkNodeProps props = reader.getLeaderProps("collection1", "shard1", 30000);
-    String leader = props.get(ZkStateReader.NODE_NAME_PROP);
+    String leader = props.getStr(ZkStateReader.NODE_NAME_PROP);
     
     return leader;
   }

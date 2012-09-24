@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,12 +20,14 @@ package org.apache.lucene.codecs.lucene40;
 import java.io.IOException;
 import java.util.Comparator;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.codecs.TermVectorsWriter;
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.MergePolicy.MergeAbortedException;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.store.DataInput;
@@ -37,6 +39,9 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.StringHelper;
+
+import static org.apache.lucene.codecs.lucene40.Lucene40TermVectorsReader.*;
+
 
 // TODO: make a new 4.0 TV format that encodes better
 //   - use startOffset (not endOffset) as base for delta on
@@ -58,7 +63,8 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   private final Directory directory;
   private final String segment;
   private IndexOutput tvx = null, tvd = null, tvf = null;
-
+  
+  /** Sole constructor. */
   public Lucene40TermVectorsWriter(Directory directory, String segment, IOContext context) throws IOException {
     this.directory = directory;
     this.segment = segment;
@@ -66,11 +72,14 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
     try {
       // Open files for TermVector storage
       tvx = directory.createOutput(IndexFileNames.segmentFileName(segment, "", Lucene40TermVectorsReader.VECTORS_INDEX_EXTENSION), context);
-      tvx.writeInt(Lucene40TermVectorsReader.FORMAT_CURRENT);
+      CodecUtil.writeHeader(tvx, CODEC_NAME_INDEX, VERSION_CURRENT);
       tvd = directory.createOutput(IndexFileNames.segmentFileName(segment, "", Lucene40TermVectorsReader.VECTORS_DOCUMENTS_EXTENSION), context);
-      tvd.writeInt(Lucene40TermVectorsReader.FORMAT_CURRENT);
+      CodecUtil.writeHeader(tvd, CODEC_NAME_DOCS, VERSION_CURRENT);
       tvf = directory.createOutput(IndexFileNames.segmentFileName(segment, "", Lucene40TermVectorsReader.VECTORS_FIELDS_EXTENSION), context);
-      tvf.writeInt(Lucene40TermVectorsReader.FORMAT_CURRENT);
+      CodecUtil.writeHeader(tvf, CODEC_NAME_FIELDS, VERSION_CURRENT);
+      assert HEADER_LENGTH_INDEX == tvx.getFilePointer();
+      assert HEADER_LENGTH_DOCS == tvd.getFilePointer();
+      assert HEADER_LENGTH_FIELDS == tvf.getFilePointer();
       success = true;
     } finally {
       if (!success) {
@@ -96,12 +105,14 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   private String lastFieldName;
 
   @Override
-  public void startField(FieldInfo info, int numTerms, boolean positions, boolean offsets) throws IOException {
+  public void startField(FieldInfo info, int numTerms, boolean positions, boolean offsets, boolean payloads) throws IOException {
     assert lastFieldName == null || info.name.compareTo(lastFieldName) > 0: "fieldName=" + info.name + " lastFieldName=" + lastFieldName;
     lastFieldName = info.name;
     this.positions = positions;
     this.offsets = offsets;
+    this.payloads = payloads;
     lastTerm.length = 0;
+    lastPayloadLength = -1; // force first payload to write its length
     fps[fieldCount++] = tvf.getFilePointer();
     tvd.writeVInt(info.number);
     tvf.writeVInt(numTerms);
@@ -110,6 +121,8 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
       bits |= Lucene40TermVectorsReader.STORE_POSITIONS_WITH_TERMVECTOR;
     if (offsets)
       bits |= Lucene40TermVectorsReader.STORE_OFFSET_WITH_TERMVECTOR;
+    if (payloads)
+      bits |= Lucene40TermVectorsReader.STORE_PAYLOAD_WITH_TERMVECTOR;
     tvf.writeByte(bits);
     
     assert fieldCount <= numVectorFields;
@@ -128,10 +141,12 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   // we also don't buffer during bulk merges.
   private int offsetStartBuffer[] = new int[10];
   private int offsetEndBuffer[] = new int[10];
-  private int offsetIndex = 0;
-  private int offsetFreq = 0;
+  private BytesRef payloadData = new BytesRef(10);
+  private int bufferedIndex = 0;
+  private int bufferedFreq = 0;
   private boolean positions = false;
   private boolean offsets = false;
+  private boolean payloads = false;
 
   @Override
   public void startTerm(BytesRef term, int freq) throws IOException {
@@ -148,20 +163,40 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
       // we might need to buffer if its a non-bulk merge
       offsetStartBuffer = ArrayUtil.grow(offsetStartBuffer, freq);
       offsetEndBuffer = ArrayUtil.grow(offsetEndBuffer, freq);
-      offsetIndex = 0;
-      offsetFreq = freq;
     }
+    bufferedIndex = 0;
+    bufferedFreq = freq;
+    payloadData.length = 0;
   }
 
   int lastPosition = 0;
   int lastOffset = 0;
+  int lastPayloadLength = -1; // force first payload to write its length
+
+  BytesRef scratch = new BytesRef(); // used only by this optimized flush below
 
   @Override
   public void addProx(int numProx, DataInput positions, DataInput offsets) throws IOException {
-    // TODO: technically we could just copy bytes and not re-encode if we knew the length...
-    if (positions != null) {
+    if (payloads) {
+      // TODO, maybe overkill and just call super.addProx() in this case?
+      // we do avoid buffering the offsets in RAM though.
       for (int i = 0; i < numProx; i++) {
-        tvf.writeVInt(positions.readVInt());
+        int code = positions.readVInt();
+        if ((code & 1) == 1) {
+          int length = positions.readVInt();
+          scratch.grow(length);
+          scratch.length = length;
+          positions.readBytes(scratch.bytes, scratch.offset, scratch.length);
+          writePosition(code >>> 1, scratch);
+        } else {
+          writePosition(code >>> 1, null);
+        }
+      }
+      tvf.writeBytes(payloadData.bytes, payloadData.offset, payloadData.length);
+    } else if (positions != null) {
+      // pure positions, no payloads
+      for (int i = 0; i < numProx; i++) {
+        tvf.writeVInt(positions.readVInt() >>> 1);
       }
     }
     
@@ -174,34 +209,66 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   }
 
   @Override
-  public void addPosition(int position, int startOffset, int endOffset) throws IOException {
-    if (positions && offsets) {
+  public void addPosition(int position, int startOffset, int endOffset, BytesRef payload) throws IOException {
+    if (positions && (offsets || payloads)) {
       // write position delta
-      tvf.writeVInt(position - lastPosition);
+      writePosition(position - lastPosition, payload);
       lastPosition = position;
       
       // buffer offsets
-      offsetStartBuffer[offsetIndex] = startOffset;
-      offsetEndBuffer[offsetIndex] = endOffset;
-      offsetIndex++;
+      if (offsets) {
+        offsetStartBuffer[bufferedIndex] = startOffset;
+        offsetEndBuffer[bufferedIndex] = endOffset;
+      }
+      
+      bufferedIndex++;
       
       // dump buffer if we are done
-      if (offsetIndex == offsetFreq) {
-        for (int i = 0; i < offsetIndex; i++) {
-          tvf.writeVInt(offsetStartBuffer[i] - lastOffset);
-          tvf.writeVInt(offsetEndBuffer[i] - offsetStartBuffer[i]);
-          lastOffset = offsetEndBuffer[i];
+      if (bufferedIndex == bufferedFreq) {
+        if (payloads) {
+          tvf.writeBytes(payloadData.bytes, payloadData.offset, payloadData.length);
+        }
+        for (int i = 0; i < bufferedIndex; i++) {
+          if (offsets) {
+            tvf.writeVInt(offsetStartBuffer[i] - lastOffset);
+            tvf.writeVInt(offsetEndBuffer[i] - offsetStartBuffer[i]);
+            lastOffset = offsetEndBuffer[i];
+          }
         }
       }
     } else if (positions) {
       // write position delta
-      tvf.writeVInt(position - lastPosition);
+      writePosition(position - lastPosition, payload);
       lastPosition = position;
     } else if (offsets) {
       // write offset deltas
       tvf.writeVInt(startOffset - lastOffset);
       tvf.writeVInt(endOffset - startOffset);
       lastOffset = endOffset;
+    }
+  }
+  
+  private void writePosition(int delta, BytesRef payload) throws IOException {
+    if (payloads) {
+      int payloadLength = payload == null ? 0 : payload.length;
+
+      if (payloadLength != lastPayloadLength) {
+        lastPayloadLength = payloadLength;
+        tvf.writeVInt((delta<<1)|1);
+        tvf.writeVInt(payloadLength);
+      } else {
+        tvf.writeVInt(delta << 1);
+      }
+      if (payloadLength > 0) {
+        if (payloadLength + payloadData.length < 0) {
+          // we overflowed the payload buffer, just throw UOE
+          // having > Integer.MAX_VALUE bytes of payload for a single term in a single doc is nuts.
+          throw new UnsupportedOperationException("A term cannot have more than Integer.MAX_VALUE bytes of payload data in a single document");
+        }
+        payloadData.append(payload);
+      }
+    } else {
+      tvf.writeVInt(delta);
     }
   }
 
@@ -245,26 +312,25 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
 
     int idx = 0;
     int numDocs = 0;
-    for (final MergeState.IndexReaderAndLiveDocs reader : mergeState.readers) {
+    for (int i = 0; i < mergeState.readers.size(); i++) {
+      final AtomicReader reader = mergeState.readers.get(i);
+
       final SegmentReader matchingSegmentReader = mergeState.matchingSegmentReaders[idx++];
       Lucene40TermVectorsReader matchingVectorsReader = null;
       if (matchingSegmentReader != null) {
         TermVectorsReader vectorsReader = matchingSegmentReader.getTermVectorsReader();
 
         if (vectorsReader != null && vectorsReader instanceof Lucene40TermVectorsReader) {
-          // If the TV* files are an older format then they cannot read raw docs:
-          if (((Lucene40TermVectorsReader)vectorsReader).canReadRawDocs()) {
             matchingVectorsReader = (Lucene40TermVectorsReader) vectorsReader;
-          }
         }
       }
-      if (reader.liveDocs != null) {
+      if (reader.getLiveDocs() != null) {
         numDocs += copyVectorsWithDeletions(mergeState, matchingVectorsReader, reader, rawDocLengths, rawDocLengths2);
       } else {
         numDocs += copyVectorsNoDeletions(mergeState, matchingVectorsReader, reader, rawDocLengths, rawDocLengths2);
       }
     }
-    finish(numDocs);
+    finish(mergeState.fieldInfos, numDocs);
     return numDocs;
   }
 
@@ -274,12 +340,12 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
 
   private int copyVectorsWithDeletions(MergeState mergeState,
                                         final Lucene40TermVectorsReader matchingVectorsReader,
-                                        final MergeState.IndexReaderAndLiveDocs reader,
+                                        final AtomicReader reader,
                                         int rawDocLengths[],
                                         int rawDocLengths2[])
-          throws IOException, MergeAbortedException {
-    final int maxDoc = reader.reader.maxDoc();
-    final Bits liveDocs = reader.liveDocs;
+          throws IOException {
+    final int maxDoc = reader.maxDoc();
+    final Bits liveDocs = reader.getLiveDocs();
     int totalNumDocs = 0;
     if (matchingVectorsReader != null) {
       // We can bulk-copy because the fieldInfos are "congruent"
@@ -316,8 +382,8 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
         
         // NOTE: it's very important to first assign to vectors then pass it to
         // termVectorsWriter.addAllDocVectors; see LUCENE-1282
-        Fields vectors = reader.reader.getTermVectors(docNum);
-        addAllDocVectors(vectors, mergeState.fieldInfos);
+        Fields vectors = reader.getTermVectors(docNum);
+        addAllDocVectors(vectors, mergeState);
         totalNumDocs++;
         mergeState.checkAbort.work(300);
       }
@@ -327,11 +393,11 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   
   private int copyVectorsNoDeletions(MergeState mergeState,
                                       final Lucene40TermVectorsReader matchingVectorsReader,
-                                      final MergeState.IndexReaderAndLiveDocs reader,
+                                      final AtomicReader reader,
                                       int rawDocLengths[],
                                       int rawDocLengths2[])
-          throws IOException, MergeAbortedException {
-    final int maxDoc = reader.reader.maxDoc();
+          throws IOException {
+    final int maxDoc = reader.maxDoc();
     if (matchingVectorsReader != null) {
       // We can bulk-copy because the fieldInfos are "congruent"
       int docCount = 0;
@@ -346,8 +412,8 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
       for (int docNum = 0; docNum < maxDoc; docNum++) {
         // NOTE: it's very important to first assign to vectors then pass it to
         // termVectorsWriter.addAllDocVectors; see LUCENE-1282
-        Fields vectors = reader.reader.getTermVectors(docNum);
-        addAllDocVectors(vectors, mergeState.fieldInfos);
+        Fields vectors = reader.getTermVectors(docNum);
+        addAllDocVectors(vectors, mergeState);
         mergeState.checkAbort.work(300);
       }
     }
@@ -355,8 +421,8 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   }
   
   @Override
-  public void finish(int numDocs) throws IOException {
-    if (4+((long) numDocs)*16 != tvx.getFilePointer())
+  public void finish(FieldInfos fis, int numDocs) {
+    if (HEADER_LENGTH_INDEX+((long) numDocs)*16 != tvx.getFilePointer())
       // This is most likely a bug in Sun JRE 1.6.0_04/_05;
       // we detect that the bug has struck, here, and
       // throw an exception to prevent the corruption from
@@ -375,7 +441,7 @@ public final class Lucene40TermVectorsWriter extends TermVectorsWriter {
   }
 
   @Override
-  public Comparator<BytesRef> getComparator() throws IOException {
+  public Comparator<BytesRef> getComparator() {
     return BytesRef.getUTF8SortedAsUnicodeComparator();
   }
 }

@@ -16,7 +16,7 @@
 */
 
 var current_core = null;
-var cookie_name = 'schema-browser_autoload';
+var cookie_schema_browser_autoload = 'schema-browser_autoload';
 
 var luke_array_to_struct = function( array )
 {
@@ -871,7 +871,7 @@ sammy.get
         var pig_element = $( 'dt.position-increment-gap', options_element );
         if( is_f && schema_browser_data.fields[field] && schema_browser_data.fields[field].positionIncrementGap )
         {
-          $( 'dt.position-increment-gap', options_element )
+          $( 'dd.position-increment-gap', options_element )
             .remove();
 
           pig_element
@@ -883,7 +883,20 @@ sammy.get
           $( '.position-increment-gap', options_element )
             .hide();
         }
-                
+
+        var similarity_element = $( 'dt.similarity', options_element );
+        if ( is_t && schema_browser_data.types[field] && schema_browser_data.types[field].similarity ) {
+            var similarity = schema_browser_data.types[field].similarity
+            if (similarity.details && similarity.className) {
+                $( 'dd.similarity', options_element ).remove();
+                similarity_element
+                    .show()
+                    .after(['<dd class="similarity">', similarity.details.esc(), ' (', similarity.className.esc(), ') </dd>'].join(""));
+            }
+        } else {
+            $( '.similarity', options_element ).hide();
+        }
+
         var analyzer_element = $( '.analyzer', data_element );
         var analyzer_data = null;
 
@@ -1124,7 +1137,7 @@ sammy.get
             'click',
             function( event )
             {
-              $.cookie( cookie_name, $.cookie( cookie_name ) ? null : true );
+              $.cookie( cookie_schema_browser_autoload, $.cookie( cookie_schema_browser_autoload ) ? null : true );
               $( this ).trigger( 'state' );
 
               return false;
@@ -1136,7 +1149,7 @@ sammy.get
             'state',
             function( event )
             {
-              $.cookie( cookie_name )
+              $.cookie( cookie_schema_browser_autoload )
                 ? $( this ).addClass( 'on' )
                 : $( this ).removeClass( 'on' );
             }
@@ -1147,7 +1160,7 @@ sammy.get
             'init',
             function( event )
             {
-              if( !$.cookie( cookie_name ) )
+              if( !$.cookie( cookie_schema_browser_autoload ) )
               {
                 return false;
               }

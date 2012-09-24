@@ -8,7 +8,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.util.UnsafeByteArrayInputStream;
 import org.apache.lucene.util.encoding.IntDecoder;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,7 +31,7 @@ import org.apache.lucene.util.encoding.IntDecoder;
  * The iterator then consumes the payload information of each document and
  * decodes it into categories. A typical use case of this class is:
  * 
- * <pre>
+ * <pre class="prettyprint">
  * IndexReader reader = [open your reader];
  * Term t = new Term(&quot;field&quot;, &quot;where-payload-exists&quot;);
  * CategoryListIterator cli = new PayloadIntDecodingIterator(reader, t);

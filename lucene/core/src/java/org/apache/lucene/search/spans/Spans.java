@@ -1,6 +1,6 @@
 package org.apache.lucene.search.spans;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,11 +30,11 @@ public abstract class Spans {
 
   /** Skips to the first match beyond the current, whose document number is
    * greater than or equal to <i>target</i>. <p>Returns true iff there is such
-   * a match.  <p>Behaves as if written: <pre>
+   * a match.  <p>Behaves as if written: <pre class="prettyprint">
    *   boolean skipTo(int target) {
    *     do {
    *       if (!next())
-   * 	     return false;
+   *         return false;
    *     } while (target > doc());
    *     return true;
    *   }
@@ -69,7 +69,7 @@ public abstract class Spans {
    * @lucene.experimental
    *
    * @return a List of byte arrays containing the data of this payload, otherwise null if isPayloadAvailable is false
-   * @throws java.io.IOException
+   * @throws IOException if there is a low-level I/O error
     */
   // TODO: Remove warning after API has been finalized
   public abstract Collection<byte[]> getPayload() throws IOException;
@@ -82,6 +82,6 @@ public abstract class Spans {
    *
    * @return true if there is a payload available at this position that can be loaded
    */
-  public abstract boolean isPayloadAvailable();
+  public abstract boolean isPayloadAvailable() throws IOException;
   
 }

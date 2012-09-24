@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,6 +42,13 @@ public class HighFrequencyDictionary implements Dictionary {
   private String field;
   private float thresh;
 
+  /**
+   * Creates a new Dictionary, pulling source terms from
+   * the specified <code>field</code> in the provided <code>reader</code>.
+   * <p>
+   * Terms appearing in less than <code>thresh</code> percentage of documents
+   * will be excluded.
+   */
   public HighFrequencyDictionary(IndexReader reader, String field, float thresh) {
     this.reader = reader;
     this.field = field;

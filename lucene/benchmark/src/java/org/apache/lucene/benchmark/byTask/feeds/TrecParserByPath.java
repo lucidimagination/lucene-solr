@@ -1,6 +1,6 @@
 package org.apache.lucene.benchmark.byTask.feeds;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,7 +26,7 @@ public class TrecParserByPath extends TrecDocParser {
 
   @Override
   public DocData parse(DocData docData, String name, TrecContentSource trecSrc, 
-      StringBuilder docBuf, ParsePathType pathType) throws IOException, InterruptedException {
+      StringBuilder docBuf, ParsePathType pathType) throws IOException {
     return pathType2parser.get(pathType).parse(docData, name, trecSrc, docBuf, pathType);
   }
 

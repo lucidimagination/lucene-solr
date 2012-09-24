@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,12 +17,13 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.util.ReaderUtil;
+
 import java.io.IOException;
 import java.util.Arrays;
 
 /**
- * Exposes flex API, merged from flex API of sub-segments.
+ * Exposes {@link DocsEnum}, merged from {@link DocsEnum}
+ * API of sub-segments.
  *
  * @lucene.experimental
  */
@@ -37,12 +38,15 @@ public final class MultiDocsEnum extends DocsEnum {
   int currentBase;
   int doc = -1;
 
+  /** Sole constructor
+   * @param parent The {@link MultiTermsEnum} that created us.
+   * @param subReaderCount How many sub-readers are being merged. */
   public MultiDocsEnum(MultiTermsEnum parent, int subReaderCount) {
     this.parent = parent;
     subDocsEnum = new DocsEnum[subReaderCount];
   }
 
-  MultiDocsEnum reset(final EnumWithSlice[] subs, final int numSubs) throws IOException {
+  MultiDocsEnum reset(final EnumWithSlice[] subs, final int numSubs) {
     this.numSubs = numSubs;
 
     this.subs = new EnumWithSlice[subs.length];
@@ -52,24 +56,30 @@ public final class MultiDocsEnum extends DocsEnum {
       this.subs[i].slice = subs[i].slice;
     }
     upto = -1;
+    doc = -1;
     current = null;
     return this;
   }
 
+  /** Returns {@code true} if this instance can be reused by
+   *  the provided {@link MultiTermsEnum}. */
   public boolean canReuse(MultiTermsEnum parent) {
     return this.parent == parent;
   }
 
+  /** How many sub-readers we are merging.
+   *  @see #getSubs */
   public int getNumSubs() {
     return numSubs;
   }
 
+  /** Returns sub-readers we are merging. */
   public EnumWithSlice[] getSubs() {
     return subs;
   }
 
   @Override
-  public int freq() {
+  public int freq() throws IOException {
     return current.freq();
   }
 
@@ -121,9 +131,18 @@ public final class MultiDocsEnum extends DocsEnum {
   }
 
   // TODO: implement bulk read more efficiently than super
+  /** Holds a {@link DocsEnum} along with the
+   *  corresponding {@link ReaderSlice}. */
   public final static class EnumWithSlice {
+    EnumWithSlice() {
+    }
+
+    /** {@link DocsEnum} of this sub-reader. */
     public DocsEnum docsEnum;
-    public ReaderUtil.Slice slice;
+
+    /** {@link ReaderSlice} describing how this sub-reader
+     *  fits into the composite reader. */
+    public ReaderSlice slice;
     
     @Override
     public String toString() {

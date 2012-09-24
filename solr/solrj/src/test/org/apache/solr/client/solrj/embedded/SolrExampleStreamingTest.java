@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,9 +17,12 @@
 
 package org.apache.solr.client.solrj.embedded;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrExampleTests;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
+import org.apache.solr.client.solrj.impl.XMLResponseParser;
+import org.apache.solr.client.solrj.request.RequestWriter;
 import org.apache.solr.util.ExternalPaths;
 import org.junit.BeforeClass;
 
@@ -29,6 +32,7 @@ import org.junit.BeforeClass;
  *
  * @since solr 1.3
  */
+@Slow
 public class SolrExampleStreamingTest extends SolrExampleTests {
   @BeforeClass
   public static void beforeTest() throws Exception {
@@ -40,16 +44,21 @@ public class SolrExampleStreamingTest extends SolrExampleTests {
   {
     try {
       // setup the server...
-      String url = "http://localhost:"+port+context;       // smaller queue size hits locks more often
+      String url = "http://127.0.0.1:"+port+context;       // smaller queue size hits locks more often
       ConcurrentUpdateSolrServer s = new ConcurrentUpdateSolrServer( url, 2, 5 ) {
-
-		@Override
+        
+        public Throwable lastError = null;
+        @Override
         public void handleError(Throwable ex) {
-          // do something...    TODO?
+          lastError = ex;
         }
       };
+
+      s.setParser(new XMLResponseParser());
+      s.setRequestWriter(new RequestWriter());
       return s;
     }
+    
     catch( Exception ex ) {
       throw new RuntimeException( ex );
     }

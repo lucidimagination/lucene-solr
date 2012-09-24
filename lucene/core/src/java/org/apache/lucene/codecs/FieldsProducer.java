@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,12 +22,18 @@ import java.io.IOException;
 
 import org.apache.lucene.index.Fields;
 
-/** Abstract API that produces terms, doc, freq, prox and
+/** Abstract API that produces terms, doc, freq, prox, offset and
  *  payloads postings.  
  *
  * @lucene.experimental
  */
 
 public abstract class FieldsProducer extends Fields implements Closeable {
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected FieldsProducer() {
+  }
+
+  @Override
   public abstract void close() throws IOException;
 }

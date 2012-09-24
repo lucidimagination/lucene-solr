@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,26 +18,24 @@ package org.apache.solr.cloud;
  */
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.CoreConnectionPNames;
+import org.apache.http.client.HttpClient;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.RequestRecovery;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.cloud.CloudState;
-import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CoreAdminParams.CoreAdminAction;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.HttpShardHandlerFactory;
@@ -45,39 +43,50 @@ import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
 import org.apache.solr.update.PeerSync;
+import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SyncStrategy {
   protected final Logger log = LoggerFactory.getLogger(getClass());
 
-  private HttpShardHandlerFactory shardHandlerFactory;
-
-  private ShardHandler shardHandler;
+  private final boolean SKIP_AUTO_RECOVERY = Boolean.getBoolean("solrcloud.skip.autorecovery");
   
-  private static ThreadSafeClientConnManager mgr = new ThreadSafeClientConnManager();
-  private static DefaultHttpClient client = new DefaultHttpClient(mgr);
+  private final ShardHandler shardHandler;
+  
+  private ThreadPoolExecutor recoveryCmdExecutor = new ThreadPoolExecutor(
+      0, Integer.MAX_VALUE, 5, TimeUnit.SECONDS,
+      new SynchronousQueue<Runnable>(), new DefaultSolrThreadFactory(
+          "recoveryCmdExecutor"));
+
+  private volatile boolean isClosed;
+  
+  private final static HttpClient client;
   static {
-    mgr.setDefaultMaxPerRoute(20);
-    mgr.setMaxTotal(10000);
-    client.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 30000);
-    client.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 30000);
-    // prevent retries  (note: this didn't work when set on mgr.. needed to be set on client)
-    DefaultHttpRequestRetryHandler retryhandler = new DefaultHttpRequestRetryHandler(0, false);
-    client.setHttpRequestRetryHandler(retryhandler);
+    ModifiableSolrParams params = new ModifiableSolrParams();
+    params.set(HttpClientUtil.PROP_MAX_CONNECTIONS, 10000);
+    params.set(HttpClientUtil.PROP_MAX_CONNECTIONS_PER_HOST, 20);
+    params.set(HttpClientUtil.PROP_CONNECTION_TIMEOUT, 30000);
+    params.set(HttpClientUtil.PROP_SO_TIMEOUT, 30000);
+    params.set(HttpClientUtil.PROP_USE_RETRY, false);
+    client = HttpClientUtil.createClient(params);
   }
   
   public SyncStrategy() {
-    shardHandlerFactory = new HttpShardHandlerFactory();
-    shardHandler = shardHandlerFactory.getShardHandler(client);
+    shardHandler = new HttpShardHandlerFactory().getShardHandler(client);
   }
   
-  private static class SyncShardRequest extends ShardRequest {
+  private static class ShardCoreRequest extends ShardRequest {
     String coreName;
+    public String baseUrl;
   }
   
   public boolean sync(ZkController zkController, SolrCore core,
       ZkNodeProps leaderProps) {
+    if (SKIP_AUTO_RECOVERY) {
+      return true;
+    }
+    log.info("Sync replicas to " + ZkCoreNodeProps.getCoreUrl(leaderProps));
     // TODO: look at our state usage of sync
     // zkController.publish(core, ZkStateReader.SYNC);
     
@@ -98,6 +107,25 @@ public class SyncStrategy {
     String collection = cloudDesc.getCollectionName();
     String shardId = cloudDesc.getShardId();
 
+    if (isClosed) {
+      log.info("We have been closed, won't sync with replicas");
+      return false;
+    }
+    // if no one that is up is active, we are willing to wait...
+    // we don't want a recovering node to become leader and then
+    // a better candidate pops up a second later.
+//    int tries = 20;
+//    while (!areAnyReplicasActive(zkController, collection, shardId)) {
+//      if (tries-- == 0) {
+//        break;
+//      }
+//      try {
+//        Thread.sleep(500);
+//      } catch (InterruptedException e) {
+//        Thread.currentThread().interrupt();
+//      }
+//    }
+    
     // first sync ourselves - we are the potential leader after all
     try {
       success = syncWithReplicas(zkController, core, leaderProps, collection,
@@ -106,30 +134,19 @@ public class SyncStrategy {
       SolrException.log(log, "Sync Failed", e);
     }
     try {
-      // if !success but no one else is in active mode,
-      // we are the leader anyway
-      // TODO: should we also be leader if there is only one other active?
-      // if we couldn't sync with it, it shouldn't be able to sync with us
-      if (!success
-          && !areAnyOtherReplicasActive(zkController, leaderProps, collection,
-              shardId)) {
-//        System.out
-//            .println("wasnt a success but no on else i active! I am the leader");
-        
-        success = true;
+      if (isClosed) {
+        log.info("We have been closed, won't attempt to sync replicas back to leader");
+        return false;
       }
       
       if (success) {
-        // solrcloud_debug
-        // System.out.println("Sync success");
-        // we are the leader - tell all of our replias to sync with us
+        log.info("Sync Success - now sync replicas to me");
         
         syncToMe(zkController, collection, shardId, leaderProps);
         
       } else {
-        
-        // solrcloud_debug
-        // System.out.println("Sync failure");
+        SolrException.log(log, "Sync Failed");
+        // lets see who seems ahead...
       }
       
     } catch (Exception e) {
@@ -139,44 +156,12 @@ public class SyncStrategy {
     return success;
   }
   
-  private boolean areAnyOtherReplicasActive(ZkController zkController,
-      ZkNodeProps leaderProps, String collection, String shardId) {
-    CloudState cloudState = zkController.getZkStateReader().getCloudState();
-    Map<String,Slice> slices = cloudState.getSlices(collection);
-    Slice slice = slices.get(shardId);
-    Map<String,ZkNodeProps> shards = slice.getShards();
-    for (Map.Entry<String,ZkNodeProps> shard : shards.entrySet()) {
-      String state = shard.getValue().get(ZkStateReader.STATE_PROP);
-//      System.out.println("state:"
-//          + state
-//          + shard.getValue().get(ZkStateReader.NODE_NAME_PROP)
-//          + " live: "
-//          + cloudState.liveNodesContain(shard.getValue().get(
-//              ZkStateReader.NODE_NAME_PROP)));
-      if ((state.equals(ZkStateReader.ACTIVE))
-          && cloudState.liveNodesContain(shard.getValue().get(
-              ZkStateReader.NODE_NAME_PROP))
-          && !new ZkCoreNodeProps(shard.getValue()).getCoreUrl().equals(
-              new ZkCoreNodeProps(leaderProps).getCoreUrl())) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
-  
   private boolean syncWithReplicas(ZkController zkController, SolrCore core,
-      ZkNodeProps props, String collection, String shardId)
-      throws MalformedURLException, SolrServerException, IOException {
+      ZkNodeProps props, String collection, String shardId) {
     List<ZkCoreNodeProps> nodes = zkController.getZkStateReader()
         .getReplicaProps(collection, shardId,
-            props.get(ZkStateReader.NODE_NAME_PROP),
-            props.get(ZkStateReader.CORE_NAME_PROP), ZkStateReader.ACTIVE); // TODO:
-    // should
-    // there
-    // be a
-    // state
-    // filter?
+            props.getStr(ZkStateReader.NODE_NAME_PROP),
+            props.getStr(ZkStateReader.CORE_NAME_PROP));
     
     if (nodes == null) {
       // I have no replicas
@@ -185,42 +170,38 @@ public class SyncStrategy {
     
     List<String> syncWith = new ArrayList<String>();
     for (ZkCoreNodeProps node : nodes) {
-      // if we see a leader, must be stale state, and this is the guy that went down
-      if (!node.getNodeProps().keySet().contains(ZkStateReader.LEADER_PROP)) {
-        syncWith.add(node.getCoreUrl());
-      }
+      syncWith.add(node.getCoreUrl());
     }
     
- 
-    PeerSync peerSync = new PeerSync(core, syncWith, core.getUpdateHandler().getUpdateLog().numRecordsToKeep);
+    // if we can't reach a replica for sync, we still consider the overall sync a success
+    // TODO: as an assurance, we should still try and tell the sync nodes that we couldn't reach
+    // to recover once more?
+    PeerSync peerSync = new PeerSync(core, syncWith, core.getUpdateHandler().getUpdateLog().numRecordsToKeep, true);
     return peerSync.sync();
   }
   
   private void syncToMe(ZkController zkController, String collection,
-      String shardId, ZkNodeProps leaderProps) throws MalformedURLException,
-      SolrServerException, IOException {
+      String shardId, ZkNodeProps leaderProps) {
     
     // sync everyone else
     // TODO: we should do this in parallel at least
     List<ZkCoreNodeProps> nodes = zkController
         .getZkStateReader()
         .getReplicaProps(collection, shardId,
-            leaderProps.get(ZkStateReader.NODE_NAME_PROP),
-            leaderProps.get(ZkStateReader.CORE_NAME_PROP), ZkStateReader.ACTIVE);
+            leaderProps.getStr(ZkStateReader.NODE_NAME_PROP),
+            leaderProps.getStr(ZkStateReader.CORE_NAME_PROP));
     if (nodes == null) {
-      // System.out.println("I have no replicas");
-      // I have no replicas
+      log.info(ZkCoreNodeProps.getCoreUrl(leaderProps) + " has no replicas");
       return;
     }
-    //System.out.println("tell my replicas to sync");
+
     ZkCoreNodeProps zkLeader = new ZkCoreNodeProps(leaderProps);
     for (ZkCoreNodeProps node : nodes) {
       try {
-//         System.out
-//             .println("try and ask " + node.getCoreUrl() + " to sync");
-        log.info("try and ask " + node.getCoreUrl() + " to sync");
-        requestSync(zkLeader.getCoreUrl(), node.getCoreName());
-
+        log.info(ZkCoreNodeProps.getCoreUrl(leaderProps) + ": try and ask " + node.getCoreUrl() + " to sync");
+        
+        requestSync(node.getBaseUrl(), node.getCoreUrl(), zkLeader.getCoreUrl(), node.getCoreName());
+        
       } catch (Exception e) {
         SolrException.log(log, "Error syncing replica to leader", e);
       }
@@ -231,24 +212,27 @@ public class SyncStrategy {
       ShardResponse srsp = shardHandler.takeCompletedOrError();
       if (srsp == null) break;
       boolean success = handleResponse(srsp);
-      //System.out.println("got response:" + success);
+      if (srsp.getException() != null) {
+        SolrException.log(log, "Sync request error: " + srsp.getException());
+      }
+      
       if (!success) {
          try {
-           log.info("Sync failed - asking replica to recover.");
-           //System.out.println("Sync failed - asking replica to recover.");
-           RequestRecovery recoverRequestCmd = new RequestRecovery();
-           recoverRequestCmd.setAction(CoreAdminAction.REQUESTRECOVERY);
-           recoverRequestCmd.setCoreName(((SyncShardRequest)srsp.getShardRequest()).coreName);
-           
-           HttpSolrServer server = new HttpSolrServer(zkLeader.getBaseUrl());
-           server.request(recoverRequestCmd);
-         } catch (Exception e) {
-           log.info("Could not tell a replica to recover", e);
+           log.info(ZkCoreNodeProps.getCoreUrl(leaderProps) + ": Sync failed - asking replica (" + srsp.getShardAddress() + ") to recover.");
+           if (isClosed) {
+             log.info("We have been closed, don't request that a replica recover");
+           } else {
+             requestRecovery(leaderProps, ((ShardCoreRequest)srsp.getShardRequest()).baseUrl, ((ShardCoreRequest)srsp.getShardRequest()).coreName);
+           }
+         } catch (Throwable t) {
+           SolrException.log(log, ZkCoreNodeProps.getCoreUrl(leaderProps) + ": Could not tell a replica to recover", t);
          }
-         shardHandler.cancelAll();
-        break;
+      } else {
+        log.info(ZkCoreNodeProps.getCoreUrl(leaderProps) + ": " + " sync completed with " + srsp.getShardAddress());
       }
+      
     }
+
   }
   
   private boolean handleResponse(ShardResponse srsp) {
@@ -257,14 +241,19 @@ public class SyncStrategy {
     if (response == null) {
       return false;
     }
-    boolean success = (Boolean) response.get("sync");
+    Boolean success = (Boolean) response.get("sync");
+    
+    if (success == null) {
+      success = false;
+    }
     
     return success;
   }
 
-  private void requestSync(String replica, String coreName) {
-    SyncShardRequest sreq = new SyncShardRequest();
+  private void requestSync(String baseUrl, String replica, String leaderUrl, String coreName) {
+    ShardCoreRequest sreq = new ShardCoreRequest();
     sreq.coreName = coreName;
+    sreq.baseUrl = baseUrl;
     sreq.purpose = 1;
     // TODO: this sucks
     if (replica.startsWith("http://"))
@@ -275,9 +264,39 @@ public class SyncStrategy {
     sreq.params.set("qt","/get");
     sreq.params.set("distrib",false);
     sreq.params.set("getVersions",Integer.toString(100));
-    sreq.params.set("sync",replica);
+    sreq.params.set("sync",leaderUrl);
     
     shardHandler.submit(sreq, replica, sreq.params);
+  }
+  
+  public void close() {
+    this.isClosed = true;
+    ExecutorUtil.shutdownNowAndAwaitTermination(recoveryCmdExecutor);
+  }
+  
+  private void requestRecovery(final ZkNodeProps leaderProps, final String baseUrl, final String coreName) throws SolrServerException, IOException {
+    // TODO: do this in background threads
+    Thread thread = new Thread() {
+      {
+        setDaemon(true);
+      }
+      @Override
+      public void run() {
+        RequestRecovery recoverRequestCmd = new RequestRecovery();
+        recoverRequestCmd.setAction(CoreAdminAction.REQUESTRECOVERY);
+        recoverRequestCmd.setCoreName(coreName);
+        
+        HttpSolrServer server = new HttpSolrServer(baseUrl);
+        server.setConnectionTimeout(45000);
+        server.setSoTimeout(45000);
+        try {
+          server.request(recoverRequestCmd);
+        } catch (Throwable t) {
+          SolrException.log(log, ZkCoreNodeProps.getCoreUrl(leaderProps) + ": Could not tell a replica to recover", t);
+        }
+      }
+    };
+    recoveryCmdExecutor.execute(thread);
   }
   
   public static ModifiableSolrParams params(String... params) {

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,12 +23,15 @@ import java.io.IOException;
  *  sequentially, using the current thread. */
 public class SerialMergeScheduler extends MergeScheduler {
 
+  /** Sole constructor. */
+  public SerialMergeScheduler() {
+  }
+
   /** Just do the merges in sequence. We do this
    * "synchronized" so that even if the application is using
    * multiple threads, only one merge may run at a time. */
   @Override
-  synchronized public void merge(IndexWriter writer)
-    throws CorruptIndexException, IOException {
+  synchronized public void merge(IndexWriter writer) throws IOException {
 
     while(true) {
       MergePolicy.OneMerge merge = writer.getNextMerge();

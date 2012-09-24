@@ -2,7 +2,7 @@ package org.apache.lucene.util;
 
 import org.junit.BeforeClass;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,6 +18,8 @@ import org.junit.BeforeClass;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+import java.util.Locale;
 
 /**
  * @deprecated Remove when IndexableBinaryStringTools is removed.
@@ -205,7 +207,7 @@ public class TestIndexableBinaryStringTools extends LuceneTestCase {
       if (hex.length() == 1) {
         buf.append('0');
       }
-      buf.append(hex.toUpperCase());
+      buf.append(hex.toUpperCase(Locale.ROOT));
       if (byteNum < numBytes - 1) {
         buf.append(' ');
       }
@@ -220,7 +222,7 @@ public class TestIndexableBinaryStringTools extends LuceneTestCase {
       for (int digit = 0 ; digit < 4 - hex.length() ; ++digit) {
         buf.append('0');
       }
-      buf.append(hex.toUpperCase());
+      buf.append(hex.toUpperCase(Locale.ROOT));
       if (charNum < numBytes - 1) {
         buf.append(' ');
       }

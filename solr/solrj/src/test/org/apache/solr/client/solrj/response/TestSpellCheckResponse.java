@@ -1,5 +1,5 @@
 package org.apache.solr.client.solrj.response;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -50,6 +50,8 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
   @Test
   public void testSpellCheckResponse() throws Exception {
     getSolrServer();
+    server.deleteByQuery("*:*");
+    server.commit(true, true);
     SolrInputDocument doc = new SolrInputDocument();
     doc.setField("id", "111");
     doc.setField(field, "Samsung");
@@ -60,7 +62,6 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
     query.set(CommonParams.QT, "/spell");
     query.set("spellcheck", true);
     query.set(SpellingParams.SPELLCHECK_Q, "samsang");
-    query.set(SpellingParams.SPELLCHECK_BUILD, true);
     QueryRequest request = new QueryRequest(query);
     SpellCheckResponse response = request.process(server).getSpellCheckResponse();
     Assert.assertEquals("samsung", response.getFirstSuggestion("samsang"));
@@ -69,6 +70,8 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
   @Test
   public void testSpellCheckResponse_Extended() throws Exception {
     getSolrServer();
+    server.deleteByQuery("*:*");
+    server.commit(true, true);
     SolrInputDocument doc = new SolrInputDocument();
     doc.setField("id", "111");
     doc.setField(field, "Samsung");
@@ -79,7 +82,6 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
     query.set(CommonParams.QT, "/spell");
     query.set("spellcheck", true);
     query.set(SpellingParams.SPELLCHECK_Q, "samsang");
-    query.set(SpellingParams.SPELLCHECK_BUILD, true);
     query.set(SpellingParams.SPELLCHECK_EXTENDED_RESULTS, true);
     QueryRequest request = new QueryRequest(query);
     SpellCheckResponse response = request.process(server).getSpellCheckResponse();
@@ -106,7 +108,9 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
   
   @Test
   public void testSpellCheckCollationResponse() throws Exception {
-  	getSolrServer();
+    getSolrServer();
+    server.deleteByQuery("*:*");
+    server.commit(true, true);
     SolrInputDocument doc = new SolrInputDocument();
     doc.setField("id", "0");
     doc.setField("name", "faith hope and love");
@@ -133,13 +137,12 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
     SolrQuery query = new SolrQuery("name:(+fauth +home +loane)");
     query.set(CommonParams.QT, "/spell");
     query.set("spellcheck", true);
-    query.set(SpellingParams.SPELLCHECK_BUILD, true);
     query.set(SpellingParams.SPELLCHECK_COUNT, 10);
     query.set(SpellingParams.SPELLCHECK_COLLATE, true);
     QueryRequest request = new QueryRequest(query);
     SpellCheckResponse response = request.process(server).getSpellCheckResponse();
     response = request.process(server).getSpellCheckResponse();
-    assertTrue("name:(+faith +homer +loaves)".equals(response.getCollatedResult()));
+    assertTrue("name:(+faith +hope +loaves)".equals(response.getCollatedResult()));
     
     //Test Expanded Collation Results
     query.set(SpellingParams.SPELLCHECK_COLLATE_EXTENDED_RESULTS, true);
@@ -153,27 +156,27 @@ public class TestSpellCheckResponse extends SolrJettyTestBase {
     assertEquals(2, collations.size());
     for(Collation collation : collations)
     {
-    	assertTrue("name:(+faith +hope +love)".equals(collation.getCollationQueryString()) || "name:(+faith +hope +loaves)".equals(collation.getCollationQueryString()));
+      assertTrue("name:(+faith +hope +love)".equals(collation.getCollationQueryString()) || "name:(+faith +hope +loaves)".equals(collation.getCollationQueryString()));
       assertTrue(collation.getNumberOfHits()==1);
-    	
-    	List<Correction> misspellingsAndCorrections = collation.getMisspellingsAndCorrections();
-    	assertTrue(misspellingsAndCorrections.size()==3);
-    	for(Correction correction : misspellingsAndCorrections)
-    	{    	
-    		if("fauth".equals(correction.getOriginal()))
-    		{
-    			assertTrue("faith".equals(correction.getCorrection()));
-    		} else if("home".equals(correction.getOriginal()))
-    		{
-    			assertTrue("hope".equals(correction.getCorrection()));
-    		} else if("loane".equals(correction.getOriginal()))
-    		{
-    			assertTrue("love".equals(correction.getCorrection()) || "loaves".equals(correction.getCorrection()));
-    		} else
-    		{
-    			fail("Original Word Should have been either fauth, home or loane.");
-    		}	    	
-    	}
+
+      List<Correction> misspellingsAndCorrections = collation.getMisspellingsAndCorrections();
+      assertTrue(misspellingsAndCorrections.size()==3);
+      for(Correction correction : misspellingsAndCorrections)
+      {
+        if("fauth".equals(correction.getOriginal()))
+        {
+          assertTrue("faith".equals(correction.getCorrection()));
+        } else if("home".equals(correction.getOriginal()))
+        {
+          assertTrue("hope".equals(correction.getCorrection()));
+        } else if("loane".equals(correction.getOriginal()))
+        {
+          assertTrue("love".equals(correction.getCorrection()) || "loaves".equals(correction.getCorrection()));
+        } else
+        {
+          fail("Original Word Should have been either fauth, home or loane.");
+        }
+      }
     }
     
     query.set(SpellingParams.SPELLCHECK_COLLATE_EXTENDED_RESULTS, false);

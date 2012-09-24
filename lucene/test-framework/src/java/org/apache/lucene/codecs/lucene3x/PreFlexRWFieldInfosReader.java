@@ -1,5 +1,5 @@
 package org.apache.lucene.codecs.lucene3x;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -43,10 +43,6 @@ class PreFlexRWFieldInfosReader extends FieldInfosReader {
   public FieldInfos read(Directory directory, String segmentName, IOContext iocontext) throws IOException {
     final String fileName = IndexFileNames.segmentFileName(segmentName, "", PreFlexRWFieldInfosWriter.FIELD_INFOS_EXTENSION);
     IndexInput input = directory.openInput(fileName, iocontext);
-
-    boolean hasVectors = false;
-    boolean hasFreq = false;
-    boolean hasProx = false;
     
     try {
       final int format = input.readVInt();
@@ -70,7 +66,9 @@ class PreFlexRWFieldInfosReader extends FieldInfosReader {
         boolean omitNorms = (bits & PreFlexRWFieldInfosWriter.OMIT_NORMS) != 0;
         boolean storePayloads = (bits & PreFlexRWFieldInfosWriter.STORE_PAYLOADS) != 0;
         final IndexOptions indexOptions;
-        if ((bits & PreFlexRWFieldInfosWriter.OMIT_TERM_FREQ_AND_POSITIONS) != 0) {
+        if (!isIndexed) {
+          indexOptions = null;
+        } else if ((bits & PreFlexRWFieldInfosWriter.OMIT_TERM_FREQ_AND_POSITIONS) != 0) {
           indexOptions = IndexOptions.DOCS_ONLY;
         } else if ((bits & PreFlexRWFieldInfosWriter.OMIT_POSITIONS) != 0) {
           if (format <= PreFlexRWFieldInfosWriter.FORMAT_OMIT_POSITIONS) {
@@ -88,9 +86,6 @@ class PreFlexRWFieldInfosReader extends FieldInfosReader {
         if (indexOptions != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
           storePayloads = false;
         }
-        hasVectors |= storeTermVector;
-        hasProx |= isIndexed && indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
-        hasFreq |= isIndexed && indexOptions != IndexOptions.DOCS_ONLY;
         
         Type normType = isIndexed && !omitNorms ? Type.FIXED_INTS_8 : null;
         if (format == PreFlexRWFieldInfosWriter.FORMAT_PREFLEX_RW && normType != null) {
@@ -99,13 +94,13 @@ class PreFlexRWFieldInfosReader extends FieldInfosReader {
         }
         
         infos[i] = new FieldInfo(name, isIndexed, fieldNumber, storeTermVector, 
-          omitNorms, storePayloads, indexOptions, null, normType);
+          omitNorms, storePayloads, indexOptions, null, normType, null);
       }
 
       if (input.getFilePointer() != input.length()) {
         throw new CorruptIndexException("did not read all bytes from file \"" + fileName + "\": read " + input.getFilePointer() + " vs size " + input.length() + " (resource: " + input + ")");
       }
-      return new FieldInfos(infos, hasFreq, hasProx, hasVectors);
+      return new FieldInfos(infos);
     } finally {
       input.close();
     }

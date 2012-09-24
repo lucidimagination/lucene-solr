@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -40,6 +40,8 @@ import java.util.Collections;
  * with these scores.
  */
 public abstract class Scorer extends DocIdSetIterator {
+  /** the Scorer's parent Weight. in some cases this may be null */
+  // TODO can we clean this up?
   protected final Weight weight;
 
   /**
@@ -98,9 +100,7 @@ public abstract class Scorer extends DocIdSetIterator {
    *  "sloppy" the match was.
    *
    * @lucene.experimental */
-  public float freq() throws IOException {
-    throw new UnsupportedOperationException(this + " does not implement freq()");
-  }
+  public abstract float freq() throws IOException;
   
   /** returns parent Weight
    * @lucene.experimental
@@ -115,13 +115,26 @@ public abstract class Scorer extends DocIdSetIterator {
     return Collections.emptyList();
   }
   
-  /** a child Scorer and its relationship to its parent.
+  /** A child Scorer and its relationship to its parent.
    * the meaning of the relationship depends upon the parent query. 
    * @lucene.experimental */
   public static class ChildScorer {
+    /**
+     * Child Scorer. (note this is typically a direct child, and may
+     * itself also have children).
+     */
     public final Scorer child;
+    /**
+     * An arbitrary string relating this scorer to the parent.
+     */
     public final String relationship;
     
+    /**
+     * Creates a new ChildScorer node with the specified relationship.
+     * <p>
+     * The relationship can be any be any string that makes sense to 
+     * the parent Scorer. 
+     */
     public ChildScorer(Scorer child, String relationship) {
       this.child = child;
       this.relationship = relationship;

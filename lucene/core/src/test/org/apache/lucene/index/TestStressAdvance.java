@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -37,11 +37,14 @@ public class TestStressAdvance extends LuceneTestCase {
       RandomIndexWriter w = new RandomIndexWriter(random(), dir);
       final Set<Integer> aDocs = new HashSet<Integer>();
       final Document doc = new Document();
-      final Field f = newField("field", "", StringField.TYPE_UNSTORED);
+      final Field f = newStringField("field", "", Field.Store.NO);
       doc.add(f);
-      final Field idField = newField("id", "", StringField.TYPE_STORED);
+      final Field idField = newStringField("id", "", Field.Store.YES);
       doc.add(idField);
       int num = atLeast(4097);
+      if (VERBOSE) {
+        System.out.println("\nTEST: numDocs=" + num);
+      }
       for(int id=0;id<num;id++) {
         if (random().nextInt(4) == 3) {
           f.setStringValue("a");
@@ -51,6 +54,9 @@ public class TestStressAdvance extends LuceneTestCase {
         }
         idField.setStringValue(""+id);
         w.addDocument(doc);
+        if (VERBOSE) {
+          System.out.println("\nTEST: doc upto " + id);
+        }
       }
 
       w.forceMerge(1);
@@ -76,11 +82,11 @@ public class TestStressAdvance extends LuceneTestCase {
           System.out.println("\nTEST: iter=" + iter + " iter2=" + iter2);
         }
         assertEquals(TermsEnum.SeekStatus.FOUND, te.seekCeil(new BytesRef("a")));
-        de = _TestUtil.docs(random(), te, null, de, false);
+        de = _TestUtil.docs(random(), te, null, de, 0);
         testOne(de, aDocIDs);
 
         assertEquals(TermsEnum.SeekStatus.FOUND, te.seekCeil(new BytesRef("b")));
-        de = _TestUtil.docs(random(), te, null, de, false);
+        de = _TestUtil.docs(random(), te, null, de, 0);
         testOne(de, bDocIDs);
       }
 

@@ -15,7 +15,7 @@ import org.w3c.dom.Element;
 import java.io.IOException;
 import java.io.StringReader;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,15 +33,12 @@ import java.io.StringReader;
  */
 
 /**
- *
+ * Builder for {@link TermsFilter}
  */
 public class TermsFilterBuilder implements FilterBuilder {
 
   private final Analyzer analyzer;
 
-  /**
-   * @param analyzer
-   */
   public TermsFilterBuilder(Analyzer analyzer) {
     this.analyzer = analyzer;
   }

@@ -8,7 +8,7 @@ import org.xml.sax.InputSource;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.Reader;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,7 +26,7 @@ import java.io.Reader;
  */
 
 /**
- *
+ * Helper methods for parsing XML
  */
 public class DOMUtils {
 
@@ -89,8 +89,6 @@ public class DOMUtils {
   /**
    * Returns an attribute value from this node, or first parent node with this attribute defined
    *
-   * @param element
-   * @param attributeName
    * @return A non-zero-length value if defined, otherwise null
    */
   public static String getAttributeWithInheritance(Element element, String attributeName) {
@@ -212,7 +210,7 @@ public class DOMUtils {
     }
 
     return doc;
-	}	
+  }
 }
 
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -41,8 +41,13 @@ public class FileDictionary implements Dictionary {
   private String line;
   private boolean done = false;
 
+  /**
+   * Creates a dictionary based on an inputstream.
+   * <p>
+   * NOTE: content is treated as UTF-8
+   */
   public FileDictionary(InputStream dictFile) {
-    in = new BufferedReader(new InputStreamReader(dictFile));
+    in = new BufferedReader(IOUtils.getDecodingReader(dictFile, IOUtils.CHARSET_UTF_8));
   }
 
   /**

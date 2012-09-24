@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,7 +42,7 @@ public class SolrExampleJettyTest extends SolrExampleTests {
   {
     try {
       // setup the server...
-      String url = "http://localhost/?core=xxx";
+      String url = "http://127.0.0.1/?core=xxx";
       HttpSolrServer s = new HttpSolrServer( url );
       Assert.fail( "CommonsHttpSolrServer should not allow a path with a parameter: "+s.getBaseURL() );
     }

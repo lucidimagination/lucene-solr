@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.icu.segmentation;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -75,6 +75,12 @@ public class DefaultICUTokenizerConfig extends ICUTokenizerConfig {
   private static final BreakIterator myanmarBreakIterator = 
     readBreakIterator("Myanmar.brk");
   
+  /** 
+   * Creates a new config. This object is lightweight, but the first
+   * time the class is referenced, breakiterators will be initialized.
+   */
+  public DefaultICUTokenizerConfig() {}
+
   @Override
   public BreakIterator getBreakIterator(int script) {
     switch(script) {

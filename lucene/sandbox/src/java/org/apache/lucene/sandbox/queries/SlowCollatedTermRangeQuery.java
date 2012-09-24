@@ -1,6 +1,6 @@
 package org.apache.lucene.sandbox.queries;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -110,7 +110,7 @@ public class SlowCollatedTermRangeQuery extends MultiTermQuery {
         lowerTerm, upperTerm, includeLower, includeUpper, collator);
   }
 
-  /** @deprecated */
+  /** @deprecated Use {@link #getField()} instead. */
   @Deprecated
   public String field() {
     return getField();

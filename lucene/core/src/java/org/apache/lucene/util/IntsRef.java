@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,23 +23,37 @@ package org.apache.lucene.util;
  *
  *  @lucene.internal */
 public final class IntsRef implements Comparable<IntsRef>, Cloneable {
-
+  /** An empty integer array for convenience */
   public static final int[] EMPTY_INTS = new int[0];
 
+  /** The contents of the IntsRef. Should never be {@code null}. */
   public int[] ints;
+  /** Offset of first valid integer. */
   public int offset;
+  /** Length of used ints. */
   public int length;
 
+  /** Create a IntsRef with {@link #EMPTY_INTS} */
   public IntsRef() {
     ints = EMPTY_INTS;
   }
 
+  /** 
+   * Create a IntsRef pointing to a new array of size <code>capacity</code>.
+   * Offset and length will both be zero.
+   */
   public IntsRef(int capacity) {
     ints = new int[capacity];
   }
 
+  /** This instance will directly reference ints w/o making a copy.
+   * ints should not be null.
+   */
   public IntsRef(int[] ints, int offset, int length) {
     assert ints != null;
+    assert offset >= 0;
+    assert length >= 0;
+    assert ints.length >= offset + length;
     this.ints = ints;
     this.offset = offset;
     this.length = length;
@@ -114,17 +128,21 @@ public final class IntsRef implements Comparable<IntsRef>, Cloneable {
   }
 
   public void copyInts(IntsRef other) {
-    if (ints == null) {
+    if (ints.length - offset < other.length) {
       ints = new int[other.length];
-    } else {
-      ints = ArrayUtil.grow(ints, other.length);
+      offset = 0;
     }
-    System.arraycopy(other.ints, other.offset, ints, 0, other.length);
+    System.arraycopy(other.ints, other.offset, ints, offset, other.length);
     length = other.length;
-    offset = 0;
   }
 
+  /** 
+   * Used to grow the reference array. 
+   * 
+   * In general this should not be used as it does not take the offset into account.
+   * @lucene.internal */
   public void grow(int newLength) {
+    assert offset == 0;
     if (ints.length < newLength) {
       ints = ArrayUtil.grow(ints, newLength);
     }

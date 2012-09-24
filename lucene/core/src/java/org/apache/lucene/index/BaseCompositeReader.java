@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,9 +18,9 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.ReaderUtil;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 /** Base class for implementing {@link CompositeReader}s based on an array
  * of sub-readers. The implementing class has to add code for
@@ -47,12 +47,16 @@ import org.apache.lucene.util.ReaderUtil;
  * @lucene.internal
  */
 public abstract class BaseCompositeReader<R extends IndexReader> extends CompositeReader {
-  protected final R[] subReaders;
-  protected final int[] starts;       // 1st docno for each reader
+  private final R[] subReaders;
+  private final int[] starts;       // 1st docno for each reader
   private final int maxDoc;
   private final int numDocs;
   private final boolean hasDeletions;
-  
+
+  /** List view solely for {@link #getSequentialSubReaders()},
+   * for effectiveness the array is used internally. */
+  private final List<R> subReadersList;
+
   /**
    * Constructs a {@code BaseCompositeReader} on the given subReaders.
    * @param subReaders the wrapped sub-readers. This array is returned by
@@ -61,8 +65,9 @@ public abstract class BaseCompositeReader<R extends IndexReader> extends Composi
    * cloned and not protected for modification, the subclass is responsible 
    * to do this.
    */
-  protected BaseCompositeReader(R[] subReaders) throws IOException {
+  protected BaseCompositeReader(R[] subReaders) {
     this.subReaders = subReaders;
+    this.subReadersList = Collections.unmodifiableList(Arrays.asList(subReaders));
     starts = new int[subReaders.length + 1];    // build starts array
     int maxDoc = 0, numDocs = 0;
     boolean hasDeletions = false;
@@ -70,6 +75,9 @@ public abstract class BaseCompositeReader<R extends IndexReader> extends Composi
       starts[i] = maxDoc;
       final IndexReader r = subReaders[i];
       maxDoc += r.maxDoc();      // compute maxDocs
+      if (maxDoc < 0 /* overflow */) {
+        throw new IllegalArgumentException("Too many documents, composite IndexReaders cannot exceed " + Integer.MAX_VALUE);
+      }
       numDocs += r.numDocs();    // compute numDocs
       if (r.hasDeletions()) {
         hasDeletions = true;
@@ -102,7 +110,7 @@ public abstract class BaseCompositeReader<R extends IndexReader> extends Composi
   }
 
   @Override
-  public final void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
+  public final void document(int docID, StoredFieldVisitor visitor) throws IOException {
     ensureOpen();
     final int i = readerIndex(docID);                          // find subreader num
     subReaders[i].document(docID - starts[i], visitor);    // dispatch to subreader
@@ -115,11 +123,25 @@ public abstract class BaseCompositeReader<R extends IndexReader> extends Composi
   }
 
   @Override
-  public final int docFreq(String field, BytesRef t) throws IOException {
+  public final int docFreq(Term term) throws IOException {
     ensureOpen();
     int total = 0;          // sum freqs in subreaders
     for (int i = 0; i < subReaders.length; i++) {
-      total += subReaders[i].docFreq(field, t);
+      total += subReaders[i].docFreq(term);
+    }
+    return total;
+  }
+  
+  @Override
+  public final long totalTermFreq(Term term) throws IOException {
+    ensureOpen();
+    long total = 0;        // sum freqs in subreaders
+    for (int i = 0; i < subReaders.length; i++) {
+      long sub = subReaders[i].totalTermFreq(term);
+      if (sub == -1) {
+        return -1;
+      }
+      total += sub;
     }
     return total;
   }
@@ -132,8 +154,16 @@ public abstract class BaseCompositeReader<R extends IndexReader> extends Composi
     return ReaderUtil.subIndex(docID, this.starts);
   }
   
+  /** Helper method for subclasses to get the docBase of the given sub-reader index. */
+  protected final int readerBase(int readerIndex) {
+    if (readerIndex < 0 || readerIndex >= subReaders.length) {
+      throw new IllegalArgumentException("readerIndex must be >= 0 and < getSequentialSubReaders().size()");
+    }
+    return this.starts[readerIndex];
+  }
+  
   @Override
-  public final R[] getSequentialSubReaders() {
-    return subReaders;
+  protected final List<? extends R> getSequentialSubReaders() {
+    return subReadersList;
   }
 }

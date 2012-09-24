@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,16 +23,25 @@ import org.apache.lucene.store.*;
 import org.apache.lucene.search.*;
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.*;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.junit.Ignore;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import org.junit.Ignore;
+
+import org.apache.lucene.analysis.*;
+import org.apache.lucene.analysis.tokenattributes.*;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.document.*;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.search.*;
+import org.apache.lucene.store.*;
+import org.apache.lucene.util.*;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
 // NOTE: this test will fail w/ PreFlexRW codec!  (Because
 // this test uses full binary term space, but PreFlex cannot
@@ -46,7 +55,7 @@ import org.junit.Ignore;
 //
 //   java -server -Xmx8g -d64 -cp .:lib/junit-4.10.jar:./build/classes/test:./build/classes/test-framework:./build/classes/java -Dlucene.version=4.0-dev -Dtests.directory=MMapDirectory -DtempDir=build -ea org.junit.runner.JUnitCore org.apache.lucene.index.Test2BTerms
 //
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class Test2BTerms extends LuceneTestCase {
 
   private final static int TOKEN_LEN = 10;
@@ -141,7 +150,7 @@ public class Test2BTerms extends LuceneTestCase {
     }
   }
 
-  @Slow
+  @Ignore("Very slow. Enable manually by removing @Ignore.")
   public void test2BTerms() throws IOException {
 
     if ("Lucene3x".equals(Codec.getDefault().getName())) {
@@ -154,9 +163,11 @@ public class Test2BTerms extends LuceneTestCase {
 
     List<BytesRef> savedTerms = null;
 
-    MockDirectoryWrapper dir = newFSDirectory(_TestUtil.getTempDir("2BTerms"));
+    BaseDirectoryWrapper dir = newFSDirectory(_TestUtil.getTempDir("2BTerms"));
     //MockDirectoryWrapper dir = newFSDirectory(new File("/p/lucene/indices/2bindex"));
-    dir.setThrottling(MockDirectoryWrapper.Throttling.NEVER);
+    if (dir instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)dir).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
+    }
     dir.setCheckIndexOnClose(false); // don't double-checkindex
 
     if (true) {
@@ -178,7 +189,7 @@ public class Test2BTerms extends LuceneTestCase {
       Document doc = new Document();
       final MyTokenStream ts = new MyTokenStream(random(), TERMS_PER_DOC);
 
-      FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+      FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
       customType.setIndexOptions(IndexOptions.DOCS_ONLY);
       customType.setOmitNorms(true);
       Field field = new Field("field", ts, customType);
@@ -203,7 +214,7 @@ public class Test2BTerms extends LuceneTestCase {
     }
 
     System.out.println("TEST: open reader");
-    final IndexReader r = IndexReader.open(dir);
+    final IndexReader r = DirectoryReader.open(dir);
     if (savedTerms == null) {
       savedTerms = findTerms(r);
     }

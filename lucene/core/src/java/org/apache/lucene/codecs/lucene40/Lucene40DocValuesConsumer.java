@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,14 +18,10 @@ package org.apache.lucene.codecs.lucene40;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
 import org.apache.lucene.codecs.lucene40.values.DocValuesWriterBase;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.PerDocWriteState;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.IOUtils;
@@ -40,10 +36,12 @@ public class Lucene40DocValuesConsumer extends DocValuesWriterBase {
   private final Directory mainDirectory;
   private Directory directory;
   private final String segmentSuffix;
+
+  /** Segment suffix used when writing doc values index files. */
   public final static String DOC_VALUES_SEGMENT_SUFFIX = "dv";
 
-
-  public Lucene40DocValuesConsumer(PerDocWriteState state, String segmentSuffix) throws IOException {
+  /** Sole constructor. */
+  public Lucene40DocValuesConsumer(PerDocWriteState state, String segmentSuffix) {
     super(state);
     this.segmentSuffix = segmentSuffix;
     mainDirectory = state.directory;
@@ -68,24 +66,12 @@ public class Lucene40DocValuesConsumer extends DocValuesWriterBase {
     }
   }
 
-  public static void files(SegmentInfo segmentInfo, Set<String> files) throws IOException {
-    FieldInfos fieldInfos = segmentInfo.getFieldInfos();
-    for (FieldInfo fieldInfo : fieldInfos) {
-      if (fieldInfo.hasDocValues()) {
-        files.add(IndexFileNames.segmentFileName(segmentInfo.name, DOC_VALUES_SEGMENT_SUFFIX, IndexFileNames.COMPOUND_FILE_EXTENSION));
-        files.add(IndexFileNames.segmentFileName(segmentInfo.name, DOC_VALUES_SEGMENT_SUFFIX, IndexFileNames.COMPOUND_FILE_ENTRIES_EXTENSION));
-        assert segmentInfo.dir.fileExists(IndexFileNames.segmentFileName(segmentInfo.name, DOC_VALUES_SEGMENT_SUFFIX, IndexFileNames.COMPOUND_FILE_ENTRIES_EXTENSION)); 
-        assert segmentInfo.dir.fileExists(IndexFileNames.segmentFileName(segmentInfo.name, DOC_VALUES_SEGMENT_SUFFIX, IndexFileNames.COMPOUND_FILE_EXTENSION)); 
-        break;
-      }
-    }
-  }
-
   @Override
   public void abort() {
     try {
       close();
-    } catch (IOException ignored) {}
+    } catch (IOException ignored) {
+    }
     IOUtils.deleteFilesIgnoringExceptions(mainDirectory, IndexFileNames.segmentFileName(
         segmentName, segmentSuffix, IndexFileNames.COMPOUND_FILE_EXTENSION),
         IndexFileNames.segmentFileName(segmentName, segmentSuffix,

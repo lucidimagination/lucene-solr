@@ -13,7 +13,7 @@ import org.apache.lucene.facet.index.attributes.CategoryAttributeImpl;
 import org.apache.lucene.facet.index.streaming.CategoryAttributesStream;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -35,8 +35,6 @@ public class CategoryAttributesStreamTest extends CategoryContainerTestBase {
   /**
    * Verifies that a {@link CategoryAttributesStream} accepts
    * {@link CategoryAttribute} and passes them on as tokens.
-   * 
-   * @throws IOException
    */
   @Test
   public void testStream() throws IOException {

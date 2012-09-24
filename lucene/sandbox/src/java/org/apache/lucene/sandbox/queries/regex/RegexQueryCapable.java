@@ -1,6 +1,6 @@
 package org.apache.lucene.sandbox.queries.regex;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,6 +23,14 @@ package org.apache.lucene.sandbox.queries.regex;
  */
 public interface RegexQueryCapable {
   
+  /**
+   * Defines which {@link RegexCapabilities} implementation is used by this instance.
+   * @see #getRegexImplementation()
+   */
   void setRegexImplementation(RegexCapabilities impl);
+  /**
+   * Returns the implementation used by this instance.
+   * @see #setRegexImplementation(RegexCapabilities)
+   */
   RegexCapabilities getRegexImplementation();
 }

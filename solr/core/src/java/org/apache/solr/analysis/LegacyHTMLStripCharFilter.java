@@ -1,6 +1,6 @@
 package org.apache.solr.analysis;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,12 +21,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Set;
 
 import org.apache.lucene.analysis.charfilter.BaseCharFilter;
-import org.apache.lucene.analysis.CharReader;
-import org.apache.lucene.analysis.CharStream;
 
 /**
  * <p>
@@ -71,21 +70,21 @@ public class LegacyHTMLStripCharFilter extends BaseCharFilter {
 
   public static void main(String[] args) throws IOException {
     Reader in = new LegacyHTMLStripCharFilter(
-            CharReader.get(new InputStreamReader(System.in)));
+            new InputStreamReader(System.in, Charset.defaultCharset()));
     int ch;
     while ( (ch=in.read()) != -1 ) System.out.print((char)ch);
   }
 
-  public LegacyHTMLStripCharFilter(CharStream source) {
-    super(source.markSupported() ? source : CharReader.get(new BufferedReader(source)));
+  public LegacyHTMLStripCharFilter(Reader source) {
+    super(source.markSupported() ? source : new BufferedReader(source));
   }
 
-  public LegacyHTMLStripCharFilter(CharStream source, Set<String> escapedTags){
+  public LegacyHTMLStripCharFilter(Reader source, Set<String> escapedTags){
     this(source);
     this.escapedTags = escapedTags;
   }
 
-  public LegacyHTMLStripCharFilter(CharStream source, Set<String> escapedTags, int readAheadLimit){
+  public LegacyHTMLStripCharFilter(Reader source, Set<String> escapedTags, int readAheadLimit){
     this(source);
     this.escapedTags = escapedTags;
     this.readAheadLimit = readAheadLimit;
@@ -773,12 +772,6 @@ public class LegacyHTMLStripCharFilter extends BaseCharFilter {
     }
     return i;
   }
-
-  @Override
-  public void close() throws IOException {
-    input.close();
-  }
-
 
   private static final HashMap<String,Character> entityTable;
   static {

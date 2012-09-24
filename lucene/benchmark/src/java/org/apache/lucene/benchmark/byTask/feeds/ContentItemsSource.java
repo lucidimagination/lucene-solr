@@ -1,6 +1,6 @@
 package org.apache.lucene.benchmark.byTask.feeds;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -131,7 +131,6 @@ public abstract class ContentItemsSource implements Closeable {
    * items generated since the last reset, so it's important to call
    * super.resetInputs in case you override this method.
    */
-  @SuppressWarnings("unused")
   public void resetInputs() throws IOException {
     bytesCount = 0;
     itemCount = 0;

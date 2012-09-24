@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -62,7 +62,7 @@ public class TestDocumentWriter extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     writer.addDocument(testDoc);
     writer.commit();
-    SegmentInfo info = writer.newestSegment();
+    SegmentInfoPerCommit info = writer.newestSegment();
     writer.close();
     //After adding the document, we should be able to read it back in
     SegmentReader reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
@@ -96,8 +96,8 @@ public class TestDocumentWriter extends LuceneTestCase {
     // test that the norms are not present in the segment if
     // omitNorms is true
     for (FieldInfo fi : reader.getFieldInfos()) {
-      if (fi.isIndexed) {
-        assertTrue(fi.omitNorms == (reader.normValues(fi.name) == null));
+      if (fi.isIndexed()) {
+        assertTrue(fi.omitsNorms() == (reader.normValues(fi.name) == null));
       }
     }
     reader.close();
@@ -119,17 +119,17 @@ public class TestDocumentWriter extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
 
     Document doc = new Document();
-    doc.add(newField("repeated", "repeated one", TextField.TYPE_STORED));
-    doc.add(newField("repeated", "repeated two", TextField.TYPE_STORED));
+    doc.add(newTextField("repeated", "repeated one", Field.Store.YES));
+    doc.add(newTextField("repeated", "repeated two", Field.Store.YES));
 
     writer.addDocument(doc);
     writer.commit();
-    SegmentInfo info = writer.newestSegment();
+    SegmentInfoPerCommit info = writer.newestSegment();
     writer.close();
     SegmentReader reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
 
     DocsAndPositionsEnum termPositions = MultiFields.getTermPositionsEnum(reader, MultiFields.getLiveDocs(reader),
-                                                                          "repeated", new BytesRef("repeated"), false);
+                                                                          "repeated", new BytesRef("repeated"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     int freq = termPositions.freq();
     assertEquals(2, freq);
@@ -165,7 +165,7 @@ public class TestDocumentWriter extends LuceneTestCase {
             }
             if (first) {
               // set payload on first position only
-              payloadAtt.setPayload(new Payload(new byte[]{100}));
+              payloadAtt.setPayload(new BytesRef(new byte[]{100}));
               first = false;
             }
 
@@ -192,24 +192,24 @@ public class TestDocumentWriter extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
 
     Document doc = new Document();
-    doc.add(newField("f1", "a 5 a a", TextField.TYPE_STORED));
+    doc.add(newTextField("f1", "a 5 a a", Field.Store.YES));
 
     writer.addDocument(doc);
     writer.commit();
-    SegmentInfo info = writer.newestSegment();
+    SegmentInfoPerCommit info = writer.newestSegment();
     writer.close();
     SegmentReader reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
 
-    DocsAndPositionsEnum termPositions = MultiFields.getTermPositionsEnum(reader, reader.getLiveDocs(), "f1", new BytesRef("a"), false);
+    DocsAndPositionsEnum termPositions = MultiFields.getTermPositionsEnum(reader, reader.getLiveDocs(), "f1", new BytesRef("a"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     int freq = termPositions.freq();
     assertEquals(3, freq);
     assertEquals(0, termPositions.nextPosition());
-    assertEquals(true, termPositions.hasPayload());
+    assertNotNull(termPositions.getPayload());
     assertEquals(6, termPositions.nextPosition());
-    assertEquals(false, termPositions.hasPayload());
+    assertNull(termPositions.getPayload());
     assertEquals(7, termPositions.nextPosition());
-    assertEquals(false, termPositions.hasPayload());
+    assertNull(termPositions.getPayload());
     reader.close();
   }
 
@@ -226,7 +226,7 @@ public class TestDocumentWriter extends LuceneTestCase {
       private CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
       
       @Override
-      public boolean incrementToken() throws IOException {
+      public boolean incrementToken() {
         if (index == tokens.length) {
           return false;
         } else {
@@ -235,27 +235,26 @@ public class TestDocumentWriter extends LuceneTestCase {
           return true;
         }        
       }
-      
-    }));
+      }));
     
     writer.addDocument(doc);
     writer.commit();
-    SegmentInfo info = writer.newestSegment();
+    SegmentInfoPerCommit info = writer.newestSegment();
     writer.close();
     SegmentReader reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
 
-    DocsAndPositionsEnum termPositions = reader.termPositionsEnum(reader.getLiveDocs(), "preanalyzed", new BytesRef("term1"), false);
+    DocsAndPositionsEnum termPositions = reader.termPositionsEnum(new Term("preanalyzed", "term1"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(1, termPositions.freq());
     assertEquals(0, termPositions.nextPosition());
 
-    termPositions = reader.termPositionsEnum(reader.getLiveDocs(), "preanalyzed", new BytesRef("term2"), false);
+    termPositions = reader.termPositionsEnum(new Term("preanalyzed", "term2"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(2, termPositions.freq());
     assertEquals(1, termPositions.nextPosition());
     assertEquals(3, termPositions.nextPosition());
     
-    termPositions = reader.termPositionsEnum(reader.getLiveDocs(), "preanalyzed", new BytesRef("term3"), false);
+    termPositions = reader.termPositionsEnum(new Term("preanalyzed", "term3"));
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(1, termPositions.freq());
     assertEquals(2, termPositions.nextPosition());
@@ -269,7 +268,7 @@ public class TestDocumentWriter extends LuceneTestCase {
   public void testMixedTermVectorSettingsSameField() throws Exception {
     Document doc = new Document();
     // f1 first without tv then with tv
-    doc.add(newField("f1", "v1", StringField.TYPE_STORED));
+    doc.add(newStringField("f1", "v1", Field.Store.YES));
     FieldType customType2 = new FieldType(StringField.TYPE_STORED);
     customType2.setStoreTermVectors(true);
     customType2.setStoreTermVectorOffsets(true);
@@ -277,7 +276,7 @@ public class TestDocumentWriter extends LuceneTestCase {
     doc.add(newField("f1", "v2", customType2));
     // f2 first with tv then without tv
     doc.add(newField("f2", "v1", customType2));
-    doc.add(newField("f2", "v2", StringField.TYPE_STORED));
+    doc.add(newStringField("f2", "v2", Field.Store.YES));
 
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
@@ -286,7 +285,7 @@ public class TestDocumentWriter extends LuceneTestCase {
 
     _TestUtil.checkIndex(dir);
 
-    IndexReader reader = IndexReader.open(dir);
+    IndexReader reader = DirectoryReader.open(dir);
     // f1
     Terms tfv1 = reader.getTermVectors(0).terms("f1");
     assertNotNull(tfv1);
@@ -306,14 +305,14 @@ public class TestDocumentWriter extends LuceneTestCase {
   public void testLUCENE_1590() throws Exception {
     Document doc = new Document();
     // f1 has no norms
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setOmitNorms(true);
     FieldType customType2 = new FieldType();
     customType2.setStored(true);
     doc.add(newField("f1", "v1", customType));
     doc.add(newField("f1", "v2", customType2));
     // f2 has no TF
-    FieldType customType3 = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType3 = new FieldType(TextField.TYPE_NOT_STORED);
     customType3.setIndexOptions(IndexOptions.DOCS_ONLY);
     Field f = newField("f2", "v1", customType3);
     doc.add(f);
@@ -327,14 +326,14 @@ public class TestDocumentWriter extends LuceneTestCase {
 
     _TestUtil.checkIndex(dir);
 
-    SegmentReader reader = getOnlySegmentReader(IndexReader.open(dir));
+    SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(dir));
     FieldInfos fi = reader.getFieldInfos();
     // f1
     assertFalse("f1 should have no norms", fi.fieldInfo("f1").hasNorms());
-    assertEquals("omitTermFreqAndPositions field bit should not be set for f1", IndexOptions.DOCS_AND_FREQS_AND_POSITIONS, fi.fieldInfo("f1").indexOptions);
+    assertEquals("omitTermFreqAndPositions field bit should not be set for f1", IndexOptions.DOCS_AND_FREQS_AND_POSITIONS, fi.fieldInfo("f1").getIndexOptions());
     // f2
     assertTrue("f2 should have norms", fi.fieldInfo("f2").hasNorms());
-    assertEquals("omitTermFreqAndPositions field bit should be set for f2", IndexOptions.DOCS_ONLY, fi.fieldInfo("f2").indexOptions);
+    assertEquals("omitTermFreqAndPositions field bit should be set for f2", IndexOptions.DOCS_ONLY, fi.fieldInfo("f2").getIndexOptions());
     reader.close();
   }
 }

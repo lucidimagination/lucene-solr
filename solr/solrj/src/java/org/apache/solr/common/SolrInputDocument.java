@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,11 +18,10 @@
 package org.apache.solr.common;
 
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Collection;
-import java.util.Map.Entry;
 import java.util.Set;
 
 /**
@@ -127,8 +126,10 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
   }
 
   /**
-   * Adds a field with the given name, value and boost.  If a field with the name already exists, then it is updated to
-   * the new value and boost.
+   * Adds a field with the given name, value and boost.  If a field with the
+   * name already exists, then the given value is appended to the value of that
+   * field, with the new boost. If the value is a collection, then each of its
+   * values will be added to the field.
    *
    * @param name Name of the field to add
    * @param value Value of the field

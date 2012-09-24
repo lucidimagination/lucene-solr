@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.fr;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,8 +23,11 @@ import java.io.Reader;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
+import org.apache.lucene.analysis.miscellaneous.KeywordMarkerFilter;
+import org.apache.lucene.analysis.util.CharArraySet;
 
 import static org.apache.lucene.analysis.VocabularyAssert.*;
 
@@ -153,6 +156,22 @@ public class TestFrenchLightStemFilter extends BaseTokenStreamTestCase {
     
     checkOneTerm(analyzer, "disposition", "dispos");
     checkOneTerm(analyzer, "dispose", "dispos");
+
+    // SOLR-3463 : abusive compression of repeated characters in numbers
+    // Trailing repeated char elision :
+    checkOneTerm(analyzer, "1234555", "1234555");
+    // Repeated char within numbers with more than 4 characters :
+    checkOneTerm(analyzer, "12333345", "12333345");
+    // Short numbers weren't affected already:
+    checkOneTerm(analyzer, "1234", "1234");
+    // Ensure behaviour is preserved for words!
+    // Trailing repeated char elision :
+    checkOneTerm(analyzer, "abcdeff", "abcdef");
+    // Repeated char within words with more than 4 characters :
+    checkOneTerm(analyzer, "abcccddeef", "abcdef");
+    checkOneTerm(analyzer, "créées", "cre");
+    // Combined letter and digit repetition
+    checkOneTerm(analyzer, "22hh00", "22h00"); // 10:00pm
   }
   
   /** Test against a vocabulary from the reference impl */
@@ -160,9 +179,22 @@ public class TestFrenchLightStemFilter extends BaseTokenStreamTestCase {
     assertVocabulary(analyzer, getDataFile("frlighttestdata.zip"), "frlight.txt");
   }
   
+  public void testKeyword() throws IOException {
+    final CharArraySet exclusionSet = new CharArraySet(TEST_VERSION_CURRENT, asSet("chevaux"), false);
+    Analyzer a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+        Tokenizer source = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        TokenStream sink = new KeywordMarkerFilter(source, exclusionSet);
+        return new TokenStreamComponents(source, new FrenchLightStemFilter(sink));
+      }
+    };
+    checkOneTerm(a, "chevaux", "chevaux");
+  }
+  
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), analyzer, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
   }
   
   public void testEmptyTerm() throws IOException {

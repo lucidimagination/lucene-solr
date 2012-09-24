@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,6 +27,10 @@ import java.util.List;
  */
 
 public final class KeepOnlyLastCommitDeletionPolicy implements IndexDeletionPolicy {
+
+  /** Sole constructor. */
+  public KeepOnlyLastCommitDeletionPolicy() {
+  }
 
   /**
    * Deletes all commits except the most recent one.

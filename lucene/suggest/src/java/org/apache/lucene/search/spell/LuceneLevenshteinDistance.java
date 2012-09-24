@@ -1,6 +1,6 @@
 package org.apache.lucene.search.spell;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -38,6 +38,12 @@ import org.apache.lucene.util.IntsRef;
  *  for merging results from multiple DirectSpellCheckers.
  */
 public final class LuceneLevenshteinDistance implements StringDistance {
+  
+  /**
+   * Creates a new comparator, mimicing the behavior of Lucene's internal
+   * edit distance.
+   */
+  public LuceneLevenshteinDistance() {}
 
   @Override
   public float getDistance(String target, String other) {

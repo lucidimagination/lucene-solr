@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -525,6 +525,12 @@ import org.apache.lucene.util.SmallFloat;
  */
 public abstract class TFIDFSimilarity extends Similarity {
   
+  /**
+   * Sole constructor. (For invocation by subclass 
+   * constructors, typically implicit.)
+   */
+  public TFIDFSimilarity() {}
+  
   /** Computes a score factor based on the fraction of all query terms that a
    * document contains.  This value is multiplied into scores.
    *
@@ -597,7 +603,7 @@ public abstract class TFIDFSimilarity extends Similarity {
    * <p>
    * The default implementation uses:
    * 
-   * <pre>
+   * <pre class="prettyprint">
    * idf(docFreq, searcher.maxDoc());
    * </pre>
    * 
@@ -611,7 +617,6 @@ public abstract class TFIDFSimilarity extends Similarity {
    * @param termStats term-level statistics for the term
    * @return an Explain object that includes both an idf score factor 
              and an explanation for the term.
-   * @throws IOException
    */
   public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats) {
     final long df = termStats.docFreq();
@@ -632,7 +637,6 @@ public abstract class TFIDFSimilarity extends Similarity {
    * @return an Explain object that includes both an idf 
    *         score factor for the phrase and an explanation 
    *         for each term.
-   * @throws IOException
    */
   public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats[]) {
     final long max = collectionStats.maxDoc();

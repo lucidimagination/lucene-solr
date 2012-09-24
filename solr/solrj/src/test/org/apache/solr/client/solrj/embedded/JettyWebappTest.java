@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,7 +23,6 @@ import java.util.Random;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.SystemPropertiesRestoreRule;
 import org.apache.solr.util.ExternalPaths;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
@@ -33,6 +32,8 @@ import org.eclipse.jetty.webapp.WebAppContext;
 import org.junit.Rule;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
+
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 /**
  *
@@ -91,7 +92,7 @@ public class JettyWebappTest extends LuceneTestCase
     // Currently not an extensive test, but it does fire up the JSP pages and make 
     // sure they compile ok
     
-    String adminPath = "http://localhost:"+port+context+"/";
+    String adminPath = "http://127.0.0.1:"+port+context+"/";
     byte[] bytes = IOUtils.toByteArray( new URL(adminPath).openStream() );
     assertNotNull( bytes ); // real error will be an exception
   }

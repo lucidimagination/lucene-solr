@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,6 +18,10 @@ package org.apache.lucene.queryparser.surround.query;
 
 import java.io.IOException;
 
+/**
+ * Interface for queries that can be nested as subqueries
+ * into a span near.
+ */
 public interface DistanceSubQuery {
   /** When distanceSubQueryNotAllowed() returns non null, the reason why the subquery
    * is not allowed as a distance subquery is returned.

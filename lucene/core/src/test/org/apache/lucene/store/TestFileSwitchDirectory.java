@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,7 @@ import java.util.Set;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.lucene40.Lucene40StoredFieldsWriter;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -36,7 +37,6 @@ import org.apache.lucene.util._TestUtil;
 public class TestFileSwitchDirectory extends LuceneTestCase {
   /**
    * Test if writing doc stores to disk and everything else to ram works.
-   * @throws IOException
    */
   public void testBasic() throws IOException {
     Set<String> fileExtensions = new HashSet<String>();
@@ -56,7 +56,7 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
             setMergePolicy(newLogMergePolicy(false)).setCodec(Codec.forName("Lucene40"))
     );
     TestIndexWriterReader.createIndexNoClose(true, "ram", writer);
-    IndexReader reader = IndexReader.open(writer, true);
+    IndexReader reader = DirectoryReader.open(writer, true);
     assertEquals(100, reader.maxDoc());
     writer.commit();
     // we should see only fdx,fdt files here
@@ -94,7 +94,7 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
   public void testNoDir() throws Throwable {
     Directory dir = newFSSwitchDirectory(Collections.<String>emptySet());
     try {
-      IndexReader.open(dir);
+      DirectoryReader.open(dir);
       fail("did not hit expected exception");
     } catch (NoSuchDirectoryException nsde) {
       // expected

@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,7 +36,6 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
   
   @Test
   public void testRangeFilterId() throws IOException {
-    
     IndexReader reader = signedIndexReader;
     IndexSearcher search = newSearcher(reader);
     

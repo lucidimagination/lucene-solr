@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -46,9 +46,6 @@ public abstract class DataSource<T> {
    * <p/>
    * This is invoked by the <code>DataImporter</code> after creating an
    * instance of this class.
-   *
-   * @param context
-   * @param initProps
    */
   public abstract void init(Context context, Properties initProps);
 

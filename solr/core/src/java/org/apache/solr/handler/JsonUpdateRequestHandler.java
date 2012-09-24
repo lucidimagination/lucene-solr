@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,7 +29,7 @@ public class JsonUpdateRequestHandler extends UpdateRequestHandler {
   public void init(NamedList args) {
     super.init(args);
     setAssumeContentType("application/json");
-    log.warn("Using deprecated class: "+this.getClass().getSimpleName()+" -- replace with UpdateRequestHandler");
+    // log.warn("Using deprecated class: "+this.getClass().getSimpleName()+" -- replace with UpdateRequestHandler");
   }
 
   //////////////////////// SolrInfoMBeans methods //////////////////////

@@ -1,6 +1,6 @@
 package org.apache.lucene.search.spans;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,14 +19,13 @@ package org.apache.lucene.search.spans;
 
 import java.io.IOException;
 
+import org.apache.lucene.document.Field;
 import org.apache.lucene.util.LuceneTestCase;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenFilter;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -86,21 +85,18 @@ public class TestSpansAdvanced extends LuceneTestCase {
    * @param writer the Lucene index writer
    * @param id the unique id of the document
    * @param text the text of the document
-   * @throws IOException
    */
   protected void addDocument(final RandomIndexWriter writer, final String id,
       final String text) throws IOException {
     
     final Document document = new Document();
-    document.add(newField(FIELD_ID, id, StringField.TYPE_STORED));
-    document.add(newField(FIELD_TEXT, text, TextField.TYPE_STORED));
+    document.add(newStringField(FIELD_ID, id, Field.Store.YES));
+    document.add(newTextField(FIELD_TEXT, text, Field.Store.YES));
     writer.addDocument(document);
   }
   
   /**
    * Tests two span queries.
-   * 
-   * @throws IOException
    */
   public void testBooleanQueryWithSpanQueries() throws IOException {
     
@@ -109,8 +105,6 @@ public class TestSpansAdvanced extends LuceneTestCase {
   
   /**
    * Tests two span queries.
-   * 
-   * @throws IOException
    */
   protected void doTestBooleanQueryWithSpanQueries(IndexSearcher s,
       final float expectedScore) throws IOException {
@@ -132,8 +126,6 @@ public class TestSpansAdvanced extends LuceneTestCase {
    * @param description the description of the search
    * @param expectedIds the expected document ids of the hits
    * @param expectedScores the expected scores of the hits
-   * 
-   * @throws IOException
    */
   protected static void assertHits(IndexSearcher s, Query query,
       final String description, final String[] expectedIds,

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -106,7 +106,7 @@ public class RandomIndexWriter implements Closeable {
     flushAt = _TestUtil.nextInt(r, 10, 1000);
     codec = w.getConfig().getCodec();
     if (LuceneTestCase.VERBOSE) {
-      System.out.println("RIW config=" + w.getConfig());
+      System.out.println("RIW dir=" + dir + " config=" + w.getConfig());
       System.out.println("codec default=" + codec.getName());
     }
     /* TODO: find some way to make this random...
@@ -326,28 +326,28 @@ public class RandomIndexWriter implements Closeable {
     maybeCommit();
   }
   
-  public void addIndexes(Directory... dirs) throws CorruptIndexException, IOException {
+  public void addIndexes(Directory... dirs) throws IOException {
     w.addIndexes(dirs);
   }
 
-  public void addIndexes(IndexReader... readers) throws CorruptIndexException, IOException {
+  public void addIndexes(IndexReader... readers) throws IOException {
     w.addIndexes(readers);
   }
   
-  public void deleteDocuments(Term term) throws CorruptIndexException, IOException {
+  public void deleteDocuments(Term term) throws IOException {
     w.deleteDocuments(term);
   }
 
-  public void deleteDocuments(Query q) throws CorruptIndexException, IOException {
+  public void deleteDocuments(Query q) throws IOException {
     w.deleteDocuments(q);
   }
   
-  public void commit() throws CorruptIndexException, IOException {
+  public void commit() throws IOException {
     w.commit();
     switchDoDocValues();
   }
   
-  public int numDocs() throws IOException {
+  public int numDocs() {
     return w.numDocs();
   }
 
@@ -421,7 +421,7 @@ public class RandomIndexWriter implements Closeable {
       w.commit();
       switchDoDocValues();
       if (r.nextBoolean()) {
-        return IndexReader.open(w.getDirectory(), _TestUtil.nextInt(r, 1, 10));
+        return DirectoryReader.open(w.getDirectory(), _TestUtil.nextInt(r, 1, 10));
       } else {
         return w.getReader(applyDeletions);
       }

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,9 +45,9 @@ public class TestMultiFields extends LuceneTestCase {
 
       int numDocs = _TestUtil.nextInt(random(), 1, 100 * RANDOM_MULTIPLIER);
       Document doc = new Document();
-      Field f = newField("field", "", StringField.TYPE_UNSTORED);
+      Field f = newStringField("field", "", Field.Store.NO);
       doc.add(f);
-      Field id = newField("id", "", StringField.TYPE_UNSTORED);
+      Field id = newStringField("id", "", Field.Store.NO);
       doc.add(id);
 
       boolean onlyUniqueTerms = random().nextBoolean();
@@ -121,7 +121,7 @@ public class TestMultiFields extends LuceneTestCase {
           System.out.println("TEST: seek term="+ UnicodeUtil.toHexString(term.utf8ToString()) + " " + term);
         }
         
-        DocsEnum docsEnum = _TestUtil.docs(random(), reader, "field", term, liveDocs, null, false);
+        DocsEnum docsEnum = _TestUtil.docs(random(), reader, "field", term, liveDocs, null, 0);
         assertNotNull(docsEnum);
 
         for(int docID : docs.get(term)) {
@@ -156,16 +156,34 @@ public class TestMultiFields extends LuceneTestCase {
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document d = new Document();
-    d.add(newField("f", "j", StringField.TYPE_UNSTORED));
+    d.add(newStringField("f", "j", Field.Store.NO));
     w.addDocument(d);
     w.commit();
     w.addDocument(d);
     IndexReader r = w.getReader();
     w.close();
-    DocsEnum d1 = _TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, false);
-    DocsEnum d2 = _TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, false);
+    DocsEnum d1 = _TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, 0);
+    DocsEnum d2 = _TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, 0);
     assertEquals(0, d1.nextDoc());
     assertEquals(0, d2.nextDoc());
+    r.close();
+    dir.close();
+  }
+  
+  public void testTermDocsEnum() throws Exception {
+    Directory dir = newDirectory();
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    Document d = new Document();
+    d.add(newStringField("f", "j", Field.Store.NO));
+    w.addDocument(d);
+    w.commit();
+    w.addDocument(d);
+    IndexReader r = w.getReader();
+    w.close();
+    DocsEnum de = MultiFields.getTermDocsEnum(r, null, "f", new BytesRef("j"));
+    assertEquals(0, de.nextDoc());
+    assertEquals(1, de.nextDoc());
+    assertEquals(DocIdSetIterator.NO_MORE_DOCS, de.nextDoc());
     r.close();
     dir.close();
   }

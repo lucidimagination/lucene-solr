@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40ords;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,22 +18,21 @@ package org.apache.lucene.codecs.lucene40ords;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
-import org.apache.lucene.codecs.BlockTermsReader;
-import org.apache.lucene.codecs.BlockTermsWriter;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.FixedGapTermsIndexReader;
-import org.apache.lucene.codecs.FixedGapTermsIndexWriter;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.PostingsReaderBase;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.codecs.TermsIndexReaderBase;
-import org.apache.lucene.codecs.TermsIndexWriterBase;
+import org.apache.lucene.codecs.blockterms.BlockTermsReader;
+import org.apache.lucene.codecs.blockterms.BlockTermsWriter;
+import org.apache.lucene.codecs.blockterms.FixedGapTermsIndexReader;
+import org.apache.lucene.codecs.blockterms.FixedGapTermsIndexWriter;
+import org.apache.lucene.codecs.blockterms.TermsIndexReaderBase;
+import org.apache.lucene.codecs.blockterms.TermsIndexWriterBase;
+import org.apache.lucene.codecs.lucene40.Lucene40Codec; // javadocs
 import org.apache.lucene.codecs.lucene40.Lucene40PostingsReader;
 import org.apache.lucene.codecs.lucene40.Lucene40PostingsWriter;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.util.BytesRef;
@@ -41,7 +40,11 @@ import org.apache.lucene.util.BytesRef;
 // TODO: we could make separate base class that can wrapp
 // any PostingsBaseFormat and make it ord-able...
 
-public class Lucene40WithOrds extends PostingsFormat {
+/**
+ * Customized version of {@link Lucene40Codec} that uses
+ * {@link FixedGapTermsIndexWriter}.
+ */
+public final class Lucene40WithOrds extends PostingsFormat {
     
   public Lucene40WithOrds() {
     super("Lucene40WithOrds");
@@ -88,7 +91,7 @@ public class Lucene40WithOrds extends PostingsFormat {
 
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
-    PostingsReaderBase postings = new Lucene40PostingsReader(state.dir, state.segmentInfo, state.context, state.segmentSuffix);
+    PostingsReaderBase postings = new Lucene40PostingsReader(state.dir, state.fieldInfos, state.segmentInfo, state.context, state.segmentSuffix);
     TermsIndexReaderBase indexReader;
 
     boolean success = false;
@@ -111,7 +114,7 @@ public class Lucene40WithOrds extends PostingsFormat {
       FieldsProducer ret = new BlockTermsReader(indexReader,
                                                 state.dir,
                                                 state.fieldInfos,
-                                                state.segmentInfo.name,
+                                                state.segmentInfo,
                                                 postings,
                                                 state.context,
                                                 TERMS_CACHE_SIZE,
@@ -134,11 +137,4 @@ public class Lucene40WithOrds extends PostingsFormat {
 
   /** Extension of prox postings file */
   static final String PROX_EXTENSION = "prx";
-
-  @Override
-  public void files(SegmentInfo segmentInfo, String segmentSuffix, Set<String> files) throws IOException {
-    Lucene40PostingsReader.files(segmentInfo, segmentSuffix, files);
-    BlockTermsReader.files(segmentInfo, segmentSuffix, files);
-    FixedGapTermsIndexReader.files(segmentInfo, segmentSuffix, files);
-  }
 }

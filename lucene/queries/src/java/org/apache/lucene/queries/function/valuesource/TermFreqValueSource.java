@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,13 @@ import org.apache.lucene.util.BytesRef;
 import java.io.IOException;
 import java.util.Map;
 
+/**
+ * Function that returns {@link DocsEnum#freq()} for the
+ * supplied term in every document.
+ * <p>
+ * If the term does not exist in the document, returns 0.
+ * If frequencies are omitted, returns 1.
+ */
 public class TermFreqValueSource extends DocFreqValueSource {
   public TermFreqValueSource(String field, String val, String indexedField, BytesRef indexedBytes) {
     super(field, val, indexedField, indexedBytes);
@@ -50,16 +57,11 @@ public class TermFreqValueSource extends DocFreqValueSource {
 
       public void reset() throws IOException {
         // no one should call us for deleted docs?
-        boolean omitTF = false;
         
         if (terms != null) {
           final TermsEnum termsEnum = terms.iterator(null);
           if (termsEnum.seekExact(indexedBytes, false)) {
-            docs = termsEnum.docs(null, null, true);
-            if (docs == null) { // omit tf
-              omitTF = true;
-              docs = termsEnum.docs(null, null, false);
-            }
+            docs = termsEnum.docs(null, null);
           } else {
             docs = null;
           }
@@ -80,37 +82,13 @@ public class TermFreqValueSource extends DocFreqValueSource {
             }
 
             @Override
-            public int nextDoc() throws IOException {
+            public int nextDoc() {
               return DocIdSetIterator.NO_MORE_DOCS;
             }
 
             @Override
-            public int advance(int target) throws IOException {
+            public int advance(int target) {
               return DocIdSetIterator.NO_MORE_DOCS;
-            }
-          };
-        } else if (omitTF) {
-          // the docsenum won't support freq(), so return 1
-          final DocsEnum delegate = docs;
-          docs = new DocsEnum() {
-            @Override
-            public int freq() {
-              return 1;
-            }
-
-            @Override
-            public int docID() {
-              return delegate.docID();
-            }
-
-            @Override
-            public int nextDoc() throws IOException {
-              return delegate.nextDoc();
-            }
-
-            @Override
-            public int advance(int target) throws IOException {
-              return delegate.advance(target);
             }
           };
         }

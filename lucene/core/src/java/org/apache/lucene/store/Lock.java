@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,7 @@ import org.apache.lucene.util.ThreadInterruptedException;
 import java.io.IOException;
 
 /** An interprocess mutex lock.
- * <p>Typical use might look like:<pre>
+ * <p>Typical use might look like:<pre class="prettyprint">
  * new Lock.With(directory.makeLock("my.lock")) {
  *     public Object doBody() {
  *       <i>... code to execute while locked ...</i>
@@ -67,7 +67,7 @@ public abstract class Lock {
    *         out of bounds
    * @throws IOException if obtain() throws IOException
    */
-  public boolean obtain(long lockWaitTimeout) throws LockObtainFailedException, IOException {
+  public boolean obtain(long lockWaitTimeout) throws IOException {
     failureReason = null;
     boolean locked = obtain();
     if (lockWaitTimeout < 0 && lockWaitTimeout != LOCK_OBTAIN_WAIT_FOREVER)
@@ -128,14 +128,14 @@ public abstract class Lock {
      * be obtained
      * @throws IOException if {@link Lock#obtain} throws IOException
      */
-    public Object run() throws LockObtainFailedException, IOException {
+    public Object run() throws IOException {
       boolean locked = false;
       try {
          locked = lock.obtain(lockWaitTimeout);
          return doBody();
       } finally {
         if (locked)
-	      lock.release();
+          lock.release();
       }
     }
   }

@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -152,6 +152,7 @@ public class FSTCompletionBuilder {
   }
 
   /**
+   * Creates an FSTCompletion with the specified options.
    * @param buckets
    *          The number of buckets for weight discretization. Buckets are used
    *          in {@link #add(BytesRef, int)} and must be smaller than the number

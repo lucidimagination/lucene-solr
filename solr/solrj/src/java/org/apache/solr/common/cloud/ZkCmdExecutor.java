@@ -1,6 +1,6 @@
 package org.apache.solr.common.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,6 @@ package org.apache.solr.common.cloud;
  * limitations under the License.
  */
 
-import java.io.IOException;
 import java.util.List;
 
 import org.apache.zookeeper.CreateMode;
@@ -51,10 +50,9 @@ public class ZkCmdExecutor {
     this.retryDelay = retryDelay;
   }
   
+
   /**
    * Perform the given operation, retrying if the connection fails
-   * 
-   * @throws IOException 
    */
   @SuppressWarnings("unchecked")
   public <T> T retryOperation(ZkOperation operation)
@@ -71,9 +69,9 @@ public class ZkCmdExecutor {
           Thread.currentThread().interrupt();
           throw new InterruptedException();
         }
-        if (Thread.currentThread() instanceof SafeStopThread) {
-          if (((SafeStopThread) Thread.currentThread()).isClosed()) {
-            throw new RuntimeException("Interrupted");
+        if (Thread.currentThread() instanceof ClosableThread) {
+          if (((ClosableThread) Thread.currentThread()).isClosed()) {
+            throw exception;
           }
         }
         retryDelay(i);
@@ -105,7 +103,6 @@ public class ZkCmdExecutor {
    * 
    * @param attemptCount
    *          the number of the attempts performed so far
-   * @throws InterruptedException 
    */
   protected void retryDelay(int attemptCount) throws InterruptedException {
     if (attemptCount > 0) {

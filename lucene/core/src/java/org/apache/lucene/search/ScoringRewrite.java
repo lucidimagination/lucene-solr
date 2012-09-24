@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,6 +20,7 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.MultiTermQuery.RewriteMethod;
@@ -28,11 +29,14 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.TermContext;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
 
-/** @lucene.internal Only public to be accessible by spans package. */
+/** 
+ * Base rewrite method that translates each term into a query, and keeps
+ * the scores as computed by the query.
+ * <p>
+ * @lucene.internal Only public to be accessible by spans package. */
 public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewrite<Q> {
 
   /** A rewrite method that first translates each term into
@@ -126,7 +130,7 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
     private BoostAttribute boostAtt;
     
     @Override
-    public void setNextEnum(TermsEnum termsEnum) throws IOException {
+    public void setNextEnum(TermsEnum termsEnum) {
       this.termsEnum = termsEnum;
       this.boostAtt = termsEnum.attributes().addAttribute(BoostAttribute.class);
     }

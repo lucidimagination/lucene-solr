@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,8 +26,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.CharBuffer;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -53,6 +59,7 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexableField;
@@ -60,14 +67,21 @@ import org.apache.lucene.index.LogMergePolicy;
 import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.MergeScheduler;
 import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.junit.Assert;
+
+import com.carrotsearch.randomizedtesting.RandomizedContext;
+import com.carrotsearch.randomizedtesting.generators.RandomInts;
+import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 
 /**
  * General utility methods for Lucene unit tests. 
@@ -80,7 +94,7 @@ public class _TestUtil {
     try {
       File f = createTempFile(desc, "tmp", LuceneTestCase.TEMP_DIR);
       f.delete();
-      LuceneTestCase.registerTempDir(f);
+      LuceneTestCase.closeAfterSuite(new CloseableFile(f, LuceneTestCase.suiteFailureMarker));
       return f;
     } catch (IOException e) {
       throw new RuntimeException(e);
@@ -120,10 +134,10 @@ public class _TestUtil {
     Enumeration<? extends ZipEntry> entries = zipFile.entries();
     
     rmDir(destDir);
-    
+
     destDir.mkdir();
-    LuceneTestCase.registerTempDir(destDir);
-    
+    LuceneTestCase.closeAfterSuite(new CloseableFile(destDir, LuceneTestCase.suiteFailureMarker));
+
     while (entries.hasMoreElements()) {
       ZipEntry entry = entries.nextElement();
       
@@ -174,15 +188,15 @@ public class _TestUtil {
     ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
     CheckIndex checker = new CheckIndex(dir);
     checker.setCrossCheckTermVectors(crossCheckTermVectors);
-    checker.setInfoStream(new PrintStream(bos), false);
+    checker.setInfoStream(new PrintStream(bos, false, "UTF-8"), false);
     CheckIndex.Status indexStatus = checker.checkIndex(null);
     if (indexStatus == null || indexStatus.clean == false) {
       System.out.println("CheckIndex failed");
-      System.out.println(bos.toString());
+      System.out.println(bos.toString("UTF-8"));
       throw new RuntimeException("CheckIndex failed");
     } else {
       if (LuceneTestCase.INFOSTREAM) {
-        System.out.println(bos.toString());
+        System.out.println(bos.toString("UTF-8"));
       }
       return indexStatus;
     }
@@ -199,7 +213,23 @@ public class _TestUtil {
 
   /** start and end are BOTH inclusive */
   public static int nextInt(Random r, int start, int end) {
-    return start + r.nextInt(end-start+1);
+    return RandomInts.randomIntBetween(r, start, end);
+  }
+
+  /** start and end are BOTH inclusive */
+  public static long nextLong(Random r, long start, long end) {
+    assert end >= start;
+    final BigInteger range = BigInteger.valueOf(end).add(BigInteger.valueOf(1)).subtract(BigInteger.valueOf(start));
+    if (range.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) <= 0) {
+      return start + r.nextInt(range.intValue());
+    } else {
+      // probably not evenly distributed when range is large, but OK for tests
+      final BigInteger augend = new BigDecimal(range).multiply(new BigDecimal(r.nextDouble())).toBigInteger();
+      final long result = BigInteger.valueOf(start).add(augend).longValue();
+      assert result >= start;
+      assert result <= end;
+      return result;
+    }
   }
 
   public static String randomSimpleString(Random r, int maxLength) {
@@ -285,37 +315,49 @@ public class _TestUtil {
   public static String randomRegexpishString(Random r) {
     return randomRegexpishString(r, 20);
   }
-  
+
+  /**
+   * Maximum recursion bound for '+' and '*' replacements in
+   * {@link #randomRegexpishString(Random, int)}.
+   */
+  private final static int maxRecursionBound = 5;
+
+  /**
+   * Operators for {@link #randomRegexpishString(Random, int)}.
+   */
+  private final static List<String> ops = Arrays.asList(
+      ".", "?", 
+      "{0," + maxRecursionBound + "}",  // bounded replacement for '*'
+      "{1," + maxRecursionBound + "}",  // bounded replacement for '+'
+      "(",
+      ")",
+      "-",
+      "[",
+      "]",
+      "|"
+  );
+
   /**
    * Returns a String thats "regexpish" (contains lots of operators typically found in regular expressions)
    * If you call this enough times, you might get a valid regex!
+   * 
+   * <P>Note: to avoid practically endless backtracking patterns we replace asterisk and plus
+   * operators with bounded repetitions. See LUCENE-4111 for more info.
+   * 
+   * @param maxLength A hint about maximum length of the regexpish string. It may be exceeded by a few characters.
    */
   public static String randomRegexpishString(Random r, int maxLength) {
-    final int end = nextInt(r, 0, maxLength);
-    if (end == 0) {
-      // allow 0 length
-      return "";
-    }
-    final char[] buffer = new char[end];
-    for (int i = 0; i < end; i++) {
-      int t = r.nextInt(11);
-      if (t == 0) {
-        buffer[i] = (char) _TestUtil.nextInt(r, 97, 102);
+    final StringBuilder regexp = new StringBuilder(maxLength);
+    for (int i = nextInt(r, 0, maxLength); i > 0; i--) {
+      if (r.nextBoolean()) {
+        regexp.append((char) RandomInts.randomIntBetween(r, 'a', 'z'));
+      } else {
+        regexp.append(RandomPicks.randomFrom(r, ops));
       }
-      else if (1 == t) buffer[i] = '.';
-      else if (2 == t) buffer[i] = '?';
-      else if (3 == t) buffer[i] = '*';
-      else if (4 == t) buffer[i] = '+';
-      else if (5 == t) buffer[i] = '(';
-      else if (6 == t) buffer[i] = ')';
-      else if (7 == t) buffer[i] = '-';
-      else if (8 == t) buffer[i] = '[';
-      else if (9 == t) buffer[i] = ']';
-      else if (10 == t) buffer[i] = '|';
     }
-    return new String(buffer, 0, end);
+    return regexp.toString();
   }
-  
+
   private static final String[] HTML_CHAR_ENTITIES = {
       "AElig", "Aacute", "Acirc", "Agrave", "Alpha", "AMP", "Aring", "Atilde",
       "Auml", "Beta", "COPY", "Ccedil", "Chi", "Dagger", "Delta", "ETH",
@@ -638,10 +680,12 @@ public class _TestUtil {
     if (mp instanceof LogMergePolicy) {
       LogMergePolicy lmp = (LogMergePolicy) mp;
       lmp.setMergeFactor(Math.min(5, lmp.getMergeFactor()));
+      lmp.setUseCompoundFile(true);
     } else if (mp instanceof TieredMergePolicy) {
       TieredMergePolicy tmp = (TieredMergePolicy) mp;
       tmp.setMaxMergeAtOnce(Math.min(5, tmp.getMaxMergeAtOnce()));
       tmp.setSegmentsPerTier(Math.min(5, tmp.getSegmentsPerTier()));
+      tmp.setUseCompoundFile(true);
     }
     MergeScheduler ms = w.getConfig().getMergeScheduler();
     if (ms instanceof ConcurrentMergeScheduler) {
@@ -676,13 +720,6 @@ public class _TestUtil {
     }
   }
   
-  /** Adds field info for a Document. */
-  public static void add(Document doc, FieldInfos fieldInfos) {
-    for (IndexableField field : doc) {
-      fieldInfos.addOrUpdate(field.name(), field.fieldType());
-    }
-  }
-  
   /** 
    * insecure, fast version of File.createTempFile
    * uses Random instead of SecureRandom.
@@ -695,8 +732,12 @@ public class _TestUtil {
     }
     String newSuffix = suffix == null ? ".tmp" : suffix;
     File result;
+    // just pull one long always: we don't want to rely upon what may or may not
+    // already exist. otherwise tests might not reproduce, depending on when you last
+    // ran 'ant clean'
+    final Random random = new Random(RandomizedContext.current().getRandom().nextLong());
     do {
-      result = genTempFile(prefix, newSuffix, directory);
+      result = genTempFile(random, prefix, newSuffix, directory);
     } while (!result.createNewFile());
     return result;
   }
@@ -710,12 +751,12 @@ public class _TestUtil {
   private static class TempFileLocker {};
   private static TempFileLocker tempFileLocker = new TempFileLocker();
 
-  private static File genTempFile(String prefix, String suffix, File directory) {
+  private static File genTempFile(Random random, String prefix, String suffix, File directory) {
     int identify = 0;
 
     synchronized (tempFileLocker) {
       if (counter == 0) {
-        int newInt = new Random().nextInt();
+        int newInt = random.nextInt();
         counter = ((newInt / 65535) & 0xFFFF) + 0x2710;
         counterBase = counter;
       }
@@ -816,7 +857,7 @@ public class _TestUtil {
   // Returns a DocsEnum, but randomly sometimes uses a
   // DocsAndFreqsEnum, DocsAndPositionsEnum.  Returns null
   // if field/term doesn't exist:
-  public static DocsEnum docs(Random random, IndexReader r, String field, BytesRef term, Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+  public static DocsEnum docs(Random random, IndexReader r, String field, BytesRef term, Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
     final Terms terms = MultiFields.getTerms(r, field);
     if (terms == null) {
       return null;
@@ -825,45 +866,30 @@ public class _TestUtil {
     if (!termsEnum.seekExact(term, random.nextBoolean())) {
       return null;
     }
-    if (random.nextBoolean()) {
-      if (random.nextBoolean()) {
-        // TODO: cast re-use to D&PE if we can...?
-        DocsAndPositionsEnum docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, true);
-        if (docsAndPositions == null) {
-          docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, false);
-        }
-        if (docsAndPositions != null) {
-          return docsAndPositions;
-        }
-      }
-      final DocsEnum docsAndFreqs = termsEnum.docs(liveDocs, reuse, true);
-      if (docsAndFreqs != null) {
-        return docsAndFreqs;
-      }
-    }
-    return termsEnum.docs(liveDocs, reuse, needsFreqs);
+    return docs(random, termsEnum, liveDocs, reuse, flags);
   }
 
   // Returns a DocsEnum from a positioned TermsEnum, but
   // randomly sometimes uses a DocsAndFreqsEnum, DocsAndPositionsEnum.
-  public static DocsEnum docs(Random random, TermsEnum termsEnum, Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+  public static DocsEnum docs(Random random, TermsEnum termsEnum, Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
     if (random.nextBoolean()) {
       if (random.nextBoolean()) {
-        // TODO: cast re-use to D&PE if we can...?
-        DocsAndPositionsEnum docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, true);
-        if (docsAndPositions == null) {
-          docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, false);
+        final int posFlags;
+        switch (random.nextInt(4)) {
+          case 0: posFlags = 0; break;
+          case 1: posFlags = DocsAndPositionsEnum.FLAG_OFFSETS; break;
+          case 2: posFlags = DocsAndPositionsEnum.FLAG_PAYLOADS; break;
+          default: posFlags = DocsAndPositionsEnum.FLAG_OFFSETS | DocsAndPositionsEnum.FLAG_PAYLOADS; break;
         }
+        // TODO: cast to DocsAndPositionsEnum?
+        DocsAndPositionsEnum docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, posFlags);
         if (docsAndPositions != null) {
           return docsAndPositions;
         }
       }
-      final DocsEnum docsAndFreqs = termsEnum.docs(liveDocs, null, true);
-      if (docsAndFreqs != null) {
-        return docsAndFreqs;
-      }
+      flags |= DocsEnum.FLAG_FREQS;
     }
-    return termsEnum.docs(liveDocs, null, needsFreqs);
+    return termsEnum.docs(liveDocs, reuse, flags);
   }
   
   public static CharSequence stringToCharSequence(String string, Random random) {
@@ -881,7 +907,72 @@ public class _TestUtil {
     default:
       return ref.utf8ToString();
     }
-    
   }
- 
+
+  /**
+   * Shutdown {@link ExecutorService} and wait for its.
+   */
+  public static void shutdownExecutorService(ExecutorService ex) {
+    if (ex != null) {
+      try {
+        ex.shutdown();
+        ex.awaitTermination(1, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        // Just report it on the syserr.
+        System.err.println("Could not properly shutdown executor service.");
+        e.printStackTrace(System.err);
+      }
+    }
+  }
+
+  public static FieldInfos getFieldInfos(SegmentInfo info) throws IOException {
+    Directory cfsDir = null;
+    try {
+      if (info.getUseCompoundFile()) {
+        cfsDir = new CompoundFileDirectory(info.dir,
+                                           IndexFileNames.segmentFileName(info.name, "", IndexFileNames.COMPOUND_FILE_EXTENSION),
+                                           IOContext.READONCE,
+                                           false);
+      } else {
+        cfsDir = info.dir;
+      }
+      return info.getCodec().fieldInfosFormat().getFieldInfosReader().read(cfsDir,
+                                                                           info.name,
+                                                                           IOContext.READONCE);
+    } finally {
+      if (info.getUseCompoundFile() && cfsDir != null) {
+        cfsDir.close();
+      }
+    }
+  }
+
+  /**
+   * Returns a valid (compiling) Pattern instance with random stuff inside. Be careful
+   * when applying random patterns to longer strings as certain types of patterns
+   * may explode into exponential times in backtracking implementations (such as Java's).
+   */
+  public static Pattern randomPattern(Random random) {
+    final String nonBmpString = "AB\uD840\uDC00C";
+    while (true) {
+      try {
+        Pattern p = Pattern.compile(_TestUtil.randomRegexpishString(random));
+        String replacement = null;
+        // ignore bugs in Sun's regex impl
+        try {
+          replacement = p.matcher(nonBmpString).replaceAll("_");
+        } catch (StringIndexOutOfBoundsException jdkBug) {
+          System.out.println("WARNING: your jdk is buggy!");
+          System.out.println("Pattern.compile(\"" + p.pattern() + 
+              "\").matcher(\"AB\\uD840\\uDC00C\").replaceAll(\"_\"); should not throw IndexOutOfBounds!");
+        }
+        // Make sure the result of applying the pattern to a string with extended
+        // unicode characters is a valid utf16 string. See LUCENE-4078 for discussion.
+        if (replacement != null && UnicodeUtil.validUTF16String(replacement)) {
+          return p;
+        }
+      } catch (PatternSyntaxException ignored) {
+        // Loop trying until we hit something that compiles.
+      }
+    }
+  }
 }

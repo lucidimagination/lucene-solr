@@ -2,7 +2,7 @@ package org.apache.lucene.util;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class SetOnce<T> {
 
   /** Thrown when {@link SetOnce#set(Object)} is called more than once. */
-  public static final class AlreadySetException extends RuntimeException {
+  public static final class AlreadySetException extends IllegalStateException {
     public AlreadySetException() {
       super("The object cannot be set twice!");
     }

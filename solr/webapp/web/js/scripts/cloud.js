@@ -18,7 +18,7 @@
 var init_debug = function( cloud_element )
 {
   var debug_element = $( '#debug', cloud_element );
-  var debug_button = $( '.dump a', cloud_element );
+  var debug_button = $( '#menu #cloud .dump a' );
 
   var clipboard_element = $( '.clipboard', debug_element );
   var clipboard_button = $( 'a', clipboard_element );
@@ -65,7 +65,6 @@ var init_debug = function( cloud_element )
       'show',
       function( event )
       {
-        debug_button.hide();
         debug_element.show();
 
         $.ajax
@@ -147,7 +146,6 @@ var init_debug = function( cloud_element )
 
         clipboard_client.destroy();
 
-        debug_button.show();
         debug_element.hide();
       }
     );
@@ -158,12 +156,12 @@ var helper_path_class = function( p )
   var classes = [ 'link' ];
   classes.push( 'lvl-' + p.target.depth );
 
-  if( p.target.data.leader )
+  if( p.target.data && p.target.data.leader )
   {
     classes.push( 'leader' );
   }
 
-  if( p.target.data.state )
+  if( p.target.data && p.target.data.state )
   {
     classes.push( p.target.data.state );
   }
@@ -176,12 +174,12 @@ var helper_node_class = function( d )
   var classes = [ 'node' ];
   classes.push( 'lvl-' + d.depth );
 
-  if( d.data.leader )
+  if( d.data && d.data.leader )
   {
     classes.push( 'leader' );
   }
 
-  if( d.data.state )
+  if( d.data && d.data.state )
   {
     classes.push( d.data.state );
   }
@@ -199,7 +197,7 @@ var helper_data = {
 
 var helper_node_text = function( d )
 {
-  if( !d.data.uri )
+  if( !d.data || !d.data.uri )
   {
     return d.name;
   }
@@ -363,18 +361,23 @@ var prepare_graph = function( graph_element, callback )
               eval( 'state = ' + response.znode.data + ';' );
               
               var leaf_count = 0;
-              var collections = [];
+              var graph_data = {
+                name: null,
+                children : []
+              };
+
               for( var c in state )
               {
                 var shards = [];
                 for( var s in state[c] )
                 {
                   var nodes = [];
-                  for( var n in state[c][s] )
+                  for( var n in state[c][s].replicas )
                   {
                     leaf_count++;
+                    var replica = state[c][s].replicas[n]
 
-                    var uri = state[c][s][n].base_url;
+                    var uri = replica.base_url;
                     var parts = uri.match( /^(\w+:)\/\/(([\w\d\.-]+)(:(\d+))?)(.+)$/ );
                     var uri_parts = {
                       protocol: parts[1],
@@ -390,9 +393,9 @@ var prepare_graph = function( graph_element, callback )
                     helper_data.port.push( uri_parts.port );
                     helper_data.pathname.push( uri_parts.pathname );
 
-                    var status = state[c][s][n].state;
+                    var status = replica.state;
 
-                    if( !live_nodes[state[c][s][n].node_name] )
+                    if( !live_nodes[replica.node_name] )
                     {
                       status = 'gone';
                     }
@@ -402,7 +405,7 @@ var prepare_graph = function( graph_element, callback )
                       data: {
                         type : 'node',
                         state : status,
-                        leader : 'true' === state[c][s][n].leader,
+                        leader : 'true' === replica.leader,
                         uri : uri_parts
                       }
                     };
@@ -426,10 +429,8 @@ var prepare_graph = function( graph_element, callback )
                   },
                   children: shards
                 };
-                collections.push( collection );
+                graph_data.children.push( collection );
               }
-
-              var graph_data = collections.shift();
               
               helper_data.protocol = $.unique( helper_data.protocol );
               helper_data.host = $.unique( helper_data.host );
@@ -589,41 +590,35 @@ var init_tree = function( tree_element )
 
                     var data_element = $( '#data', this );
 
-                    if( 0 !== parseInt( response.znode.prop.children_count ) )
-                    {
-                      data_element.hide();
-                    }
-                    else
-                    {
-                      var highlight = false;
-                      var data = '<em>File "' + response.znode.path + '" has no Content</em>';
+                    var highlight = false;
+                    var data = '<em>File "' + response.znode.path + '" has no Content</em>';
 
-                      if( response.znode.data )
+                    if( response.znode.data )
+                    {
+                      var classes = '';
+                      var path = response.znode.path.split( '.' );
+                      
+                      if( 1 < path.length )
                       {
-                        var classes = '';
-                        var path = response.znode.path.split( '.' );
-
-                        if( 1 < path.length )
-                        {
-                          highlight = true;
-                          classes = 'syntax language-' + path.pop().esc();
-                        }
-
-                        data = '<pre class="' + classes + '">'
-                             + response.znode.data.esc()
-                             + '</pre>';
+                        highlight = true;
+                        classes = 'syntax language-' + path.pop().esc();
                       }
+
+                      data = '<pre class="' + classes + '">'
+                           + response.znode.data.esc()
+                           + '</pre>';
+                    }
                                
 
-                      data_element
-                          .show()
-                          .html( data );
+                    data_element
+                        .show()
+                        .html( data );
 
-                      if( highlight )
-                      {
-                        hljs.highlightBlock( data_element.get(0) );
-                      }
+                    if( highlight )
+                    {
+                      hljs.highlightBlock( data_element.get(0) );
                     }
+                    
                   },
                   error : function( xhr, text_status, error_thrown)
                   {
@@ -675,7 +670,7 @@ sammy.get
           .html( template );
 
         var cloud_element = $( '#cloud', content_element );
-        var navigation_element = $( '#navigation', content_element );
+        var navigation_element = $( '#menu #cloud' );
 
         init_debug( cloud_element );
 
@@ -686,7 +681,7 @@ sammy.get
             'activate',
             function( event )
             {
-              $( this ).addClass( 'current' );
+              $( this ).addClass( 'active' );
               init_tree( $( '#tree-content', cloud_element ) );
             }
           );
@@ -698,7 +693,7 @@ sammy.get
             'activate',
             function( event )
             {
-              $( this ).addClass( 'current' );
+              $( this ).addClass( 'active' );
               init_graph( $( '#graph-content', cloud_element ) );
             }
           );
@@ -710,7 +705,7 @@ sammy.get
             'activate',
             function( event )
             {
-              $( this ).addClass( 'current' );
+              $( this ).addClass( 'active' );
               init_rgraph( $( '#graph-content', cloud_element ) );
             }
           );

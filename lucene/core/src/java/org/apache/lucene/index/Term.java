@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -56,7 +56,7 @@ public final class Term implements Comparable<Term> {
    * This serves two purposes: 1) reuse of a Term with the same field.
    * 2) pattern for a query.
    * 
-   * @param fld
+   * @param fld field's name
    */
   public Term(String fld) {
     this(fld, new BytesRef());
@@ -132,8 +132,4 @@ public final class Term implements Comparable<Term> {
 
   @Override
   public final String toString() { return field + ":" + bytes.utf8ToString(); }
-
-  public Term deepCopyOf() {
-    return new Term(field, BytesRef.deepCopyOf(bytes));
-  }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.cn;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -165,11 +165,5 @@ public final class ChineseTokenizer extends Tokenizer {
     public void reset() throws IOException {
       super.reset();
       offset = bufferIndex = dataLen = 0;
-    }
-    
-    @Override
-    public void reset(Reader input) throws IOException {
-      super.reset(input);
-      reset();
     }
 }

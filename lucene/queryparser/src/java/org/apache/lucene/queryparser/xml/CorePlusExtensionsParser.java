@@ -4,7 +4,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.queryparser.xml.builders.*;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,9 @@ import org.apache.lucene.queryparser.xml.builders.*;
  */
 
 /**
- *
+ * Assembles a QueryBuilder which uses Query objects from
+ * Lucene's <code>sandbox</code> and <code>queries</code>
+ * modules in addition to core queries.
  */
 public class CorePlusExtensionsParser extends CoreParser {
 
@@ -30,7 +32,6 @@ public class CorePlusExtensionsParser extends CoreParser {
    * Construct an XML parser that uses a single instance QueryParser for handling
    * UserQuery tags - all parse operations are synchronized on this parser
    *
-   * @param analyzer
    * @param parser A QueryParser which will be synchronized on during parse calls.
    */
   public CorePlusExtensionsParser(Analyzer analyzer, QueryParser parser) {
@@ -41,7 +42,6 @@ public class CorePlusExtensionsParser extends CoreParser {
    * Constructs an XML parser that creates a QueryParser for each UserQuery request.
    *
    * @param defaultField The default field name used by QueryParsers constructed for UserQuery tags
-   * @param analyzer
    */
   public CorePlusExtensionsParser(String defaultField, Analyzer analyzer) {
     this(defaultField, analyzer, null);
@@ -56,6 +56,6 @@ public class CorePlusExtensionsParser extends CoreParser {
     queryFactory.addBuilder("LikeThisQuery", new LikeThisQueryBuilder(analyzer, fields));
     queryFactory.addBuilder("BoostingQuery", new BoostingQueryBuilder(queryFactory));
     queryFactory.addBuilder("FuzzyLikeThisQuery", new FuzzyLikeThisQueryBuilder(analyzer));
-		
-	}
+
+  }
 }

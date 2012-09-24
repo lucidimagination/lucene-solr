@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -112,7 +112,7 @@ public class SolrConfig extends Config {
    *@param name the configuration name
    *@param is the configuration stream
    */
-  SolrConfig(SolrResourceLoader loader, String name, InputSource is)
+  public SolrConfig(SolrResourceLoader loader, String name, InputSource is)
   throws ParserConfigurationException, IOException, SAXException {
     super(loader, name, is, "/config/");
     initLibs();
@@ -221,7 +221,7 @@ public class SolrConfig extends Config {
 
      loadPluginInfo(DirectoryFactory.class,"directoryFactory",false, true);
      loadPluginInfo(IndexDeletionPolicy.class,indexConfigPrefix+"/deletionPolicy",false, true);
-     loadPluginInfo(CodecFactory.class,"mainIndex/codecFactory",false, false);
+     loadPluginInfo(CodecFactory.class,"codecFactory",false, false);
      loadPluginInfo(IndexReaderFactory.class,"indexReaderFactory",false, true);
      loadPluginInfo(UpdateRequestProcessorChain.class,"updateRequestProcessorChain",false, false);
      loadPluginInfo(UpdateLog.class,"updateHandler/updateLog",false, false);
@@ -344,7 +344,7 @@ public class SolrConfig extends Config {
       /** Input must not be null */
       public static LastModFrom parse(final String s) {
         try {
-          return valueOf(s.toUpperCase(Locale.ENGLISH));
+          return valueOf(s.toUpperCase(Locale.ROOT));
         } catch (Exception e) {
           log.warn( "Unrecognized value for lastModFrom: " + s, e);
           return BOGUS;
@@ -404,7 +404,6 @@ public class SolrConfig extends Config {
     public final boolean openSearcher;  // is opening a new searcher part of hard autocommit?
 
     /**
-     * @param className
      * @param autoCommmitMaxDocs set -1 as default
      * @param autoCommmitMaxTime set -1 as default
      * @param commitIntervalLowerBound set -1 as default
@@ -436,9 +435,7 @@ public class SolrConfig extends Config {
    */
   public List<PluginInfo> getPluginInfos(String  type){
     List<PluginInfo> result = pluginStore.get(type);
-    return result == null ?
-            (List<PluginInfo>) Collections.EMPTY_LIST:
-            result; 
+    return result == null ? Collections.<PluginInfo>emptyList(): result; 
   }
   public PluginInfo getPluginInfo(String  type){
     List<PluginInfo> result = pluginStore.get(type);
@@ -446,29 +443,31 @@ public class SolrConfig extends Config {
   }
   
   private void initLibs() {
-    
     NodeList nodes = (NodeList) evaluate("lib", XPathConstants.NODESET);
-    if (nodes==null || nodes.getLength()==0)
-      return;
+    if (nodes == null || nodes.getLength() == 0) return;
     
     log.info("Adding specified lib dirs to ClassLoader");
     
-     for (int i=0; i<nodes.getLength(); i++) {
-       Node node = nodes.item(i);
-
-       String baseDir = DOMUtil.getAttr(node, "dir");
-       String path = DOMUtil.getAttr(node, "path");
-       if (null != baseDir) {
-         // :TODO: add support for a simpler 'glob' mutually eclusive of regex
-         String regex = DOMUtil.getAttr(node, "regex");
-         FileFilter filter = (null == regex) ? null : new RegexFileFilter(regex);
-         getResourceLoader().addToClassLoader(baseDir, filter);
-       } else if (null != path) {
-         getResourceLoader().addToClassLoader(path);
-       } else {
-         throw new RuntimeException
-           ("lib: missing mandatory attributes: 'dir' or 'path'");
-       }
-     }
+    try {
+      for (int i = 0; i < nodes.getLength(); i++) {
+        Node node = nodes.item(i);
+        
+        String baseDir = DOMUtil.getAttr(node, "dir");
+        String path = DOMUtil.getAttr(node, "path");
+        if (null != baseDir) {
+          // :TODO: add support for a simpler 'glob' mutually eclusive of regex
+          String regex = DOMUtil.getAttr(node, "regex");
+          FileFilter filter = (null == regex) ? null : new RegexFileFilter(regex);
+          getResourceLoader().addToClassLoader(baseDir, filter);
+        } else if (null != path) {
+          getResourceLoader().addToClassLoader(path);
+        } else {
+          throw new RuntimeException(
+              "lib: missing mandatory attributes: 'dir' or 'path'");
+        }
+      }
+    } finally {
+      getResourceLoader().reloadLuceneSPI();
+    }
   }
 }

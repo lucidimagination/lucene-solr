@@ -1,23 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-import java.io.IOException;
-import java.util.Set;
-
-import org.apache.lucene.codecs.FieldInfosReader;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.IndexFormatTooNewException;
-import org.apache.lucene.index.IndexFormatTooOldException;
-import org.apache.lucene.index.SegmentInfo;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.index.DocValues;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.IndexInput;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,6 +17,22 @@ import org.apache.lucene.store.IndexInput;
  * limitations under the License.
  */
 
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
+
+import org.apache.lucene.codecs.CodecUtil;
+import org.apache.lucene.codecs.FieldInfosReader;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.IndexInput;
+
 /**
  * Lucene 4.0 FieldInfos reader.
  * 
@@ -42,40 +41,35 @@ import org.apache.lucene.store.IndexInput;
  */
 public class Lucene40FieldInfosReader extends FieldInfosReader {
 
-  static final int FORMAT_MINIMUM = Lucene40FieldInfosWriter.FORMAT_START;
+  /** Sole constructor. */
+  public Lucene40FieldInfosReader() {
+  }
 
   @Override
   public FieldInfos read(Directory directory, String segmentName, IOContext iocontext) throws IOException {
     final String fileName = IndexFileNames.segmentFileName(segmentName, "", Lucene40FieldInfosWriter.FIELD_INFOS_EXTENSION);
     IndexInput input = directory.openInput(fileName, iocontext);
-
-    boolean hasVectors = false;
-    boolean hasFreq = false;
-    boolean hasProx = false;
     
     try {
-      final int format = input.readVInt();
-
-      if (format > FORMAT_MINIMUM) {
-        throw new IndexFormatTooOldException(input, format, FORMAT_MINIMUM, Lucene40FieldInfosWriter.FORMAT_CURRENT);
-      }
-      if (format < Lucene40FieldInfosWriter.FORMAT_CURRENT) {
-        throw new IndexFormatTooNewException(input, format, FORMAT_MINIMUM, Lucene40FieldInfosWriter.FORMAT_CURRENT);
-      }
+      CodecUtil.checkHeader(input, Lucene40FieldInfosWriter.CODEC_NAME, 
+                                   Lucene40FieldInfosWriter.FORMAT_START, 
+                                   Lucene40FieldInfosWriter.FORMAT_CURRENT);
 
       final int size = input.readVInt(); //read in the size
       FieldInfo infos[] = new FieldInfo[size];
 
       for (int i = 0; i < size; i++) {
         String name = input.readString();
-        final int fieldNumber = input.readInt();
+        final int fieldNumber = input.readVInt();
         byte bits = input.readByte();
         boolean isIndexed = (bits & Lucene40FieldInfosWriter.IS_INDEXED) != 0;
         boolean storeTermVector = (bits & Lucene40FieldInfosWriter.STORE_TERMVECTOR) != 0;
         boolean omitNorms = (bits & Lucene40FieldInfosWriter.OMIT_NORMS) != 0;
         boolean storePayloads = (bits & Lucene40FieldInfosWriter.STORE_PAYLOADS) != 0;
         final IndexOptions indexOptions;
-        if ((bits & Lucene40FieldInfosWriter.OMIT_TERM_FREQ_AND_POSITIONS) != 0) {
+        if (!isIndexed) {
+          indexOptions = null;
+        } else if ((bits & Lucene40FieldInfosWriter.OMIT_TERM_FREQ_AND_POSITIONS) != 0) {
           indexOptions = IndexOptions.DOCS_ONLY;
         } else if ((bits & Lucene40FieldInfosWriter.OMIT_POSITIONS) != 0) {
           indexOptions = IndexOptions.DOCS_AND_FREQS;
@@ -88,32 +82,29 @@ public class Lucene40FieldInfosReader extends FieldInfosReader {
         // LUCENE-3027: past indices were able to write
         // storePayloads=true when omitTFAP is also true,
         // which is invalid.  We correct that, here:
-        if (indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
+        if (isIndexed && indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
           storePayloads = false;
         }
-        hasVectors |= storeTermVector;
-        hasProx |= isIndexed && indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
-        hasFreq |= isIndexed && indexOptions != IndexOptions.DOCS_ONLY;
         // DV Types are packed in one byte
         byte val = input.readByte();
         final DocValues.Type docValuesType = getDocValuesType((byte) (val & 0x0F));
         final DocValues.Type normsType = getDocValuesType((byte) ((val >>> 4) & 0x0F));
+        final Map<String,String> attributes = input.readStringStringMap();
         infos[i] = new FieldInfo(name, isIndexed, fieldNumber, storeTermVector, 
-          omitNorms, storePayloads, indexOptions, docValuesType, normsType);
+          omitNorms, storePayloads, indexOptions, docValuesType, normsType, Collections.unmodifiableMap(attributes));
       }
 
       if (input.getFilePointer() != input.length()) {
         throw new CorruptIndexException("did not read all bytes from file \"" + fileName + "\": read " + input.getFilePointer() + " vs size " + input.length() + " (resource: " + input + ")");
       }
       
-      return new FieldInfos(infos, hasFreq, hasProx, hasVectors);
+      return new FieldInfos(infos);
     } finally {
       input.close();
     }
   }
 
-  public DocValues.Type getDocValuesType(
-      final byte b) {
+  private static DocValues.Type getDocValuesType(final byte b) {
     switch(b) {
       case 0:
         return null;
@@ -146,9 +137,5 @@ public class Lucene40FieldInfosReader extends FieldInfosReader {
       default:
         throw new IllegalStateException("unhandled indexValues type " + b);
     }
-  }
-  
-  public static void files(SegmentInfo info, Set<String> files) throws IOException {
-    files.add(IndexFileNames.segmentFileName(info.name, "", Lucene40FieldInfosWriter.FIELD_INFOS_EXTENSION));
   }
 }

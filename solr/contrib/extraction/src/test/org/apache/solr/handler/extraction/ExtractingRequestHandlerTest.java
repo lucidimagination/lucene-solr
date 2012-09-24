@@ -1,5 +1,5 @@
 package org.apache.solr.handler.extraction;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -64,8 +64,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
             "fmap.producer", "extractedProducer",
             "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
             "fmap.Creation-Date", "extractedDate",
-            "fmap.AAPL:Keywords", "ignored_a",
-            "fmap.xmpTPg:NPages", "ignored_a",
+            "uprefix", "ignored_",
             "fmap.Author", "extractedAuthor",
             "fmap.content", "extractedContent",
            "literal.id", "one",
@@ -81,6 +80,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
             "fmap.Author", "extractedAuthor",
             "fmap.language", "extractedLanguage",
             "literal.id", "two",
+            "uprefix", "ignored_",
             "fmap.content", "extractedContent",
             "fmap.Last-Modified", "extractedDate"
     );
@@ -136,6 +136,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
             "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
             "fmap.Author", "extractedAuthor",
             "literal.id", "three",
+            "uprefix", "ignored_",
             "fmap.content", "extractedContent",
             "fmap.language", "extractedLanguage",
             "fmap.Last-Modified", "extractedDate"
@@ -144,7 +145,22 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
     assertU(commit());
     assertQ(req("stream_name:version_control.xml"), "//*[@numFound='1']");
 
-
+    loadLocal("extraction/word2003.doc", "fmap.created", "extractedDate", "fmap.producer", "extractedProducer",
+            "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
+            "fmap.Author", "extractedAuthor",
+            "literal.id", "four",
+            "uprefix", "ignored_",
+            "fmap.content", "extractedContent",
+            "fmap.language", "extractedLanguage",
+            "fmap.Last-Modified", "extractedDate"
+    );
+    assertQ(req("title:\"Word 2003 Title\""), "//*[@numFound='0']");
+    // There is already a PDF file with this content:
+    assertQ(req("extractedContent:\"This is a test of PDF and Word extraction in Solr, it is only a test\""), "//*[@numFound='1']");
+    assertU(commit());
+    assertQ(req("title:\"Word 2003 Title\""), "//*[@numFound='1']");
+    // now 2 of them:
+    assertQ(req("extractedContent:\"This is a test of PDF and Word extraction in Solr, it is only a test\""), "//*[@numFound='2']");
   }
 
 
@@ -162,8 +178,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
         //"fmap.content_type", "abcxyz",
         "commit", "true"  // test immediate commit
       );
-      assertTrue(false);
-
+      fail("Should throw SolrException");
     } catch (SolrException e) {
       //do nothing
     } finally {
@@ -206,6 +221,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
             "fmap.Author", "extractedAuthor",
             "fmap.content", "extractedContent",
             "literal.id", "one",
+            "uprefix", "ignored_",
             "fmap.language", "extractedLanguage",
             "literal.extractionLiteralMV", "one",
             "literal.extractionLiteralMV", "two",
@@ -374,9 +390,8 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
     loadLocal("extraction/arabic.pdf", "fmap.created", "extractedDate", "fmap.producer", "extractedProducer",
         "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
         "fmap.Creation-Date", "extractedDate",
-        "fmap.AAPL:Keywords", "ignored_a",
-        "fmap.xmpTPg:NPages", "ignored_a",
         "fmap.Author", "extractedAuthor",
+        "uprefix", "ignored_",
         "fmap.content", "wdf_nocase",
        "literal.id", "one",
         "fmap.Last-Modified", "extractedDate");
@@ -394,7 +409,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
     try{
       loadLocal("extraction/password-is-solrcell.docx",
           "literal.id", "one");
-      fail("TikaException is expected because of trying to extract text from password protected word file.");
+      fail("TikaException is expected because of trying to extract text from password protected word file without supplying a password.");
     }
     catch(Exception expected){}
     assertU(commit());
@@ -404,8 +419,7 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
       loadLocal("extraction/password-is-solrcell.docx", "fmap.created", "extractedDate", "fmap.producer", "extractedProducer",
           "fmap.creator", "extractedCreator", "fmap.Keywords", "extractedKeywords",
           "fmap.Creation-Date", "extractedDate",
-          "fmap.AAPL:Keywords", "ignored_a",
-          "fmap.xmpTPg:NPages", "ignored_a",
+          "uprefix", "ignored_",
           "fmap.Author", "extractedAuthor",
           "fmap.content", "wdf_nocase",
           "literal.id", "one",
@@ -443,6 +457,135 @@ public class ExtractingRequestHandlerTest extends SolrTestCaseJ4 {
       fail("SolrException is expected because nonexsisting parser specified");
     }
     catch(Exception expected){}
+  }
+
+  public void testLiteralsOverride() throws Exception {
+    ExtractingRequestHandler handler = (ExtractingRequestHandler) h.getCore().getRequestHandler("/update/extract");
+    assertTrue("handler is null and it shouldn't be", handler != null);
+ 
+    assertQ(req("*:*"), "//*[@numFound='0']");
+
+    // Here Tika should parse out a title for this document:
+    loadLocal("extraction/solr-word.pdf", 
+            "fmap.created", "extractedDate", 
+            "fmap.producer", "extractedProducer",
+            "fmap.creator", "extractedCreator", 
+            "fmap.Keywords", "extractedKeywords",
+            "fmap.Author", "extractedAuthor",
+            "literal.id", "three",
+            "fmap.content", "extractedContent",
+            "fmap.language", "extractedLanguage",
+            "fmap.Creation-Date", "extractedDate",
+            "uprefix", "ignored_",
+            "fmap.Last-Modified", "extractedDate");
+
+    // Here the literal value should override the Tika-parsed title:
+    loadLocal("extraction/solr-word.pdf",
+            "literal.title", "wolf-man",
+            "fmap.created", "extractedDate",
+            "fmap.producer", "extractedProducer",
+            "fmap.creator", "extractedCreator",
+            "fmap.Keywords", "extractedKeywords",
+            "fmap.Author", "extractedAuthor",
+            "literal.id", "four",
+            "fmap.content", "extractedContent",
+            "fmap.language", "extractedLanguage",
+            "fmap.Creation-Date", "extractedDate",
+            "uprefix", "ignored_",
+            "fmap.Last-Modified", "extractedDate");
+
+    // Here we mimic the old behaviour where literals are added, not overridden
+    loadLocal("extraction/solr-word.pdf",
+            "literalsOverride", "false",
+            // Trick - we first map the metadata-title to an ignored field before we replace with literal title
+            "fmap.title", "ignored_a",
+            "literal.title", "old-behaviour",
+            "literal.extractedKeywords", "literalkeyword",
+            "fmap.created", "extractedDate",
+            "fmap.producer", "extractedProducer",
+            "fmap.creator", "extractedCreator",
+            "fmap.Keywords", "extractedKeywords",
+            "fmap.Author", "extractedAuthor",
+            "literal.id", "five",
+            "fmap.content", "extractedContent",
+            "fmap.language", "extractedLanguage",
+            "fmap.Creation-Date", "extractedDate",
+            "uprefix", "ignored_",
+            "fmap.Last-Modified", "extractedDate");
+
+    assertU(commit());
+
+    assertQ(req("title:solr-word"), "//*[@numFound='1']");
+    assertQ(req("title:wolf-man"), "//*[@numFound='1']");
+    assertQ(req("extractedKeywords:(solr AND word AND pdf AND literalkeyword)"), "//*[@numFound='1']");
+  }
+
+  @Test
+  public void testPasswordProtected() throws Exception {
+    // PDF, Passwords from resource.password
+    loadLocal("extraction/enctypted-password-is-solrRules.pdf", 
+        "fmap.created", "extractedDate", 
+        "fmap.producer", "extractedProducer",
+        "fmap.creator", "extractedCreator", 
+        "fmap.Keywords", "extractedKeywords",
+        "fmap.Creation-Date", "extractedDate",
+        "uprefix", "ignored_",
+        "fmap.Author", "extractedAuthor",
+        "fmap.content", "wdf_nocase",
+        "literal.id", "pdfpwliteral",
+        "resource.name", "enctypted-password-is-solrRules.pdf",
+        "resource.password", "solrRules",
+        "fmap.Last-Modified", "extractedDate");
+
+    // PDF, Passwords from passwords property file
+    loadLocal("extraction/enctypted-password-is-solrRules.pdf", 
+        "fmap.created", "extractedDate", 
+        "fmap.producer", "extractedProducer",
+        "fmap.creator", "extractedCreator", 
+        "fmap.Keywords", "extractedKeywords",
+        "fmap.Creation-Date", "extractedDate",
+        "uprefix", "ignored_",
+        "fmap.Author", "extractedAuthor",
+        "fmap.content", "wdf_nocase",
+        "literal.id", "pdfpwfile",
+        "resource.name", "enctypted-password-is-solrRules.pdf",
+        "passwordsFile", "passwordRegex.properties", // Passwords-file
+        "fmap.Last-Modified", "extractedDate");
+
+    // DOCX, Explicit password
+    loadLocal("extraction/password-is-Word2010.docx", 
+        "fmap.created", "extractedDate", 
+        "fmap.producer", "extractedProducer",
+        "fmap.creator", "extractedCreator", 
+        "fmap.Keywords", "extractedKeywords",
+        "fmap.Creation-Date", "extractedDate",
+        "fmap.Author", "extractedAuthor",
+        "fmap.content", "wdf_nocase",
+        "uprefix", "ignored_",
+        "literal.id", "docxpwliteral",
+        "resource.name", "password-is-Word2010.docx",
+        "resource.password", "Word2010", // Explicit password
+        "fmap.Last-Modified", "extractedDate");
+
+    // DOCX, Passwords from file
+    loadLocal("extraction/password-is-Word2010.docx", 
+        "fmap.created", "extractedDate", 
+        "fmap.producer", "extractedProducer",
+        "fmap.creator", "extractedCreator", 
+        "fmap.Keywords", "extractedKeywords",
+        "fmap.Creation-Date", "extractedDate",
+        "uprefix", "ignored_",
+        "fmap.Author", "extractedAuthor",
+        "fmap.content", "wdf_nocase",
+        "literal.id", "docxpwfile",
+        "resource.name", "password-is-Word2010.docx",
+        "passwordsFile", "passwordRegex.properties", // Passwords-file
+        "fmap.Last-Modified", "extractedDate");
+    
+    assertU(commit());
+    Thread.sleep(100);
+    assertQ(req("wdf_nocase:\"This is a test of PDF\""), "//*[@numFound='2']");
+    assertQ(req("wdf_nocase:\"Test password protected word doc\""), "//*[@numFound='2']");
   }
   
   SolrQueryResponse loadLocal(String filename, String... args) throws Exception {

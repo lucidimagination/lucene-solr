@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -99,7 +99,7 @@ import org.apache.lucene.util.SmallFloat; // javadoc
  * </ol>
  * <p>
  * <a name="explaintime"/>
- * When {@link IndexSearcher#explain(Query, int)} is called, queries consult the Similarity's DocScorer for an 
+ * When {@link IndexSearcher#explain(org.apache.lucene.search.Query, int)} is called, queries consult the Similarity's DocScorer for an 
  * explanation of how it computed its score. The query passes in a the document id and an explanation of how the frequency
  * was computed.
  *
@@ -108,6 +108,12 @@ import org.apache.lucene.util.SmallFloat; // javadoc
  * @lucene.experimental
  */
 public abstract class Similarity {
+  
+  /**
+   * Sole constructor. (For invocation by subclass 
+   * constructors, typically implicit.)
+   */
+  public Similarity() {}
   
   /** Hook to integrate coordinate-level matching.
    * <p>
@@ -173,7 +179,7 @@ public abstract class Similarity {
    * @param weight collection information from {@link #computeWeight(float, CollectionStatistics, TermStatistics...)}
    * @param context segment of the inverted index to be scored.
    * @return ExactSimScorer for scoring documents across <code>context</code>
-   * @throws IOException
+   * @throws IOException if there is a low-level I/O error
    */
   public abstract ExactSimScorer exactSimScorer(SimWeight weight, AtomicReaderContext context) throws IOException;
   
@@ -182,7 +188,7 @@ public abstract class Similarity {
    * @param weight collection information from {@link #computeWeight(float, CollectionStatistics, TermStatistics...)}
    * @param context segment of the inverted index to be scored.
    * @return SloppySimScorer for scoring documents across <code>context</code>
-   * @throws IOException
+   * @throws IOException if there is a low-level I/O error
    */
   public abstract SloppySimScorer sloppySimScorer(SimWeight weight, AtomicReaderContext context) throws IOException;
   
@@ -193,6 +199,13 @@ public abstract class Similarity {
    * Frequencies are integers (the term or phrase frequency within the document)
    */
   public static abstract class ExactSimScorer {
+    
+    /**
+     * Sole constructor. (For invocation by subclass 
+     * constructors, typically implicit.)
+     */
+    public ExactSimScorer() {}
+
     /**
      * Score a single document
      * @param doc document id
@@ -224,6 +237,13 @@ public abstract class Similarity {
    * {@link SloppySimScorer#computeSlopFactor(int)}.
    */
   public static abstract class SloppySimScorer {
+    
+    /**
+     * Sole constructor. (For invocation by subclass 
+     * constructors, typically implicit.)
+     */
+    public SloppySimScorer() {}
+
     /**
      * Score a single document
      * @param doc document id within the inverted index segment
@@ -258,6 +278,12 @@ public abstract class Similarity {
    * subclass. Examples include idf, average field length, etc.
    */
   public static abstract class SimWeight {
+    
+    /**
+     * Sole constructor. (For invocation by subclass 
+     * constructors, typically implicit.)
+     */
+    public SimWeight() {}
     
     /** The value for normalization of contained query clauses (e.g. sum of squared weights).
      * <p>

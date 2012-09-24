@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -38,19 +38,29 @@ import org.apache.lucene.util.IOUtils;
  * @lucene.experimental
  */
 public final class Ints {
+  /** Codec name, written in the header. */
   protected static final String CODEC_NAME = "Ints";
+
+  /** Initial version. */
   protected static final int VERSION_START = 0;
+
+  /** Current version. */
   protected static final int VERSION_CURRENT = VERSION_START;
 
+  /** Sole constructor. */
   private Ints() {
   }
   
+  /** Creates and returns a {@link DocValuesConsumer} to
+   *  write int values. */
   public static DocValuesConsumer getWriter(Directory dir, String id, Counter bytesUsed,
-      Type type, IOContext context) throws IOException {
+      Type type, IOContext context) {
     return type == Type.VAR_INTS ? new PackedIntValues.PackedIntsWriter(dir, id,
         bytesUsed, context) : new IntsWriter(dir, id, bytesUsed, context, type);
   }
 
+  /** Creates and returns a {@link DocValues} to
+   *  read previously written int values. */
   public static DocValues getValues(Directory dir, String id, int numDocs,
       Type type, IOContext context) throws IOException {
     return type == Type.VAR_INTS ? new PackedIntValues.PackedIntsReader(dir, id,
@@ -92,12 +102,12 @@ public final class Ints {
     private final DocValuesArraySource template;
 
     public IntsWriter(Directory dir, String id, Counter bytesUsed,
-        IOContext context, Type valueType) throws IOException {
+        IOContext context, Type valueType) {
       this(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context, valueType);
     }
 
     protected IntsWriter(Directory dir, String id, String codecName,
-        int version, Counter bytesUsed, IOContext context, Type valueType) throws IOException {
+        int version, Counter bytesUsed, IOContext context, Type valueType) {
       super(dir, id, codecName, version, bytesUsed, context);
       size = typeToSize(valueType);
       this.bytesRef = new BytesRef(size);

@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,17 @@ public class CloudDescriptor {
   private String roles = null;
   private Integer numShards;
   
+  volatile boolean isLeader = false;
+  volatile String lastPublished;
+  
+  public String getLastPublished() {
+    return lastPublished;
+  }
+
+  public boolean isLeader() {
+    return isLeader;
+  }
+
   public void setShardId(String shardId) {
     this.shardId = shardId;
   }
@@ -43,11 +54,11 @@ public class CloudDescriptor {
   }
 
   public String getRoles(){
-	  return roles;
+    return roles;
   }
   
   public void setRoles(String roles){
-	  this.roles = roles;
+    this.roles = roles;
   }
   
   /** Optional parameters that can change how a core is created. */

@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.ja.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -37,6 +37,7 @@ import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
+import org.apache.lucene.util.packed.PackedInts;
 
 import com.ibm.icu.text.Normalizer2;
 
@@ -161,7 +162,7 @@ public class TokenInfoDictionaryBuilder {
       offset = next;
     }
     
-    final FST<Long> fst = fstBuilder.finish().pack(2, 100000);
+    final FST<Long> fst = fstBuilder.finish().pack(2, 100000, PackedInts.DEFAULT);
     
     System.out.print("  " + fst.getNodeCount() + " nodes, " + fst.getArcCount() + " arcs, " + fst.sizeInBytes() + " bytes...  ");
     dictionary.setFST(fst);
@@ -173,26 +174,26 @@ public class TokenInfoDictionaryBuilder {
   /*
    * IPADIC features
    * 
-   * 0	- surface
-   * 1	- left cost
-   * 2	- right cost
-   * 3	- word cost
-   * 4-9	- pos
-   * 10	- base form
-   * 11	- reading
-   * 12	- pronounciation
+   * 0   - surface
+   * 1   - left cost
+   * 2   - right cost
+   * 3   - word cost
+   * 4-9 - pos
+   * 10  - base form
+   * 11  - reading
+   * 12  - pronounciation
    *
    * UniDic features
    * 
-   * 0	- surface
-   * 1	- left cost
-   * 2	- right cost
-   * 3	- word cost
-   * 4-9	- pos
-   * 10	- base form reading
-   * 11	- base form
-   * 12	- surface form
-   * 13	- surface reading
+   * 0   - surface
+   * 1   - left cost
+   * 2   - right cost
+   * 3   - word cost
+   * 4-9 - pos
+   * 10  - base form reading
+   * 11  - base form
+   * 12  - surface form
+   * 13  - surface reading
    */
   
   public String[] formatEntry(String[] features) {
@@ -220,7 +221,7 @@ public class TokenInfoDictionaryBuilder {
       } else {
         features2[11] = features[13];
         features2[12] = features[13];
-      }			
+      }
       return features2;
     }
   }

@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,45 +17,47 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
-import java.io.IOException;
 import java.net.ConnectException;
-import java.net.MalformedURLException;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
+import org.apache.http.client.HttpClient;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.zookeeper.KeeperException;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+@Slow
 @Ignore("ignore while investigating jenkins fails")
-public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
+public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase {
+  public static Logger log = LoggerFactory.getLogger(ChaosMonkeyNothingIsSafeTest.class);
+  
+  private static final int BASE_RUN_LENGTH = 60000;
 
   @BeforeClass
-  public static void beforeSuperClass() throws Exception {
+  public static void beforeSuperClass() {
   }
   
   @AfterClass
-  public static void afterSuperClass() throws Exception {
+  public static void afterSuperClass() {
   }
   
   @Before
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    // TODO use @Noisy annotation as we expect lots of exceptions
-    ignoreException(".*");
+    // can help to hide this when testing and looking at logs
+    //ignoreException("shard update error");
     System.setProperty("numShards", Integer.toString(sliceCount));
   }
   
@@ -69,8 +71,8 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
   
   public ChaosMonkeyNothingIsSafeTest() {
     super();
-    shardCount = atLeast(3);
-    sliceCount = 2;
+    sliceCount = 1;
+    shardCount = 7;
   }
   
   @Override
@@ -81,11 +83,18 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
       handle.put("QTime", SKIPVAL);
       handle.put("timestamp", SKIPVAL);
       
+      // make sure we have leaders for each shard
+      for (int j = 1; j < sliceCount; j++) {
+        zkStateReader.getLeaderProps(DEFAULT_COLLECTION, "shard" + j, 10000);
+      }      // make sure we again have leaders for each shard
+      
+      waitForRecoveriesToFinish(false);
+      
       // we cannot do delete by query
       // as it's not supported for recovery
-      // del("*:*");
+       del("*:*");
       
-      List<StopableIndexingThread> threads = new ArrayList<StopableIndexingThread>();
+      List<StopableThread> threads = new ArrayList<StopableThread>();
       int threadCount = 1;
       int i = 0;
       for (i = 0; i < threadCount; i++) {
@@ -95,38 +104,54 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
         indexThread.start();
       }
       
-      FullThrottleStopableIndexingThread ftIndexThread = new FullThrottleStopableIndexingThread(
-          clients, i * 50000, true);
-      threads.add(ftIndexThread);
-      ftIndexThread.start();
+      threadCount = 1;
+      i = 0;
+      for (i = 0; i < threadCount; i++) {
+        StopableSearchThread searchThread = new StopableSearchThread();
+        threads.add(searchThread);
+        searchThread.start();
+      }
       
-      chaosMonkey.startTheMonkey(true, 1500);
+      // TODO: only do this sometimes so that we can sometimes compare against control
+      boolean runFullThrottle = random().nextBoolean();
+      if (runFullThrottle) {
+        FullThrottleStopableIndexingThread ftIndexThread = new FullThrottleStopableIndexingThread(
+            clients, i * 50000, true);
+        threads.add(ftIndexThread);
+        ftIndexThread.start();
+      }
+      
+      chaosMonkey.startTheMonkey(true, 10000);
+      //int runLength = atLeast(BASE_RUN_LENGTH);
+      int runLength = BASE_RUN_LENGTH;
       try {
-        Thread.sleep(atLeast(6000));
+        Thread.sleep(runLength);
       } finally {
         chaosMonkey.stopTheMonkey();
       }
       
-      for (StopableIndexingThread indexThread : threads) {
+      for (StopableThread indexThread : threads) {
         indexThread.safeStop();
       }
       
       // wait for stop...
-      for (StopableIndexingThread indexThread : threads) {
+      for (StopableThread indexThread : threads) {
         indexThread.join();
       }
       
-      // fails will happen...
-      // for (StopableIndexingThread indexThread : threads) {
-      // assertEquals(0, indexThread.getFails());
-      // }
+       // we expect full throttle fails, but not cloud client...
+       for (StopableThread indexThread : threads) {
+         if (indexThread instanceof StopableIndexingThread && !(indexThread instanceof FullThrottleStopableIndexingThread)) {
+           //assertEquals(0, ((StopableIndexingThread) indexThread).getFails());
+         }
+       }
       
       // try and wait for any replications and what not to finish...
       
       Thread.sleep(2000);
       
       // wait until there are no recoveries...
-      waitForThingsToLevelOut();
+      waitForThingsToLevelOut(Integer.MAX_VALUE);//Math.round((runLength / 1000.0f / 3.0f)));
       
       // make sure we again have leaders for each shard
       for (int j = 1; j < sliceCount; j++) {
@@ -137,16 +162,22 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
       
       // TODO: assert we didnt kill everyone
       
-      zkStateReader.updateCloudState(true);
-      assertTrue(zkStateReader.getCloudState().getLiveNodes().size() > 0);
+      zkStateReader.updateClusterState(true);
+      assertTrue(zkStateReader.getClusterState().getLiveNodes().size() > 0);
       
-      checkShardConsistency(false, true);
+      
+      // full throttle thread can
+      // have request fails 
+      checkShardConsistency(!runFullThrottle, true);
+      
+      long ctrlDocs = controlClient.query(new SolrQuery("*:*")).getResults()
+      .getNumFound(); 
       
       // ensure we have added more than 0 docs
       long cloudClientDocs = cloudClient.query(new SolrQuery("*:*"))
           .getResults().getNumFound();
       
-      assertTrue(cloudClientDocs > 0);
+      assertTrue("Found " + ctrlDocs + " control docs", cloudClientDocs > 0);
       
       if (VERBOSE) System.out.println("control docs:"
           + controlClient.query(new SolrQuery("*:*")).getResults()
@@ -157,36 +188,6 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
         printLayout();
       }
     }
-  }
-
-  private void waitForThingsToLevelOut() throws KeeperException,
-      InterruptedException, Exception, IOException, URISyntaxException {
-    int cnt = 0;
-    boolean retry = false;
-    do {
-      waitForRecoveriesToFinish(VERBOSE);
-      
-      try {
-        commit();
-      } catch (Exception e) {
-        // we don't care if this commit fails on some nodes
-      }
-      
-      updateMappingsFromZk(jettys, clients);
-      
-      Set<String> theShards = shardToClient.keySet();
-      String failMessage = null;
-      for (String shard : theShards) {
-        failMessage = checkShardConsistency(shard, false);
-      }
-      
-      if (failMessage != null) {
-        retry  = true;
-      }
-      cnt++;
-      if (cnt > 10) break;
-      Thread.sleep(4000);
-    } while (retry);
   }
   
   // skip the randoms - they can deadlock...
@@ -203,15 +204,14 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
   }
 
   class FullThrottleStopableIndexingThread extends StopableIndexingThread {
-    ThreadSafeClientConnManager cm = new ThreadSafeClientConnManager();
-    private DefaultHttpClient httpClient = new DefaultHttpClient(cm) ;
+    private HttpClient httpClient = HttpClientUtil.createClient(null);
     private volatile boolean stop = false;
     int clientIndex = 0;
     private ConcurrentUpdateSolrServer suss;
     private List<SolrServer> clients;  
     
     public FullThrottleStopableIndexingThread(List<SolrServer> clients,
-        int startI, boolean doDeletes) throws MalformedURLException {
+        int startI, boolean doDeletes) {
       super(startI, doDeletes);
       setName("FullThrottleStopableIndexingThread");
       setDaemon(true);
@@ -283,25 +283,21 @@ public class ChaosMonkeyNothingIsSafeTest extends FullSolrCloudTest {
         if (clientIndex > clients.size() - 1) {
           clientIndex = 0;
         }
-        try {
-          suss.shutdownNow();
-          suss = new ConcurrentUpdateSolrServer(
-              ((HttpSolrServer) clients.get(clientIndex)).getBaseURL(),
-              httpClient, 30, 3) {
-            public void handleError(Throwable ex) {
-              log.warn("suss error", ex);
-            }
-          };
-        } catch (MalformedURLException e1) {
-          e1.printStackTrace();
-        }
+        suss.shutdownNow();
+        suss = new ConcurrentUpdateSolrServer(
+            ((HttpSolrServer) clients.get(clientIndex)).getBaseURL(),
+            httpClient, 30, 3) {
+          public void handleError(Throwable ex) {
+            log.warn("suss error", ex);
+          }
+        };
       }
     }
     
     public void safeStop() {
       stop = true;
       suss.shutdownNow();
-      cm.shutdown();
+      httpClient.getConnectionManager().shutdown();
     }
 
     public int getFails() {

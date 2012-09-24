@@ -1,5 +1,5 @@
 package org.apache.lucene.index;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -47,7 +47,7 @@ final class NormsConsumerPerField extends InvertedDocEndConsumerPerField impleme
 
   @Override
   void finish() throws IOException {
-    if (fieldInfo.isIndexed && !fieldInfo.omitNorms) {
+    if (fieldInfo.isIndexed() && !fieldInfo.omitsNorms()) {
       similarity.computeNorm(fieldState, norm);
       
       if (norm.type() != null) {
@@ -69,7 +69,8 @@ final class NormsConsumerPerField extends InvertedDocEndConsumerPerField impleme
   
   private DocValuesConsumer getConsumer(Type type) throws IOException {
     if (consumer == null) {
-      fieldInfo.setNormValueType(type, false);
+      assert fieldInfo.getNormType() == null || fieldInfo.getNormType() == type;
+      fieldInfo.setNormValueType(type);
       consumer = parent.newConsumer(docState.docWriter.newPerDocWriteState(""), fieldInfo, type);
       this.initType = type;
     }

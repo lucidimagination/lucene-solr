@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,7 +24,6 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -56,7 +55,7 @@ public class TestPrefixRandom extends LuceneTestCase {
         .setMaxBufferedDocs(_TestUtil.nextInt(random(), 50, 1000)));
     
     Document doc = new Document();
-    Field field = newField("field", "", StringField.TYPE_UNSTORED);
+    Field field = newStringField("field", "", Field.Store.NO);
     doc.add(field);
 
     // we generate aweful prefixes: good for testing.
@@ -96,7 +95,7 @@ public class TestPrefixRandom extends LuceneTestCase {
     private class SimplePrefixTermsEnum extends FilteredTermsEnum {
       private final BytesRef prefix;
 
-      private SimplePrefixTermsEnum(TermsEnum tenum, BytesRef prefix) throws IOException {
+      private SimplePrefixTermsEnum(TermsEnum tenum, BytesRef prefix) {
         super(tenum);
         this.prefix = prefix;
         setInitialSeekTerm(new BytesRef(""));

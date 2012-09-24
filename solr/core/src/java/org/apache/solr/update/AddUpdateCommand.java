@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,6 +42,7 @@ public class AddUpdateCommand extends UpdateCommand {
    public boolean overwrite = true;
    
    public Term updateTerm;
+
    public int commitWithin = -1;
    
    public AddUpdateCommand(SolrQueryRequest req) {
@@ -114,6 +115,35 @@ public class AddUpdateCommand extends UpdateCommand {
      return "(null)";
    }
 
+  /**
+   * @return String id to hash
+   */
+  public String getHashableId() {
+    String id = null;
+    IndexSchema schema = req.getSchema();
+    SchemaField sf = schema.getUniqueKeyField();
+    if (sf != null) {
+      if (solrDoc != null) {
+        SolrInputField field = solrDoc.getField(sf.getName());
+        
+        int count = field == null ? 0 : field.getValueCount();
+        if (count == 0) {
+          if (overwrite) {
+            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                "Document is missing mandatory uniqueKey field: "
+                    + sf.getName());
+          }
+        } else if (count > 1) {
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+              "Document contains multiple values for uniqueKey field: " + field);
+        } else {
+          return field.getFirstValue().toString();
+        }
+      }
+    }
+    return id;
+  }
+  
    @Override
   public String toString() {
      StringBuilder sb = new StringBuilder(super.toString());

@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -147,7 +147,7 @@ public class RAMOutputStream extends IndexOutput {
     }
   }
 
-  private final void switchCurrentBuffer() throws IOException {
+  private final void switchCurrentBuffer() {
     if (currentBufferIndex == file.numBuffers()) {
       currentBuffer = file.addBuffer(BUFFER_SIZE);
     } else {
@@ -178,27 +178,5 @@ public class RAMOutputStream extends IndexOutput {
   /** Returns byte usage of all buffers. */
   public long sizeInBytes() {
     return (long) file.numBuffers() * (long) BUFFER_SIZE;
-  }
-  
-  @Override
-  public void copyBytes(DataInput input, long numBytes) throws IOException {
-    assert numBytes >= 0: "numBytes=" + numBytes;
-
-    while (numBytes > 0) {
-      if (bufferPosition == bufferLength) {
-        currentBufferIndex++;
-        switchCurrentBuffer();
-      }
-
-      int toCopy = currentBuffer.length - bufferPosition;
-      if (numBytes < toCopy) {
-        toCopy = (int) numBytes;
-      }
-      input.readBytes(currentBuffer, bufferPosition, toCopy, false);
-      numBytes -= toCopy;
-      bufferPosition += toCopy;
-    }
-
-  }
-  
+  }  
 }

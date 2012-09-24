@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,16 +17,12 @@
 package org.apache.solr.search;
 
 
-import org.apache.lucene.util.BytesRef;
-import org.apache.noggit.JSONUtil;
 import org.apache.noggit.ObjectBuilder;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.util.ByteUtils;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.update.DirectUpdateHandler2;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.UpdateHandler;
-import org.apache.solr.update.UpdateLog;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
@@ -34,15 +30,25 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.RandomAccessFile;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.solr.update.processor.DistributedUpdateProcessor.SEEN_LEADER;
+import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
+import static org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase;
 
 public class TestRecovery extends SolrTestCaseJ4 {
-  private static String SEEN_LEADER_VAL="true"; // value that means we've seen the leader and have version info (i.e. we are a non-leader replica)
+
+  // means that we've seen the leader and have version info (i.e. we are a non-leader replica)
+  private static String FROM_LEADER = DistribPhase.FROMLEADER.toString(); 
+
   private static int timeout=60;  // acquire timeout in seconds.  change this to a huge number when debugging to prevent threads from advancing.
 
   // TODO: fix this test to not require FSDirectory
@@ -56,13 +62,26 @@ public class TestRecovery extends SolrTestCaseJ4 {
   }
   
   @AfterClass
-  public static void afterClass() throws Exception {
+  public static void afterClass() {
     if (savedFactory == null) {
       System.clearProperty("solr.directoryFactory");
     } else {
       System.setProperty("solr.directoryFactory", savedFactory);
     }
   }
+
+
+  // since we make up fake versions in these tests, we can get messed up by a DBQ with a real version
+  // since Solr can think following updates were reordered.
+  @Override
+  public void clearIndex() {
+    try {
+      deleteByQueryAndGetVersion("*:*", params("_version_", Long.toString(-Long.MAX_VALUE), DISTRIB_UPDATE_PARAM,FROM_LEADER));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
 
   @Test
   public void testLogReplay() throws Exception {
@@ -214,12 +233,12 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
 
       // simulate updates from a leader
-      updateJ(jsonAdd(sdoc("id","B1", "_version_","1010")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","B11", "_version_","1015")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonDelQ("id:B1 id:B11 id:B2 id:B3"), params(SEEN_LEADER,SEEN_LEADER_VAL, "_version_","-1017"));
-      updateJ(jsonAdd(sdoc("id","B2", "_version_","1020")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","B3", "_version_","1030")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      deleteAndGetVersion("B1", params(SEEN_LEADER,SEEN_LEADER_VAL, "_version_","-2010"));
+      updateJ(jsonAdd(sdoc("id","B1", "_version_","1010")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","B11", "_version_","1015")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonDelQ("id:B1 id:B11 id:B2 id:B3"), params(DISTRIB_UPDATE_PARAM,FROM_LEADER, "_version_","-1017"));
+      updateJ(jsonAdd(sdoc("id","B2", "_version_","1020")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","B3", "_version_","1030")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      deleteAndGetVersion("B1", params(DISTRIB_UPDATE_PARAM,FROM_LEADER, "_version_","-2010"));
 
       assertJQ(req("qt","/get", "getVersions","6")
           ,"=={'versions':[-2010,1030,1020,-1017,1015,1010]}"
@@ -272,18 +291,18 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertEquals(1030L, ver.longValue());
 
       // add a reordered doc that shouldn't overwrite one in the index
-      updateJ(jsonAdd(sdoc("id","B3", "_version_","3")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","B3", "_version_","3")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       // reorder two buffered updates
-      updateJ(jsonAdd(sdoc("id","B4", "_version_","1040")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      deleteAndGetVersion("B4", params(SEEN_LEADER,SEEN_LEADER_VAL, "_version_","-940"));   // this update should not take affect
-      updateJ(jsonAdd(sdoc("id","B6", "_version_","1060")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","B5", "_version_","1050")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","B8", "_version_","1080")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","B4", "_version_","1040")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      deleteAndGetVersion("B4", params(DISTRIB_UPDATE_PARAM,FROM_LEADER, "_version_","-940"));   // this update should not take affect
+      updateJ(jsonAdd(sdoc("id","B6", "_version_","1060")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","B5", "_version_","1050")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","B8", "_version_","1080")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       // test that delete by query is at least buffered along with everything else so it will delete the
       // currently buffered id:8 (even if it doesn't currently support versioning)
-      updateJ("{\"delete\": { \"query\":\"id:B2 OR id:B8\" }}", params(SEEN_LEADER,SEEN_LEADER_VAL, "_version_","-3000"));
+      updateJ("{\"delete\": { \"query\":\"id:B2 OR id:B8\" }}", params(DISTRIB_UPDATE_PARAM,FROM_LEADER, "_version_","-3000"));
 
       assertJQ(req("qt","/get", "getVersions","13")
           ,"=={'versions':[-3000,1080,1050,1060,-940,1040,3,-2010,1030,1020,-1017,1015,1010]}"  // the "3" appears because versions aren't checked while buffering
@@ -298,12 +317,12 @@ public class TestRecovery extends SolrTestCaseJ4 {
       logReplay.release(1);
 
       // now add another update
-      updateJ(jsonAdd(sdoc("id","B7", "_version_","1070")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","B7", "_version_","1070")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       // a reordered update that should be dropped
-      deleteAndGetVersion("B5", params(SEEN_LEADER,SEEN_LEADER_VAL, "_version_","-950"));
+      deleteAndGetVersion("B5", params(DISTRIB_UPDATE_PARAM,FROM_LEADER, "_version_","-950"));
 
-      deleteAndGetVersion("B6", params(SEEN_LEADER,SEEN_LEADER_VAL, "_version_","-2060"));
+      deleteAndGetVersion("B6", params(DISTRIB_UPDATE_PARAM,FROM_LEADER, "_version_","-2060"));
 
       logReplay.release(1000);
       UpdateLog.RecoveryInfo recInfo = rinfoFuture.get();
@@ -376,14 +395,14 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
 
       // simulate updates from a leader
-      updateJ(jsonAdd(sdoc("id","C1", "_version_","101")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C2", "_version_","102")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C3", "_version_","103")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C1", "_version_","101")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C2", "_version_","102")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C3", "_version_","103")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       assertTrue(ulog.dropBufferedUpdates());
       ulog.bufferUpdates();
-      updateJ(jsonAdd(sdoc("id", "C4", "_version_","104")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id", "C5", "_version_","105")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id", "C4", "_version_","104")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id", "C5", "_version_","105")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       logReplay.release(1000);
       rinfoFuture = ulog.applyBufferedUpdates();
@@ -395,17 +414,17 @@ public class TestRecovery extends SolrTestCaseJ4 {
       );
 
       // this time add some docs first before buffering starts (so tlog won't be at pos 0)
-      updateJ(jsonAdd(sdoc("id","C100", "_version_","200")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C101", "_version_","201")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C100", "_version_","200")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C101", "_version_","201")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       ulog.bufferUpdates();
-      updateJ(jsonAdd(sdoc("id","C103", "_version_","203")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C104", "_version_","204")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C103", "_version_","203")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C104", "_version_","204")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       assertTrue(ulog.dropBufferedUpdates());
       ulog.bufferUpdates();
-      updateJ(jsonAdd(sdoc("id","C105", "_version_","205")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C106", "_version_","206")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C105", "_version_","205")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C106", "_version_","206")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       rinfoFuture = ulog.applyBufferedUpdates();
       rinfo = rinfoFuture.get();
@@ -428,14 +447,14 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       ulog.bufferUpdates();
       assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
-      updateJ(jsonAdd(sdoc("id","C301", "_version_","998")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C302", "_version_","999")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C301", "_version_","998")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C302", "_version_","999")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
       assertTrue(ulog.dropBufferedUpdates());
 
       // make sure we can overwrite with a lower version
       // TODO: is this functionality needed?
-      updateJ(jsonAdd(sdoc("id","C301", "_version_","301")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","C302", "_version_","302")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C301", "_version_","301")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","C302", "_version_","302")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       assertU(commit());
 
@@ -451,7 +470,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       );
 
 
-      updateJ(jsonAdd(sdoc("id","C2", "_version_","302")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","C2", "_version_","302")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
 
 
@@ -466,6 +485,108 @@ public class TestRecovery extends SolrTestCaseJ4 {
     }
 
   }
+
+
+  @Test
+  public void testBufferingFlags() throws Exception {
+
+    DirectUpdateHandler2.commitOnClose = false;
+    final Semaphore logReplayFinish = new Semaphore(0);
+
+    UpdateLog.testing_logReplayFinishHook = new Runnable() {
+      @Override
+      public void run() {
+        logReplayFinish.release();
+      }
+    };
+
+
+    SolrQueryRequest req = req();
+    UpdateHandler uhandler = req.getCore().getUpdateHandler();
+    UpdateLog ulog = uhandler.getUpdateLog();
+
+    try {
+      clearIndex();
+      assertU(commit());
+
+      assertEquals(UpdateLog.State.ACTIVE, ulog.getState());
+      ulog.bufferUpdates();
+
+      // simulate updates from a leader
+      updateJ(jsonAdd(sdoc("id","Q1", "_version_","101")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","Q2", "_version_","102")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","Q3", "_version_","103")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
+
+      req.close();
+      h.close();
+      createCore();
+
+      req = req();
+      uhandler = req.getCore().getUpdateHandler();
+      ulog = uhandler.getUpdateLog();
+
+      logReplayFinish.acquire();  // wait for replay to finish
+
+      assertTrue((ulog.getStartingOperation() & UpdateLog.FLAG_GAP) != 0);   // since we died while buffering, we should see this last
+
+      //
+      // Try again to ensure that the previous log replay didn't wipe out our flags
+      //
+
+      req.close();
+      h.close();
+      createCore();
+
+      req = req();
+      uhandler = req.getCore().getUpdateHandler();
+      ulog = uhandler.getUpdateLog();
+
+      assertTrue((ulog.getStartingOperation() & UpdateLog.FLAG_GAP) != 0);
+
+      // now do some normal non-buffered adds
+      updateJ(jsonAdd(sdoc("id","Q4", "_version_","114")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","Q5", "_version_","115")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","Q6", "_version_","116")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      assertU(commit());
+
+      req.close();
+      h.close();
+      createCore();
+
+      req = req();
+      uhandler = req.getCore().getUpdateHandler();
+      ulog = uhandler.getUpdateLog();
+
+      assertTrue((ulog.getStartingOperation() & UpdateLog.FLAG_GAP) == 0);
+
+      ulog.bufferUpdates();
+      // simulate receiving no updates
+      ulog.applyBufferedUpdates();
+      updateJ(jsonAdd(sdoc("id","Q7", "_version_","117")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER)); // do another add to make sure flags are back to normal
+
+      req.close();
+      h.close();
+      createCore();
+
+      req = req();
+      uhandler = req.getCore().getUpdateHandler();
+      ulog = uhandler.getUpdateLog();
+
+      assertTrue((ulog.getStartingOperation() & UpdateLog.FLAG_GAP) == 0); // check flags on Q7
+
+      logReplayFinish.acquire();
+      assertEquals(UpdateLog.State.ACTIVE, ulog.getState()); // leave each test method in a good state
+    } finally {
+      DirectUpdateHandler2.commitOnClose = true;
+      UpdateLog.testing_logReplayHook = null;
+      UpdateLog.testing_logReplayFinishHook = null;
+
+      req().close();
+    }
+
+  }
+
 
 
   // make sure that on a restart, versions don't start too low
@@ -729,9 +850,9 @@ public class TestRecovery extends SolrTestCaseJ4 {
       // Now test that the bad log file doesn't mess up retrieving latest versions
       //
 
-      updateJ(jsonAdd(sdoc("id","F4", "_version_","104")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","F5", "_version_","105")), params(SEEN_LEADER,SEEN_LEADER_VAL));
-      updateJ(jsonAdd(sdoc("id","F6", "_version_","106")), params(SEEN_LEADER,SEEN_LEADER_VAL));
+      updateJ(jsonAdd(sdoc("id","F4", "_version_","104")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","F5", "_version_","105")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","F6", "_version_","106")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
 
       // This currently skips the bad log file and also returns the version of the clearIndex (del *:*)
       // assertJQ(req("qt","/get", "getVersions","6"), "/versions==[106,105,104]");
@@ -743,6 +864,72 @@ public class TestRecovery extends SolrTestCaseJ4 {
       UpdateLog.testing_logReplayFinishHook = null;
     }
   }
+
+
+  //
+  // test that a corrupt tlog doesn't stop us from coming up
+  //
+  @Test
+  public void testCorruptLog() throws Exception {
+    try {
+      DirectUpdateHandler2.commitOnClose = false;
+
+      File logDir = h.getCore().getUpdateHandler().getUpdateLog().getLogDir();
+
+      clearIndex();
+      assertU(commit());
+
+      assertU(adoc("id","G1"));
+      assertU(adoc("id","G2"));
+      assertU(adoc("id","G3"));
+
+      h.close();
+
+
+      String[] files = UpdateLog.getLogList(logDir);
+      Arrays.sort(files);
+      RandomAccessFile raf = new RandomAccessFile(new File(logDir, files[files.length-1]), "rw");
+      long len = raf.length();
+      raf.seek(0);  // seek to start
+      raf.write(new byte[(int)len]);  // zero out file
+      raf.close();
+
+
+      ignoreException("Failure to open existing log file");  // this is what the corrupted log currently produces... subject to change.
+      createCore();
+      resetExceptionIgnores();
+
+      // just make sure it responds
+      assertJQ(req("q","*:*") ,"/response/numFound==0");
+
+      //
+      // Now test that the bad log file doesn't mess up retrieving latest versions
+      //
+
+      updateJ(jsonAdd(sdoc("id","G4", "_version_","104")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","G5", "_version_","105")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","G6", "_version_","106")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+
+      // This currently skips the bad log file and also returns the version of the clearIndex (del *:*)
+      // assertJQ(req("qt","/get", "getVersions","6"), "/versions==[106,105,104]");
+      assertJQ(req("qt","/get", "getVersions","3"), "/versions==[106,105,104]");
+
+      assertU(commit());
+
+      assertJQ(req("q","*:*") ,"/response/numFound==3");
+
+      // This messes up some other tests (on windows) if we don't remove the bad log.
+      // This *should* hopefully just be because the tests are too fragile and not because of real bugs - but it should be investigated further.
+      deleteLogs();
+
+    } finally {
+      DirectUpdateHandler2.commitOnClose = true;
+      UpdateLog.testing_logReplayHook = null;
+      UpdateLog.testing_logReplayFinishHook = null;
+    }
+  }
+
+
 
   // in rare circumstances, two logs can be left uncapped (lacking a commit at the end signifying that all the content in the log was committed)
   @Test
@@ -801,7 +988,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       // WARNING... assumes format of .00000n where n is less than 9
       long logNumber = Long.parseLong(fname.substring(fname.lastIndexOf(".") + 1));
-      String fname2 = String.format(Locale.ENGLISH, 
+      String fname2 = String.format(Locale.ROOT,
           UpdateLog.LOG_FILENAME_PATTERN,
           UpdateLog.TLOG_NAME,
           logNumber + 1);
@@ -854,13 +1041,19 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
     h.close();
 
-    String[] files = UpdateLog.getLogList(logDir);
-    for (String file : files) {
-      new File(logDir, file).delete();
-    }
+    try {
+      String[] files = UpdateLog.getLogList(logDir);
+      for (String file : files) {
+        new File(logDir, file).delete();
+      }
 
-    assertEquals(0, UpdateLog.getLogList(logDir).length);
-    createCore();
+      assertEquals(0, UpdateLog.getLogList(logDir).length);
+    } finally {
+      // make sure we create the core again, even if the assert fails so it won't mess
+      // up the next test.
+      createCore();
+      assertJQ(req("q","*:*") ,"/response/numFound==");   // ensure it works
+    }
   }
 
   private static Long getVer(SolrQueryRequest req) throws Exception {

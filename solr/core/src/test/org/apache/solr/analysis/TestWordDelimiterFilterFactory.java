@@ -1,4 +1,6 @@
-/**
+package org.apache.solr.analysis;
+
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,8 +17,6 @@
  * limitations under the License.
  */
 
-package org.apache.solr.analysis;
-
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +25,7 @@ import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.lucene.analysis.miscellaneous.WordDelimiterFilterFactory;
 import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.core.SolrResourceLoader;
 import org.junit.BeforeClass;
@@ -33,6 +34,7 @@ import org.junit.Test;
 /**
  * New WordDelimiterFilter tests... most of the tests are in ConvertedLegacyTest
  */
+// TODO: add a low-level test for this factory
 public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
 
   @BeforeClass
@@ -197,7 +199,7 @@ public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
   public void testCustomTypes() throws Exception {
     String testText = "I borrowed $5,400.00 at 25% interest-rate";
     WordDelimiterFilterFactory factoryDefault = new WordDelimiterFilterFactory();
-    ResourceLoader loader = new SolrResourceLoader(null, null);
+    ResourceLoader loader = new SolrResourceLoader("solr/collection1");
     Map<String,String> args = new HashMap<String,String>();
     args.put("generateWordParts", "1");
     args.put("generateNumberParts", "1");

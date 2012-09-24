@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,10 @@ package org.apache.solr.search;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.StoredFieldVisitor;
@@ -365,7 +367,7 @@ public class TestDocSet extends LuceneTestCase {
 
       @Override
       public FieldInfos getFieldInfos() {
-        return new FieldInfos();
+        return new FieldInfos(new FieldInfo[0]);
       }
 
       @Override
@@ -453,7 +455,7 @@ public class TestDocSet extends LuceneTestCase {
   }
 
   public void doFilterTest(IndexReader reader) throws IOException {
-    IndexReaderContext topLevelContext = reader.getTopReaderContext();
+    IndexReaderContext topLevelContext = reader.getContext();
     OpenBitSet bs = getRandomSet(reader.maxDoc(), rand.nextInt(reader.maxDoc()+1));
     DocSet a = new BitDocSet(bs);
     DocSet b = getIntDocSet(bs);
@@ -470,7 +472,7 @@ public class TestDocSet extends LuceneTestCase {
 
     DocIdSet da;
     DocIdSet db;
-    AtomicReaderContext[] leaves = topLevelContext.leaves();
+    List<AtomicReaderContext> leaves = topLevelContext.leaves();
 
     // first test in-sequence sub readers
     for (AtomicReaderContext readerContext : leaves) {
@@ -479,10 +481,10 @@ public class TestDocSet extends LuceneTestCase {
       doTestIteratorEqual(da, db);
     }  
 
-    int nReaders = leaves.length;
+    int nReaders = leaves.size();
     // now test out-of-sequence sub readers
     for (int i=0; i<nReaders; i++) {
-      AtomicReaderContext readerContext = leaves[rand.nextInt(nReaders)];
+      AtomicReaderContext readerContext = leaves.get(rand.nextInt(nReaders));
       da = fa.getDocIdSet(readerContext, null);
       db = fb.getDocIdSet(readerContext, null);
       doTestIteratorEqual(da, db);

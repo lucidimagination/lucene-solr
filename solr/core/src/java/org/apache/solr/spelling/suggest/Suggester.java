@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,10 +30,12 @@ import org.apache.lucene.analysis.Token;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.spell.Dictionary;
 import org.apache.lucene.search.spell.HighFrequencyDictionary;
+import org.apache.lucene.search.spell.SuggestMode;
 import org.apache.lucene.search.suggest.FileDictionary;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.Lookup.LookupResult;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.IOUtils;
 
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
@@ -120,7 +122,7 @@ public class Suggester extends SolrSpellChecker {
   }
   
   @Override
-  public void build(SolrCore core, SolrIndexSearcher searcher) {
+  public void build(SolrCore core, SolrIndexSearcher searcher) throws IOException {
     LOG.info("build()");
     if (sourceLocation == null) {
       reader = searcher.getIndexReader();
@@ -128,30 +130,26 @@ public class Suggester extends SolrSpellChecker {
     } else {
       try {
         dictionary = new FileDictionary(new InputStreamReader(
-                core.getResourceLoader().openResource(sourceLocation), "UTF-8"));
+                core.getResourceLoader().openResource(sourceLocation), IOUtils.CHARSET_UTF_8));
       } catch (UnsupportedEncodingException e) {
         // should not happen
         LOG.error("should not happen", e);
       }
     }
-    try {
-      lookup.build(dictionary);
-      if (storeDir != null) {
-        File target = new File(storeDir, factory.storeFileName());
-        if(!lookup.store(new FileOutputStream(target))) {
-          if (sourceLocation == null) {
-            assert reader != null && field != null;
-            LOG.error("Store Lookup build from index on field: " + field + " failed reader has: " + reader.maxDoc() + " docs");
-          } else {
-            LOG.error("Store Lookup build from sourceloaction: " + sourceLocation + " failed");
-          }
-        } else {
-          LOG.info("Stored suggest data to: " + target.getAbsolutePath());
-        }
-      }
 
-    } catch (Exception e) {
-      LOG.error("Error while building or storing Suggester data", e);
+    lookup.build(dictionary);
+    if (storeDir != null) {
+      File target = new File(storeDir, factory.storeFileName());
+      if(!lookup.store(new FileOutputStream(target))) {
+        if (sourceLocation == null) {
+          assert reader != null && field != null;
+          LOG.error("Store Lookup build from index on field: " + field + " failed reader has: " + reader.maxDoc() + " docs");
+        } else {
+          LOG.error("Store Lookup build from sourceloaction: " + sourceLocation + " failed");
+        }
+      } else {
+        LOG.info("Stored suggest data to: " + target.getAbsolutePath());
+      }
     }
   }
 
@@ -160,8 +158,13 @@ public class Suggester extends SolrSpellChecker {
     LOG.info("reload()");
     if (dictionary == null && storeDir != null) {
       // this may be a firstSearcher event, try loading it
-      if (lookup.load(new FileInputStream(new File(storeDir, factory.storeFileName())))) {
-        return;  // loaded ok
+      FileInputStream is = new FileInputStream(new File(storeDir, factory.storeFileName()));
+      try {
+        if (lookup.load(is)) {
+          return;  // loaded ok
+        }
+      } finally {
+        IOUtils.closeWhileHandlingException(is);
       }
       LOG.debug("load failed, need to build Lookup again");
     }
@@ -185,11 +188,11 @@ public class Suggester extends SolrSpellChecker {
       scratch.offset = 0;
       scratch.length = t.length();
       List<LookupResult> suggestions = lookup.lookup(scratch,
-          options.onlyMorePopular, options.count);
+          (options.suggestMode == SuggestMode.SUGGEST_MORE_POPULAR), options.count);
       if (suggestions == null) {
         continue;
       }
-      if (!options.onlyMorePopular) {
+      if (options.suggestMode != SuggestMode.SUGGEST_MORE_POPULAR) {
         Collections.sort(suggestions);
       }
       for (LookupResult lr : suggestions) {

@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -54,7 +54,7 @@ public class WindowsDirectory extends FSDirectory {
    * @param path the path of the directory
    * @param lockFactory the lock factory to use, or null for the default
    * ({@link NativeFSLockFactory});
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public WindowsDirectory(File path, LockFactory lockFactory) throws IOException {
     super(path, lockFactory);
@@ -63,7 +63,7 @@ public class WindowsDirectory extends FSDirectory {
   /** Create a new WindowsDirectory for the named location and {@link NativeFSLockFactory}.
    *
    * @param path the path of the directory
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public WindowsDirectory(File path) throws IOException {
     super(path, null);

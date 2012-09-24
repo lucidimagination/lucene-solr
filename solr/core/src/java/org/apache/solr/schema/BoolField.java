@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -71,9 +71,8 @@ public class BoolField extends PrimitiveFieldType {
         boolean done = false;
 
         @Override
-        public void reset(Reader input) throws IOException {
+        public void reset() throws IOException {
           done = false;
-          super.reset(input);
         }
 
         @Override

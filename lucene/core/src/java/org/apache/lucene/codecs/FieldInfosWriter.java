@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,5 +28,12 @@ import org.apache.lucene.store.IOContext;
  * @lucene.experimental
  */
 public abstract class FieldInfosWriter {
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected FieldInfosWriter() {
+  }
+
+  /** Writes the provided {@link FieldInfos} to the
+   *  directory. */
   public abstract void write(Directory directory, String segmentName, FieldInfos infos, IOContext context) throws IOException;
 }

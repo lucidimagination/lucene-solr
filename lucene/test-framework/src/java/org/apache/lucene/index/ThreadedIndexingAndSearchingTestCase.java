@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,8 +29,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
@@ -62,7 +60,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
   protected final AtomicInteger delCount = new AtomicInteger();
   protected final AtomicInteger packCount = new AtomicInteger();
 
-  protected Directory dir;
+  protected MockDirectoryWrapper dir;
   protected IndexWriter writer;
 
   private static class SubDocs {
@@ -119,8 +117,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
                                          final long stopTime,
                                          final Set<String> delIDs,
                                          final Set<String> delPackIDs,
-                                         final List<SubDocs> allSubDocs)
-    throws Exception {
+                                         final List<SubDocs> allSubDocs) {
     final Thread[] threads = new Thread[numThreads];
     for(int thread=0;thread<numThreads;thread++) {
       threads[thread] = new Thread() {
@@ -158,7 +155,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
                 final String addedField;
                 if (random().nextBoolean()) {
                   addedField = "extra" + random().nextInt(40);
-                  doc.add(newField(addedField, "a random field", TextField.TYPE_STORED));
+                  doc.add(newTextField(addedField, "a random field", Field.Store.YES));
                 } else {
                   addedField = null;
                 }
@@ -181,7 +178,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
                       packID = packCount.getAndIncrement() + "";
                     }
 
-                    final Field packIDField = newField("packID", packID, StringField.TYPE_STORED);
+                    final Field packIDField = newStringField("packID", packID, Field.Store.YES);
                     final List<String> docIDs = new ArrayList<String>();
                     final SubDocs subDocs = new SubDocs(packID, docIDs);
                     final List<Document> docsList = new ArrayList<Document>();
@@ -334,6 +331,20 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
               try {
                 final IndexSearcher s = getCurrentSearcher();
                 try {
+                  // Verify 1) IW is correctly setting
+                  // diagnostics, and 2) segment warming for
+                  // merged segments is actually happening:
+                  for(final AtomicReaderContext sub : s.getIndexReader().leaves()) {
+                    SegmentReader segReader = (SegmentReader) sub.reader();
+                    Map<String,String> diagnostics = segReader.getSegmentInfo().info.getDiagnostics();
+                    assertNotNull(diagnostics);
+                    String source = diagnostics.get("source");
+                    assertNotNull(source);
+                    if (source.equals("merge")) {
+                      assertTrue("sub reader " + sub + " wasn't warmed: warmed=" + warmed + " diagnostics=" + diagnostics + " si=" + segReader.getSegmentInfo(),
+                                 !assertMergedSegmentsWarmed || warmed.containsKey(segReader.core));
+                    }
+                  }
                   if (s.getIndexReader().numDocs() > 0) {
                     smokeTestSearcher(s);
                     Fields fields = MultiFields.getFields(s.getIndexReader());
@@ -405,6 +416,10 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
   protected void doClose() throws Exception {
   }
 
+  protected boolean assertMergedSegmentsWarmed = true;
+
+  private final Map<SegmentCoreReaders,Boolean> warmed = Collections.synchronizedMap(new WeakHashMap<SegmentCoreReaders,Boolean>());
+
   public void runTest(String testName) throws Exception {
 
     failed.set(false);
@@ -417,8 +432,8 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
     Random random = new Random(random().nextLong());
     final LineFileDocs docs = new LineFileDocs(random, defaultCodecSupportsDocValues());
     final File tempDir = _TestUtil.getTempDir(testName);
-    dir = newFSDirectory(tempDir);
-    ((MockDirectoryWrapper) dir).setCheckIndexOnClose(false); // don't double-checkIndex, we do it ourselves.
+    dir = newMockFSDirectory(tempDir); // some subclasses rely on this being MDW
+    dir.setCheckIndexOnClose(false); // don't double-checkIndex, we do it ourselves.
     final IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, 
         new MockAnalyzer(random())).setInfoStream(new FailOnNonBulkMergesInfoStream());
 
@@ -442,6 +457,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
         if (VERBOSE) {
           System.out.println("TEST: now warm merged reader=" + reader);
         }
+        warmed.put(((SegmentReader) reader).core, Boolean.TRUE);
         final int maxDoc = reader.maxDoc();
         final Bits liveDocs = reader.getLiveDocs();
         int sum = 0;

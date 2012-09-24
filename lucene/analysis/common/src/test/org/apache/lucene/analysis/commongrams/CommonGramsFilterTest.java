@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -39,6 +39,7 @@ public class CommonGramsFilterTest extends BaseTokenStreamTestCase {
     CommonGramsFilter cgf = new CommonGramsFilter(TEST_VERSION_CURRENT, wt, commonWords);
     
     CharTermAttribute term = cgf.addAttribute(CharTermAttribute.class);
+    cgf.reset();
     assertTrue(cgf.incrementToken());
     assertEquals("How", term.toString());
     assertTrue(cgf.incrementToken());
@@ -48,7 +49,7 @@ public class CommonGramsFilterTest extends BaseTokenStreamTestCase {
     assertTrue(cgf.incrementToken());
     assertEquals("the_s", term.toString());
     
-    wt.reset(new StringReader(input));
+    wt.setReader(new StringReader(input));
     cgf.reset();
     assertTrue(cgf.incrementToken());
     assertEquals("How", term.toString());
@@ -61,12 +62,13 @@ public class CommonGramsFilterTest extends BaseTokenStreamTestCase {
     CommonGramsQueryFilter nsf = new CommonGramsQueryFilter(cgf);
     
     CharTermAttribute term = wt.addAttribute(CharTermAttribute.class);
+    nsf.reset();
     assertTrue(nsf.incrementToken());
     assertEquals("How_the", term.toString());
     assertTrue(nsf.incrementToken());
     assertEquals("the_s", term.toString());
     
-    wt.reset(new StringReader(input));
+    wt.setReader(new StringReader(input));
     nsf.reset();
     assertTrue(nsf.incrementToken());
     assertEquals("How_the", term.toString());
@@ -81,7 +83,6 @@ public class CommonGramsFilterTest extends BaseTokenStreamTestCase {
    * "foo bar the"=>"foo:1|bar:2,bar-the:2|the:3=> "foo" "bar-the" (2 tokens
    * out)
    * 
-   * @return Map<String,String>
    */
   public void testCommonGramsQueryFilter() throws Exception {
     Analyzer a = new Analyzer() {
@@ -319,7 +320,7 @@ public class CommonGramsFilterTest extends BaseTokenStreamTestCase {
       }
     };
     
-    checkRandomData(random(), a, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
     
     Analyzer b = new Analyzer() {
 
@@ -331,6 +332,6 @@ public class CommonGramsFilterTest extends BaseTokenStreamTestCase {
       }
     };
     
-    checkRandomData(random(), b, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), b, 1000*RANDOM_MULTIPLIER);
   }
 }

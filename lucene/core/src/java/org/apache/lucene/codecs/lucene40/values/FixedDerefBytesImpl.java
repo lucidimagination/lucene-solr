@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -39,14 +39,15 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 class FixedDerefBytesImpl {
 
-  static final String CODEC_NAME = "FixedDerefBytes";
+  static final String CODEC_NAME_IDX = "FixedDerefBytesIdx";
+  static final String CODEC_NAME_DAT = "FixedDerefBytesDat";
+
   static final int VERSION_START = 0;
   static final int VERSION_CURRENT = VERSION_START;
 
   public static class Writer extends DerefBytesWriterBase {
-    public Writer(Directory dir, String id, Counter bytesUsed, IOContext context)
-        throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context, Type.BYTES_FIXED_DEREF);
+    public Writer(Directory dir, String id, Counter bytesUsed, IOContext context) {
+      super(dir, id, CODEC_NAME_IDX, CODEC_NAME_DAT, VERSION_CURRENT, bytesUsed, context, Type.BYTES_FIXED_DEREF);
     }
 
     @Override
@@ -65,13 +66,14 @@ class FixedDerefBytesImpl {
       idxOut.writeInt(numValues);
       writeIndex(idxOut, docCount, numValues, docToEntry);
     }
+
   }
 
   public static class FixedDerefReader extends BytesReaderBase {
     private final int size;
     private final int numValuesStored;
     FixedDerefReader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_START, true, context, Type.BYTES_FIXED_DEREF);
+      super(dir, id, CODEC_NAME_IDX, CODEC_NAME_DAT, VERSION_START, true, context, Type.BYTES_FIXED_DEREF);
       size = datIn.readInt();
       numValuesStored = idxIn.readInt();
     }
@@ -107,8 +109,7 @@ class FixedDerefBytesImpl {
 
     @Override
     public BytesRef getBytes(int docID, BytesRef bytesRef) {
-      final int id = (int) addresses.get(docID);
-      return data.fillSlice(bytesRef, (id * size), size);
+      return data.fillSlice(bytesRef, addresses.get(docID) * size, size);
     }
 
   }

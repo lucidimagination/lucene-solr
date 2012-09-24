@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,6 +34,8 @@ public class LogByteSizeMergePolicy extends LogMergePolicy {
    *  or larger will never be merged during forceMerge.  @see setMaxMergeMBForForceMerge */
   public static final double DEFAULT_MAX_MERGE_MB_FOR_FORCED_MERGE = Long.MAX_VALUE;
 
+  /** Sole constructor, setting all settings to their
+   *  defaults. */
   public LogByteSizeMergePolicy() {
     minMergeSize = (long) (DEFAULT_MIN_MERGE_MB*1024*1024);
     maxMergeSize = (long) (DEFAULT_MAX_MERGE_MB*1024*1024);
@@ -41,7 +43,7 @@ public class LogByteSizeMergePolicy extends LogMergePolicy {
   }
   
   @Override
-  protected long size(SegmentInfo info) throws IOException {
+  protected long size(SegmentInfoPerCommit info) throws IOException {
     return sizeBytes(info);
   }
 

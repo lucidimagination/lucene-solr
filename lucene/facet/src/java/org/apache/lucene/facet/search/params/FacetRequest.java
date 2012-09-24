@@ -16,7 +16,7 @@ import org.apache.lucene.facet.search.cache.CategoryListCache;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -318,7 +318,7 @@ public abstract class FacetRequest implements Cloneable {
    *          index reader in effect.
    * @param taxonomy
    *          reader of taxonomy in effect.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public abstract Aggregator createAggregator(boolean useComplements,
       FacetArrays arrays, IndexReader indexReader,

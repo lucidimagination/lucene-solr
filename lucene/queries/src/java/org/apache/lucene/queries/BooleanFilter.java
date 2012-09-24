@@ -1,6 +1,6 @@
 package org.apache.lucene.queries;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -129,7 +129,7 @@ public class BooleanFilter extends Filter implements Iterable<FilterClause> {
   
   /** Returns an iterator on the clauses in this query. It implements the {@link Iterable} interface to
    * make it possible to do:
-   * <pre>for (FilterClause clause : booleanFilter) {}</pre>
+   * <pre class="prettyprint">for (FilterClause clause : booleanFilter) {}</pre>
    */
   public final Iterator<FilterClause> iterator() {
     return clauses().iterator();

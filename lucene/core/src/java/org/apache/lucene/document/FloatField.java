@@ -1,6 +1,6 @@
 package org.apache.lucene.document;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,18 +26,18 @@ import org.apache.lucene.util.NumericUtils;
 
 /**
  * <p>
- * This class provides a {@link Field} that enables indexing of float values
+ * Field that indexes <code>float</code> values
  * for efficient range filtering and sorting. Here's an example usage:
  * 
- * <pre>
- * document.add(new FloatField(name, 6.0F));
+ * <pre class="prettyprint">
+ * document.add(new FloatField(name, 6.0F, Field.Store.NO));
  * </pre>
  * 
  * For optimal performance, re-use the <code>FloatField</code> and
  * {@link Document} instance for more than one document:
  * 
- * <pre>
- *  FloatField field = new FloatField(name, 0.0F);
+ * <pre class="prettyprint">
+ *  FloatField field = new FloatField(name, 0.0F, Field.Store.NO);
  *  Document document = new Document();
  *  document.add(field);
  * 
@@ -58,10 +58,6 @@ import org.apache.lucene.util.NumericUtils;
  * <code>FloatField</code>, use the normal numeric sort types, eg
  * {@link org.apache.lucene.search.SortField.Type#FLOAT}. <code>FloatField</code> 
  * values can also be loaded directly from {@link FieldCache}.</p>
- *
- * <p>By default, a <code>FloatField</code>'s value is not stored but
- * is indexed for range filtering and sorting.  You can use
- * {@link StoredField} to also store the value.
  *
  * <p>You may add the same field name as an <code>FloatField</code> to
  * the same document more than once.  Range querying and
@@ -118,26 +114,57 @@ import org.apache.lucene.util.NumericUtils;
 
 public final class FloatField extends Field {
   
-  public static final FieldType TYPE = new FieldType();
+  /** 
+   * Type for a FloatField that is not stored:
+   * normalization factors, frequencies, and positions are omitted.
+   */
+  public static final FieldType TYPE_NOT_STORED = new FieldType();
   static {
-    TYPE.setIndexed(true);
-    TYPE.setTokenized(true);
-    TYPE.setOmitNorms(true);
-    TYPE.setIndexOptions(IndexOptions.DOCS_ONLY);
-    TYPE.setNumericType(FieldType.NumericType.FLOAT);
-    TYPE.freeze();
+    TYPE_NOT_STORED.setIndexed(true);
+    TYPE_NOT_STORED.setTokenized(true);
+    TYPE_NOT_STORED.setOmitNorms(true);
+    TYPE_NOT_STORED.setIndexOptions(IndexOptions.DOCS_ONLY);
+    TYPE_NOT_STORED.setNumericType(FieldType.NumericType.FLOAT);
+    TYPE_NOT_STORED.freeze();
   }
 
-  /** Creates an LongField with the provided value
+  /** 
+   * Type for a stored FloatField:
+   * normalization factors, frequencies, and positions are omitted.
+   */
+  public static final FieldType TYPE_STORED = new FieldType();
+  static {
+    TYPE_STORED.setIndexed(true);
+    TYPE_STORED.setTokenized(true);
+    TYPE_STORED.setOmitNorms(true);
+    TYPE_STORED.setIndexOptions(IndexOptions.DOCS_ONLY);
+    TYPE_STORED.setNumericType(FieldType.NumericType.FLOAT);
+    TYPE_STORED.setStored(true);
+    TYPE_STORED.freeze();
+  }
+
+  /** Creates a stored or un-stored FloatField with the provided value
    *  and default <code>precisionStep</code> {@link
-   *  NumericUtils#PRECISION_STEP_DEFAULT} (4). */
-  public FloatField(String name, float value) {
-    super(name, TYPE);
+   *  NumericUtils#PRECISION_STEP_DEFAULT} (4). 
+   *  @param name field name
+   *  @param value 32-bit double value
+   *  @param stored Store.YES if the content should also be stored
+   *  @throws IllegalArgumentException if the field name is null.
+   */
+  public FloatField(String name, float value, Store stored) {
+    super(name, stored == Store.YES ? TYPE_STORED : TYPE_NOT_STORED);
     fieldsData = Float.valueOf(value);
   }
   
   /** Expert: allows you to customize the {@link
-   *  FieldType}. */
+   *  FieldType}. 
+   *  @param name field name
+   *  @param value 32-bit float value
+   *  @param type customized field type: must have {@link FieldType#numericType()}
+   *         of {@link FieldType.NumericType#FLOAT}.
+   *  @throws IllegalArgumentException if the field name or type is null, or
+   *          if the field type does not have a FLOAT numericType()
+   */
   public FloatField(String name, float value, FieldType type) {
     super(name, type);
     if (type.numericType() != FieldType.NumericType.FLOAT) {

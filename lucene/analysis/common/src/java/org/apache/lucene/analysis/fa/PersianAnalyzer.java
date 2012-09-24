@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.fa;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.CharReader;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.ar.ArabicLetterTokenizer;
@@ -36,7 +35,7 @@ import org.apache.lucene.util.Version;
 /**
  * {@link Analyzer} for Persian.
  * <p>
- * This Analyzer uses {@link ArabicLetterTokenizer} which implies tokenizing around
+ * This Analyzer uses {@link PersianCharFilter} which implies tokenizing around
  * zero-width non-joiner in addition to whitespace. Some persian-specific variant forms (such as farsi
  * yeh and keheh) are standardized. "Stemming" is accomplished via stopwords.
  * </p>
@@ -139,9 +138,9 @@ public final class PersianAnalyzer extends StopwordAnalyzerBase {
    * Wraps the Reader with {@link PersianCharFilter}
    */
   @Override
-  protected Reader initReader(Reader reader) {
+  protected Reader initReader(String fieldName, Reader reader) {
     return matchVersion.onOrAfter(Version.LUCENE_31) ? 
-       new PersianCharFilter(CharReader.get(reader)) :
+       new PersianCharFilter(reader) :
        reader;
   }
 }

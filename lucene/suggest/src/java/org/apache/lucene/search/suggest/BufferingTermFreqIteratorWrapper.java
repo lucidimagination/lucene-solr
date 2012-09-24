@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,11 +29,16 @@ import org.apache.lucene.util.BytesRef;
  */
 public class BufferingTermFreqIteratorWrapper implements TermFreqIterator {
   // TODO keep this for now
+  /** buffered term entries */
   protected BytesRefList entries = new BytesRefList();
+  /** current buffer position */
   protected int curPos = -1;
+  /** buffered weights, parallel with {@link #entries} */
   protected long[] freqs = new long[1];
   private final BytesRef spare = new BytesRef();
   private final Comparator<BytesRef> comp;
+  
+  /** Creates a new iterator, buffering entries from the specified iterator */
   public BufferingTermFreqIteratorWrapper(TermFreqIterator source) throws IOException {
     this.comp = source.getComparator();
     BytesRef spare;

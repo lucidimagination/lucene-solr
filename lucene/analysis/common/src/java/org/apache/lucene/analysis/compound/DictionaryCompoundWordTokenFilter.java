@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.compound;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -57,6 +57,9 @@ public class DictionaryCompoundWordTokenFilter extends CompoundWordTokenFilterBa
    */
   public DictionaryCompoundWordTokenFilter(Version matchVersion, TokenStream input, CharArraySet dictionary) {
     super(matchVersion, input, dictionary);
+    if (dictionary == null) {
+      throw new IllegalArgumentException("dictionary cannot be null");
+    }
   }
   
   /**
@@ -83,6 +86,9 @@ public class DictionaryCompoundWordTokenFilter extends CompoundWordTokenFilterBa
   public DictionaryCompoundWordTokenFilter(Version matchVersion, TokenStream input, CharArraySet dictionary,
       int minWordSize, int minSubwordSize, int maxSubwordSize, boolean onlyLongestMatch) {
     super(matchVersion, input, dictionary, minWordSize, minSubwordSize, maxSubwordSize, onlyLongestMatch);
+    if (dictionary == null) {
+      throw new IllegalArgumentException("dictionary cannot be null");
+    }
   }
 
   @Override

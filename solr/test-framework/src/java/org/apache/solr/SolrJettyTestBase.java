@@ -1,6 +1,6 @@
 package org.apache.solr;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -86,7 +86,7 @@ abstract public class SolrJettyTestBase extends SolrTestCaseJ4
     if (jetty != null) {
       try {
         // setup the server...
-        String url = "http://localhost:"+port+context;
+        String url = "http://127.0.0.1:"+port+context;
         HttpSolrServer s = new HttpSolrServer( url );
         s.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
         s.setDefaultMaxConnectionsPerHost(100);

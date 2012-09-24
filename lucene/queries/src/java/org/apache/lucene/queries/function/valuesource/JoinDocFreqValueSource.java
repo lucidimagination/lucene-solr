@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,11 +22,15 @@ import java.util.Map;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.ReaderUtil;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.docvalues.IntDocValues;
 import org.apache.lucene.search.FieldCache.DocTerms;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.ReaderUtil;
+import org.apache.lucene.util.packed.PackedInts;
 
 /**
  * Use a field value and find the Document Frequency within another field.
@@ -52,20 +56,24 @@ public class JoinDocFreqValueSource extends FieldCacheSource {
   @Override
   public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException
   {
-    final DocTerms terms = cache.getTerms(readerContext.reader(), field, true );
+    final DocTerms terms = cache.getTerms(readerContext.reader(), field, PackedInts.FAST);
     final IndexReader top = ReaderUtil.getTopLevelContext(readerContext).reader();
+    Terms t = MultiFields.getTerms(top, qfield);
+    final TermsEnum termsEnum = t == null ? TermsEnum.EMPTY : t.iterator(null);
     
     return new IntDocValues(this) {
-      BytesRef ref = new BytesRef();
+      final BytesRef ref = new BytesRef();
 
       @Override
       public int intVal(int doc) 
       {
         try {
           terms.getTerm(doc, ref);
-          int v = top.docFreq( qfield, ref ); 
-          //System.out.println( NAME+"["+field+"="+ref.utf8ToString()+"=("+qfield+":"+v+")]" );
-          return v;
+          if (termsEnum.seekExact(ref, true)) {
+            return termsEnum.docFreq();
+          } else {
+            return 0;
+          }
         } 
         catch (IOException e) {
           throw new RuntimeException("caught exception in function "+description()+" : doc="+doc, e);
@@ -85,5 +93,5 @@ public class JoinDocFreqValueSource extends FieldCacheSource {
   @Override
   public int hashCode() {
     return qfield.hashCode() + super.hashCode();
-  };
+  }
 }

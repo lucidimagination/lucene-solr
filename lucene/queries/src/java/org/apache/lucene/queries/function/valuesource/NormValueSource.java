@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,8 +28,15 @@ import org.apache.lucene.search.similarities.TFIDFSimilarity;
 import java.io.IOException;
 import java.util.Map;
 
+/** 
+ * Function that returns {@link TFIDFSimilarity#decodeNormValue(byte)}
+ * for every document.
+ * <p>
+ * Note that the configured Similarity for the field must be
+ * a subclass of {@link TFIDFSimilarity}
+ * @lucene.internal */
 public class NormValueSource extends ValueSource {
-  protected String field;
+  protected final String field;
   public NormValueSource(String field) {
     this.field = field;
   }

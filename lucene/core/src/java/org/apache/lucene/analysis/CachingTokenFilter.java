@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -38,6 +38,11 @@ public final class CachingTokenFilter extends TokenFilter {
   private Iterator<AttributeSource.State> iterator = null; 
   private AttributeSource.State finalState;
   
+  /**
+   * Create a new CachingTokenFilter around <code>input</code>,
+   * caching its token attributes, which can be replayed again
+   * after a call to {@link #reset()}.
+   */
   public CachingTokenFilter(TokenStream input) {
     super(input);
   }
@@ -61,14 +66,21 @@ public final class CachingTokenFilter extends TokenFilter {
   }
   
   @Override
-  public final void end() throws IOException {
+  public final void end() {
     if (finalState != null) {
       restoreState(finalState);
     }
   }
 
+  /**
+   * Rewinds the iterator to the beginning of the cached list.
+   * <p>
+   * Note that this does not call reset() on the wrapped tokenstream ever, even
+   * the first time. You should reset() the inner tokenstream before wrapping
+   * it with CachingTokenFilter.
+   */
   @Override
-  public void reset() throws IOException {
+  public void reset() {
     if(cache != null) {
       iterator = cache.iterator();
     }

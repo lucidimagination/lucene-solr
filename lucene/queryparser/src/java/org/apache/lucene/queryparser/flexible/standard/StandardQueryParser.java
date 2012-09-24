@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.standard;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.lucene.queryparser.flexible.standard;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.TooManyListenersException;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -109,7 +110,7 @@ import org.apache.lucene.search.Query;
  * @see StandardQueryNodeProcessorPipeline
  * @see StandardQueryTreeBuilder
  */
-public class StandardQueryParser extends QueryParserHelper {
+public class StandardQueryParser extends QueryParserHelper implements CommonQueryParserConfiguration {
   
   /**
    * Constructs a {@link StandardQueryParser} object.
@@ -118,6 +119,7 @@ public class StandardQueryParser extends QueryParserHelper {
     super(new StandardQueryConfigHandler(), new StandardSyntaxParser(),
         new StandardQueryNodeProcessorPipeline(null),
         new StandardQueryTreeBuilder());
+    setEnablePositionIncrements(true);
   }
   
   /**
@@ -342,6 +344,14 @@ public class StandardQueryParser extends QueryParserHelper {
    */
   public Locale getLocale() {
     return getQueryConfigHandler().get(ConfigurationKeys.LOCALE);
+  }
+  
+  public void setTimeZone(TimeZone timeZone) {
+    getQueryConfigHandler().set(ConfigurationKeys.TIMEZONE, timeZone);
+  }
+  
+  public TimeZone getTimeZone() {
+    return getQueryConfigHandler().get(ConfigurationKeys.TIMEZONE);
   }
   
   /**

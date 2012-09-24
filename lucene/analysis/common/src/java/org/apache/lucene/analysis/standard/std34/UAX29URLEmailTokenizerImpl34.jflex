@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.standard.std34;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -39,8 +39,9 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 %implements StandardTokenizerInterface
 %function getNextToken
 %char
+%buffer 4096
 
-%include src/java/org/apache/lucene/analysis/standard/SUPPLEMENTARY.jflex-macro
+%include SUPPLEMENTARY.jflex-macro
 ALetter = ([\p{WB:ALetter}] | {ALetterSupp})
 Format =  ([\p{WB:Format}] | {FormatSupp})
 Numeric = ([\p{WB:Numeric}] | {NumericSupp})
@@ -80,7 +81,7 @@ HiraganaEx = {Hiragana} ({Format} | {Extend})*
 //     RFC-5321: Simple Mail Transfer Protocol
 //     RFC-5322: Internet Message Format
 
-%include src/java/org/apache/lucene/analysis/standard/ASCIITLD.jflex-macro
+%include ASCIITLD.jflex-macro
 
 DomainLabel = [A-Za-z0-9] ([-A-Za-z0-9]* [A-Za-z0-9])?
 DomainNameStrict = {DomainLabel} ("." {DomainLabel})* {ASCIITLD}
@@ -191,8 +192,8 @@ EMAIL = {EMAILlocalPart} "@" ({DomainNameStrict} | {EMAILbracketedHost})
 
 %%
 
-// UAX#29 WB1. 	sot 	÷ 	
-//        WB2. 		÷ 	eot
+// UAX#29 WB1.   sot   ÷
+//        WB2.     ÷   eot
 //
 <<EOF>> { return StandardTokenizerInterface.YYEOF; }
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.WeakHashMap;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,10 +29,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DocumentStoredFieldVisitor;
 import org.apache.lucene.search.SearcherManager; // javadocs
-import org.apache.lucene.store.*;
+import org.apache.lucene.store.AlreadyClosedException;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.ReaderUtil;         // for javadocs
 
 /** IndexReader is an abstract class, providing an interface for accessing an
  index.  Search of an index is done entirely through this abstract interface,
@@ -52,8 +52,8 @@ import org.apache.lucene.util.ReaderUtil;         // for javadocs
  </ul>
  
  <p>IndexReader instances for indexes on disk are usually constructed
- with a call to one of the static <code>DirectoryReader,open()</code> methods,
- e.g. {@link DirectoryReader#open(Directory)}. {@link DirectoryReader} implements
+ with a call to one of the static <code>DirectoryReader.open()</code> methods,
+ e.g. {@link DirectoryReader#open(org.apache.lucene.store.Directory)}. {@link DirectoryReader} implements
  the {@link CompositeReader} interface, it is not possible to directly get postings.
 
  <p> For efficiency, in this API documents are often referred to via
@@ -89,6 +89,7 @@ public abstract class IndexReader implements Closeable {
    * @lucene.experimental
    */
   public static interface ReaderClosedListener {
+    /** Invoked when the {@link IndexReader} is closed. */
     public void onClose(IndexReader reader);
   }
 
@@ -243,7 +244,8 @@ public abstract class IndexReader implements Closeable {
   }
   
   /**
-   * @throws AlreadyClosedException if this IndexReader is closed
+   * Throws AlreadyClosedException if this IndexReader or any
+   * of its child readers is closed, otherwise returns.
    */
   protected final void ensureOpen() throws AlreadyClosedException {
     if (refCount.get() <= 0) {
@@ -281,12 +283,11 @@ public abstract class IndexReader implements Closeable {
   /** Returns a IndexReader reading the index in the given
    *  Directory
    * @param directory the index directory
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @deprecated Use {@link DirectoryReader#open(Directory)}
    */
   @Deprecated
-  public static DirectoryReader open(final Directory directory) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final Directory directory) throws IOException {
     return DirectoryReader.open(directory);
   }
   
@@ -303,12 +304,11 @@ public abstract class IndexReader implements Closeable {
    *  memory usage, at the expense of higher latency when
    *  loading a TermInfo.  The default value is 1.  Set this
    *  to -1 to skip loading the terms index entirely.
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @deprecated Use {@link DirectoryReader#open(Directory,int)}
    */
   @Deprecated
-  public static DirectoryReader open(final Directory directory, int termInfosIndexDivisor) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final Directory directory, int termInfosIndexDivisor) throws IOException {
     return DirectoryReader.open(directory, termInfosIndexDivisor);
   }
   
@@ -324,7 +324,6 @@ public abstract class IndexReader implements Closeable {
    * can tolerate deleted documents being returned you might
    * gain some performance by passing false.
    * @return The new IndexReader
-   * @throws CorruptIndexException
    * @throws IOException if there is a low-level IO error
    *
    * @see DirectoryReader#openIfChanged(DirectoryReader,IndexWriter,boolean)
@@ -333,19 +332,18 @@ public abstract class IndexReader implements Closeable {
    * @deprecated Use {@link DirectoryReader#open(IndexWriter,boolean)}
    */
   @Deprecated
-  public static DirectoryReader open(final IndexWriter writer, boolean applyAllDeletes) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final IndexWriter writer, boolean applyAllDeletes) throws IOException {
     return DirectoryReader.open(writer, applyAllDeletes);
   }
 
   /** Expert: returns an IndexReader reading the index in the given
    *  {@link IndexCommit}.
    * @param commit the commit point to open
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @deprecated Use {@link DirectoryReader#open(IndexCommit)}
    */
   @Deprecated
-  public static DirectoryReader open(final IndexCommit commit) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final IndexCommit commit) throws IOException {
     return DirectoryReader.open(commit);
   }
 
@@ -363,12 +361,11 @@ public abstract class IndexReader implements Closeable {
    *  memory usage, at the expense of higher latency when
    *  loading a TermInfo.  The default value is 1.  Set this
    *  to -1 to skip loading the terms index entirely.
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @deprecated Use {@link DirectoryReader#open(IndexCommit,int)}
    */
   @Deprecated
-  public static DirectoryReader open(final IndexCommit commit, int termInfosIndexDivisor) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final IndexCommit commit, int termInfosIndexDivisor) throws IOException {
     return DirectoryReader.open(commit, termInfosIndexDivisor);
   }
 
@@ -411,7 +408,7 @@ public abstract class IndexReader implements Closeable {
    *  simply want to load all fields, use {@link
    *  #document(int)}.  If you want to load a subset, use
    *  {@link DocumentStoredFieldVisitor}.  */
-  public abstract void document(int docID, StoredFieldVisitor visitor) throws CorruptIndexException, IOException;
+  public abstract void document(int docID, StoredFieldVisitor visitor) throws IOException;
   
   /**
    * Returns the stored fields of the <code>n</code><sup>th</sup>
@@ -429,13 +426,12 @@ public abstract class IndexReader implements Closeable {
    * like boost, omitNorm, IndexOptions, tokenized, etc.,
    * are not preserved.
    * 
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
   // TODO: we need a separate StoredField, so that the
   // Document returned here contains that class not
   // IndexableField
-  public final Document document(int docID) throws CorruptIndexException, IOException {
+  public final Document document(int docID) throws IOException {
     final DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
     document(docID, visitor);
     return visitor.getDocument();
@@ -446,7 +442,7 @@ public abstract class IndexReader implements Closeable {
    * fields.  Note that this is simply sugar for {@link
    * DocumentStoredFieldVisitor#DocumentStoredFieldVisitor(Set)}.
    */
-  public final Document document(int docID, Set<String> fieldsToLoad) throws CorruptIndexException, IOException {
+  public final Document document(int docID, Set<String> fieldsToLoad) throws IOException {
     final DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor(fieldsToLoad);
     document(docID, visitor);
     return visitor.getDocument();
@@ -472,9 +468,11 @@ public abstract class IndexReader implements Closeable {
   protected abstract void doClose() throws IOException;
 
   /**
-   * Expert: Returns a the root {@link IndexReaderContext} for this
-   * {@link IndexReader}'s sub-reader tree. Iff this reader is composed of sub
-   * readers ,ie. this reader being a composite reader, this method returns a
+   * Expert: Returns the root {@link IndexReaderContext} for this
+   * {@link IndexReader}'s sub-reader tree. 
+   * <p>
+   * Iff this reader is composed of sub
+   * readers, i.e. this reader being a composite reader, this method returns a
    * {@link CompositeReaderContext} holding the reader's direct children as well as a
    * view of the reader tree's atomic leaf contexts. All sub-
    * {@link IndexReaderContext} instances referenced from this readers top-level
@@ -483,14 +481,21 @@ public abstract class IndexReader implements Closeable {
    * atomic leaf reader at a time. If this reader is not composed of child
    * readers, this method returns an {@link AtomicReaderContext}.
    * <p>
-   * Note: Any of the sub-{@link CompositeReaderContext} instances reference from this
-   * top-level context holds a <code>null</code> {@link CompositeReaderContext#leaves()}
-   * reference. Only the top-level context maintains the convenience leaf-view
+   * Note: Any of the sub-{@link CompositeReaderContext} instances referenced
+   * from this top-level context do not support {@link CompositeReaderContext#leaves()}.
+   * Only the top-level context maintains the convenience leaf-view
    * for performance reasons.
-   * 
-   * @lucene.experimental
    */
-  public abstract IndexReaderContext getTopReaderContext();
+  public abstract IndexReaderContext getContext();
+  
+  /**
+   * Returns the reader's leaves, or itself if this reader is atomic.
+   * This is a convenience method calling {@code this.getContext().leaves()}.
+   * @see IndexReaderContext#leaves()
+   */
+  public final List<AtomicReaderContext> leaves() {
+    return getContext().leaves();
+  }
 
   /** Expert: Returns a key for this IndexReader, so FieldCache/CachingWrapperFilter can find
    * it again.
@@ -514,15 +519,17 @@ public abstract class IndexReader implements Closeable {
    * <code>term</code>.  This method returns 0 if the term or
    * field does not exists.  This method does not take into
    * account deleted documents that have not yet been merged
-   * away. */
-  public final int docFreq(Term term) throws IOException {
-    return docFreq(term.field(), term.bytes());
-  }
-
-  /** Returns the number of documents containing the
+   * away. 
+   * @see TermsEnum#docFreq()
+   */
+  public abstract int docFreq(Term term) throws IOException;
+  
+  /** Returns the number of documents containing the term
    * <code>term</code>.  This method returns 0 if the term or
-   * field does not exists.  This method does not take into
-   * account deleted documents that have not yet been merged
-   * away. */
-  public abstract int docFreq(String field, BytesRef term) throws IOException;
+   * field does not exists, or -1 if the Codec does not support
+   * the measure.  This method does not take into account deleted 
+   * documents that have not yet been merged away.
+   * @see TermsEnum#totalTermFreq() 
+   */
+  public abstract long totalTermFreq(Term term) throws IOException;
 }

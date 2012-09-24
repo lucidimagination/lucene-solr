@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,9 +17,11 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import java.util.Collections;
+import java.util.List;
+
 /**
- * {@link IndexReaderContext} for {@link AtomicReader} instances
- * @lucene.experimental
+ * {@link IndexReaderContext} for {@link AtomicReader} instances.
  */
 public final class AtomicReaderContext extends IndexReaderContext {
   /** The readers ord in the top-level's leaves array */
@@ -28,7 +30,7 @@ public final class AtomicReaderContext extends IndexReaderContext {
   public final int docBase;
   
   private final AtomicReader reader;
-  private final AtomicReaderContext[] leaves;
+  private final List<AtomicReaderContext> leaves;
   
   /**
    * Creates a new {@link AtomicReaderContext} 
@@ -39,7 +41,7 @@ public final class AtomicReaderContext extends IndexReaderContext {
     this.ord = leafOrd;
     this.docBase = leafDocBase;
     this.reader = reader;
-    this.leaves = isTopLevel ? new AtomicReaderContext[] { this } : null;
+    this.leaves = isTopLevel ? Collections.singletonList(this) : null;
   }
   
   AtomicReaderContext(AtomicReader atomicReader) {
@@ -47,12 +49,16 @@ public final class AtomicReaderContext extends IndexReaderContext {
   }
   
   @Override
-  public AtomicReaderContext[] leaves() {
+  public List<AtomicReaderContext> leaves() {
+    if (!isTopLevel) {
+      throw new UnsupportedOperationException("This is not a top-level context.");
+    }
+    assert leaves != null;
     return leaves;
   }
   
   @Override
-  public IndexReaderContext[] children() {
+  public List<IndexReaderContext> children() {
     return null;
   }
   

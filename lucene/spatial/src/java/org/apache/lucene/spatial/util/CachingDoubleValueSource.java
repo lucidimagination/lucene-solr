@@ -25,6 +25,11 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Caches the doubleVal of another value source in a HashMap
+ * so that it is computed only once.
+ * @lucene.internal
+ */
 public class CachingDoubleValueSource extends ValueSource {
 
   final ValueSource source;

@@ -1,3 +1,6 @@
+package org.apache.lucene.spatial;
+
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,26 +18,34 @@
  * limitations under the License.
  */
 
-package org.apache.lucene.spatial;
-
-
 import com.spatial4j.core.context.SpatialContext;
+import com.spatial4j.core.io.ShapeReadWriter;
 import com.spatial4j.core.io.sample.SampleData;
 import com.spatial4j.core.io.sample.SampleDataReader;
-import com.spatial4j.core.query.SpatialArgsParser;
 import com.spatial4j.core.shape.Shape;
-import org.junit.Assert;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.queries.function.FunctionQuery;
+import org.apache.lucene.queries.function.ValueSource;
+import org.apache.lucene.search.CheckHits;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.spatial.query.SpatialArgsParser;
+import org.junit.Assert;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 import java.util.logging.Logger;
 
-public abstract class StrategyTestCase<T extends SpatialFieldInfo> extends SpatialTestCase {
+public abstract class StrategyTestCase extends SpatialTestCase {
 
   public static final String DATA_STATES_POLY = "states-poly.txt";
   public static final String DATA_STATES_BBOX = "states-bbox.txt";
@@ -44,16 +55,14 @@ public abstract class StrategyTestCase<T extends SpatialFieldInfo> extends Spati
 
   public static final String QTEST_States_IsWithin_BBox   = "states-IsWithin-BBox.txt";
   public static final String QTEST_States_Intersects_BBox = "states-Intersects-BBox.txt";
-
-  public static final String QTEST_Cities_IsWithin_BBox = "cities-IsWithin-BBox.txt";
+  public static final String QTEST_Cities_Intersects_BBox = "cities-Intersects-BBox.txt";
 
   private Logger log = Logger.getLogger(getClass().getName());
 
   protected final SpatialArgsParser argsParser = new SpatialArgsParser();
 
-  protected SpatialStrategy<T> strategy;
+  protected SpatialStrategy strategy;
   protected SpatialContext ctx;
-  protected T fieldInfo;
   protected boolean storeShape = true;
 
   protected void executeQueries(SpatialMatchConcern concern, String... testQueryFile) throws IOException {
@@ -76,17 +85,26 @@ public abstract class StrategyTestCase<T extends SpatialFieldInfo> extends Spati
     while (sampleData.hasNext()) {
       SampleData data = sampleData.next();
       Document document = new Document();
-      document.add(new Field("id", data.id, StringField.TYPE_STORED));
-      document.add(new Field("name", data.name, StringField.TYPE_STORED));
-      Shape shape = ctx.readShape(data.shape);
-      for (IndexableField f : strategy.createFields(fieldInfo, shape, true, storeShape)) {
-        if( f != null ) { // null if incompatibleGeometry && ignore
+      document.add(new StringField("id", data.id, Field.Store.YES));
+      document.add(new StringField("name", data.name, Field.Store.YES));
+      Shape shape = new ShapeReadWriter(ctx).readShape(data.shape);
+      shape = convertShapeFromGetDocuments(shape);
+      if (shape != null) {
+        for (Field f : strategy.createIndexableFields(shape)) {
           document.add(f);
         }
+        if (storeShape)
+          document.add(new StoredField(strategy.getFieldName(), ctx.toString(shape)));
       }
+
       documents.add(document);
     }
     return documents;
+  }
+
+  /** Subclasses may override to transform or remove a shape for indexing */
+  protected Shape convertShapeFromGetDocuments(Shape shape) {
+    return shape;
   }
 
   protected Iterator<SampleData> getSampleData(String testDataFile) throws IOException {
@@ -107,7 +125,11 @@ public abstract class StrategyTestCase<T extends SpatialFieldInfo> extends Spati
       SpatialTestQuery q = queries.next();
 
       String msg = q.line; //"Query: " + q.args.toString(ctx);
-      SearchResults got = executeQuery(strategy.makeQuery(q.args, fieldInfo), 100);
+      SearchResults got = executeQuery(strategy.makeQuery(q.args), 100);
+      if (storeShape && got.numFound > 0) {
+        //check stored value is there & parses
+        assertNotNull(new ShapeReadWriter(ctx).readShape(got.results.get(0).document.get(strategy.getFieldName())));
+      }
       if (concern.orderIsImportant) {
         Iterator<String> ids = q.ids.iterator();
         for (SearchResult r : got.results) {
@@ -144,4 +166,47 @@ public abstract class StrategyTestCase<T extends SpatialFieldInfo> extends Spati
       }
     }
   }
+
+  protected void adoc(String id, String shapeStr) throws IOException {
+    Shape shape = shapeStr==null ? null : new ShapeReadWriter(ctx).readShape(shapeStr);
+    addDocument(newDoc(id, shape));
+  }
+  protected void adoc(String id, Shape shape) throws IOException {
+    addDocument(newDoc(id, shape));
+  }
+
+  protected Document newDoc(String id, Shape shape) {
+    Document doc = new Document();
+    doc.add(new StringField("id", id, Field.Store.YES));
+    if (shape != null) {
+      for (Field f : strategy.createIndexableFields(shape)) {
+        doc.add(f);
+      }
+      if (storeShape)
+        doc.add(new StoredField(strategy.getFieldName(), ctx.toString(shape)));
+    }
+    return doc;
+  }
+
+  /** scores[] are in docId order */
+  protected void checkValueSource(ValueSource vs, float scores[], float delta) throws IOException {
+    FunctionQuery q = new FunctionQuery(vs);
+
+//    //TODO is there any point to this check?
+//    int expectedDocs[] = new int[scores.length];//fill with ascending 0....length-1
+//    for (int i = 0; i < expectedDocs.length; i++) {
+//      expectedDocs[i] = i;
+//    }
+//    CheckHits.checkHits(random(), q, "", indexSearcher, expectedDocs);
+
+    TopDocs docs = indexSearcher.search(q, 1000);//calculates the score
+    for (int i = 0; i < docs.scoreDocs.length; i++) {
+      ScoreDoc gotSD = docs.scoreDocs[i];
+      float expectedScore = scores[gotSD.doc];
+      assertEquals("Not equal for doc "+gotSD.doc, expectedScore, gotSD.score, delta);
+    }
+
+    CheckHits.checkExplanations(q, "", indexSearcher);
+  }
+
 }

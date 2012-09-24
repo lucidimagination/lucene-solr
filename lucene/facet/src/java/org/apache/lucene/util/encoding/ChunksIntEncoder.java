@@ -3,7 +3,7 @@ package org.apache.lucene.util.encoding;
 import java.io.IOException;
 import java.io.OutputStream;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -44,7 +44,7 @@ import java.io.OutputStream;
  * <p>
  * For the reasons mentioned above, these encoders are usually chained with
  * {@link UniqueValuesIntEncoder} and {@link DGapIntEncoder} in the following
- * manner: <code><pre>
+ * manner: <code><pre class="prettyprint">
  * IntEncoder fourFlags = 
  *         new SortingEncoderFilter(new UniqueValuesIntEncoder(new DGapIntEncoder(new FlagsIntEncoderImpl())));
  * </code></pre>

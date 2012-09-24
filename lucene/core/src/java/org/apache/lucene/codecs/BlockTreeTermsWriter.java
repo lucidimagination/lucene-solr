@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,7 +31,6 @@ import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.RAMOutputStream;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CodecUtil;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.fst.Builder;
@@ -72,7 +71,7 @@ import org.apache.lucene.util.fst.Util;
 */
 
 /**
- * block-based terms index and dictionary writer.
+ * Block-based terms index and dictionary writer.
  * <p>
  * Writes terms dict and index, block-encoding (column
  * stride) each term's metadata for each set of terms
@@ -84,11 +83,18 @@ import org.apache.lucene.util.fst.Util;
 
 public class BlockTreeTermsWriter extends FieldsConsumer {
 
+  /** Suggested default value for the {@code
+   *  minItemsInBlock} parameter to {@link
+   *  #BlockTreeTermsWriter(SegmentWriteState,PostingsWriterBase,int,int)}. */
   public final static int DEFAULT_MIN_BLOCK_SIZE = 25;
+
+  /** Suggested default value for the {@code
+   *  maxItemsInBlock} parameter to {@link
+   *  #BlockTreeTermsWriter(SegmentWriteState,PostingsWriterBase,int,int)}. */
   public final static int DEFAULT_MAX_BLOCK_SIZE = 48;
 
   //public final static boolean DEBUG = false;
-  public final static boolean SAVE_DOT_FILES = false;
+  private final static boolean SAVE_DOT_FILES = false;
 
   static final int OUTPUT_FLAGS_NUM_BITS = 2;
   static final int OUTPUT_FLAGS_MASK = 0x3;
@@ -98,15 +104,21 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
   /** Extension of terms file */
   static final String TERMS_EXTENSION = "tim";
   final static String TERMS_CODEC_NAME = "BLOCK_TREE_TERMS_DICT";
-  // Initial format
+
+  /** Initial terms format. */
   public static final int TERMS_VERSION_START = 0;
+
+  /** Current terms format. */
   public static final int TERMS_VERSION_CURRENT = TERMS_VERSION_START;
 
   /** Extension of terms index file */
   static final String TERMS_INDEX_EXTENSION = "tip";
   final static String TERMS_INDEX_CODEC_NAME = "BLOCK_TREE_TERMS_INDEX";
-  // Initial format
+
+  /** Initial index format. */
   public static final int TERMS_INDEX_VERSION_START = 0;
+
+  /** Current index format. */
   public static final int TERMS_INDEX_VERSION_CURRENT = TERMS_INDEX_VERSION_START;
 
   private final IndexOutput out;
@@ -144,7 +156,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
       throw new IllegalArgumentException("maxItemsInBlock must be at least 2*(minItemsInBlock-1); got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
     }
 
-    final String termsFileName = IndexFileNames.segmentFileName(state.segmentName, state.segmentSuffix, TERMS_EXTENSION);
+    final String termsFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_EXTENSION);
     out = state.directory.createOutput(termsFileName, state.context);
     boolean success = false;
     IndexOutput indexOut = null;
@@ -156,7 +168,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
 
       //DEBUG = state.segmentName.equals("_4a");
 
-      final String termsIndexFileName = IndexFileNames.segmentFileName(state.segmentName, state.segmentSuffix, TERMS_INDEX_EXTENSION);
+      final String termsIndexFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_INDEX_EXTENSION);
       indexOut = state.directory.createOutput(termsIndexFileName, state.context);
       writeIndexHeader(indexOut);
 
@@ -175,22 +187,26 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
     }
     this.indexOut = indexOut;
   }
-  
+
+  /** Writes the terms file header. */
   protected void writeHeader(IndexOutput out) throws IOException {
     CodecUtil.writeHeader(out, TERMS_CODEC_NAME, TERMS_VERSION_CURRENT); 
     out.writeLong(0);                             // leave space for end index pointer    
   }
 
+  /** Writes the index file header. */
   protected void writeIndexHeader(IndexOutput out) throws IOException {
     CodecUtil.writeHeader(out, TERMS_INDEX_CODEC_NAME, TERMS_INDEX_VERSION_CURRENT); 
     out.writeLong(0);                             // leave space for end index pointer    
   }
 
+  /** Writes the terms file trailer. */
   protected void writeTrailer(IndexOutput out, long dirStart) throws IOException {
     out.seek(CodecUtil.headerLength(TERMS_CODEC_NAME));
     out.writeLong(dirStart);    
   }
 
+  /** Writes the index file trailer. */
   protected void writeIndexTrailer(IndexOutput indexOut, long dirStart) throws IOException {
     indexOut.seek(CodecUtil.headerLength(TERMS_INDEX_CODEC_NAME));
     indexOut.writeLong(dirStart);    
@@ -639,7 +655,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
 
     // for debugging
     @SuppressWarnings("unused")
-	private String toString(BytesRef b) {
+    private String toString(BytesRef b) {
       try {
         return b.utf8ToString() + " " + b;
       } catch (Throwable t) {
@@ -724,8 +740,8 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
 
           // Write term stats, to separate byte[] blob:
           bytesWriter2.writeVInt(term.stats.docFreq);
-          if (fieldInfo.indexOptions != IndexOptions.DOCS_ONLY) {
-            assert term.stats.totalTermFreq >= term.stats.docFreq;
+          if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+            assert term.stats.totalTermFreq >= term.stats.docFreq: term.stats.totalTermFreq + " vs " + term.stats.docFreq;
             bytesWriter2.writeVLong(term.stats.totalTermFreq - term.stats.docFreq);
           }
         }
@@ -750,7 +766,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
 
             // Write term stats, to separate byte[] blob:
             bytesWriter2.writeVInt(term.stats.docFreq);
-            if (fieldInfo.indexOptions != IndexOptions.DOCS_ONLY) {
+            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
               assert term.stats.totalTermFreq >= term.stats.docFreq;
               bytesWriter2.writeVLong(term.stats.totalTermFreq - term.stats.docFreq);
             }
@@ -896,6 +912,10 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
         //   System.out.println("SAVED to " + dotFileName);
         //   w.close();
         // }
+      } else {
+        assert sumTotalTermFreq == 0 || fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY && sumTotalTermFreq == -1;
+        assert sumDocFreq == 0;
+        assert docCount == 0;
       }
     }
 
@@ -930,7 +950,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer {
           assert rootCode != null: "field=" + field.fieldInfo.name + " numTerms=" + field.numTerms;
           out.writeVInt(rootCode.length);
           out.writeBytes(rootCode.bytes, rootCode.offset, rootCode.length);
-          if (field.fieldInfo.indexOptions != IndexOptions.DOCS_ONLY) {
+          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
             out.writeVLong(field.sumTotalTermFreq);
           }
           out.writeVLong(field.sumDocFreq);

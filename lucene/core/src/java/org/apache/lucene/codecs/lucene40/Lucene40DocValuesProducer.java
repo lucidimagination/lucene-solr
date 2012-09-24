@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -44,6 +44,7 @@ import org.apache.lucene.util.IOUtils;
  * @lucene.experimental
  */
 public class Lucene40DocValuesProducer extends PerDocProducerBase {
+  /** Maps field name to {@link DocValues} instance. */
   protected final TreeMap<String,DocValues> docValues;
   private final Directory cfs;
   /**
@@ -56,7 +57,7 @@ public class Lucene40DocValuesProducer extends PerDocProducerBase {
                                       IndexFileNames.segmentFileName(state.segmentInfo.name,
                                                                      segmentSuffix, IndexFileNames.COMPOUND_FILE_EXTENSION), 
                                       state.context, false);
-      docValues = load(state.fieldInfos, state.segmentInfo.name, state.segmentInfo.docCount, cfs, state.context);
+      docValues = load(state.fieldInfos, state.segmentInfo.name, state.segmentInfo.getDocCount(), cfs, state.context);
     } else {
       cfs = null;
       docValues = new TreeMap<String,DocValues>();

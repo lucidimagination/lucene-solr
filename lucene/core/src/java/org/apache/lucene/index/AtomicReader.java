@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,6 @@ import java.io.IOException;
 
 import org.apache.lucene.search.SearcherManager; // javadocs
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.ReaderUtil;         // for javadocs
 
 /** {@code AtomicReader} is an abstract class, providing an interface for accessing an
  index.  Search of an index is done entirely through this abstract interface,
@@ -50,12 +48,14 @@ public abstract class AtomicReader extends IndexReader {
 
   private final AtomicReaderContext readerContext = new AtomicReaderContext(this);
   
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
   protected AtomicReader() {
     super();
   }
 
   @Override
-  public final AtomicReaderContext getTopReaderContext() {
+  public final AtomicReaderContext getContext() {
     ensureOpen();
     return readerContext;
   }
@@ -81,17 +81,17 @@ public abstract class AtomicReader extends IndexReader {
   public abstract Fields fields() throws IOException;
   
   @Override
-  public final int docFreq(String field, BytesRef term) throws IOException {
+  public final int docFreq(Term term) throws IOException {
     final Fields fields = fields();
     if (fields == null) {
       return 0;
     }
-    final Terms terms = fields.terms(field);
+    final Terms terms = fields.terms(term.field());
     if (terms == null) {
       return 0;
     }
     final TermsEnum termsEnum = terms.iterator(null);
-    if (termsEnum.seekExact(term, true)) {
+    if (termsEnum.seekExact(term.bytes(), true)) {
       return termsEnum.docFreq();
     } else {
       return 0;
@@ -103,17 +103,17 @@ public abstract class AtomicReader extends IndexReader {
    * field does not exists.  This method does not take into
    * account deleted documents that have not yet been merged
    * away. */
-  public final long totalTermFreq(String field, BytesRef term) throws IOException {
+  public final long totalTermFreq(Term term) throws IOException {
     final Fields fields = fields();
     if (fields == null) {
       return 0;
     }
-    final Terms terms = fields.terms(field);
+    final Terms terms = fields.terms(term.field());
     if (terms == null) {
       return 0;
     }
     final TermsEnum termsEnum = terms.iterator(null);
-    if (termsEnum.seekExact(term, true)) {
+    if (termsEnum.seekExact(term.bytes(), true)) {
       return termsEnum.totalTermFreq();
     } else {
       return 0;
@@ -129,19 +129,20 @@ public abstract class AtomicReader extends IndexReader {
     return fields.terms(field);
   }
 
-  /** Returns {@link DocsEnum} for the specified field &
-   *  term.  This may return null, if either the field or
-   *  term does not exist. */
-  public final DocsEnum termDocsEnum(Bits liveDocs, String field, BytesRef term, boolean needsFreqs) throws IOException {
-    assert field != null;
-    assert term != null;
+  /** Returns {@link DocsEnum} for the specified term.
+   *  This will return null if either the field or
+   *  term does not exist. 
+   *  @see TermsEnum#docs(Bits, DocsEnum) */
+  public final DocsEnum termDocsEnum(Term term) throws IOException {
+    assert term.field() != null;
+    assert term.bytes() != null;
     final Fields fields = fields();
     if (fields != null) {
-      final Terms terms = fields.terms(field);
+      final Terms terms = fields.terms(term.field());
       if (terms != null) {
         final TermsEnum termsEnum = terms.iterator(null);
-        if (termsEnum.seekExact(term, true)) {
-          return termsEnum.docs(liveDocs, null, needsFreqs);
+        if (termsEnum.seekExact(term.bytes(), true)) {
+          return termsEnum.docs(getLiveDocs(), null);
         }
       }
     }
@@ -149,34 +150,23 @@ public abstract class AtomicReader extends IndexReader {
   }
 
   /** Returns {@link DocsAndPositionsEnum} for the specified
-   *  field & term.  This may return null, if either the
-   *  field or term does not exist, or needsOffsets is
-   *  true but offsets were not indexed for this field. */
-  public final DocsAndPositionsEnum termPositionsEnum(Bits liveDocs, String field, BytesRef term, boolean needsOffsets) throws IOException {
-    assert field != null;
-    assert term != null;
+   *  term.  This will return null if the
+   *  field or term does not exist or positions weren't indexed. 
+   *  @see TermsEnum#docsAndPositions(Bits, DocsAndPositionsEnum) */
+  public final DocsAndPositionsEnum termPositionsEnum(Term term) throws IOException {
+    assert term.field() != null;
+    assert term.bytes() != null;
     final Fields fields = fields();
     if (fields != null) {
-      final Terms terms = fields.terms(field);
+      final Terms terms = fields.terms(term.field());
       if (terms != null) {
         final TermsEnum termsEnum = terms.iterator(null);
-        if (termsEnum.seekExact(term, true)) {
-          return termsEnum.docsAndPositions(liveDocs, null, needsOffsets);
+        if (termsEnum.seekExact(term.bytes(), true)) {
+          return termsEnum.docsAndPositions(getLiveDocs(), null);
         }
       }
     }
     return null;
-  }
-
-  /** Returns the number of unique terms (across all fields)
-   *  in this reader.
-   */
-  public final long getUniqueTermCount() throws IOException {
-    final Fields fields = fields();
-    if (fields == null) {
-      return 0;
-    }
-    return fields.getUniqueTermCount();
   }
   
   /**
@@ -194,9 +184,7 @@ public abstract class AtomicReader extends IndexReader {
 
   /**
    * Get the {@link FieldInfos} describing all fields in
-   * this reader.  NOTE: do not make any changes to the
-   * returned FieldInfos!
-   *
+   * this reader.
    * @lucene.experimental
    */
   public abstract FieldInfos getFieldInfos();

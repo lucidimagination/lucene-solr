@@ -1,5 +1,5 @@
 package org.apache.lucene.queries.function.valuesource;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,7 +27,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * Abstract parent class for {@link ValueSource} implementations that wrap multiple
+ * ValueSources and apply their own logic.
+ */
 public abstract class MultiFunction extends ValueSource {
   protected final List<ValueSource> sources;
 

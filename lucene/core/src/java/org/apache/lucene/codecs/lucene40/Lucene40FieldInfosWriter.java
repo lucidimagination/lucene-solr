@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,12 +18,13 @@ package org.apache.lucene.codecs.lucene40;
  */
 import java.io.IOException;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldInfosWriter;
 import org.apache.lucene.index.DocValues.Type;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
@@ -39,10 +40,8 @@ public class Lucene40FieldInfosWriter extends FieldInfosWriter {
   /** Extension of field infos */
   static final String FIELD_INFOS_EXTENSION = "fnm";
   
-  // per-field codec support, records index values for fields
-  static final int FORMAT_START = -4;
-
-  // whenever you add a new format, make it 1 smaller (negative version logic)!
+  static final String CODEC_NAME = "Lucene40FieldInfos";
+  static final int FORMAT_START = 0;
   static final int FORMAT_CURRENT = FORMAT_START;
   
   static final byte IS_INDEXED = 0x1;
@@ -52,30 +51,37 @@ public class Lucene40FieldInfosWriter extends FieldInfosWriter {
   static final byte STORE_PAYLOADS = 0x20;
   static final byte OMIT_TERM_FREQ_AND_POSITIONS = 0x40;
   static final byte OMIT_POSITIONS = -128;
+
+  /** Sole constructor. */
+  public Lucene40FieldInfosWriter() {
+  }
   
   @Override
   public void write(Directory directory, String segmentName, FieldInfos infos, IOContext context) throws IOException {
     final String fileName = IndexFileNames.segmentFileName(segmentName, "", FIELD_INFOS_EXTENSION);
     IndexOutput output = directory.createOutput(fileName, context);
     try {
-      output.writeVInt(FORMAT_CURRENT);
+      CodecUtil.writeHeader(output, CODEC_NAME, FORMAT_CURRENT);
       output.writeVInt(infos.size());
       for (FieldInfo fi : infos) {
-        assert fi.indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0 || !fi.storePayloads;
+        IndexOptions indexOptions = fi.getIndexOptions();
         byte bits = 0x0;
-        if (fi.isIndexed) bits |= IS_INDEXED;
-        if (fi.storeTermVector) bits |= STORE_TERMVECTOR;
-        if (fi.omitNorms) bits |= OMIT_NORMS;
-        if (fi.storePayloads) bits |= STORE_PAYLOADS;
-        if (fi.indexOptions == IndexOptions.DOCS_ONLY) {
-          bits |= OMIT_TERM_FREQ_AND_POSITIONS;
-        } else if (fi.indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) {
-          bits |= STORE_OFFSETS_IN_POSTINGS;
-        } else if (fi.indexOptions == IndexOptions.DOCS_AND_FREQS) {
-          bits |= OMIT_POSITIONS;
+        if (fi.hasVectors()) bits |= STORE_TERMVECTOR;
+        if (fi.omitsNorms()) bits |= OMIT_NORMS;
+        if (fi.hasPayloads()) bits |= STORE_PAYLOADS;
+        if (fi.isIndexed()) {
+          bits |= IS_INDEXED;
+          assert indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0 || !fi.hasPayloads();
+          if (indexOptions == IndexOptions.DOCS_ONLY) {
+            bits |= OMIT_TERM_FREQ_AND_POSITIONS;
+          } else if (indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) {
+            bits |= STORE_OFFSETS_IN_POSTINGS;
+          } else if (indexOptions == IndexOptions.DOCS_AND_FREQS) {
+            bits |= OMIT_POSITIONS;
+          }
         }
         output.writeString(fi.name);
-        output.writeInt(fi.number);
+        output.writeVInt(fi.number);
         output.writeByte(bits);
 
         // pack the DV types in one byte
@@ -84,12 +90,15 @@ public class Lucene40FieldInfosWriter extends FieldInfosWriter {
         assert (dv & (~0xF)) == 0 && (nrm & (~0x0F)) == 0;
         byte val = (byte) (0xff & ((nrm << 4) | dv));
         output.writeByte(val);
+        output.writeStringStringMap(fi.attributes());
       }
     } finally {
       output.close();
     }
   }
 
+  /** Returns the byte used to encode the {@link
+   *  Type} for each field. */
   public byte docValuesByte(Type type) {
     if (type == null) {
       return 0;

@@ -1,24 +1,18 @@
 package org.apache.lucene.util.junitcompat;
 
-import java.util.Locale;
-import java.util.Random;
-import java.util.TimeZone;
+import java.util.*;
 
-import org.apache.lucene.util.SystemPropertiesRestoreRule;
 import org.apache.lucene.util._TestUtil;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 
 import com.carrotsearch.randomizedtesting.RandomizedContext;
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +39,7 @@ public class TestSameRandomnessLocalePassedOrNot extends WithNestedTests {
     RuleChain.outerRule(new SystemPropertiesRestoreRule());
 
   public TestSameRandomnessLocalePassedOrNot() {
-    super(false);
+    super(true);
   }
   
   public static class Nested extends WithNestedTests.AbstractNestedTest {

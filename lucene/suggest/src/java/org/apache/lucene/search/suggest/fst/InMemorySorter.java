@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,6 +33,10 @@ public final class InMemorySorter implements BytesRefSorter {
   private boolean closed = false;
   private final Comparator<BytesRef> comparator;
 
+  /**
+   * Creates an InMemorySorter, sorting entries by the
+   * provided comparator.
+   */
   public InMemorySorter(Comparator<BytesRef> comparator) {
     this.comparator = comparator;
   }

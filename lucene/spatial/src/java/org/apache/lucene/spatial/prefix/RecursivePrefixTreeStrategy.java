@@ -1,3 +1,5 @@
+package org.apache.lucene.spatial.prefix;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,31 +17,40 @@
  * limitations under the License.
  */
 
-package org.apache.lucene.spatial.prefix;
-
-import com.spatial4j.core.exception.UnsupportedSpatialOperation;
-import com.spatial4j.core.query.SpatialArgs;
-import com.spatial4j.core.query.SpatialOperation;
 import com.spatial4j.core.shape.Shape;
-import org.apache.lucene.queries.function.FunctionQuery;
-import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FilteredQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.spatial.SimpleSpatialFieldInfo;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
+import org.apache.lucene.spatial.query.SpatialArgs;
+import org.apache.lucene.spatial.query.SpatialOperation;
+import org.apache.lucene.spatial.query.UnsupportedSpatialOperation;
 
-
+/**
+ * A {@link PrefixTreeStrategy} which uses {@link RecursivePrefixTreeFilter}.
+ * This strategy has support for searching non-point shapes (note: not tested).
+ * Even a query shape with distErrPct=0 (fully precise to the grid) should have
+ * good performance for typical data, unless there is a lot of indexed data
+ * coincident with the shape's edge.
+ *
+ * @lucene.experimental
+ */
 public class RecursivePrefixTreeStrategy extends PrefixTreeStrategy {
 
-  private int prefixGridScanLevel;//TODO how is this customized?
+  private int prefixGridScanLevel;
 
-  public RecursivePrefixTreeStrategy(SpatialPrefixTree grid) {
-    super(grid);
+  public RecursivePrefixTreeStrategy(SpatialPrefixTree grid, String fieldName) {
+    super(grid, fieldName);
     prefixGridScanLevel = grid.getMaxLevels() - 4;//TODO this default constant is dependent on the prefix grid size
   }
 
+  /**
+   * Sets the grid level [1-maxLevels] at which indexed terms are scanned brute-force
+   * instead of by grid decomposition.  By default this is maxLevels - 4.  The
+   * final level, maxLevels, is always scanned.
+   *
+   * @param prefixGridScanLevel 1 to maxLevels
+   */
   public void setPrefixGridScanLevel(int prefixGridScanLevel) {
+    //TODO if negative then subtract from maxlevels
     this.prefixGridScanLevel = prefixGridScanLevel;
   }
 
@@ -49,25 +60,17 @@ public class RecursivePrefixTreeStrategy extends PrefixTreeStrategy {
   }
 
   @Override
-  public Query makeQuery(SpatialArgs args, SimpleSpatialFieldInfo fieldInfo) {
-    Filter f = makeFilter(args, fieldInfo);
-
-    ValueSource vs = makeValueSource(args, fieldInfo);
-    return new FilteredQuery( new FunctionQuery(vs), f );
-  }
-
-  @Override
-  public Filter makeFilter(SpatialArgs args, SimpleSpatialFieldInfo fieldInfo) {
+  public Filter makeFilter(SpatialArgs args) {
     final SpatialOperation op = args.getOperation();
-    if (! SpatialOperation.is(op, SpatialOperation.IsWithin, SpatialOperation.Intersects, SpatialOperation.BBoxWithin))
+    if (op != SpatialOperation.Intersects)
       throw new UnsupportedSpatialOperation(op);
 
-    Shape qshape = args.getShape();
+    Shape shape = args.getShape();
 
-    int detailLevel = grid.getMaxLevelForPrecision(qshape,args.getDistPrecision());
+    int detailLevel = grid.getLevelForDistance(args.resolveDistErr(ctx, distErrPct));
 
     return new RecursivePrefixTreeFilter(
-        fieldInfo.getFieldName(), grid,qshape, prefixGridScanLevel, detailLevel);
+        getFieldName(), grid, shape, prefixGridScanLevel, detailLevel);
   }
 }
 

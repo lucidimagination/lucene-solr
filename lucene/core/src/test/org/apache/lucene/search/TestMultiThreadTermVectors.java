@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,8 @@ import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.*;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Terms;
@@ -67,7 +67,7 @@ public class TestMultiThreadTermVectors extends LuceneTestCase {
     IndexReader reader = null;
     
     try {
-      reader = IndexReader.open(directory);
+      reader = DirectoryReader.open(directory);
       for(int i = 1; i <= numThreads; i++)
         testTermPositionVectors(reader, i);
       
@@ -178,9 +178,8 @@ class MultiThreadTermVectorsReader implements Runnable {
   }
   
   private void verifyVectors(Fields vectors, int num) throws IOException {
-    FieldsEnum fieldsEnum = vectors.iterator();
-    while(fieldsEnum.next() != null) {
-      Terms terms = fieldsEnum.terms();
+    for (String field : vectors) {
+      Terms terms = vectors.terms(field);
       assert terms != null;
       verifyVector(terms.iterator(null), num);
     }

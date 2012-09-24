@@ -1,6 +1,6 @@
 package org.apache.solr.common.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -24,36 +24,36 @@ public class ZkCoreNodeProps {
     this.nodeProps = nodeProps;
   }
   
-  // may return null
   public String getCoreUrl() {
-    return getCoreUrl(nodeProps.get(ZkStateReader.BASE_URL_PROP), nodeProps.get(ZkStateReader.CORE_NAME_PROP));
+    return getCoreUrl(nodeProps.getStr(ZkStateReader.BASE_URL_PROP), nodeProps.getStr(ZkStateReader.CORE_NAME_PROP));
   }
   
   public String getNodeName() {
-    return nodeProps.get(ZkStateReader.NODE_NAME_PROP);
+    return nodeProps.getStr(ZkStateReader.NODE_NAME_PROP);
   }
 
   public String getState() {
-    return nodeProps.get(ZkStateReader.STATE_PROP);
+    return nodeProps.getStr(ZkStateReader.STATE_PROP);
   }
 
   public String getBaseUrl() {
-    return nodeProps.get(ZkStateReader.BASE_URL_PROP);
+    return nodeProps.getStr(ZkStateReader.BASE_URL_PROP);
   }
   
   public String getCoreName() {
-    return nodeProps.get(ZkStateReader.CORE_NAME_PROP);
+    return nodeProps.getStr(ZkStateReader.CORE_NAME_PROP);
+  }
+  
+  public static String getCoreUrl(ZkNodeProps nodeProps) {
+    return getCoreUrl(nodeProps.getStr(ZkStateReader.BASE_URL_PROP), nodeProps.getStr(ZkStateReader.CORE_NAME_PROP));
   }
   
   public static String getCoreUrl(String baseUrl, String coreName) {
     StringBuilder sb = new StringBuilder();
-    if (baseUrl == null) return null;
-    if (coreName == null) return null;
     sb.append(baseUrl);
     if (!baseUrl.endsWith("/")) sb.append("/");
-    sb.append(coreName == null ? "" : coreName);
+    sb.append(coreName);
     if (!(sb.substring(sb.length() - 1).equals("/"))) sb.append("/");
-    
     return sb.toString();
   }
 
@@ -68,6 +68,10 @@ public class ZkCoreNodeProps {
 
   public ZkNodeProps getNodeProps() {
     return nodeProps;
+  }
+
+  public boolean isLeader() {
+    return nodeProps.containsKey(ZkStateReader.LEADER_PROP);
   }
 
 

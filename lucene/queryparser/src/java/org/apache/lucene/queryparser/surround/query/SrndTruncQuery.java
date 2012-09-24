@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,7 +29,9 @@ import java.io.IOException;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
-
+/**
+ * Query that matches wildcards
+ */
 public class SrndTruncQuery extends SimpleTerm {
   public SrndTruncQuery(String truncated, char unlimited, char mask) {
     super(false); /* not quoted */

@@ -16,16 +16,18 @@ package org.apache.lucene.codecs.lucene40;
  * the License.
  */
 
+import java.io.Closeable;
 import java.io.IOException;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.StoredFieldsWriter;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.MergePolicy.MergeAbortedException;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.store.Directory;
@@ -62,16 +64,14 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
   // currently unused: static final int FIELD_IS_NUMERIC_SHORT = 5 << _NUMERIC_BIT_SHIFT;
   // currently unused: static final int FIELD_IS_NUMERIC_BYTE = 6 << _NUMERIC_BIT_SHIFT;
 
-  // (Happens to be the same as for now) Lucene 3.2: NumericFields are stored in binary format
-  static final int FORMAT_LUCENE_3_2_NUMERIC_FIELDS = 3;
+  static final String CODEC_NAME_IDX = "Lucene40StoredFieldsIndex";
+  static final String CODEC_NAME_DAT = "Lucene40StoredFieldsData";
+  static final int VERSION_START = 0;
+  static final int VERSION_CURRENT = VERSION_START;
+  static final long HEADER_LENGTH_IDX = CodecUtil.headerLength(CODEC_NAME_IDX);
+  static final long HEADER_LENGTH_DAT = CodecUtil.headerLength(CODEC_NAME_DAT);
 
-  // NOTE: if you introduce a new format, make it 1 higher
-  // than the current one, and always change this if you
-  // switch to a new format!
-  static final int FORMAT_CURRENT = FORMAT_LUCENE_3_2_NUMERIC_FIELDS;
 
-  // when removing support for old versions, leave the last supported version here
-  static final int FORMAT_MINIMUM = FORMAT_LUCENE_3_2_NUMERIC_FIELDS;
 
   /** Extension of stored fields file */
   public static final String FIELDS_EXTENSION = "fdt";
@@ -84,6 +84,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
   private IndexOutput fieldsStream;
   private IndexOutput indexStream;
 
+  /** Sole constructor. */
   public Lucene40StoredFieldsWriter(Directory directory, String segment, IOContext context) throws IOException {
     assert directory != null;
     this.directory = directory;
@@ -94,9 +95,10 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
       fieldsStream = directory.createOutput(IndexFileNames.segmentFileName(segment, "", FIELDS_EXTENSION), context);
       indexStream = directory.createOutput(IndexFileNames.segmentFileName(segment, "", FIELDS_INDEX_EXTENSION), context);
 
-      fieldsStream.writeInt(FORMAT_CURRENT);
-      indexStream.writeInt(FORMAT_CURRENT);
-
+      CodecUtil.writeHeader(fieldsStream, CODEC_NAME_DAT, VERSION_CURRENT);
+      CodecUtil.writeHeader(indexStream, CODEC_NAME_IDX, VERSION_CURRENT);
+      assert HEADER_LENGTH_DAT == fieldsStream.getFilePointer();
+      assert HEADER_LENGTH_IDX == indexStream.getFilePointer();
       success = true;
     } finally {
       if (!success) {
@@ -186,7 +188,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
       } else if (number instanceof Double) {
         fieldsStream.writeLong(Double.doubleToLongBits(number.doubleValue()));
       } else {
-        assert false;
+        throw new AssertionError("Cannot get here");
       }
     }
   }
@@ -208,8 +210,8 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
   }
 
   @Override
-  public void finish(int numDocs) throws IOException {
-    if (4+((long) numDocs)*8 != indexStream.getFilePointer())
+  public void finish(FieldInfos fis, int numDocs) {
+    if (HEADER_LENGTH_IDX+((long) numDocs)*8 != indexStream.getFilePointer())
       // This is most likely a bug in Sun JRE 1.6.0_04/_05;
       // we detect that the bug has struck, here, and
       // throw an exception to prevent the corruption from
@@ -225,7 +227,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
     int rawDocLengths[] = new int[MAX_RAW_MERGE_DOCS];
     int idx = 0;
     
-    for (MergeState.IndexReaderAndLiveDocs reader : mergeState.readers) {
+    for (AtomicReader reader : mergeState.readers) {
       final SegmentReader matchingSegmentReader = mergeState.matchingSegmentReaders[idx++];
       Lucene40StoredFieldsReader matchingFieldsReader = null;
       if (matchingSegmentReader != null) {
@@ -236,7 +238,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
         }
       }
     
-      if (reader.liveDocs != null) {
+      if (reader.getLiveDocs() != null) {
         docCount += copyFieldsWithDeletions(mergeState,
                                             reader, matchingFieldsReader, rawDocLengths);
       } else {
@@ -244,7 +246,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
                                           reader, matchingFieldsReader, rawDocLengths);
       }
     }
-    finish(docCount);
+    finish(mergeState.fieldInfos, docCount);
     return docCount;
   }
 
@@ -252,12 +254,12 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
       when merging stored fields */
   private final static int MAX_RAW_MERGE_DOCS = 4192;
 
-  private int copyFieldsWithDeletions(MergeState mergeState, final MergeState.IndexReaderAndLiveDocs reader,
+  private int copyFieldsWithDeletions(MergeState mergeState, final AtomicReader reader,
                                       final Lucene40StoredFieldsReader matchingFieldsReader, int rawDocLengths[])
-    throws IOException, MergeAbortedException, CorruptIndexException {
+    throws IOException {
     int docCount = 0;
-    final int maxDoc = reader.reader.maxDoc();
-    final Bits liveDocs = reader.liveDocs;
+    final int maxDoc = reader.maxDoc();
+    final Bits liveDocs = reader.getLiveDocs();
     assert liveDocs != null;
     if (matchingFieldsReader != null) {
       // We can bulk-copy because the fieldInfos are "congruent"
@@ -297,7 +299,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
         // on the fly?
         // NOTE: it's very important to first assign to doc then pass it to
         // fieldsWriter.addDocument; see LUCENE-1282
-        Document doc = reader.reader.document(j);
+        Document doc = reader.document(j);
         addDocument(doc, mergeState.fieldInfos);
         docCount++;
         mergeState.checkAbort.work(300);
@@ -306,10 +308,10 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
     return docCount;
   }
 
-  private int copyFieldsNoDeletions(MergeState mergeState, final MergeState.IndexReaderAndLiveDocs reader,
+  private int copyFieldsNoDeletions(MergeState mergeState, final AtomicReader reader,
                                     final Lucene40StoredFieldsReader matchingFieldsReader, int rawDocLengths[])
-    throws IOException, MergeAbortedException, CorruptIndexException {
-    final int maxDoc = reader.reader.maxDoc();
+    throws IOException {
+    final int maxDoc = reader.maxDoc();
     int docCount = 0;
     if (matchingFieldsReader != null) {
       // We can bulk-copy because the fieldInfos are "congruent"
@@ -324,7 +326,7 @@ public final class Lucene40StoredFieldsWriter extends StoredFieldsWriter {
       for (; docCount < maxDoc; docCount++) {
         // NOTE: it's very important to first assign to doc then pass it to
         // fieldsWriter.addDocument; see LUCENE-1282
-        Document doc = reader.reader.document(docCount);
+        Document doc = reader.document(docCount);
         addDocument(doc, mergeState.fieldInfos);
         mergeState.checkAbort.work(300);
       }

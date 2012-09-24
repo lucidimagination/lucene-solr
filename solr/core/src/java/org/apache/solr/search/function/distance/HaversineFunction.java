@@ -1,5 +1,5 @@
 package org.apache.solr.search.function.distance;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -66,8 +66,6 @@ public class HaversineFunction extends ValueSource {
 
   /**
    * @param doc  The doc to score
-   * @param p1DV
-   * @param p2DV
    * @return The haversine distance formula
    */
   protected double distance(int doc, FunctionValues p1DV, FunctionValues p2DV) {
@@ -81,10 +79,10 @@ public class HaversineFunction extends ValueSource {
     double y2;
     double x2;
     if (convertToRadians) {
-      y1 = p1D[0] * HaversineConstFunction.DEGREES_TO_RADIANS;
-      x1 = p1D[1] * HaversineConstFunction.DEGREES_TO_RADIANS;
-      y2 = p2D[0] * HaversineConstFunction.DEGREES_TO_RADIANS;
-      x2 = p2D[1] * HaversineConstFunction.DEGREES_TO_RADIANS;
+      y1 = p1D[0] * DistanceUtils.DEGREES_TO_RADIANS;
+      x1 = p1D[1] * DistanceUtils.DEGREES_TO_RADIANS;
+      y2 = p2D[0] * DistanceUtils.DEGREES_TO_RADIANS;
+      x2 = p2D[1] * DistanceUtils.DEGREES_TO_RADIANS;
     } else {
       y1 = p1D[0];
       x1 = p1D[1];

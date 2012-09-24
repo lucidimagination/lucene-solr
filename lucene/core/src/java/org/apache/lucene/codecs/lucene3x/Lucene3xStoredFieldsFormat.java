@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,6 @@ package org.apache.lucene.codecs.lucene3x;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
@@ -28,7 +27,7 @@ import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 
-/** @deprecated */
+/** @deprecated Only for reading existing 3.x indexes */
 @Deprecated
 class Lucene3xStoredFieldsFormat extends StoredFieldsFormat {
 
@@ -39,13 +38,8 @@ class Lucene3xStoredFieldsFormat extends StoredFieldsFormat {
   }
 
   @Override
-  public StoredFieldsWriter fieldsWriter(Directory directory, String segment,
+  public StoredFieldsWriter fieldsWriter(Directory directory, SegmentInfo si,
       IOContext context) throws IOException {
     throw new UnsupportedOperationException("this codec can only be used for reading");
-  }
-
-  @Override
-  public void files(SegmentInfo info, Set<String> files) throws IOException {
-    Lucene3xStoredFieldsReader.files(info, files);
   }
 }

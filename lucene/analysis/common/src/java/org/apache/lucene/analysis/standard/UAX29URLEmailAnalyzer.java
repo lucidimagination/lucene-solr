@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.standard;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -104,9 +104,9 @@ public final class UAX29URLEmailAnalyzer extends StopwordAnalyzerBase {
     tok = new StopFilter(matchVersion, tok, stopwords);
     return new TokenStreamComponents(src, tok) {
       @Override
-      protected void reset(final Reader reader) throws IOException {
+      protected void setReader(final Reader reader) throws IOException {
         src.setMaxTokenLength(UAX29URLEmailAnalyzer.this.maxTokenLength);
-        super.reset(reader);
+        super.setReader(reader);
       }
     };
   }

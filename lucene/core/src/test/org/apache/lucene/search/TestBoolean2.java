@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,8 @@ import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexReader;
@@ -59,12 +60,14 @@ public class TestBoolean2 extends LuceneTestCase {
     RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     for (int i = 0; i < docFields.length; i++) {
       Document doc = new Document();
-      doc.add(newField(field, docFields[i], TextField.TYPE_UNSTORED));
+      doc.add(newTextField(field, docFields[i], Field.Store.NO));
       writer.addDocument(doc);
     }
     writer.close();
-    littleReader = IndexReader.open(directory);
-    searcher = new IndexSearcher(littleReader);
+    littleReader = DirectoryReader.open(directory);
+    searcher = newSearcher(littleReader);
+    // this is intentionally using the baseline sim, because it compares against bigSearcher (which uses a random one)
+    searcher.setSimilarity(new DefaultSimilarity());
 
     // Make big index
     dir2 = new MockDirectoryWrapper(random(), new RAMDirectory(directory, IOContext.DEFAULT));
@@ -72,7 +75,13 @@ public class TestBoolean2 extends LuceneTestCase {
     // First multiply small test index:
     mulFactor = 1;
     int docCount = 0;
+    if (VERBOSE) {
+      System.out.println("\nTEST: now copy index...");
+    }
     do {
+      if (VERBOSE) {
+        System.out.println("\nTEST: cycle...");
+      }
       final Directory copy = new MockDirectoryWrapper(random(), new RAMDirectory(dir2, IOContext.DEFAULT));
       RandomIndexWriter w = new RandomIndexWriter(random(), dir2);
       w.addIndexes(copy);
@@ -85,12 +94,12 @@ public class TestBoolean2 extends LuceneTestCase {
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
         .setMaxBufferedDocs(_TestUtil.nextInt(random(), 50, 1000)));
     Document doc = new Document();
-    doc.add(newField("field2", "xxx", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("field2", "xxx", Field.Store.NO));
     for(int i=0;i<NUM_EXTRA_DOCS/2;i++) {
       w.addDocument(doc);
     }
     doc = new Document();
-    doc.add(newField("field2", "big bad bug", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("field2", "big bad bug", Field.Store.NO));
     for(int i=0;i<NUM_EXTRA_DOCS/2;i++) {
       w.addDocument(doc);
     }
@@ -254,7 +263,7 @@ public class TestBoolean2 extends LuceneTestCase {
     try {
 
       // increase number of iterations for more complete testing
-      int num = atLeast(10);
+      int num = atLeast(20);
       for (int i=0; i<num; i++) {
         int level = random().nextInt(3);
         q1 = randBoolQuery(new Random(random().nextLong()), random().nextBoolean(), level, field, vals, null);
@@ -263,7 +272,14 @@ public class TestBoolean2 extends LuceneTestCase {
         // match up.
         Sort sort = Sort.INDEXORDER;
 
-        QueryUtils.check(random(), q1,searcher);
+        QueryUtils.check(random(), q1,searcher); // baseline sim
+        try {
+          // a little hackish, QueryUtils.check is too costly to do on bigSearcher in this loop.
+          searcher.setSimilarity(bigSearcher.getSimilarity()); // random sim
+          QueryUtils.check(random(), q1, searcher);
+        } finally {
+          searcher.setSimilarity(new DefaultSimilarity()); // restore
+        }
 
         TopFieldCollector collector = TopFieldCollector.create(sort, 1000,
             false, true, true, true);
@@ -314,6 +330,14 @@ public class TestBoolean2 extends LuceneTestCase {
       Query q;
       if (qType < 3) {
         q = new TermQuery(new Term(field, vals[rnd.nextInt(vals.length)]));
+      } else if (qType < 4) {
+        Term t1 = new Term(field, vals[rnd.nextInt(vals.length)]);
+        Term t2 = new Term(field, vals[rnd.nextInt(vals.length)]);
+        PhraseQuery pq = new PhraseQuery();
+        pq.add(t1);
+        pq.add(t2);
+        pq.setSlop(10); // increase possibility of matching
+        q = pq;
       } else if (qType < 7) {
         q = new WildcardQuery(new Term(field, "w*"));
       } else {

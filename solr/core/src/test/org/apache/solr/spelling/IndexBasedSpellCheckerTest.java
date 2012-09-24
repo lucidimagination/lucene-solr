@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,6 +27,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.spell.JaroWinklerDistance;
 import org.apache.lucene.search.spell.SpellChecker;
 import org.apache.lucene.search.spell.StringDistance;
+import org.apache.lucene.search.spell.SuggestMode;
 import org.apache.lucene.search.spell.SuggestWord;
 import org.apache.lucene.search.spell.SuggestWordFrequencyComparator;
 import org.apache.lucene.store.Directory;
@@ -75,7 +76,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
   }
   
   @AfterClass
-  public static void afterClass() throws Exception {
+  public static void afterClass() {
     queryConverter = null;
   }
 
@@ -199,7 +200,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
 
     IndexReader reader = searcher.getIndexReader();
     Collection<Token> tokens = queryConverter.convert("documemt");
-    SpellingOptions spellOpts = new SpellingOptions(tokens, reader, 1, false, true, 0.5f, null);
+    SpellingOptions spellOpts = new SpellingOptions(tokens, reader, 1, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX, true, 0.5f, null);
     SpellingResult result = checker.getSuggestions(spellOpts);
     assertTrue("result is null and it shouldn't be", result != null);
     //should be lowercased, b/c we are using a lowercasing analyzer
@@ -290,7 +291,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
     );
     for (int i = 0; i < ALT_DOCS.length; i++) {
       Document doc = new Document();
-      doc.add(new Field("title", ALT_DOCS[i], TextField.TYPE_STORED));
+      doc.add(new TextField("title", ALT_DOCS[i], Field.Store.YES));
       iw.addDocument(doc);
     }
     iw.forceMerge(1);
@@ -312,7 +313,7 @@ public class IndexBasedSpellCheckerTest extends SolrTestCaseJ4 {
 
     IndexReader reader = searcher.getIndexReader();
     Collection<Token> tokens = queryConverter.convert("flesh");
-    SpellingOptions spellOpts = new SpellingOptions(tokens, reader, 1, false, true, 0.5f, null);
+    SpellingOptions spellOpts = new SpellingOptions(tokens, reader, 1, SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX, true, 0.5f, null);
     SpellingResult result = checker.getSuggestions(spellOpts);
     assertTrue("result is null and it shouldn't be", result != null);
     //should be lowercased, b/c we are using a lowercasing analyzer

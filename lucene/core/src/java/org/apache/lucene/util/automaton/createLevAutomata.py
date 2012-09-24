@@ -21,7 +21,8 @@
 import math
 import os
 import sys
-sys.path.insert(0, 'moman/finenight/python')
+#sys.path.insert(0, 'moman/finenight/python')
+sys.path.insert(0, '../../../../../../../../build/core/moman/finenight/python')
 try:
   from possibleStates import genTransitions
 except ImportError:
@@ -121,7 +122,7 @@ def main():
 
   w('package org.apache.lucene.util.automaton;')
   w('')
-  w('/**')
+  w('/*')
   w(' * Licensed to the Apache Software Foundation (ASF) under one or more')
   w(' * contributor license agreements.  See the NOTICE file distributed with')
   w(' * this work for additional information regarding copyright ownership.')

@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.pl;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -56,6 +56,13 @@ public final class PolishAnalyzer extends StopwordAnalyzerBase {
    */
   public static CharArraySet getDefaultStopSet(){
     return DefaultsHolder.DEFAULT_STOP_SET;
+  }
+  
+  /**
+   * Returns an unmodifiable instance of the default stemmer table.
+   */
+  public static Trie getDefaultTable() {
+    return DefaultsHolder.DEFAULT_TABLE;
   }
   
   /**

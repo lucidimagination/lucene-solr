@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.analyzing;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -50,6 +50,7 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
    */
   public AnalyzingQueryParser(Version matchVersion, String field, Analyzer analyzer) {
     super(matchVersion, field, analyzer);
+    setAnalyzeRangeTerms(true);
   }
 
   /**
@@ -71,7 +72,6 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
    *                 characters (? or *), but is not simple prefix term
    *
    * @return Resulting {@link Query} built for the term
-   * @throws ParseException
    */
   @Override
   protected Query getWildcardQuery(String field, String termStr) throws ParseException {
@@ -189,7 +189,6 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
    *                 (<b>without</b> trailing '*' character!)
    *
    * @return Resulting {@link Query} built for the term
-   * @throws ParseException
    */
   @Override
   protected Query getPrefixQuery(String field, String termStr) throws ParseException {
@@ -242,7 +241,6 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
    * @param termStr Term token to use for building term for the query
    *
    * @return Resulting {@link Query} built for the term
-   * @exception ParseException
    */
   @Override
   protected Query getFuzzyQuery(String field, String termStr, float minSimilarity)
@@ -278,72 +276,4 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
 
     return (nextToken == null) ? null : super.getFuzzyQuery(field, nextToken, minSimilarity);
   }
-
-  /**
-   * Overrides super class, by passing terms through analyzer.
-   * @exception ParseException
-   */
-  @Override
-  protected Query getRangeQuery(String field, String part1, String part2, boolean startInclusive, boolean endInclusive)
-      throws ParseException {
-    // get Analyzer from superclass and tokenize the terms
-    TokenStream source = null;
-    CharTermAttribute termAtt = null;
-    boolean multipleTokens = false;
-
-    if (part1 != null) {
-      // part1
-      try {
-        source = getAnalyzer().tokenStream(field, new StringReader(part1));
-        termAtt = source.addAttribute(CharTermAttribute.class);
-        source.reset();
-        multipleTokens = false;
-
-
-        if (source.incrementToken()) {
-          part1 = termAtt.toString();
-        }
-        multipleTokens = source.incrementToken();
-      } catch (IOException e) {
-        // ignore
-      }
-      try {
-        source.end();
-        source.close();
-      } catch (IOException e) {
-        // ignore
-      }
-      if (multipleTokens) {
-        throw new ParseException("Cannot build RangeQuery with analyzer " + getAnalyzer().getClass()
-            + " - tokens were added to part1");
-      }
-    }
-
-    if (part2 != null) {
-      try {
-        // part2
-        source = getAnalyzer().tokenStream(field, new StringReader(part2));
-        termAtt = source.addAttribute(CharTermAttribute.class);
-        source.reset();
-        if (source.incrementToken()) {
-          part2 = termAtt.toString();
-        }
-        multipleTokens = source.incrementToken();
-      } catch (IOException e) {
-        // ignore
-      }
-      try {
-        source.end();
-        source.close();
-      } catch (IOException e) {
-        // ignore
-      }
-      if (multipleTokens) {
-        throw new ParseException("Cannot build RangeQuery with analyzer " + getAnalyzer().getClass()
-            + " - tokens were added to part2");
-      }
-    }
-    return super.getRangeQuery(field, part1, part2, startInclusive, endInclusive);
-  }
-
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,7 +34,7 @@ import org.apache.lucene.util.NumericUtils; // for javadocs
  * <p>You create a new NumericRangeFilter with the static
  * factory methods, eg:
  *
- * <pre>
+ * <pre class="prettyprint">
  * Filter f = NumericRangeFilter.newFloatRange("weight", 0.03f, 0.10f, true, true);
  * </pre>
  *

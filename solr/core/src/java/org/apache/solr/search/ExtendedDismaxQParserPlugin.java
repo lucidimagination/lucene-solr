@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,11 +15,6 @@
  * limitations under the License.
  */
 
-/*
- * This parser was originally derived from DismaxQParser from Solr.
- * All changes are Copyright 2008, Lucid Imagination, Inc.
- */
-
 package org.apache.solr.search;
 
 import java.util.ArrayList;
@@ -32,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.core.StopFilterFactory;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.queries.function.BoostedQuery;
 import org.apache.lucene.queries.function.FunctionQuery;
@@ -41,7 +37,6 @@ import org.apache.lucene.queries.function.valuesource.QueryValueSource;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
-import org.apache.solr.analysis.StopFilterFactory;
 import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.search.SolrQueryParser.MagicFieldName;
 import org.apache.solr.common.params.DisMaxParams;
@@ -52,7 +47,8 @@ import org.apache.solr.schema.FieldType;
 import org.apache.solr.util.SolrPluginUtils;
 
 /**
- * An advanced multi-field query parser.
+ * An advanced multi-field query parser based on the DisMax parser.
+ * See Wiki page http://wiki.apache.org/solr/ExtendedDisMax
  * @lucene.experimental
  */
 public class ExtendedDismaxQParserPlugin extends QParserPlugin {
@@ -133,24 +129,27 @@ class ExtendedDismaxQParser extends QParser {
 
     userFields = new UserFields(U.parseFieldBoosts(solrParams.getParams(DMP.UF)));
     
-    queryFields = SolrPluginUtils.parseFieldBoosts(solrParams.getParams(DisMaxParams.QF));
-    if (0 == queryFields.size()) {
-      queryFields.put(req.getSchema().getDefaultSearchFieldName(), 1.0f);
-    }
+    queryFields = DisMaxQParser.parseQueryFields(req.getSchema(), solrParams);
+
+    // Phrase slop array
+    int pslop[] = new int[4];
+    pslop[0] = solrParams.getInt(DisMaxParams.PS, 0);
+    pslop[2] = solrParams.getInt(DisMaxParams.PS2, pslop[0]);
+    pslop[3] = solrParams.getInt(DisMaxParams.PS3, pslop[0]);
+
     
     // Boosted phrase of the full query string
-    Map<String,Float> phraseFields = 
-      SolrPluginUtils.parseFieldBoosts(solrParams.getParams(DisMaxParams.PF));
+    List<FieldParams> phraseFields = 
+      U.parseFieldBoostsAndSlop(solrParams.getParams(DMP.PF),0,pslop[0]);
     // Boosted Bi-Term Shingles from the query string
-    Map<String,Float> phraseFields2 = 
-      SolrPluginUtils.parseFieldBoosts(solrParams.getParams("pf2"));
+    List<FieldParams> phraseFields2 = 
+      U.parseFieldBoostsAndSlop(solrParams.getParams(DMP.PF2),2,pslop[2]);
     // Boosted Tri-Term Shingles from the query string
-    Map<String,Float> phraseFields3 = 
-      SolrPluginUtils.parseFieldBoosts(solrParams.getParams("pf3"));
+    List<FieldParams> phraseFields3 = 
+      U.parseFieldBoostsAndSlop(solrParams.getParams(DMP.PF3),3,pslop[3]);
 
     float tiebreaker = solrParams.getFloat(DisMaxParams.TIE, 0.0f);
 
-    int pslop = solrParams.getInt(DisMaxParams.PS, 0);
     int qslop = solrParams.getInt(DisMaxParams.QS, 0);
 
     // remove stopwords from mandatory "matching" component?
@@ -228,7 +227,7 @@ class ExtendedDismaxQParser extends QParser {
         Clause clause = clauses.get(i);
         String s = clause.raw;
         // and and or won't be operators at the start or end
-        if (i>0 && i+1<clauses.size()) {
+        if (lowercaseOperators && i>0 && i+1<clauses.size()) {
           if ("AND".equalsIgnoreCase(s)) {
             s="AND";
           } else if ("OR".equalsIgnoreCase(s)) {
@@ -313,10 +312,12 @@ class ExtendedDismaxQParser extends QParser {
       query.add(parsedUserQuery, BooleanClause.Occur.MUST);
 
       // sloppy phrase queries for proximity
-      if (phraseFields.size() > 0 || 
-          phraseFields2.size() > 0 ||
-          phraseFields3.size() > 0) {
-        
+      List<FieldParams> allPhraseFields = new ArrayList<FieldParams>();
+      allPhraseFields.addAll(phraseFields);
+      allPhraseFields.addAll(phraseFields2);
+      allPhraseFields.addAll(phraseFields3);
+
+      if (allPhraseFields.size() > 0) {
         // find non-field clauses
         List<Clause> normalClauses = new ArrayList<Clause>(clauses.size());
         for (Clause clause : clauses) {
@@ -330,14 +331,13 @@ class ExtendedDismaxQParser extends QParser {
           normalClauses.add(clause);
         }
 
-        // full phrase...
-        addShingledPhraseQueries(query, normalClauses, phraseFields, 0, 
-                                 tiebreaker, pslop);
-        // shingles...
-        addShingledPhraseQueries(query, normalClauses, phraseFields2, 2,  
-                                 tiebreaker, pslop);
-        addShingledPhraseQueries(query, normalClauses, phraseFields3, 3,
-                                 tiebreaker, pslop);
+        // full phrase and shingles
+        for (FieldParams phraseField: allPhraseFields) {
+          Map<String,Float> pf = new HashMap<String,Float>(1);
+          pf.put(phraseField.getField(),phraseField.getBoost());
+          addShingledPhraseQueries(query, normalClauses, pf,   
+          phraseField.getWordGrams(),tiebreaker, phraseField.getSlop());
+        }
         
       }
     }
@@ -346,17 +346,13 @@ class ExtendedDismaxQParser extends QParser {
 
     /* * * Boosting Query * * */
     boostParams = solrParams.getParams(DisMaxParams.BQ);
+    //List<Query> boostQueries = U.parseQueryStrings(req, boostParams);
     boostQueries=null;
     if (boostParams!=null && boostParams.length>0) {
-      Map<String,Float> bqBoosts = SolrPluginUtils.parseFieldBoosts(boostParams);
       boostQueries = new ArrayList<Query>();
-      for (Map.Entry<String,Float> bqs : bqBoosts.entrySet()) {
-        if (bqs.getKey().trim().length()==0) continue;
-        Query q = subQuery(bqs.getKey(), null).getQuery();
-        Float b = bqs.getValue();
-        if(b!=null) {
-          q.setBoost(b);
-        }
+      for (String qs : boostParams) {
+        if (qs.trim().length()==0) continue;
+        Query q = subQuery(qs, null).getQuery();
         boostQueries.add(q);
       }
     }
@@ -417,12 +413,9 @@ class ExtendedDismaxQParser extends QParser {
   }
 
   /**
-   * Extracts all the alised fields from the requests and adds them to up
-   * @param up
-   * @param tiebreaker
-   * @throws ParseException 
+   * Extracts all the aliased fields from the requests and adds them to up
    */
-  private void addAliasesFromRequest(ExtendedSolrQueryParser up, float tiebreaker) throws ParseException {
+  private void addAliasesFromRequest(ExtendedSolrQueryParser up, float tiebreaker) {
     Iterator<String> it = solrParams.getParameterNamesIterator();
     while(it.hasNext()) {
       String param = it.next();
@@ -541,81 +534,81 @@ class ExtendedDismaxQParser extends QParser {
   }
 
 
-  
-  public static CharSequence partialEscape(CharSequence s) {
-    StringBuilder sb = new StringBuilder();
-
-    int len = s.length();
-    for (int i = 0; i < len; i++) {
-      char c = s.charAt(i);
-      if (c == ':') {
-        // look forward to make sure it's something that won't
-        // cause a parse exception (something that won't be escaped... like
-        // +,-,:, whitespace
-        if (i+1<len && i>0) {
-          char ch = s.charAt(i+1);
-          if (!(Character.isWhitespace(ch) || ch=='+' || ch=='-' || ch==':')) {
-            // OK, at this point the chars after the ':' will be fine.
-            // now look back and try to determine if this is a fieldname
-            // [+,-]? [letter,_] [letter digit,_,-,.]*
-            // This won't cover *all* possible lucene fieldnames, but we should
-            // only pick nice names to begin with
-            int start, pos;
-            for (start=i-1; start>=0; start--) {
-              ch = s.charAt(start);
-              if (Character.isWhitespace(ch)) break;
-            }
-
-            // skip whitespace
-            pos = start+1;
-
-            // skip leading + or -
-            ch = s.charAt(pos);
-            if (ch=='+' || ch=='-') {
-              pos++;
-            }
-
-            // we don't need to explicitly check for end of string
-            // since ':' will act as our sentinal
-
-              // first char can't be '-' or '.'
-              ch = s.charAt(pos++);
-              if (Character.isJavaIdentifierPart(ch)) {
-
-                for(;;) {
-                  ch = s.charAt(pos++);
-                  if (!(Character.isJavaIdentifierPart(ch) || ch=='-' || ch=='.')) {
-                    break;
-                  }
-                }
-
-                if (pos<=i) {
-                  // OK, we got to the ':' and everything looked like a valid fieldname, so
-                  // don't escape the ':'
-                  sb.append(':');
-                  continue;  // jump back to start of outer-most loop
-                }
-
-              }
-
-
-          }
-        }
-
-        // we fell through to here, so we should escape this like other reserved chars.
-        sb.append('\\');
-      }
-      else if (c == '\\' || c == '!' || c == '(' || c == ')' ||
-          c == '^' || c == '[' || c == ']' ||
-          c == '{'  || c == '}' || c == '~' || c == '*' || c == '?'
-          )
-      {
-        sb.append('\\');
-      }
-      sb.append(c);
-    }
-    return sb;
-  }
+// FIXME: Not in use
+//  public static CharSequence partialEscape(CharSequence s) {
+//    StringBuilder sb = new StringBuilder();
+//
+//    int len = s.length();
+//    for (int i = 0; i < len; i++) {
+//      char c = s.charAt(i);
+//      if (c == ':') {
+//        // look forward to make sure it's something that won't
+//        // cause a parse exception (something that won't be escaped... like
+//        // +,-,:, whitespace
+//        if (i+1<len && i>0) {
+//          char ch = s.charAt(i+1);
+//          if (!(Character.isWhitespace(ch) || ch=='+' || ch=='-' || ch==':')) {
+//            // OK, at this point the chars after the ':' will be fine.
+//            // now look back and try to determine if this is a fieldname
+//            // [+,-]? [letter,_] [letter digit,_,-,.]*
+//            // This won't cover *all* possible lucene fieldnames, but we should
+//            // only pick nice names to begin with
+//            int start, pos;
+//            for (start=i-1; start>=0; start--) {
+//              ch = s.charAt(start);
+//              if (Character.isWhitespace(ch)) break;
+//            }
+//
+//            // skip whitespace
+//            pos = start+1;
+//
+//            // skip leading + or -
+//            ch = s.charAt(pos);
+//            if (ch=='+' || ch=='-') {
+//              pos++;
+//            }
+//
+//            // we don't need to explicitly check for end of string
+//            // since ':' will act as our sentinal
+//
+//              // first char can't be '-' or '.'
+//              ch = s.charAt(pos++);
+//              if (Character.isJavaIdentifierPart(ch)) {
+//
+//                for(;;) {
+//                  ch = s.charAt(pos++);
+//                  if (!(Character.isJavaIdentifierPart(ch) || ch=='-' || ch=='.')) {
+//                    break;
+//                  }
+//                }
+//
+//                if (pos<=i) {
+//                  // OK, we got to the ':' and everything looked like a valid fieldname, so
+//                  // don't escape the ':'
+//                  sb.append(':');
+//                  continue;  // jump back to start of outer-most loop
+//                }
+//
+//              }
+//
+//
+//          }
+//        }
+//
+//        // we fell through to here, so we should escape this like other reserved chars.
+//        sb.append('\\');
+//      }
+//      else if (c == '\\' || c == '!' || c == '(' || c == ')' ||
+//          c == '^' || c == '[' || c == ']' ||
+//          c == '{'  || c == '}' || c == '~' || c == '*' || c == '?'
+//          )
+//      {
+//        sb.append('\\');
+//      }
+//      sb.append(c);
+//    }
+//    return sb;
+//  }
 
 
   static class Clause {
@@ -625,6 +618,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     String field;
+    String rawField;  // if the clause is +(foo:bar) then rawField=(foo
     boolean isPhrase;
     boolean hasWhitespace;
     boolean hasSpecialSyntax;
@@ -668,7 +662,9 @@ class ExtendedDismaxQParser extends QParser {
       }
       if (clause.field != null) {
         disallowUserField = false;
-        pos += clause.field.length(); // skip the field name
+        int colon = s.indexOf(':',pos);
+        clause.rawField = s.substring(pos, colon);
+        pos += colon - pos; // skip the field name
         pos++;  // skip the ':'
       }
 
@@ -726,6 +722,10 @@ class ExtendedDismaxQParser extends QParser {
             case '"':
             case '+':
             case '-':
+            case '\\':
+            case '|':
+            case '&':
+            case '/':
               clause.hasSpecialSyntax = true;
               sb.append('\\');
           }
@@ -795,6 +795,10 @@ class ExtendedDismaxQParser extends QParser {
     // make sure there is space after the colon, but not whitespace
     if (colon<=pos || colon+1>=end || Character.isWhitespace(s.charAt(colon+1))) return null;
     char ch = s.charAt(p++);
+    while ((ch=='(' || ch=='+' || ch=='-') && (pos<end)) {
+      ch = s.charAt(p++);
+      pos++;
+    }
     if (!Character.isJavaIdentifierPart(ch)) return null;
     while (p<colon) {
       ch = s.charAt(p++);
@@ -947,8 +951,7 @@ class ExtendedDismaxQParser extends QParser {
     /**
      * Returns the aliases found for a field.
      * Returns null if there are no aliases for the field
-     * @param field
-     * @return
+     * @return Alias
      */
     public Alias getAlias(String field) {
       return aliases.get(field);
@@ -1151,7 +1154,7 @@ class ExtendedDismaxQParser extends QParser {
        return lst;
      }
 
-    private Query getQuery() throws ParseException {
+    private Query getQuery() {
       try {
 
         switch (type) {

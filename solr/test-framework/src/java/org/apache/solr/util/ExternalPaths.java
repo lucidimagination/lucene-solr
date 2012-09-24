@@ -1,6 +1,6 @@
 package org.apache.solr.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,12 +25,12 @@ import java.io.File;
  * @lucene.internal
  */
 public class ExternalPaths {
-  private static final String SOURCE_HOME = determineSourceHome();
+  public static final String SOURCE_HOME = determineSourceHome();
   public static String WEBAPP_HOME = new File(SOURCE_HOME, "webapp/web").getAbsolutePath();
   public static String EXAMPLE_HOME = new File(SOURCE_HOME, "example/solr").getAbsolutePath();
   public static String EXAMPLE_MULTICORE_HOME = new File(SOURCE_HOME, "example/multicore").getAbsolutePath();
-  public static String EXAMPLE_SCHEMA=EXAMPLE_HOME+"/conf/schema.xml";
-  public static String EXAMPLE_CONFIG=EXAMPLE_HOME+"/conf/solrconfig.xml";
+  public static String EXAMPLE_SCHEMA=EXAMPLE_HOME+"/collection1/conf/schema.xml";
+  public static String EXAMPLE_CONFIG=EXAMPLE_HOME+"/collection1/conf/solrconfig.xml";
   
   static String determineSourceHome() {
     // ugly, ugly hack to determine the example home without depending on the CWD

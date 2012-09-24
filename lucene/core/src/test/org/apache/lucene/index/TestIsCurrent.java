@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,7 @@ package org.apache.lucene.index;
  */
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.util.*;
 import org.apache.lucene.store.*;
 
@@ -42,7 +42,7 @@ public class TestIsCurrent extends LuceneTestCase {
 
     // write document
     Document doc = new Document();
-    doc.add(newField("UUID", "1", TextField.TYPE_STORED));
+    doc.add(newTextField("UUID", "1", Field.Store.YES));
     writer.addDocument(doc);
     writer.commit();
   }
@@ -56,8 +56,6 @@ public class TestIsCurrent extends LuceneTestCase {
 
   /**
    * Failing testcase showing the trouble
-   * 
-   * @throws IOException
    */
   @Test
   public void testDeleteByTermIsCurrent() throws IOException {
@@ -83,8 +81,6 @@ public class TestIsCurrent extends LuceneTestCase {
 
   /**
    * Testcase for example to show that writer.deleteAll() is working as expected
-   * 
-   * @throws IOException
    */
   @Test
   public void testDeleteAllIsCurrent() throws IOException {

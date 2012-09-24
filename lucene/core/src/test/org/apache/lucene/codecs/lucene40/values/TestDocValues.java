@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -40,6 +40,7 @@ import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.packed.PackedInts;
 
 // TODO: some of this should be under lucene40 codec tests? is talking to codec directly?f
 public class TestDocValues extends LuceneTestCase {
@@ -71,7 +72,7 @@ public class TestDocValues extends LuceneTestCase {
     Directory dir = newDirectory();
     final Counter trackBytes = Counter.newCounter();
     DocValuesConsumer w = Bytes.getWriter(dir, "test", mode, fixedSize, COMP, trackBytes, newIOContext(random()),
-        random().nextBoolean());
+        random().nextFloat() * PackedInts.FAST);
     int maxDoc = 220;
     final String[] values = new String[maxDoc];
     final int fixedLength = 1 + atLeast(50);
@@ -359,7 +360,7 @@ public class TestDocValues extends LuceneTestCase {
       final Counter trackBytes = Counter.newCounter();
       DocValuesConsumer w = Ints.getWriter(dir, "test", trackBytes, type, newIOContext(random()));
       for (int i = 0; i < NUM_VALUES; i++) {
-        final long v = random().nextLong() % (1 + maxV);
+        final long v = _TestUtil.nextLong(random(), -maxV, maxV);
         valueHolder.numberValue = values[i] = v;
         w.add(i, valueHolder);
       }

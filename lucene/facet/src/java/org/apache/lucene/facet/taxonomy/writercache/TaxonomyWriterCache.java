@@ -3,7 +3,7 @@ package org.apache.lucene.facet.taxonomy.writercache;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,22 +22,25 @@ import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 
 /**
  * TaxonomyWriterCache is a relatively simple interface for a cache of
- * category->ordinal mappings, used in TaxonomyWriter implementations
- * (such as {@link DirectoryTaxonomyWriter}).
- * <P>
- * It basically has put() methods for adding a mapping, and get() for looking
- * a mapping up the cache. The cache does <B>not</B> guarantee to hold
- * everything that has been put into it, and might in fact selectively
- * delete some of the mappings (e.g., the ones least recently used).
- * This means that if get() returns a negative response, it does not
- * necessarily mean that the category doesn't exist - just that it is not
- * in the cache. The caller can only infer that the category doesn't exist
- * if it knows the cache to be complete (because all the categories were
- * loaded into the cache, and since then no put() returned true). 
- * <P> However,
- * if it does so, it should clear out large parts of the cache at once, because
- * the user will typically need to work hard to recover from every cache
+ * category->ordinal mappings, used in TaxonomyWriter implementations (such as
+ * {@link DirectoryTaxonomyWriter}).
+ * <p>
+ * It basically has put() methods for adding a mapping, and get() for looking a
+ * mapping up the cache. The cache does <B>not</B> guarantee to hold everything
+ * that has been put into it, and might in fact selectively delete some of the
+ * mappings (e.g., the ones least recently used). This means that if get()
+ * returns a negative response, it does not necessarily mean that the category
+ * doesn't exist - just that it is not in the cache. The caller can only infer
+ * that the category doesn't exist if it knows the cache to be complete (because
+ * all the categories were loaded into the cache, and since then no put()
+ * returned true).
+ * <p>
+ * However, if it does so, it should clear out large parts of the cache at once,
+ * because the user will typically need to work hard to recover from every cache
  * cleanup (see {@link #put(CategoryPath, int)}'s return value).
+ * <p>
+ * <b>NOTE:</b> the cache may be accessed concurrently by multiple threads,
+ * therefore cache implementations should take this into consideration.
  * 
  * @lucene.experimental
  */
@@ -97,19 +100,18 @@ public interface TaxonomyWriterCache {
    * If the given length is negative or bigger than the path's actual
    * length, the full path is taken. 
    */
-  public boolean put(CategoryPath categoryPath, int prefixLen, int ordinal);  
+  public boolean put(CategoryPath categoryPath, int prefixLen, int ordinal);
+  
+  /**
+   * Returns true if the cache is full, such that the next {@link #put} will
+   * evict entries from it, false otherwise.
+   */
+  public boolean isFull();
 
   /**
-   * Sometimes the cache is either unlimited in size, or limited by a very
-   * big size, and in that case when we add a lot of categories it might
-   * make sense to pre-load the cache with all the existing categories.
-   * However, this pre-load does not make sense when the allowed cache
-   * size is small. The hasRoom() method allows to differentiate between
-   * these cases.
-   * <P>  
-   * After hasRoom(n) returned <code>true</code>, the following n put()
-   * should return false (meaning that the cache was not cleared).
+   * Clears the content of the cache. Unlike {@link #close()}, the caller can
+   * assume that the cache is still operable after this method returns.
    */
-  public boolean hasRoom(int numberOfEntries);
-
+  public void clear();
+  
 }

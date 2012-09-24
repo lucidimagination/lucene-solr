@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.standard;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,7 +36,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
  */
 %%
 
-%unicode 6.0
+%unicode 6.1
 %integer
 %final
 %public
@@ -44,8 +44,9 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 %implements StandardTokenizerInterface
 %function getNextToken
 %char
+%buffer 4096
 
-%include src/java/org/apache/lucene/analysis/standard/SUPPLEMENTARY.jflex-macro
+%include SUPPLEMENTARY.jflex-macro
 ALetter = ([\p{WB:ALetter}] | {ALetterSupp})
 Format =  ([\p{WB:Format}] | {FormatSupp})
 Numeric = ([\p{WB:Numeric}] | {NumericSupp})
@@ -114,8 +115,8 @@ HiraganaEx = {Hiragana} ({Format} | {Extend})*
 
 %%
 
-// UAX#29 WB1. 	sot 	÷ 	
-//        WB2. 		÷ 	eot
+// UAX#29 WB1.   sot   ÷
+//        WB2.     ÷   eot
 //
 <<EOF>> { return StandardTokenizerInterface.YYEOF; }
 
@@ -165,7 +166,7 @@ HiraganaEx = {Hiragana} ({Format} | {Extend})*
 //    annex.  That means that satisfactory treatment of languages like Chinese
 //    or Thai requires special handling.
 // 
-// In Unicode 6.0, only one character has the \p{Line_Break = Contingent_Break}
+// In Unicode 6.1, only one character has the \p{Line_Break = Contingent_Break}
 // property: U+FFFC ( ￼ ) OBJECT REPLACEMENT CHARACTER.
 //
 // In the ICU implementation of UAX#29, \p{Line_Break = Complex_Context}

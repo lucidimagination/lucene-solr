@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -97,7 +97,6 @@ public class NamedList<T> implements Cloneable, Serializable, Iterable<Map.Entry
    * indexed elements (0,2,4. ..etc) are Strings and odd elements (1,3,5,) are of
    * the type "T".
    *
-   * @param nameValuePairs
    * @return Modified List as per the above description
    * @deprecated This a temporary placeholder method until the guts of the class
    * are actually replaced by List&lt;String, ?&gt;.
@@ -273,8 +272,6 @@ public class NamedList<T> implements Cloneable, Serializable, Iterable<Map.Entry
    *
    * Helper class implementing Map.Entry&lt;String, T&gt; to store the key-value
    * relationship in NamedList (the keys of which are String-s) 
-   * 
-   * @param <T>
    */
   public static final class NamedListEntry<T> implements Map.Entry<String, T> {
 
@@ -367,12 +364,12 @@ public class NamedList<T> implements Cloneable, Serializable, Iterable<Map.Entry
           @Override
           public String toString()
           {
-        	  return getKey()+"="+getValue();
+            return getKey()+"="+getValue();
           }
 
-    		  public T setValue(T value) {
+          public T setValue(T value) {
             return list.setVal(index, value);
-    		  }
+          }
         };
         return nv;
       }

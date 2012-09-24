@@ -1,5 +1,5 @@
 package org.apache.lucene.index;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,7 @@ package org.apache.lucene.index;
 
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.lucene.index.FieldInfos.FieldNumberBiMap;
+import org.apache.lucene.index.FieldInfos.FieldNumbers;
 import org.apache.lucene.util.SetOnce;
 
 /**
@@ -36,7 +36,7 @@ import org.apache.lucene.util.SetOnce;
  * new {@link DocumentsWriterPerThread} instance.
  * </p>
  */
-abstract class DocumentsWriterPerThreadPool {
+abstract class DocumentsWriterPerThreadPool implements Cloneable {
   
   /**
    * {@link ThreadState} references and guards a
@@ -119,10 +119,10 @@ abstract class DocumentsWriterPerThreadPool {
     }
   }
 
-  private final ThreadState[] threadStates;
+  private ThreadState[] threadStates;
   private volatile int numThreadStatesActive;
-  private final SetOnce<FieldNumberBiMap> globalFieldMap = new SetOnce<FieldNumberBiMap>();
-  private final SetOnce<DocumentsWriter> documentsWriter = new SetOnce<DocumentsWriter>();
+  private SetOnce<FieldNumbers> globalFieldMap = new SetOnce<FieldNumbers>();
+  private SetOnce<DocumentsWriter> documentsWriter = new SetOnce<DocumentsWriter>();
   
   /**
    * Creates a new {@link DocumentsWriterPerThreadPool} with a given maximum of {@link ThreadState}s.
@@ -135,13 +135,30 @@ abstract class DocumentsWriterPerThreadPool {
     numThreadStatesActive = 0;
   }
 
-  void initialize(DocumentsWriter documentsWriter, FieldNumberBiMap globalFieldMap, IndexWriterConfig config) {
+  void initialize(DocumentsWriter documentsWriter, FieldNumbers globalFieldMap, LiveIndexWriterConfig config) {
     this.documentsWriter.set(documentsWriter); // thread pool is bound to DW
     this.globalFieldMap.set(globalFieldMap);
     for (int i = 0; i < threadStates.length; i++) {
-      final FieldInfos infos = new FieldInfos(globalFieldMap);
+      final FieldInfos.Builder infos = new FieldInfos.Builder(globalFieldMap);
       threadStates[i] = new ThreadState(new DocumentsWriterPerThread(documentsWriter.directory, documentsWriter, infos, documentsWriter.chain));
     }
+  }
+
+  @Override
+  public DocumentsWriterPerThreadPool clone() {
+    // We should only be cloned before being used:
+    assert numThreadStatesActive == 0;
+    DocumentsWriterPerThreadPool clone;
+    try {
+      clone = (DocumentsWriterPerThreadPool) super.clone();
+    } catch (CloneNotSupportedException e) {
+      // should not happen
+      throw new RuntimeException(e);
+    }
+    clone.documentsWriter = new SetOnce<DocumentsWriter>();
+    clone.globalFieldMap = new SetOnce<FieldNumbers>();
+    clone.threadStates = new ThreadState[threadStates.length];
+    return clone;
   }
   
   /**
@@ -228,7 +245,7 @@ abstract class DocumentsWriterPerThreadPool {
     assert globalFieldMap.get() != null;
     final DocumentsWriterPerThread dwpt = threadState.dwpt;
     if (!closed) {
-      final FieldInfos infos = new FieldInfos(globalFieldMap.get());
+      final FieldInfos.Builder infos = new FieldInfos.Builder(globalFieldMap.get());
       final DocumentsWriterPerThread newDwpt = new DocumentsWriterPerThread(dwpt, infos);
       newDwpt.initialize();
       threadState.resetWriter(newDwpt);

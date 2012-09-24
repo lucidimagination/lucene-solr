@@ -1,5 +1,5 @@
 package org.apache.lucene.search.payloads;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -55,11 +55,11 @@ public abstract class PayloadFunction {
    */
   public abstract float docScore(int docId, String field, int numPayloadsSeen, float payloadScore);
   
-  public Explanation explain(int docId, int numPayloadsSeen, float payloadScore){
-	  Explanation result = new Explanation();
-	  result.setDescription("Unimpl Payload Function Explain");
-	  result.setValue(1);
-	  return result;
+  public Explanation explain(int docId, String field, int numPayloadsSeen, float payloadScore){
+    Explanation result = new Explanation();
+    result.setDescription(getClass().getSimpleName() + ".docScore()");
+    result.setValue(docScore(docId, field, numPayloadsSeen, payloadScore));
+    return result;
   };
   
   @Override

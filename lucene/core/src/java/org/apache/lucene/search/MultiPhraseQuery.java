@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,7 @@ import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -35,7 +36,6 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
-import org.apache.lucene.util.TermContext;
 import org.apache.lucene.util.ToStringUtils;
 
 /**
@@ -86,8 +86,6 @@ public class MultiPhraseQuery extends Query {
    * Allows to specify the relative position of terms within the phrase.
    * 
    * @see PhraseQuery#add(Term, int)
-   * @param terms
-   * @param position
    */
   public void add(Term[] terms, int position) {
     if (termArrays.size() == 0)
@@ -110,7 +108,7 @@ public class MultiPhraseQuery extends Query {
    * Do not modify the List or its contents.
    */
   public List<Term[]> getTermArrays() {
-	  return Collections.unmodifiableList(termArrays);
+    return Collections.unmodifiableList(termArrays);
   }
 
   /**
@@ -226,11 +224,11 @@ public class MultiPhraseQuery extends Query {
             return null;
           }
           termsEnum.seekExact(term.bytes(), termState);
-          postingsEnum = termsEnum.docsAndPositions(liveDocs, null, false);
+          postingsEnum = termsEnum.docsAndPositions(liveDocs, null, 0);
 
           if (postingsEnum == null) {
             // term does exist, but has no positions
-            assert termsEnum.docs(liveDocs, null, false) != null: "termstate found but no term exists in reader";
+            assert termsEnum.docs(liveDocs, null, 0) != null: "termstate found but no term exists in reader";
             throw new IllegalStateException("field \"" + term.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + term.text() + ")");
           }
 
@@ -484,7 +482,7 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
         continue;
       }
       termsEnum.seekExact(term.bytes(), termState);
-      DocsAndPositionsEnum postings = termsEnum.docsAndPositions(liveDocs, null, false);
+      DocsAndPositionsEnum postings = termsEnum.docsAndPositions(liveDocs, null, 0);
       if (postings == null) {
         // term does exist, but has no positions
         throw new IllegalStateException("field \"" + term.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + term.text() + ")");
@@ -548,12 +546,7 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
 
   @Override
   public BytesRef getPayload() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public boolean hasPayload() {
-    throw new UnsupportedOperationException();
+    return null;
   }
 
   @Override

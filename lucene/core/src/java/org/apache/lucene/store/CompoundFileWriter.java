@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,33 +29,14 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.MergePolicy.MergeAbortedException;
 import org.apache.lucene.util.IOUtils;
 
 /**
  * Combines multiple files into a single compound file.
  * 
- * The file format data file:<br>
- * <ul>
- * <li>VInt Version</li>
- * <li>{File Data} fileCount entries with the raw data of the corresponding file
- * </li>
- * <ul>
- * File format entry table:<br>
- * <ul>
- * <li>int Version</li>
- * <li>VInt fileCount - number of entries with the following structure:</li>
- * <ul>
- * <li>String fileName</li>
- * <li>long dataOffset</li>
- * <li>long dataLength</li>
- * </ul>
- * </li> </ul> The fileCount integer indicates how many files are contained in
- * this compound file. The entry table that follows has that many entries. Each
- * directory entry contains a long pointer to the start of this file's data
- * section, the files length, and a String with that file's name.
- * 
+ * @see CompoundFileDirectory
  * @lucene.internal
  */
 final class CompoundFileWriter implements Closeable{
@@ -75,15 +56,14 @@ final class CompoundFileWriter implements Closeable{
 
   // Segment name is not written in the file names.
   static final int FORMAT_NO_SEGMENT_PREFIX = -1;
-  static final int FORMAT_APPEND_FILES = -2;
+  
+  // versioning for the .cfs file
+  static final String DATA_CODEC = "CompoundFileWriterData";
+  static final int VERSION_START = 0;
+  static final int VERSION_CURRENT = VERSION_START;
 
-  static final int ENTRY_FORMAT_CURRENT = -1;
-
-  // NOTE: if you introduce a new format, make it 1 lower
-  // than the current one, and always change this if you
-  // switch to a new format!
-  /** @lucene.internal */
-  static final int FORMAT_CURRENT = FORMAT_APPEND_FILES;
+  // versioning for the .cfe file
+  static final String ENTRY_CODEC = "CompoundFileWriterEntries";
 
   private final Directory directory;
   private final Map<String, FileEntry> entries = new HashMap<String, FileEntry>();
@@ -103,7 +83,7 @@ final class CompoundFileWriter implements Closeable{
    * @throws NullPointerException
    *           if <code>dir</code> or <code>name</code> is null
    */
-  CompoundFileWriter(Directory dir, String name) throws IOException {
+  CompoundFileWriter(Directory dir, String name) {
     if (dir == null)
       throw new NullPointerException("directory cannot be null");
     if (name == null)
@@ -118,16 +98,14 @@ final class CompoundFileWriter implements Closeable{
   
   private synchronized IndexOutput getOutput() throws IOException {
     if (dataOut == null) {
-      IndexOutput dataOutput = null;
       boolean success = false;
       try {
-        dataOutput = directory.createOutput(dataFileName, IOContext.DEFAULT);
-        dataOutput.writeVInt(FORMAT_CURRENT);
-        dataOut = dataOutput;
+        dataOut = directory.createOutput(dataFileName, IOContext.DEFAULT);
+        CodecUtil.writeHeader(dataOut, DATA_CODEC, VERSION_CURRENT);
         success = true;
       } finally {
         if (!success) {
-          IOUtils.closeWhileHandlingException(dataOutput);
+          IOUtils.closeWhileHandlingException(dataOut);
         }
       }
     } 
@@ -201,7 +179,7 @@ final class CompoundFileWriter implements Closeable{
    * output stream.
    */
   private final long copyFileEntry(IndexOutput dataOut, FileEntry fileEntry)
-      throws IOException, MergeAbortedException {
+      throws IOException {
     final IndexInput is = fileEntry.dir.openInput(fileEntry.file, IOContext.READONCE);
     boolean success = false;
     try {
@@ -230,7 +208,7 @@ final class CompoundFileWriter implements Closeable{
 
   protected void writeEntryTable(Collection<FileEntry> entries,
       IndexOutput entryOut) throws IOException {
-    entryOut.writeInt(ENTRY_FORMAT_CURRENT);
+    CodecUtil.writeHeader(entryOut, ENTRY_CODEC, VERSION_CURRENT);
     entryOut.writeVInt(entries.size());
     for (FileEntry fe : entries) {
       entryOut.writeString(IndexFileNames.stripSegmentName(fe.file));

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,6 +30,7 @@ import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.document.DateTools;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.QueryParser.Operator;
+import org.apache.lucene.queryparser.flexible.standard.CommonQueryParserConfiguration;
 import org.apache.lucene.search.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
@@ -37,7 +38,7 @@ import org.apache.lucene.util.Version;
 /** This class is overridden by QueryParser in QueryParser.jj
  * and acts to separate the majority of the Java code from the .jj grammar file. 
  */
-public abstract class QueryParserBase {
+public abstract class QueryParserBase implements CommonQueryParserConfiguration {
 
   /** Do not catch this exception in your code, it means you are using methods that you should no longer use. */
   public static class MethodRemovedUseAnother extends Throwable {}
@@ -71,6 +72,7 @@ public abstract class QueryParserBase {
   float fuzzyMinSim = FuzzyQuery.defaultMinSimilarity;
   int fuzzyPrefixLength = FuzzyQuery.defaultPrefixLength;
   Locale locale = Locale.getDefault();
+  TimeZone timeZone = TimeZone.getDefault();
 
   // the default date resolution
   DateTools.Resolution dateResolution = null;
@@ -320,7 +322,8 @@ public abstract class QueryParserBase {
   }
 
   /**
-   * Set locale used by date range parsing.
+   * Set locale used by date range parsing, lowercasing, and other
+   * locale-sensitive operations.
    */
   public void setLocale(Locale locale) {
     this.locale = locale;
@@ -331,6 +334,14 @@ public abstract class QueryParserBase {
    */
   public Locale getLocale() {
     return locale;
+  }
+  
+  public void setTimeZone(TimeZone timeZone) {
+    this.timeZone = timeZone;
+  }
+  
+  public TimeZone getTimeZone() {
+    return timeZone;
   }
 
   /**
@@ -475,18 +486,16 @@ public abstract class QueryParserBase {
       source = analyzer.tokenStream(field, new StringReader(queryText));
       source.reset();
     } catch (IOException e) {
-      throw new ParseException("Unable to initialize TokenStream to analyze query text", e);
+      ParseException p = new ParseException("Unable to initialize TokenStream to analyze query text");
+      p.initCause(e);
+      throw p;
     }
     CachingTokenFilter buffer = new CachingTokenFilter(source);
     TermToBytesRefAttribute termAtt = null;
     PositionIncrementAttribute posIncrAtt = null;
     int numTokens = 0;
 
-    try {
-      buffer.reset();
-    } catch (IOException e) {
-      throw new ParseException("Unable to initialize TokenStream to analyze query text", e);
-    }
+    buffer.reset();
 
     if (buffer.hasAttribute(TermToBytesRefAttribute.class)) {
       termAtt = buffer.getAttribute(TermToBytesRefAttribute.class);
@@ -524,7 +533,9 @@ public abstract class QueryParserBase {
       source.close();
     }
     catch (IOException e) {
-      throw new ParseException("Cannot close TokenStream analyzing query text", e);
+      ParseException p = new ParseException("Cannot close TokenStream analyzing query text");
+      p.initCause(e);
+      throw p;
     }
 
     BytesRef bytes = termAtt == null ? null : termAtt.getBytesRef();
@@ -655,10 +666,6 @@ public abstract class QueryParserBase {
     return query;
   }
 
-  /**
-   *
-   * @exception org.apache.lucene.queryparser.classic.ParseException
-   */
   protected Query getRangeQuery(String field,
                                 String part1,
                                 String part2,
@@ -666,8 +673,8 @@ public abstract class QueryParserBase {
                                 boolean endInclusive) throws ParseException
   {
     if (lowercaseExpandedTerms) {
-      part1 = part1==null ? null : part1.toLowerCase();
-      part2 = part2==null ? null : part2.toLowerCase();
+      part1 = part1==null ? null : part1.toLowerCase(locale);
+      part2 = part2==null ? null : part2.toLowerCase(locale);
     }
 
 
@@ -685,7 +692,7 @@ public abstract class QueryParserBase {
         // The user can only specify the date, not the time, so make sure
         // the time is set to the latest possible time of that date to really
         // include all documents:
-        Calendar cal = Calendar.getInstance(locale);
+        Calendar cal = Calendar.getInstance(timeZone, locale);
         cal.setTime(d2);
         cal.set(Calendar.HOUR_OF_DAY, 23);
         cal.set(Calendar.MINUTE, 59);
@@ -943,7 +950,7 @@ public abstract class QueryParserBase {
     if (!allowLeadingWildcard && (termStr.startsWith("*") || termStr.startsWith("?")))
       throw new ParseException("'*' or '?' not allowed as first character in WildcardQuery");
     if (lowercaseExpandedTerms) {
-      termStr = termStr.toLowerCase();
+      termStr = termStr.toLowerCase(locale);
     }
     Term t = new Term(field, termStr);
     return newWildcardQuery(t);
@@ -972,7 +979,7 @@ public abstract class QueryParserBase {
   protected Query getRegexpQuery(String field, String termStr) throws ParseException
   {
     if (lowercaseExpandedTerms) {
-      termStr = termStr.toLowerCase();
+      termStr = termStr.toLowerCase(locale);
     }
     Term t = new Term(field, termStr);
     return newRegexpQuery(t);
@@ -1006,7 +1013,7 @@ public abstract class QueryParserBase {
     if (!allowLeadingWildcard && termStr.startsWith("*"))
       throw new ParseException("'*' not allowed as first character in PrefixQuery");
     if (lowercaseExpandedTerms) {
-      termStr = termStr.toLowerCase();
+      termStr = termStr.toLowerCase(locale);
     }
     Term t = new Term(field, termStr);
     return newPrefixQuery(t);
@@ -1026,7 +1033,7 @@ public abstract class QueryParserBase {
   protected Query getFuzzyQuery(String field, String termStr, float minSimilarity) throws ParseException
   {
     if (lowercaseExpandedTerms) {
-      termStr = termStr.toLowerCase();
+      termStr = termStr.toLowerCase(locale);
     }
     Term t = new Term(field, termStr);
     return newFuzzyQuery(t, minSimilarity, fuzzyPrefixLength);
@@ -1076,7 +1083,7 @@ public abstract class QueryParserBase {
   }
 
   // extracted from the .jj grammar
-  Query handleBoost(Query q, Token boost) throws ParseException {
+  Query handleBoost(Query q, Token boost) {
     if (boost != null) {
       float f = (float) 1.0;
       try {
@@ -1175,7 +1182,7 @@ public abstract class QueryParserBase {
     } else if ('A' <= c && c <= 'F') {
       return c - 'A' + 10;
     } else {
-      throw new ParseException("None-hex character in unicode escape sequence: " + c);
+      throw new ParseException("Non-hex character in Unicode escape sequence: " + c);
     }
   }
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,9 @@ import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -38,9 +40,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 
  * <p>This implementation was forked from <a href="http://cxf.apache.org/">Apache CXF</a>
  * but modified to <b>not</b> implement the {@link java.util.Map} interface and
- * without any set/iterator views on it, as those are error-prone
- * and inefficient, if not implemented carefully. Lucene's implementation also
- * supports {@code null} keys, but those are never weak!
+ * without any set views on it, as those are error-prone and inefficient,
+ * if not implemented carefully. The map only contains {@link Iterator} implementations
+ * on the values and not-GCed keys. Lucene's implementation also supports {@code null}
+ * keys, but those are never weak!
  *
  * @lucene.internal
  */
@@ -62,40 +65,122 @@ public final class WeakIdentityMap<K,V> {
     this.backingStore = backingStore;
   }
 
+  /** Removes all of the mappings from this map. */
   public void clear() {
     backingStore.clear();
     reap();
   }
 
+  /** Returns {@code true} if this map contains a mapping for the specified key. */
   public boolean containsKey(Object key) {
     reap();
     return backingStore.containsKey(new IdentityWeakReference(key, null));
   }
 
+  /** Returns the value to which the specified key is mapped. */
   public V get(Object key) {
     reap();
     return backingStore.get(new IdentityWeakReference(key, null));
   }
 
+  /** Associates the specified value with the specified key in this map.
+   * If the map previously contained a mapping for this key, the old value
+   * is replaced. */
   public V put(K key, V value) {
     reap();
     return backingStore.put(new IdentityWeakReference(key, queue), value);
   }
 
+  /** Returns {@code true} if this map contains no key-value mappings. */
   public boolean isEmpty() {
     return size() == 0;
   }
 
+  /** Removes the mapping for a key from this weak hash map if it is present.
+   * Returns the value to which this map previously associated the key,
+   * or {@code null} if the map contained no mapping for the key.
+   * A return value of {@code null} does not necessarily indicate that
+   * the map contained.*/
   public V remove(Object key) {
     reap();
     return backingStore.remove(new IdentityWeakReference(key, null));
   }
 
+  /** Returns the number of key-value mappings in this map. This result is a snapshot,
+   * and may not reflect unprocessed entries that will be removed before next
+   * attempted access because they are no longer referenced.
+   */
   public int size() {
     if (backingStore.isEmpty())
       return 0;
     reap();
     return backingStore.size();
+  }
+  
+  /** Returns an iterator over all weak keys of this map.
+   * Keys already garbage collected will not be returned.
+   * This Iterator does not support removals. */
+  public Iterator<K> keyIterator() {
+    reap();
+    final Iterator<IdentityWeakReference> iterator = backingStore.keySet().iterator();
+    // IMPORTANT: Don't use oal.util.FilterIterator here:
+    // We need *strong* reference to current key after setNext()!!!
+    return new Iterator<K>() {
+      // holds strong reference to next element in backing iterator:
+      private Object next = null;
+      // the backing iterator was already consumed:
+      private boolean nextIsSet = false;
+    
+      @Override
+      public boolean hasNext() {
+        return nextIsSet ? true : setNext();
+      }
+      
+      @Override @SuppressWarnings("unchecked")
+      public K next() {
+        if (nextIsSet || setNext()) {
+          try {
+            assert nextIsSet;
+            return (K) next;
+          } finally {
+             // release strong reference and invalidate current value:
+            nextIsSet = false;
+            next = null;
+          }
+        }
+        throw new NoSuchElementException();
+      }
+      
+      @Override
+      public void remove() {
+        throw new UnsupportedOperationException();
+      }
+      
+      private boolean setNext() {
+        assert !nextIsSet;
+        while (iterator.hasNext()) {
+          next = iterator.next().get();
+          if (next == null) {
+            // already garbage collected!
+            continue;
+          }
+          // unfold "null" special value
+          if (next == NULL) {
+            next = null;
+          }
+          return nextIsSet = true;
+        }
+        return false;
+      }
+    };
+  }
+  
+  /** Returns an iterator over all values of this map.
+   * This iterator may return values whose key is already
+   * garbage collected while iterator is consumed. */
+  public Iterator<V> valueIterator() {
+    reap();
+    return backingStore.values().iterator();
   }
 
   private void reap() {
@@ -104,6 +189,9 @@ public final class WeakIdentityMap<K,V> {
       backingStore.remove(zombie);
     }
   }
+  
+  // we keep a hard reference to our NULL key, so map supports null keys that never get GCed:
+  static final Object NULL = new Object();
 
   private static final class IdentityWeakReference extends WeakReference<Object> {
     private final int hash;
@@ -129,9 +217,6 @@ public final class WeakIdentityMap<K,V> {
       }
       return false;
     }
-  
-    // we keep a hard reference to our NULL key, so map supports null keys that never get GCed:
-    private static final Object NULL = new Object();
   }
 }
 

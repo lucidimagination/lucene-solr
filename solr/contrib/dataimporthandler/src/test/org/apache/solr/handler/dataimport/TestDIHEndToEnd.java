@@ -1,5 +1,5 @@
 package org.apache.solr.handler.dataimport;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -31,14 +31,15 @@ public class TestDIHEndToEnd extends AbstractDIHJdbcTestCase {
   }
   @Test
   public void testEndToEnd() throws Exception {
-    LocalSolrQueryRequest request = lrf.makeRequest("command", "full-import",
+    LocalSolrQueryRequest request = lrf.makeRequest(
+        "command", "full-import", "config", "data-config-end-to-end.xml",
         "clean", "true", "commit", "true", "synchronous", "true", "indent", "true");
     h.query("/dataimport-end-to-end", request);
     assertQ(req("*:*"), "//*[@numFound='20']");
     assertQ(req("COUNTRY_NAME:zealand"), "//*[@numFound='2']");
     assertQ(req("COUNTRY_NAME:niue"), "//*[@numFound='3']");
     
-    //It would be nice if there was a way to get it to run transformers before putting 
+    //It would be nice if there was a way to get it to run transformers before putting
     //data in the cache, then id=2 (person=Ethan, country=NU,NA,NE) could join...)
     //assertQ(req("COUNTRY_NAME:Netherlands"), "//*[@numFound='3']");
     

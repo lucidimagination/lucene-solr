@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.icu.tokenattributes;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,6 +29,9 @@ import com.ibm.icu.lang.UScript;
  */
 public class ScriptAttributeImpl extends AttributeImpl implements ScriptAttribute, Cloneable {
   private int code = UScript.COMMON;
+  
+  /** Initializes this attribute with <code>UScript.COMMON</code> */
+  public ScriptAttributeImpl() {}
   
   public int getCode() {
     return code;

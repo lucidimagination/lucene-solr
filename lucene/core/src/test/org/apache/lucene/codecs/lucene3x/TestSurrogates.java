@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -101,14 +101,13 @@ public class TestSurrogates extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("\nTEST: top now enum reader=" + reader);
     }
-    FieldsEnum fieldsEnum = MultiFields.getFields(reader).iterator();
+    Fields fields = MultiFields.getFields(reader);
 
     {
       // Test straight enum:
-      String field;
       int termCount = 0;
-      while((field = fieldsEnum.next()) != null) {
-        Terms terms = fieldsEnum.terms();
+      for (String field : fields) {
+        Terms terms = fields.terms(field);
         assertNotNull(terms);
         TermsEnum termsEnum = terms.iterator(null);
         BytesRef text;
@@ -311,7 +310,7 @@ public class TestSurrogates extends LuceneTestCase {
         uniqueTerms.add(term);
         fieldTerms.add(new Term(field, term));
         Document doc = new Document();
-        doc.add(newField(field, term, StringField.TYPE_UNSTORED));
+        doc.add(newStringField(field, term, Field.Store.NO));
         w.addDocument(doc);
       }
       uniqueTermCount += uniqueTerms.size();

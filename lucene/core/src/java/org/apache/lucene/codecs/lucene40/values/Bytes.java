@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40.values;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.index.DocValues.SortedSource;
 import org.apache.lucene.index.DocValues.Source;
@@ -41,7 +42,6 @@ import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash.TrackingDirectBytesStartArray;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.CodecUtil;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.PagedBytes;
@@ -115,18 +115,17 @@ public final class Bytes {
    *          {@link Writer}. A call to {@link Writer#finish(int)} will release
    *          all internally used resources and frees the memory tracking
    *          reference.
-   * @param fasterButMoreRam whether packed ints for docvalues should be optimized for speed by rounding up the bytes
-   *                         used for a value to either 8, 16, 32 or 64 bytes. This option is only applicable for
-   *                         docvalues of type {@link Type#BYTES_FIXED_SORTED} and {@link Type#BYTES_VAR_SORTED}.
+   * @param acceptableOverheadRatio
+   *          how to trade space for speed. This option is only applicable for
+   *          docvalues of type {@link Type#BYTES_FIXED_SORTED} and
+   *          {@link Type#BYTES_VAR_SORTED}.
    * @param context I/O Context
    * @return a new {@link Writer} instance
-   * @throws IOException
-   *           if the files for the writer can not be created.
+   * @see PackedInts#getReader(org.apache.lucene.store.DataInput)
    */
   public static DocValuesConsumer getWriter(Directory dir, String id, Mode mode,
       boolean fixedSize, Comparator<BytesRef> sortComparator,
-      Counter bytesUsed, IOContext context, boolean fasterButMoreRam)
-      throws IOException {
+      Counter bytesUsed, IOContext context, float acceptableOverheadRatio) {
     // TODO -- i shouldn't have to specify fixed? can
     // track itself & do the write thing at write time?
     if (sortComparator == null) {
@@ -139,7 +138,7 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.SORTED) {
-        return new FixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, fasterButMoreRam);
+        return new FixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
@@ -147,7 +146,7 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.SORTED) {
-        return new VarSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, fasterButMoreRam);
+        return new VarSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
       }
     }
 
@@ -236,27 +235,34 @@ public final class Bytes {
     private IndexOutput datOut;
     protected BytesRef bytesRef = new BytesRef();
     private final Directory dir;
-    private final String codecName;
+    private final String codecNameIdx;
+    private final String codecNameDat;
     private final int version;
     private final IOContext context;
 
-    protected BytesWriterBase(Directory dir, String id, String codecName,
-        int version, Counter bytesUsed, IOContext context, Type type) throws IOException {
+    protected BytesWriterBase(Directory dir, String id, String codecNameIdx, String codecNameDat,
+        int version, Counter bytesUsed, IOContext context, Type type) {
       super(bytesUsed, type);
       this.id = id;
       this.dir = dir;
-      this.codecName = codecName;
+      this.codecNameIdx = codecNameIdx;
+      this.codecNameDat = codecNameDat;
       this.version = version;
       this.context = context;
+      assert codecNameDat != null || codecNameIdx != null: "both codec names are null";
+      assert (codecNameDat != null && !codecNameDat.equals(codecNameIdx)) 
+      || (codecNameIdx != null && !codecNameIdx.equals(codecNameDat)):
+        "index and data codec names must not be equal";
     }
     
     protected IndexOutput getOrCreateDataOut() throws IOException {
       if (datOut == null) {
         boolean success = false;
+        assert codecNameDat != null;
         try {
           datOut = dir.createOutput(IndexFileNames.segmentFileName(id, DV_SEGMENT_SUFFIX,
               DocValuesWriterBase.DATA_EXTENSION), context);
-          CodecUtil.writeHeader(datOut, codecName, version);
+          CodecUtil.writeHeader(datOut, codecNameDat, version);
           success = true;
         } finally {
           if (!success) {
@@ -279,9 +285,10 @@ public final class Bytes {
       boolean success = false;
       try {
         if (idxOut == null) {
+          assert codecNameIdx != null;
           idxOut = dir.createOutput(IndexFileNames.segmentFileName(id, DV_SEGMENT_SUFFIX,
               DocValuesWriterBase.INDEX_EXTENSION), context);
-          CodecUtil.writeHeader(idxOut, codecName, version);
+          CodecUtil.writeHeader(idxOut, codecNameIdx, version);
         }
         success = true;
       } finally {
@@ -308,8 +315,8 @@ public final class Bytes {
     protected final int version;
     protected final String id;
     protected final Type type;
-
-    protected BytesReaderBase(Directory dir, String id, String codecName,
+    
+    protected BytesReaderBase(Directory dir, String id, String codecNameIdx, String codecNameDat,
         int maxVersion, boolean doIndex, IOContext context, Type type) throws IOException {
       IndexInput dataIn = null;
       IndexInput indexIn = null;
@@ -317,11 +324,11 @@ public final class Bytes {
       try {
         dataIn = dir.openInput(IndexFileNames.segmentFileName(id, DV_SEGMENT_SUFFIX,
                                                               DocValuesWriterBase.DATA_EXTENSION), context);
-        version = CodecUtil.checkHeader(dataIn, codecName, maxVersion, maxVersion);
+        version = CodecUtil.checkHeader(dataIn, codecNameDat, maxVersion, maxVersion);
         if (doIndex) {
           indexIn = dir.openInput(IndexFileNames.segmentFileName(id, DV_SEGMENT_SUFFIX,
                                                                  DocValuesWriterBase.INDEX_EXTENSION), context);
-          final int version2 = CodecUtil.checkHeader(indexIn, codecName,
+          final int version2 = CodecUtil.checkHeader(indexIn, codecNameIdx,
                                                      maxVersion, maxVersion);
           assert version == version2;
         }
@@ -342,7 +349,7 @@ public final class Bytes {
      */
     protected final IndexInput cloneData() {
       assert datIn != null;
-      return (IndexInput) datIn.clone();
+      return datIn.clone();
     }
 
     /**
@@ -350,7 +357,7 @@ public final class Bytes {
      */
     protected final IndexInput cloneIndex() {
       assert idxIn != null;
-      return (IndexInput) idxIn.clone();
+      return idxIn.clone();
     }
 
     @Override
@@ -374,32 +381,30 @@ public final class Bytes {
     protected int lastDocId = -1;
     protected int[] docToEntry;
     protected final BytesRefHash hash;
-    protected final boolean fasterButMoreRam;
+    protected final float acceptableOverheadRatio;
     protected long maxBytes = 0;
     
-    protected DerefBytesWriterBase(Directory dir, String id, String codecName,
-        int codecVersion, Counter bytesUsed, IOContext context, Type type)
-        throws IOException {
-      this(dir, id, codecName, codecVersion, new DirectTrackingAllocator(
-          ByteBlockPool.BYTE_BLOCK_SIZE, bytesUsed), bytesUsed, context, false, type);
+    protected DerefBytesWriterBase(Directory dir, String id, String codecNameIdx, String codecNameDat,
+        int codecVersion, Counter bytesUsed, IOContext context, Type type) {
+      this(dir, id, codecNameIdx, codecNameDat, codecVersion, new DirectTrackingAllocator(
+          ByteBlockPool.BYTE_BLOCK_SIZE, bytesUsed), bytesUsed, context, PackedInts.DEFAULT, type);
     }
 
-    protected DerefBytesWriterBase(Directory dir, String id, String codecName,
-                                   int codecVersion, Counter bytesUsed, IOContext context, boolean fasterButMoreRam, Type type)
-        throws IOException {
-      this(dir, id, codecName, codecVersion, new DirectTrackingAllocator(
-          ByteBlockPool.BYTE_BLOCK_SIZE, bytesUsed), bytesUsed, context, fasterButMoreRam,type);
+    protected DerefBytesWriterBase(Directory dir, String id, String codecNameIdx, String codecNameDat,
+                                   int codecVersion, Counter bytesUsed, IOContext context, float acceptableOverheadRatio, Type type) {
+      this(dir, id, codecNameIdx, codecNameDat, codecVersion, new DirectTrackingAllocator(
+          ByteBlockPool.BYTE_BLOCK_SIZE, bytesUsed), bytesUsed, context, acceptableOverheadRatio, type);
     }
 
-    protected DerefBytesWriterBase(Directory dir, String id, String codecName, int codecVersion, Allocator allocator,
-        Counter bytesUsed, IOContext context, boolean fasterButMoreRam, Type type) throws IOException {
-      super(dir, id, codecName, codecVersion, bytesUsed, context, type);
+    protected DerefBytesWriterBase(Directory dir, String id, String codecNameIdx, String codecNameDat, int codecVersion, Allocator allocator,
+        Counter bytesUsed, IOContext context, float acceptableOverheadRatio, Type type) {
+      super(dir, id, codecNameIdx, codecNameDat, codecVersion, bytesUsed, context, type);
       hash = new BytesRefHash(new ByteBlockPool(allocator),
           BytesRefHash.DEFAULT_CAPACITY, new TrackingDirectBytesStartArray(
               BytesRefHash.DEFAULT_CAPACITY, bytesUsed));
       docToEntry = new int[1];
       bytesUsed.addAndGet(RamUsageEstimator.NUM_BYTES_INT);
-      this.fasterButMoreRam = fasterButMoreRam;
+      this.acceptableOverheadRatio = acceptableOverheadRatio;
     }
     
     protected static int writePrefixLength(DataOutput datOut, BytesRef bytes)
@@ -463,6 +468,10 @@ public final class Bytes {
       }
     }
     
+    public int getValueSize() {
+      return size;
+    }
+    
     // Important that we get docCount, in case there were
     // some last docs that we didn't see
     @Override
@@ -498,7 +507,7 @@ public final class Bytes {
     protected void writeIndex(IndexOutput idxOut, int docCount,
         long maxValue, int[] addresses, int[] toEntry) throws IOException {
       final PackedInts.Writer w = PackedInts.getWriter(idxOut, docCount,
-          bitsRequired(maxValue));
+          PackedInts.bitsRequired(maxValue), acceptableOverheadRatio);
       final int limit = docCount > docToEntry.length ? docToEntry.length
           : docCount;
       assert toEntry.length >= limit -1;
@@ -522,7 +531,7 @@ public final class Bytes {
     protected void writeIndex(IndexOutput idxOut, int docCount,
         long maxValue, long[] addresses, int[] toEntry) throws IOException {
       final PackedInts.Writer w = PackedInts.getWriter(idxOut, docCount,
-          bitsRequired(maxValue));
+          PackedInts.bitsRequired(maxValue), acceptableOverheadRatio);
       final int limit = docCount > docToEntry.length ? docToEntry.length
           : docCount;
       assert toEntry.length >= limit -1;
@@ -541,11 +550,6 @@ public final class Bytes {
         w.add(0);
       }
       w.finish();
-    }
-
-    protected int bitsRequired(long maxValue){
-      return fasterButMoreRam ?
-          PackedInts.getNextFixedSize(PackedInts.bitsRequired(maxValue)) : PackedInts.bitsRequired(maxValue);
     }
     
   }

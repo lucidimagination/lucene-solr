@@ -1,7 +1,7 @@
 package org.apache.solr.spelling;
 
 import org.apache.lucene.search.spell.StringDistance;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -44,6 +44,7 @@ import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.params.SpellingParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.schema.FieldType;
@@ -141,38 +142,58 @@ public abstract class AbstractLuceneSpellChecker extends SolrSpellChecker {
   
   @Override
   public SpellingResult getSuggestions(SpellingOptions options) throws IOException {
-  	SpellingResult result = new SpellingResult(options.tokens);
+    SpellingResult result = new SpellingResult(options.tokens);
     IndexReader reader = determineReader(options.reader);
     Term term = field != null ? new Term(field, "") : null;
     float theAccuracy = (options.accuracy == Float.MIN_VALUE) ? spellChecker.getAccuracy() : options.accuracy;
     
     int count = Math.max(options.count, AbstractLuceneSpellChecker.DEFAULT_SUGGESTION_COUNT);
-    SuggestMode mode = options.onlyMorePopular ? SuggestMode.SUGGEST_MORE_POPULAR : SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX;
     for (Token token : options.tokens) {
       String tokenText = new String(token.buffer(), 0, token.length());
+      term = new Term(field, tokenText);
+      int docFreq = 0;
+      if (reader != null) {
+        docFreq = reader.docFreq(term);
+      }
       String[] suggestions = spellChecker.suggestSimilar(tokenText,
-              count,
-            field != null ? reader : null, //workaround LUCENE-1295
-            field,
-            mode, theAccuracy);
-      if (suggestions.length == 1 && suggestions[0].equals(tokenText)) {
-      	//These are spelled the same, continue on
+          ((options.alternativeTermCount == null || docFreq == 0) ? count
+              : options.alternativeTermCount), field != null ? reader : null, // workaround LUCENE-1295
+          field, options.suggestMode, theAccuracy);
+      if (suggestions.length == 1 && suggestions[0].equals(tokenText)
+          && options.alternativeTermCount == null) {
+        // These are spelled the same, continue on
         continue;
+      }
+      // If considering alternatives to "correctly-spelled" terms, then add the
+      // original as a viable suggestion.
+      if (options.alternativeTermCount != null && docFreq > 0) {
+        boolean foundOriginal = false;
+        String[] suggestionsWithOrig = new String[suggestions.length + 1];
+        for (int i = 0; i < suggestions.length; i++) {
+          if (suggestions[i].equals(tokenText)) {
+            foundOriginal = true;
+            break;
+          }
+          suggestionsWithOrig[i + 1] = suggestions[i];
+        }
+        if (!foundOriginal) {
+          suggestionsWithOrig[0] = tokenText;
+          suggestions = suggestionsWithOrig;
+        }
       }
 
       if (options.extendedResults == true && reader != null && field != null) {
-        term = new Term(field, tokenText);
-        result.addFrequency(token, reader.docFreq(term));
+        result.addFrequency(token, docFreq);
         int countLimit = Math.min(options.count, suggestions.length);
         if(countLimit>0)
         {
-	        for (int i = 0; i < countLimit; i++) {
-	          term = new Term(field, suggestions[i]);
-	          result.add(token, suggestions[i], reader.docFreq(term));
-	        }
+          for (int i = 0; i < countLimit; i++) {
+            term = new Term(field, suggestions[i]);
+            result.add(token, suggestions[i], reader.docFreq(term));
+          }
         } else {
-        	List<String> suggList = Collections.emptyList();
-        	result.add(token, suggList);
+          List<String> suggList = Collections.emptyList();
+          result.add(token, suggList);
         }
       } else {
         if (suggestions.length > 0) {
@@ -182,8 +203,8 @@ public abstract class AbstractLuceneSpellChecker extends SolrSpellChecker {
           }
           result.add(token, suggList);
         } else {
-        	List<String> suggList = Collections.emptyList();
-        	result.add(token, suggList);
+          List<String> suggList = Collections.emptyList();
+          result.add(token, suggList);
         }
       }
     }
@@ -203,7 +224,7 @@ public abstract class AbstractLuceneSpellChecker extends SolrSpellChecker {
   /**
    * Initialize the {@link #index} variable based on the {@link #indexDir}.  Does not actually create the spelling index.
    *
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   protected void initIndex() throws IOException {
     if (indexDir != null) {

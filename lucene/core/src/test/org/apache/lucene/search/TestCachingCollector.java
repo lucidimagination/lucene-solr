@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,6 +34,9 @@ public class TestCachingCollector extends LuceneTestCase {
     
     @Override
     public float score() throws IOException { return 0; }
+    
+    @Override
+    public float freq() throws IOException { return 0; }
 
     @Override
     public int docID() { return 0; }
@@ -85,13 +88,13 @@ public class TestCachingCollector extends LuceneTestCase {
         int prevDocID = -1;
 
         @Override
-        public void setScorer(Scorer scorer) throws IOException {}
+        public void setScorer(Scorer scorer) {}
 
         @Override
-        public void setNextReader(AtomicReaderContext context) throws IOException {}
+        public void setNextReader(AtomicReaderContext context) {}
 
         @Override
-        public void collect(int doc) throws IOException {
+        public void collect(int doc) {
           assertEquals(prevDocID + 1, doc);
           prevDocID = doc;
         }
@@ -142,7 +145,7 @@ public class TestCachingCollector extends LuceneTestCase {
     try {
       cc.replay(new NoOpCollector(false)); // this call should fail
       fail("should have failed if an in-order Collector was given to replay(), " +
-      		"while CachingCollector was initialized with out-of-order collection");
+           "while CachingCollector was initialized with out-of-order collection");
     } catch (IllegalArgumentException e) {
       // ok
     }

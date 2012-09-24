@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,11 @@ package org.apache.lucene.analysis.util;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.Reader;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.Version;
@@ -32,7 +36,10 @@ import org.apache.lucene.util.Version;
  */
 public class WordlistLoader {
   
-  private static final int INITITAL_CAPACITY = 16;
+  private static final int INITIAL_CAPACITY = 16;
+  
+  /** no instance */
+  private WordlistLoader() {}
   
   /**
    * Reads lines from a Reader and adds every line as an entry to a CharArraySet (omitting
@@ -70,7 +77,7 @@ public class WordlistLoader {
    * @return A {@link CharArraySet} with the reader's words
    */
   public static CharArraySet getWordSet(Reader reader, Version matchVersion) throws IOException {
-    return getWordSet(reader, new CharArraySet(matchVersion, INITITAL_CAPACITY, false));
+    return getWordSet(reader, new CharArraySet(matchVersion, INITIAL_CAPACITY, false));
   }
 
   /**
@@ -85,7 +92,7 @@ public class WordlistLoader {
    * @return A CharArraySet with the reader's words
    */
   public static CharArraySet getWordSet(Reader reader, String comment, Version matchVersion) throws IOException {
-    return getWordSet(reader, comment, new CharArraySet(matchVersion, INITITAL_CAPACITY, false));
+    return getWordSet(reader, comment, new CharArraySet(matchVersion, INITIAL_CAPACITY, false));
   }
 
   /**
@@ -167,7 +174,7 @@ public class WordlistLoader {
    * @return A {@link CharArraySet} with the reader's words
    */
   public static CharArraySet getSnowballWordSet(Reader reader, Version matchVersion) throws IOException {
-    return getSnowballWordSet(reader, new CharArraySet(matchVersion, INITITAL_CAPACITY, false));
+    return getSnowballWordSet(reader, new CharArraySet(matchVersion, INITIAL_CAPACITY, false));
   }
 
 
@@ -177,7 +184,7 @@ public class WordlistLoader {
    * (i.e. two tab separated words)
    *
    * @return stem dictionary that overrules the stemming algorithm
-   * @throws IOException 
+   * @throws IOException If there is a low-level I/O error.
    */
   public static CharArrayMap<String> getStemDict(Reader reader, CharArrayMap<String> result) throws IOException {
     BufferedReader br = null;
@@ -192,6 +199,47 @@ public class WordlistLoader {
       IOUtils.close(br);
     }
     return result;
+  }
+  
+  /**
+   * Accesses a resource by name and returns the (non comment) lines containing
+   * data using the given character encoding.
+   *
+   * <p>
+   * A comment line is any line that starts with the character "#"
+   * </p>
+   *
+   * @return a list of non-blank non-comment lines with whitespace trimmed
+   * @throws IOException If there is a low-level I/O error.
+   */
+  public static List<String> getLines(InputStream stream, Charset charset) throws IOException{
+    BufferedReader input = null;
+    ArrayList<String> lines;
+    boolean success = false;
+    try {
+      input = getBufferedReader(IOUtils.getDecodingReader(stream, charset));
+
+      lines = new ArrayList<String>();
+      for (String word=null; (word=input.readLine())!=null;) {
+        // skip initial bom marker
+        if (lines.isEmpty() && word.length() > 0 && word.charAt(0) == '\uFEFF')
+          word = word.substring(1);
+        // skip comments
+        if (word.startsWith("#")) continue;
+        word=word.trim();
+        // skip blank lines
+        if (word.length()==0) continue;
+        lines.add(word);
+      }
+      success = true;
+      return lines;
+    } finally {
+      if (success) {
+        IOUtils.close(input);
+      } else {
+        IOUtils.closeWhileHandlingException(input);
+      }
+    }
   }
   
   private static BufferedReader getBufferedReader(Reader reader) {

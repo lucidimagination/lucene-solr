@@ -1,6 +1,6 @@
 package org.apache.lucene.queries.function.docvalues;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,10 @@ import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueDouble;
 
+/**
+ * Abstract {@link FunctionValues} implementation which supports retrieving double values.
+ * Implementations can control how the double values are loaded through {@link #doubleVal(int)}}
+ */
 public abstract class DoubleDocValues extends FunctionValues {
   protected final ValueSource vs;
 

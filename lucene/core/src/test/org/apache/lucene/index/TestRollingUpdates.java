@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,6 +23,9 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.memory.MemoryPostingsFormat;
 import org.apache.lucene.document.*;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.*;
 import org.apache.lucene.util.*;
 import org.junit.Test;
@@ -35,23 +38,26 @@ public class TestRollingUpdates extends LuceneTestCase {
   @Test
   public void testRollingUpdates() throws Exception {
     Random random = new Random(random().nextLong());
-    final MockDirectoryWrapper dir = newDirectory();
+    final BaseDirectoryWrapper dir = newDirectory();
     dir.setCheckIndexOnClose(false); // we use a custom codec provider
     final LineFileDocs docs = new LineFileDocs(random, defaultCodecSupportsDocValues());
 
     //provider.register(new MemoryCodec());
     if ( (!"Lucene3x".equals(Codec.getDefault().getName())) && random().nextBoolean()) {
-      Codec.setDefault(_TestUtil.alwaysPostingsFormat(new MemoryPostingsFormat(random().nextBoolean())));
+      Codec.setDefault(_TestUtil.alwaysPostingsFormat(new MemoryPostingsFormat(random().nextBoolean(), random.nextFloat())));
     }
 
     final IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     final int SIZE = atLeast(20);
     int id = 0;
     IndexReader r = null;
+    IndexSearcher s = null;
     final int numUpdates = (int) (SIZE * (2+(TEST_NIGHTLY ? 200*random().nextDouble() : 5*random().nextDouble())));
     if (VERBOSE) {
       System.out.println("TEST: numUpdates=" + numUpdates);
     }
+    int updateCount = 0;
+    // TODO: sometimes update ids not in order...
     for(int docIter=0;docIter<numUpdates;docIter++) {
       final Document doc = docs.nextDoc();
       final String myID = ""+id;
@@ -60,16 +66,59 @@ public class TestRollingUpdates extends LuceneTestCase {
       } else {
         id++;
       }
+      if (VERBOSE) {
+        System.out.println("  docIter=" + docIter + " id=" + id);
+      }
       ((Field) doc.getField("docid")).setStringValue(myID);
-      w.updateDocument(new Term("docid", myID), doc);
+
+      Term idTerm = new Term("docid", myID);
+
+      final boolean doUpdate;
+      if (s != null && updateCount < SIZE) {
+        TopDocs hits = s.search(new TermQuery(idTerm), 1);
+        assertEquals(1, hits.totalHits);
+        doUpdate = !w.tryDeleteDocument(r, hits.scoreDocs[0].doc);
+        if (VERBOSE) {
+          if (doUpdate) {
+            System.out.println("  tryDeleteDocument failed");
+          } else {
+            System.out.println("  tryDeleteDocument succeeded");
+          }
+        }
+      } else {
+        doUpdate = true;
+        if (VERBOSE) {
+          System.out.println("  no searcher: doUpdate=true");
+        }
+      }
+
+      updateCount++;
+
+      if (doUpdate) {
+        w.updateDocument(idTerm, doc);
+      } else {
+        w.addDocument(doc);
+      }
 
       if (docIter >= SIZE && random().nextInt(50) == 17) {
         if (r != null) {
           r.close();
         }
+
         final boolean applyDeletions = random().nextBoolean();
+
+        if (VERBOSE) {
+          System.out.println("TEST: reopen applyDeletions=" + applyDeletions);
+        }
+
         r = w.getReader(applyDeletions);
+        if (applyDeletions) {
+          s = new IndexSearcher(r);
+        } else {
+          s = null;
+        }
         assertTrue("applyDeletions=" + applyDeletions + " r.numDocs()=" + r.numDocs() + " vs SIZE=" + SIZE, !applyDeletions || r.numDocs() == SIZE);
+        updateCount = 0;
       }
     }
 
@@ -110,7 +159,7 @@ public class TestRollingUpdates extends LuceneTestCase {
       w.close();
     }
 
-    IndexReader open = IndexReader.open(dir);
+    IndexReader open = DirectoryReader.open(dir);
     assertEquals(1, open.numDocs());
     open.close();
     docs.close();
@@ -134,11 +183,11 @@ public class TestRollingUpdates extends LuceneTestCase {
         DirectoryReader open = null;
         for (int i = 0; i < num; i++) {
           Document doc = new Document();// docs.nextDoc();
-          doc.add(newField("id", "test", StringField.TYPE_UNSTORED));
+          doc.add(newStringField("id", "test", Field.Store.NO));
           writer.updateDocument(new Term("id", "test"), doc);
           if (random().nextInt(3) == 0) {
             if (open == null) {
-              open = IndexReader.open(writer, true);
+              open = DirectoryReader.open(writer, true);
             }
             DirectoryReader reader = DirectoryReader.openIfChanged(open);
             if (reader != null) {

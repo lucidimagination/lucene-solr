@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.mocksep;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,16 +19,16 @@ package org.apache.lucene.codecs.mocksep;
 
 import java.io.IOException;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.sep.IntIndexInput;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.util.CodecUtil;
 
 /** Reads IndexInputs written with {@link
  *  MockSingleIntIndexOutput}.  NOTE: this class is just for
- *  demonstration puprposes (it is a very slow way to read a
+ *  demonstration purposes (it is a very slow way to read a
  *  block of ints).
  *
  * @lucene.experimental
@@ -46,7 +46,7 @@ public class MockSingleIntIndexInput extends IntIndexInput {
 
   @Override
   public Reader reader() throws IOException {
-    return new Reader((IndexInput) in.clone());
+    return new Reader(in.clone());
   }
 
   @Override
@@ -54,6 +54,9 @@ public class MockSingleIntIndexInput extends IntIndexInput {
     in.close();
   }
 
+  /**
+   * Just reads a vInt directly from the file.
+   */
   public static class Reader extends IntIndexInput.Reader {
     // clone:
     private final IndexInput in;
@@ -84,7 +87,7 @@ public class MockSingleIntIndexInput extends IntIndexInput {
     }
 
     @Override
-    public void set(IntIndexInput.Index other) {
+    public void copyFrom(IntIndexInput.Index other) {
       fp = ((MockSingleIntIndexInputIndex) other).fp;
     }
 

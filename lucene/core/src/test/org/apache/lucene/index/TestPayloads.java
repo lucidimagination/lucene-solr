@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,49 +42,15 @@ import org.apache.lucene.util._TestUtil;
 
 public class TestPayloads extends LuceneTestCase {
     
-    // Simple tests to test the Payload class
+    // Simple tests to test the payloads
     public void testPayload() throws Exception {
-        byte[] testData = "This is a test!".getBytes();
-        Payload payload = new Payload(testData);
-        assertEquals("Wrong payload length.", testData.length, payload.length());
+        BytesRef payload = new BytesRef("This is a test!");
+        assertEquals("Wrong payload length.", "This is a test!".length(), payload.length);
         
-        // test copyTo()
-        byte[] target = new byte[testData.length - 1];
-        try {
-            payload.copyTo(target, 0);
-            fail("Expected exception not thrown");
-        } catch (Exception expected) {
-            // expected exception
-        }
-        
-        target = new byte[testData.length + 3];
-        payload.copyTo(target, 3);
-        
-        for (int i = 0; i < testData.length; i++) {
-            assertEquals(testData[i], target[i + 3]);
-        }
-        
-
-        // test toByteArray()
-        target = payload.toByteArray();
-        assertByteArrayEquals(testData, target);
-
-        // test byteAt()
-        for (int i = 0; i < testData.length; i++) {
-            assertEquals(payload.byteAt(i), testData[i]);
-        }
-        
-        try {
-            payload.byteAt(testData.length + 1);
-            fail("Expected exception not thrown");
-        } catch (Exception expected) {
-            // expected exception
-        }
-        
-        Payload clone = payload.clone();
-        assertEquals(payload.length(), clone.length());
-        for (int i = 0; i < payload.length(); i++) {
-          assertEquals(payload.byteAt(i), clone.byteAt(i));
+        BytesRef clone = payload.clone();
+        assertEquals(payload.length, clone.length);
+        for (int i = 0; i < payload.length; i++) {
+          assertEquals(payload.bytes[i + payload.offset], clone.bytes[i + clone.offset]);
         }
         
     }
@@ -96,26 +63,26 @@ public class TestPayloads extends LuceneTestCase {
         IndexWriter writer = new IndexWriter(ram, newIndexWriterConfig( TEST_VERSION_CURRENT, analyzer));
         Document d = new Document();
         // this field won't have any payloads
-        d.add(newField("f1", "This field has no payloads", TextField.TYPE_UNSTORED));
+        d.add(newTextField("f1", "This field has no payloads", Field.Store.NO));
         // this field will have payloads in all docs, however not for all term positions,
         // so this field is used to check if the DocumentWriter correctly enables the payloads bit
         // even if only some term positions have payloads
-        d.add(newField("f2", "This field has payloads in all docs", TextField.TYPE_UNSTORED));
-        d.add(newField("f2", "This field has payloads in all docs NO PAYLOAD", TextField.TYPE_UNSTORED));
+        d.add(newTextField("f2", "This field has payloads in all docs", Field.Store.NO));
+        d.add(newTextField("f2", "This field has payloads in all docs NO PAYLOAD", Field.Store.NO));
         // this field is used to verify if the SegmentMerger enables payloads for a field if it has payloads 
         // enabled in only some documents
-        d.add(newField("f3", "This field has payloads in some docs", TextField.TYPE_UNSTORED));
+        d.add(newTextField("f3", "This field has payloads in some docs", Field.Store.NO));
         // only add payload data for field f2
-        analyzer.setPayloadData("f2", "somedata".getBytes(), 0, 1);
+        analyzer.setPayloadData("f2", "somedata".getBytes("UTF-8"), 0, 1);
         writer.addDocument(d);
         // flush
         writer.close();
 
-      SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram));
+      SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(ram));
         FieldInfos fi = reader.getFieldInfos();
-        assertFalse("Payload field bit should not be set.", fi.fieldInfo("f1").storePayloads);
-        assertTrue("Payload field bit should be set.", fi.fieldInfo("f2").storePayloads);
-        assertFalse("Payload field bit should not be set.", fi.fieldInfo("f3").storePayloads);
+        assertFalse("Payload field bit should not be set.", fi.fieldInfo("f1").hasPayloads());
+        assertTrue("Payload field bit should be set.", fi.fieldInfo("f2").hasPayloads());
+        assertFalse("Payload field bit should not be set.", fi.fieldInfo("f3").hasPayloads());
         reader.close();
         
         // now we add another document which has payloads for field f3 and verify if the SegmentMerger
@@ -124,13 +91,13 @@ public class TestPayloads extends LuceneTestCase {
         writer = new IndexWriter(ram, newIndexWriterConfig( TEST_VERSION_CURRENT,
             analyzer).setOpenMode(OpenMode.CREATE));
         d = new Document();
-        d.add(newField("f1", "This field has no payloads", TextField.TYPE_UNSTORED));
-        d.add(newField("f2", "This field has payloads in all docs", TextField.TYPE_UNSTORED));
-        d.add(newField("f2", "This field has payloads in all docs", TextField.TYPE_UNSTORED));
-        d.add(newField("f3", "This field has payloads in some docs", TextField.TYPE_UNSTORED));
+        d.add(newTextField("f1", "This field has no payloads", Field.Store.NO));
+        d.add(newTextField("f2", "This field has payloads in all docs", Field.Store.NO));
+        d.add(newTextField("f2", "This field has payloads in all docs", Field.Store.NO));
+        d.add(newTextField("f3", "This field has payloads in some docs", Field.Store.NO));
         // add payload data for field f2 and f3
-        analyzer.setPayloadData("f2", "somedata".getBytes(), 0, 1);
-        analyzer.setPayloadData("f3", "somedata".getBytes(), 0, 3);
+        analyzer.setPayloadData("f2", "somedata".getBytes("UTF-8"), 0, 1);
+        analyzer.setPayloadData("f3", "somedata".getBytes("UTF-8"), 0, 3);
         writer.addDocument(d);
 
         // force merge
@@ -138,11 +105,11 @@ public class TestPayloads extends LuceneTestCase {
         // flush
         writer.close();
 
-      reader = getOnlySegmentReader(IndexReader.open(ram));
+      reader = getOnlySegmentReader(DirectoryReader.open(ram));
         fi = reader.getFieldInfos();
-        assertFalse("Payload field bit should not be set.", fi.fieldInfo("f1").storePayloads);
-        assertTrue("Payload field bit should be set.", fi.fieldInfo("f2").storePayloads);
-        assertTrue("Payload field bit should be set.", fi.fieldInfo("f3").storePayloads);
+        assertFalse("Payload field bit should not be set.", fi.fieldInfo("f1").hasPayloads());
+        assertTrue("Payload field bit should be set.", fi.fieldInfo("f2").hasPayloads());
+        assertTrue("Payload field bit should be set.", fi.fieldInfo("f3").hasPayloads());
         reader.close();
         ram.close();
     }
@@ -184,7 +151,7 @@ public class TestPayloads extends LuceneTestCase {
         byte[] payloadData = generateRandomData(payloadDataLength);
         
         Document d = new Document();
-        d.add(newField(fieldName, content, TextField.TYPE_UNSTORED));
+        d.add(newTextField(fieldName, content, Field.Store.NO));
         // add the same document multiple times to have the same payload lengths for all
         // occurrences within two consecutive skip intervals
         int offset = 0;
@@ -213,7 +180,7 @@ public class TestPayloads extends LuceneTestCase {
          * Verify the index
          * first we test if all payloads are stored correctly
          */        
-        IndexReader reader = IndexReader.open(dir);
+        IndexReader reader = DirectoryReader.open(dir);
 
         byte[] verifyPayloadData = new byte[payloadDataLength];
         offset = 0;
@@ -222,8 +189,7 @@ public class TestPayloads extends LuceneTestCase {
           tps[i] = MultiFields.getTermPositionsEnum(reader,
                                                     MultiFields.getLiveDocs(reader),
                                                     terms[i].field(),
-                                                    new BytesRef(terms[i].text()),
-                                                    false);
+                                                    new BytesRef(terms[i].text()));
         }
         
         while (tps[0].nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
@@ -235,18 +201,10 @@ public class TestPayloads extends LuceneTestCase {
             for (int i = 0; i < freq; i++) {
                 for (int j = 0; j < numTerms; j++) {
                     tps[j].nextPosition();
-                    if (tps[j].hasPayload()) {
-                      BytesRef br = tps[j].getPayload();
+                    BytesRef br = tps[j].getPayload();
+                    if (br != null) {
                       System.arraycopy(br.bytes, br.offset, verifyPayloadData, offset, br.length);
                       offset += br.length;
-                      // Just to ensure all codecs can
-                      // handle a caller that mucks with the
-                      // returned payload:
-                      if (rarely()) {
-                        br.bytes = new byte[random().nextInt(5)];
-                      }
-                      br.length = 0;
-                      br.offset = 0;
                     }
                 }
             }
@@ -260,8 +218,7 @@ public class TestPayloads extends LuceneTestCase {
         DocsAndPositionsEnum tp = MultiFields.getTermPositionsEnum(reader,
                                                                    MultiFields.getLiveDocs(reader),
                                                                    terms[0].field(),
-                                                                   new BytesRef(terms[0].text()),
-                                                                   false);
+                                                                   new BytesRef(terms[0].text()));
         tp.nextDoc();
         tp.nextPosition();
         // NOTE: prior rev of this test was failing to first
@@ -289,8 +246,7 @@ public class TestPayloads extends LuceneTestCase {
         tp = MultiFields.getTermPositionsEnum(reader,
                                               MultiFields.getLiveDocs(reader),
                                               terms[1].field(),
-                                              new BytesRef(terms[1].text()),
-                                              false);
+                                              new BytesRef(terms[1].text()));
         tp.nextDoc();
         tp.nextPosition();
         assertEquals("Wrong payload length.", 1, tp.getPayload().length);
@@ -304,11 +260,6 @@ public class TestPayloads extends LuceneTestCase {
         tp.nextPosition();
         assertEquals("Wrong payload length.", 3 * skipInterval - 2 * numDocs - 1, tp.getPayload().length);
         
-        /*
-         * Test multiple call of getPayload()
-         */
-        assertFalse(tp.hasPayload());
-        
         reader.close();
         
         // test long payload
@@ -318,7 +269,7 @@ public class TestPayloads extends LuceneTestCase {
         String singleTerm = "lucene";
         
         d = new Document();
-        d.add(newField(fieldName, singleTerm, TextField.TYPE_UNSTORED));
+        d.add(newTextField(fieldName, singleTerm, Field.Store.NO));
         // add a payload whose length is greater than the buffer size of BufferedIndexOutput
         payloadData = generateRandomData(2000);
         analyzer.setPayloadData(fieldName, payloadData, 100, 1500);
@@ -329,12 +280,11 @@ public class TestPayloads extends LuceneTestCase {
         // flush
         writer.close();
         
-        reader = IndexReader.open(dir);
+        reader = DirectoryReader.open(dir);
         tp = MultiFields.getTermPositionsEnum(reader,
                                               MultiFields.getLiveDocs(reader),
                                               fieldName,
-                                              new BytesRef(singleTerm),
-                                              false);
+                                              new BytesRef(singleTerm));
         tp.nextDoc();
         tp.nextPosition();
         
@@ -478,9 +428,8 @@ public class TestPayloads extends LuceneTestCase {
 
             // Some values of the same field are to have payloads and others not
             if (offset + length <= data.length && !termAttribute.toString().endsWith("NO PAYLOAD")) {
-              Payload p = new Payload();
+              BytesRef p = new BytesRef(data, offset, length);
               payloadAtt.setPayload(p);
-              p.setData(data, offset, length);
               offset += length;
             } else {
               payloadAtt.setPayload(null);
@@ -530,13 +479,13 @@ public class TestPayloads extends LuceneTestCase {
           ingesters[i].join();
         }
         writer.close();
-        IndexReader reader = IndexReader.open(dir);
+        IndexReader reader = DirectoryReader.open(dir);
         TermsEnum terms = MultiFields.getFields(reader).terms(field).iterator(null);
         Bits liveDocs = MultiFields.getLiveDocs(reader);
         DocsAndPositionsEnum tp = null;
         while (terms.next() != null) {
           String termText = terms.term().utf8ToString();
-          tp = terms.docsAndPositions(liveDocs, tp, false);
+          tp = terms.docsAndPositions(liveDocs, tp);
           while(tp.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             int freq = tp.freq();
             for (int i = 0; i < freq; i++) {
@@ -576,7 +525,7 @@ public class TestPayloads extends LuceneTestCase {
             first = false;
             clearAttributes();
             termAtt.append(term);
-            payloadAtt.setPayload(new Payload(payload));
+            payloadAtt.setPayload(new BytesRef(payload));
             return true;
         }
         
@@ -615,14 +564,14 @@ public class TestPayloads extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir,
                                                      new MockAnalyzer(random(), MockTokenizer.WHITESPACE, true));
     Document doc = new Document();
-    doc.add(new Field("hasMaybepayload", "here we go", TextField.TYPE_STORED));
+    doc.add(new TextField("hasMaybepayload", "here we go", Field.Store.YES));
     writer.addDocument(doc);
     writer.close();
 
     writer = new RandomIndexWriter(random(), dir,
                                    new MockAnalyzer(random(), MockTokenizer.WHITESPACE, true));
     doc = new Document();
-    doc.add(new Field("hasMaybepayload2", "here we go", TextField.TYPE_STORED));
+    doc.add(new TextField("hasMaybepayload2", "here we go", Field.Store.YES));
     writer.addDocument(doc);
     writer.addDocument(doc);
     writer.forceMerge(1);
@@ -630,4 +579,73 @@ public class TestPayloads extends LuceneTestCase {
 
     dir.close();
   }
+  
+  /** some docs have payload att, some not */
+  public void testMixupDocs() throws Exception {
+    Directory dir = newDirectory();
+    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, null);
+    iwc.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, iwc);
+    Document doc = new Document();
+    Field field = new TextField("field", "", Field.Store.NO);
+    TokenStream ts = new MockTokenizer(new StringReader("here we go"), MockTokenizer.WHITESPACE, true);
+    assertFalse(ts.hasAttribute(PayloadAttribute.class));
+    field.setTokenStream(ts);
+    doc.add(field);
+    writer.addDocument(doc);
+    Token withPayload = new Token("withPayload", 0, 11);
+    withPayload.setPayload(new BytesRef("test"));
+    ts = new CannedTokenStream(withPayload);
+    assertTrue(ts.hasAttribute(PayloadAttribute.class));
+    field.setTokenStream(ts);
+    writer.addDocument(doc);
+    ts = new MockTokenizer(new StringReader("another"), MockTokenizer.WHITESPACE, true);
+    assertFalse(ts.hasAttribute(PayloadAttribute.class));
+    field.setTokenStream(ts);
+    writer.addDocument(doc);
+    DirectoryReader reader = writer.getReader();
+    AtomicReader sr = SlowCompositeReaderWrapper.wrap(reader);
+    DocsAndPositionsEnum de = sr.termPositionsEnum(new Term("field", "withPayload"));
+    de.nextDoc();
+    de.nextPosition();
+    assertEquals(new BytesRef("test"), de.getPayload());
+    writer.close();
+    reader.close();
+    dir.close();
+  }
+  
+  /** some field instances have payload att, some not */
+  public void testMixupMultiValued() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    Field field = new TextField("field", "", Field.Store.NO);
+    TokenStream ts = new MockTokenizer(new StringReader("here we go"), MockTokenizer.WHITESPACE, true);
+    assertFalse(ts.hasAttribute(PayloadAttribute.class));
+    field.setTokenStream(ts);
+    doc.add(field);
+    Field field2 = new TextField("field", "", Field.Store.NO);
+    Token withPayload = new Token("withPayload", 0, 11);
+    withPayload.setPayload(new BytesRef("test"));
+    ts = new CannedTokenStream(withPayload);
+    assertTrue(ts.hasAttribute(PayloadAttribute.class));
+    field2.setTokenStream(ts);
+    doc.add(field2);
+    Field field3 = new TextField("field", "", Field.Store.NO);
+    ts = new MockTokenizer(new StringReader("nopayload"), MockTokenizer.WHITESPACE, true);
+    assertFalse(ts.hasAttribute(PayloadAttribute.class));
+    field3.setTokenStream(ts);
+    doc.add(field3);
+    writer.addDocument(doc);
+    DirectoryReader reader = writer.getReader();
+    SegmentReader sr = getOnlySegmentReader(reader);
+    DocsAndPositionsEnum de = sr.termPositionsEnum(new Term("field", "withPayload"));
+    de.nextDoc();
+    de.nextPosition();
+    assertEquals(new BytesRef("test"), de.getPayload());
+    writer.close();
+    reader.close();
+    dir.close();
+  }
+  
 }

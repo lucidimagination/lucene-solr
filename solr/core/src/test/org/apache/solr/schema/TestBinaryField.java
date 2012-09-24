@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,20 +23,18 @@ import java.util.List;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.SystemPropertiesRestoreRule;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.beans.Field;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.*;
 import org.apache.solr.core.SolrResourceLoader;
-import org.apache.commons.io.IOUtils;
 import org.junit.Rule;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
+
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 public class TestBinaryField extends LuceneTestCase {
   HttpSolrServer server;
@@ -57,21 +55,21 @@ public class TestBinaryField extends LuceneTestCase {
         "solrtest-TestBinaryField-" + System.currentTimeMillis());
 
     File homeDir = new File(home, "example");
-    File dataDir = new File(homeDir, "data");
-    File confDir = new File(homeDir, "conf");
+    File dataDir = new File(homeDir + "/collection1", "data");
+    File confDir = new File(homeDir + "/collection1", "conf");
 
     homeDir.mkdirs();
     dataDir.mkdirs();
     confDir.mkdirs();
 
-    SolrResourceLoader loader = new SolrResourceLoader(null, null);
+    SolrResourceLoader loader = new SolrResourceLoader("solr/collection1");
     File f = new File(confDir, "solrconfig.xml");
-    String fname = "solr/conf/solrconfig-slave1.xml";
+    String fname = "solr/collection1/conf/solrconfig-slave1.xml";
     FileOutputStream out = new FileOutputStream(f);
     IOUtils.copy(loader.openResource(fname), out);
     out.close();
     f = new File(confDir, "schema.xml");
-    fname = "solr/conf/schema-binaryfield.xml";
+    fname = "solr/collection1/conf/schema-binaryfield.xml";
     out = new FileOutputStream(f);
     IOUtils.copy(loader.openResource(fname), out);
     out.close();
@@ -83,7 +81,7 @@ public class TestBinaryField extends LuceneTestCase {
     jetty.start();
     port = jetty.getLocalPort();
 
-    String url = "http://localhost:" + jetty.getLocalPort() + context;
+    String url = "http://127.0.0.1:" + jetty.getLocalPort() + context;
     server = new HttpSolrServer(url);
   }
 

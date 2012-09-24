@@ -1,6 +1,6 @@
 package org.apache.lucene.util.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -155,6 +155,11 @@ final class NodeHash<T> {
 
   private void rehash() throws IOException {
     final int[] oldTable = table;
+
+    if (oldTable.length >= Integer.MAX_VALUE/2) {
+      throw new IllegalStateException("FST too large (> 2.1 GB)");
+    }
+
     table = new int[2*table.length];
     mask = table.length-1;
     for(int idx=0;idx<oldTable.length;idx++) {

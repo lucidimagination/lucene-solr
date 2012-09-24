@@ -219,7 +219,7 @@ public class TestNumericUtils extends LuceneTestCase {
   /** Note: The neededBounds Iterable must be unsigned (easier understanding what's happening) */
   private void assertLongRangeSplit(final long lower, final long upper, int precisionStep,
     final boolean useBitSet, final Iterable<Long> expectedBounds, final Iterable<Integer> expectedShifts
-  ) throws Exception {
+  ) {
     // Cannot use FixedBitSet since the range could be long:
     final OpenBitSet bits=useBitSet ? new OpenBitSet(upper-lower+1) : null;
     final Iterator<Long> neededBounds = (expectedBounds == null) ? null : expectedBounds.iterator();
@@ -449,7 +449,7 @@ public class TestNumericUtils extends LuceneTestCase {
     // a inverse range should produce no sub-ranges
     assertLongRangeSplit(9500L, -5000L, 4, false, Collections.<Long>emptyList(), Collections.<Integer>emptyList());    
 
-    // a 0-length range should reproduce the range itsself
+    // a 0-length range should reproduce the range itself
     assertLongRangeSplit(9500L, 9500L, 4, false, Arrays.asList(
       0x800000000000251cL,0x800000000000251cL
     ), Arrays.asList(
@@ -460,7 +460,7 @@ public class TestNumericUtils extends LuceneTestCase {
   /** Note: The neededBounds Iterable must be unsigned (easier understanding what's happening) */
   private void assertIntRangeSplit(final int lower, final int upper, int precisionStep,
     final boolean useBitSet, final Iterable<Integer> expectedBounds, final Iterable<Integer> expectedShifts
-  ) throws Exception {
+  ) {
     final FixedBitSet bits=useBitSet ? new FixedBitSet(upper-lower+1) : null;
     final Iterator<Integer> neededBounds = (expectedBounds == null) ? null : expectedBounds.iterator();
     final Iterator<Integer> neededShifts = (expectedShifts == null) ? null : expectedShifts.iterator();
@@ -557,7 +557,7 @@ public class TestNumericUtils extends LuceneTestCase {
     // a inverse range should produce no sub-ranges
     assertIntRangeSplit(9500, -5000, 4, false, Collections.<Integer>emptyList(), Collections.<Integer>emptyList());    
 
-    // a 0-length range should reproduce the range itsself
+    // a 0-length range should reproduce the range itself
     assertIntRangeSplit(9500, 9500, 4, false, Arrays.asList(
       0x8000251c,0x8000251c
     ), Arrays.asList(

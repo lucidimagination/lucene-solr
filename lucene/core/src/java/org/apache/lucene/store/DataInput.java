@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,13 +19,22 @@ package org.apache.lucene.store;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.lucene.util.IOUtils;
 
 /**
  * Abstract base class for performing read operations of Lucene's low-level
  * data types.
+ *
+ * <p>{@code DataInput} may only be used from one thread, because it is not
+ * thread safe (it keeps internal state like file position). To allow
+ * multithreaded use, every {@code DataInput} instance must be cloned before
+ * used in another thread. Subclasses must therefore implement {@link #clone()},
+ * returning a new {@code DataInput} which operates on the same underlying
+ * resource, but positioned independently.
  */
 public abstract class DataInput implements Cloneable {
   /** Reads and returns a single byte.
@@ -193,14 +202,15 @@ public abstract class DataInput implements Cloneable {
    */
   @Override
   public DataInput clone() {
-    DataInput clone = null;
     try {
-      clone = (DataInput)super.clone();
-    } catch (CloneNotSupportedException e) {}
-
-    return clone;
+      return (DataInput) super.clone();
+    } catch (CloneNotSupportedException e) {
+      throw new Error("This cannot happen: Failing to clone DataInput");
+    }
   }
 
+  /** Reads a Map&lt;String,String&gt; previously written
+   *  with {@link DataOutput#writeStringStringMap(Map)}. */
   public Map<String,String> readStringStringMap() throws IOException {
     final Map<String,String> map = new HashMap<String,String>();
     final int count = readInt();
@@ -211,5 +221,17 @@ public abstract class DataInput implements Cloneable {
     }
 
     return map;
+  }
+
+  /** Reads a Set&lt;String&gt; previously written
+   *  with {@link DataOutput#writeStringSet(Set)}. */
+  public Set<String> readStringSet() throws IOException {
+    final Set<String> set = new HashSet<String>();
+    final int count = readInt();
+    for(int i=0;i<count;i++) {
+      set.add(readString());
+    }
+
+    return set;
   }
 }

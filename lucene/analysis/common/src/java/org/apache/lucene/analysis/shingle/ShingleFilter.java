@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.shingle;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -395,7 +395,7 @@ public final class ShingleFilter extends TokenFilter {
       exhausted = true;
     }
     return newTarget;
-	}
+  }
 
   /**
    * <p>Fills {@link #inputWindow} with input stream tokens, if available, 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -190,7 +190,7 @@ public class XMLResponseParser extends ResponseParser
     {
       if( v != null ) {
         try {
-          return KnownType.valueOf( v.toUpperCase(Locale.ENGLISH) );
+          return KnownType.valueOf( v.toUpperCase(Locale.ROOT) );
         }
         catch( Exception ex ) {}
       }
@@ -270,7 +270,7 @@ public class XMLResponseParser extends ResponseParser
     if( XMLStreamConstants.START_ELEMENT != parser.getEventType() ) {
       throw new RuntimeException( "must be start element, not: "+parser.getEventType() );
     }
-    if( !"arr".equals( parser.getLocalName().toLowerCase(Locale.ENGLISH) ) ) {
+    if( !"arr".equals( parser.getLocalName().toLowerCase(Locale.ROOT) ) ) {
       throw new RuntimeException( "must be 'arr', not: "+parser.getLocalName() );
     }
     
@@ -373,7 +373,7 @@ public class XMLResponseParser extends ResponseParser
     if( XMLStreamConstants.START_ELEMENT != parser.getEventType() ) {
       throw new RuntimeException( "must be start element, not: "+parser.getEventType() );
     }
-    if( !"doc".equals( parser.getLocalName().toLowerCase(Locale.ENGLISH) ) ) {
+    if( !"doc".equals( parser.getLocalName().toLowerCase(Locale.ROOT) ) ) {
       throw new RuntimeException( "must be 'lst', not: "+parser.getLocalName() );
     }
 
@@ -414,8 +414,12 @@ public class XMLResponseParser extends ResponseParser
             doc.addField( name, val );
           }
           depth--; // the array reading clears out the 'endElement'
-        }
-        else if( !type.isLeaf ) {
+        } else if( type == KnownType.LST ) {
+            doc.addField( name, readNamedList( parser ) );
+          depth--; 
+        } else if( !type.isLeaf ) {
+          System.out.println("nbot leaf!:" + type);
+          
           throw new XMLStreamException( "must be value or array", parser.getLocation() );
         }
         break;

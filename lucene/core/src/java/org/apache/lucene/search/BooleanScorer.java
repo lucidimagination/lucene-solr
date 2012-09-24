@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,7 +23,6 @@ import java.util.Collection;
 import java.util.List;
 
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery.BooleanWeight;
 
 /* Description from Doug Cutting (excerpted from
@@ -98,7 +97,7 @@ final class BooleanScorer extends Scorer {
     }
     
     @Override
-    public void setScorer(Scorer scorer) throws IOException {
+    public void setScorer(Scorer scorer) {
       this.scorer = scorer;
     }
     
@@ -115,14 +114,14 @@ final class BooleanScorer extends Scorer {
   // Therefore the only methods that are implemented are score() and doc().
   private static final class BucketScorer extends Scorer {
 
-    float score;
+    double score;
     int doc = NO_MORE_DOCS;
     int freq;
     
     public BucketScorer(Weight weight) { super(weight); }
     
     @Override
-    public int advance(int target) throws IOException { return NO_MORE_DOCS; }
+    public int advance(int target) { return NO_MORE_DOCS; }
 
     @Override
     public int docID() { return doc; }
@@ -131,16 +130,16 @@ final class BooleanScorer extends Scorer {
     public float freq() { return freq; }
 
     @Override
-    public int nextDoc() throws IOException { return NO_MORE_DOCS; }
+    public int nextDoc() { return NO_MORE_DOCS; }
     
     @Override
-    public float score() throws IOException { return score; }
+    public float score() { return (float)score; }
     
   }
 
   static final class Bucket {
     int doc = -1;            // tells if bucket is valid
-    float score;             // incremental score
+    double score;             // incremental score
     // TODO: break out bool anyProhibited, int
     // numRequiredMatched; then we can remove 32 limit on
     // required clauses
@@ -181,8 +180,7 @@ final class BooleanScorer extends Scorer {
     public SubScorer next;
 
     public SubScorer(Scorer scorer, boolean required, boolean prohibited,
-        Collector collector, SubScorer next)
-      throws IOException {
+        Collector collector, SubScorer next) {
       if (required) {
         throw new IllegalArgumentException("this scorer cannot handle required=true");
       }
@@ -256,7 +254,12 @@ final class BooleanScorer extends Scorer {
           // clauses
           //&& (current.bits & requiredMask) == requiredMask) {
           
-          // TODO: can we remove this?  
+          // NOTE: Lucene always passes max =
+          // Integer.MAX_VALUE today, because we never embed
+          // a BooleanScorer inside another (even though
+          // that should work)... but in theory an outside
+          // app could pass a different max so we must check
+          // it:
           if (current.doc >= max){
             tmp = current;
             current = current.next;
@@ -299,7 +302,7 @@ final class BooleanScorer extends Scorer {
   }
   
   @Override
-  public int advance(int target) throws IOException {
+  public int advance(int target) {
     throw new UnsupportedOperationException();
   }
 
@@ -309,12 +312,17 @@ final class BooleanScorer extends Scorer {
   }
 
   @Override
-  public int nextDoc() throws IOException {
+  public int nextDoc() {
     throw new UnsupportedOperationException();
   }
 
   @Override
   public float score() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public float freq() throws IOException {
     throw new UnsupportedOperationException();
   }
 
@@ -337,10 +345,6 @@ final class BooleanScorer extends Scorer {
   
   @Override
   public Collection<ChildScorer> getChildren() {
-    List<ChildScorer> children = new ArrayList<ChildScorer>();
-    for (SubScorer sub = scorers; sub != null; sub = sub.next) {
-      children.add(new ChildScorer(sub.scorer, sub.prohibited ? Occur.MUST_NOT.toString() : Occur.SHOULD.toString()));
-    }
-    return children;
+    throw new UnsupportedOperationException();
   }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,13 +20,13 @@ package org.apache.lucene.search;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldInvertState;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.Norm;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
 import org.apache.lucene.search.similarities.Similarity;
@@ -37,7 +37,7 @@ import org.apache.lucene.util.LuceneTestCase;
 
 public class TestSimilarityProvider extends LuceneTestCase {
   private Directory directory;
-  private IndexReader reader;
+  private DirectoryReader reader;
   private IndexSearcher searcher;
   
   @Override
@@ -49,9 +49,9 @@ public class TestSimilarityProvider extends LuceneTestCase {
         new MockAnalyzer(random())).setSimilarity(sim);
     RandomIndexWriter iw = new RandomIndexWriter(random(), directory, iwc);
     Document doc = new Document();
-    Field field = newField("foo", "", TextField.TYPE_UNSTORED);
+    Field field = newTextField("foo", "", Field.Store.NO);
     doc.add(field);
-    Field field2 = newField("bar", "", TextField.TYPE_UNSTORED);
+    Field field2 = newTextField("bar", "", Field.Store.NO);
     doc.add(field2);
     
     field.setStringValue("quick brown fox");
@@ -76,8 +76,9 @@ public class TestSimilarityProvider extends LuceneTestCase {
   public void testBasics() throws Exception {
     // sanity check of norms writer
     // TODO: generalize
-    byte fooNorms[] = (byte[]) MultiDocValues.getNormDocValues(reader, "foo").getSource().getArray();
-    byte barNorms[] = (byte[]) MultiDocValues.getNormDocValues(reader, "bar").getSource().getArray();
+    AtomicReader slow = new SlowCompositeReaderWrapper(reader);
+    byte fooNorms[] = (byte[]) slow.normValues("foo").getSource().getArray();
+    byte barNorms[] = (byte[]) slow.normValues("bar").getSource().getArray();
     for (int i = 0; i < fooNorms.length; i++) {
       assertFalse(fooNorms[i] == barNorms[i]);
     }

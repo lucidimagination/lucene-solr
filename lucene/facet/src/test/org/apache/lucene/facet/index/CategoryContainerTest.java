@@ -18,7 +18,7 @@ import org.apache.lucene.facet.index.attributes.CategoryAttributeImpl;
 import org.apache.lucene.facet.index.streaming.CategoryAttributesStream;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -133,8 +133,6 @@ public class CategoryContainerTest extends CategoryContainerTestBase {
   /**
    * Test addition of {@link CategoryAttribute} object without properties to a
    * {@link CategoryContainer}.
-   * 
-   * @throws FacetException
    */
   @Test
   public void testAddCategoryAttributeWithoutProperties()
@@ -147,8 +145,6 @@ public class CategoryContainerTest extends CategoryContainerTestBase {
   /**
    * Test addition of {@link CategoryAttribute} object with property to a
    * {@link CategoryContainer}.
-   * 
-   * @throws FacetException
    */
   @Test
   public void testAddCategoryAttributeWithProperty() throws FacetException {
@@ -174,8 +170,6 @@ public class CategoryContainerTest extends CategoryContainerTestBase {
   /**
    * Verifies that a {@link CategoryAttributesStream} can be constructed from
    * {@link CategoryContainer} and produce the correct number of tokens.
-   * 
-   * @throws IOException
    */
   @Test
   public void testCategoryAttributesStream() throws IOException {
@@ -190,8 +184,6 @@ public class CategoryContainerTest extends CategoryContainerTestBase {
 
   /**
    * Test that {@link CategoryContainer} merges properties.
-   * 
-   * @throws FacetException
    */
   @Test
   public void testCategoryAttributeMerge() throws FacetException {

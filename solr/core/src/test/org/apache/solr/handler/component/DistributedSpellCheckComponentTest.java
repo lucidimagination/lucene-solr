@@ -1,6 +1,6 @@
 package org.apache.solr.handler.component;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,12 +20,14 @@ package org.apache.solr.handler.component;
 import junit.framework.Assert;
 import junit.framework.TestCase;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SpellingParams;
 import org.apache.solr.common.util.NamedList;
+import org.junit.BeforeClass;
 
 /**
  * Test for SpellCheckComponent's distributed querying
@@ -34,35 +36,39 @@ import org.apache.solr.common.util.NamedList;
  *
  * @see org.apache.solr.handler.component.SpellCheckComponent
  */
+@Slow
 public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTestCase {
   
   private String requestHandlerName;
+  private String reqHandlerWithWordbreak;
   
-	public DistributedSpellCheckComponentTest()
-	{
-		//fixShardCount=true;
-		//shardCount=2;
-		//stress=0;
-	}
-	
-  private String saveProp;
+  public DistributedSpellCheckComponentTest()
+  {
+    //fixShardCount=true;
+    //shardCount=2;
+    //stress=0;
+  }
+
+  @BeforeClass
+  public static void beforeClass() throws Exception {
+    useFactory(null); // need an FS factory
+  }
 
   @Override
   public void setUp() throws Exception {
-    // this test requires FSDir
-    saveProp = System.getProperty("solr.directoryFactory");
-    System.setProperty("solr.directoryFactory", "solr.StandardDirectoryFactory");    
-    requestHandlerName = random().nextBoolean() ? "spellCheckCompRH" : "spellCheckCompRH_Direct"; 
+    if(random().nextBoolean()) {
+      requestHandlerName = "spellCheckCompRH";
+      reqHandlerWithWordbreak = "spellCheckWithWordbreak";      
+    } else {
+      requestHandlerName = "spellCheckCompRH_Direct";
+      reqHandlerWithWordbreak = "spellCheckWithWordbreak_Direct";
+    }  
     super.setUp();
   }
   
   @Override
   public void tearDown() throws Exception {
     super.tearDown();
-    if (saveProp == null)
-      System.clearProperty("solr.directoryFactory");
-    else
-      System.setProperty("solr.directoryFactory", saveProp);
   }
   
   private void q(Object... q) throws Exception {
@@ -94,7 +100,7 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
   
   @Override
   public void doTest() throws Exception {
-  	del("*:*");
+    del("*:*");
     index(id, "1", "lowerfilt", "toyota");
     index(id, "2", "lowerfilt", "chevrolet");
     index(id, "3", "lowerfilt", "suzuki");
@@ -118,6 +124,7 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     index(id, "22", "lowerfilt", "The quote red fox jumped over the lazy brown dogs.");
     index(id, "23", "lowerfilt", "The quote red fox jumped over the lazy brown dogs.");
     index(id, "24", "lowerfilt", "The quote red fox jumped over the lazy brown dogs.");
+    index(id, "25", "lowerfilt", "rod fix");
     commit();
 
     handle.clear();
@@ -138,5 +145,9 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     query("q", "lowerfilt:(+quock +reb)", "fl", "id,lowerfilt", "spellcheck", "true", "qt", requestHandlerName, "shards.qt", requestHandlerName, SpellingParams.SPELLCHECK_EXTENDED_RESULTS, "true", SpellingParams.SPELLCHECK_COUNT, "10", SpellingParams.SPELLCHECK_COLLATE, "true", SpellingParams.SPELLCHECK_MAX_COLLATION_TRIES, "10", SpellingParams.SPELLCHECK_MAX_COLLATIONS, "10", SpellingParams.SPELLCHECK_COLLATE_EXTENDED_RESULTS, "false");
     query("q", "lowerfilt:(+quock +reb)", "fl", "id,lowerfilt", "spellcheck", "true", "qt", requestHandlerName, "shards.qt", requestHandlerName, SpellingParams.SPELLCHECK_EXTENDED_RESULTS, "true", SpellingParams.SPELLCHECK_COUNT, "10", SpellingParams.SPELLCHECK_COLLATE, "true", SpellingParams.SPELLCHECK_MAX_COLLATION_TRIES, "0", SpellingParams.SPELLCHECK_MAX_COLLATIONS, "1", SpellingParams.SPELLCHECK_COLLATE_EXTENDED_RESULTS, "false");
   
+    query("q", "lowerfilt:(\"quote red fox\")", "fl", "id,lowerfilt", "spellcheck", "true", "qt", "spellCheckCompRH", "shards.qt", "spellCheckCompRH", SpellCheckComponent.SPELLCHECK_EXTENDED_RESULTS, "true", SpellCheckComponent.SPELLCHECK_COUNT, "10", SpellCheckComponent.SPELLCHECK_COLLATE, "true", SpellCheckComponent.SPELLCHECK_MAX_COLLATION_TRIES, "10", SpellCheckComponent.SPELLCHECK_MAX_COLLATIONS, "1", SpellCheckComponent.SPELLCHECK_COLLATE_EXTENDED_RESULTS, "true", SpellCheckComponent.SPELLCHECK_ALTERNATIVE_TERM_COUNT, "5", SpellCheckComponent.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, "10");
+    query("q", "lowerfilt:(\"rod fix\")", "fl", "id,lowerfilt", "spellcheck", "true", "qt", "spellCheckCompRH", "shards.qt", "spellCheckCompRH", SpellCheckComponent.SPELLCHECK_EXTENDED_RESULTS, "true", SpellCheckComponent.SPELLCHECK_COUNT, "10", SpellCheckComponent.SPELLCHECK_COLLATE, "true", SpellCheckComponent.SPELLCHECK_MAX_COLLATION_TRIES, "10", SpellCheckComponent.SPELLCHECK_MAX_COLLATIONS, "1", SpellCheckComponent.SPELLCHECK_COLLATE_EXTENDED_RESULTS, "true", SpellCheckComponent.SPELLCHECK_ALTERNATIVE_TERM_COUNT, "5", SpellCheckComponent.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, "10");
+  
+    query("q", "lowerfilt:(+quock +redfox +jum +ped)", "fl", "id,lowerfilt", "spellcheck", "true", "qt", reqHandlerWithWordbreak, "shards.qt", reqHandlerWithWordbreak, SpellCheckComponent.SPELLCHECK_EXTENDED_RESULTS, "true", SpellCheckComponent.SPELLCHECK_COUNT, "10", SpellCheckComponent.SPELLCHECK_COLLATE, "true", SpellCheckComponent.SPELLCHECK_MAX_COLLATION_TRIES, "0", SpellCheckComponent.SPELLCHECK_MAX_COLLATIONS, "1", SpellCheckComponent.SPELLCHECK_COLLATE_EXTENDED_RESULTS, "true");
   }
 }

@@ -5,7 +5,7 @@ import java.io.IOException;
 import org.apache.lucene.facet.search.ScoredDocIDs;
 import org.apache.lucene.facet.search.results.FacetResult;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -38,7 +38,7 @@ public interface SampleFixer {
    *          full set of matching documents.
    * @param fres
    *          sample result to be fixed.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public void fixResult(ScoredDocIDs origDocIds, FacetResult fres) throws IOException; 
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.core;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,7 +26,7 @@ import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
-import org.apache.lucene.index.Payload;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
 
 public class TestAnalyzers extends BaseTokenStreamTestCase {
@@ -81,12 +81,13 @@ public class TestAnalyzers extends BaseTokenStreamTestCase {
 
   void verifyPayload(TokenStream ts) throws IOException {
     PayloadAttribute payloadAtt = ts.getAttribute(PayloadAttribute.class);
+    ts.reset();
     for(byte b=1;;b++) {
       boolean hasNext = ts.incrementToken();
       if (!hasNext) break;
       // System.out.println("id="+System.identityHashCode(nextToken) + " " + t);
       // System.out.println("payload=" + (int)nextToken.getPayload().toByteArray()[0]);
-      assertEquals(b, payloadAtt.getPayload().toByteArray()[0]);
+      assertEquals(b, payloadAtt.getPayload().bytes[0]);
     }
   }
 
@@ -164,7 +165,7 @@ public class TestAnalyzers extends BaseTokenStreamTestCase {
     filter.reset();
     String highSurEndingUpper = "BogustermBoguster\ud801";
     String highSurEndingLower = "bogustermboguster\ud801";
-    tokenizer.reset(new StringReader(highSurEndingUpper));
+    tokenizer.setReader(new StringReader(highSurEndingUpper));
     assertTokenStreamContents(filter, new String[] {highSurEndingLower});
     assertTrue(filter.hasAttribute(CharTermAttribute.class));
     char[] termBuffer = filter.getAttribute(CharTermAttribute.class).buffer();
@@ -211,17 +212,17 @@ public class TestAnalyzers extends BaseTokenStreamTestCase {
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new WhitespaceAnalyzer(TEST_VERSION_CURRENT), 10000*RANDOM_MULTIPLIER);
-    checkRandomData(random(), new SimpleAnalyzer(TEST_VERSION_CURRENT), 10000*RANDOM_MULTIPLIER);
-    checkRandomData(random(), new StopAnalyzer(TEST_VERSION_CURRENT), 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), new WhitespaceAnalyzer(TEST_VERSION_CURRENT), 1000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), new SimpleAnalyzer(TEST_VERSION_CURRENT), 1000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), new StopAnalyzer(TEST_VERSION_CURRENT), 1000*RANDOM_MULTIPLIER);
   }
   
   /** blast some random large strings through the analyzer */
   public void testRandomHugeStrings() throws Exception {
     Random random = random();
-    checkRandomData(random, new WhitespaceAnalyzer(TEST_VERSION_CURRENT), 200*RANDOM_MULTIPLIER, 8192);
-    checkRandomData(random, new SimpleAnalyzer(TEST_VERSION_CURRENT), 200*RANDOM_MULTIPLIER, 8192);
-    checkRandomData(random, new StopAnalyzer(TEST_VERSION_CURRENT), 200*RANDOM_MULTIPLIER, 8192);
+    checkRandomData(random, new WhitespaceAnalyzer(TEST_VERSION_CURRENT), 100*RANDOM_MULTIPLIER, 8192);
+    checkRandomData(random, new SimpleAnalyzer(TEST_VERSION_CURRENT), 100*RANDOM_MULTIPLIER, 8192);
+    checkRandomData(random, new StopAnalyzer(TEST_VERSION_CURRENT), 100*RANDOM_MULTIPLIER, 8192);
   } 
 }
 
@@ -233,7 +234,7 @@ final class PayloadSetter extends TokenFilter {
   }
 
   byte[] data = new byte[1];
-  Payload p = new Payload(data,0,1);
+  BytesRef p = new BytesRef(data,0,1);
 
   @Override
   public boolean incrementToken() throws IOException {

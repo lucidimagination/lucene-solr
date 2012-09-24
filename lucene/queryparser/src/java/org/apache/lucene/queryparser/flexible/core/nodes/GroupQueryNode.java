@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.core.nodes;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -71,9 +71,6 @@ public class GroupQueryNode extends QueryNodeImpl {
     return clone;
   }
 
-  /**
-   * @param child
-   */
   public void setChild(QueryNode child) {
     List<QueryNode> list = new ArrayList<QueryNode>();
     list.add(child);

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
 
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NoSuchDirectoryException;
@@ -118,11 +119,10 @@ final class IndexFileDeleter {
    * the Directory, incref the files they reference, call
    * the policy to let it delete commits.  This will remove
    * any files not referenced by any of the commits.
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
   public IndexFileDeleter(Directory directory, IndexDeletionPolicy policy, SegmentInfos segmentInfos,
-                          InfoStream infoStream, IndexWriter writer) throws CorruptIndexException, IOException {
+                          InfoStream infoStream, IndexWriter writer) throws IOException {
     this.infoStream = infoStream;
     this.writer = writer;
 
@@ -147,81 +147,61 @@ final class IndexFileDeleter {
       // it means the directory is empty, so ignore it.
       files = new String[0];
     }
-
-    for (String fileName : files) {
-
-      if ((IndexFileNameFilter.INSTANCE.accept(null, fileName)) && !fileName.endsWith("write.lock") && !fileName.equals(IndexFileNames.SEGMENTS_GEN)) {
-
-        // Add this file to refCounts with initial count 0:
-        getRefCount(fileName);
-
-        if (fileName.startsWith(IndexFileNames.SEGMENTS)) {
-
-          // This is a commit (segments or segments_N), and
-          // it's valid (<= the max gen).  Load it, then
-          // incref all files it refers to:
-          if (infoStream.isEnabled("IFD")) {
-            infoStream.message("IFD", "init: load commit \"" + fileName + "\"");
-          }
-          SegmentInfos sis = new SegmentInfos();
-          try {
-            sis.read(directory, fileName);
-          } catch (FileNotFoundException e) {
-            // LUCENE-948: on NFS (and maybe others), if
-            // you have writers switching back and forth
-            // between machines, it's very likely that the
-            // dir listing will be stale and will claim a
-            // file segments_X exists when in fact it
-            // doesn't.  So, we catch this and handle it
-            // as if the file does not exist
+    
+    if (currentSegmentsFile != null) {
+      Matcher m = IndexFileNames.CODEC_FILE_PATTERN.matcher("");
+      for (String fileName : files) {
+        m.reset(fileName);
+        if (!fileName.endsWith("write.lock") && !fileName.equals(IndexFileNames.SEGMENTS_GEN)
+            && (m.matches() || fileName.startsWith(IndexFileNames.SEGMENTS))) {
+          
+          // Add this file to refCounts with initial count 0:
+          getRefCount(fileName);
+          
+          if (fileName.startsWith(IndexFileNames.SEGMENTS)) {
+            
+            // This is a commit (segments or segments_N), and
+            // it's valid (<= the max gen).  Load it, then
+            // incref all files it refers to:
             if (infoStream.isEnabled("IFD")) {
-              infoStream.message("IFD", "init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
+              infoStream.message("IFD", "init: load commit \"" + fileName + "\"");
             }
-            sis = null;
-          } catch (IOException e) {
-            if (SegmentInfos.generationFromSegmentsFileName(fileName) <= currentGen && directory.fileLength(fileName) > 0) {
-              throw e;
-            } else {
-              // Most likely we are opening an index that
-              // has an aborted "future" commit, so suppress
-              // exc in this case
+            SegmentInfos sis = new SegmentInfos();
+            try {
+              sis.read(directory, fileName);
+            } catch (FileNotFoundException e) {
+              // LUCENE-948: on NFS (and maybe others), if
+              // you have writers switching back and forth
+              // between machines, it's very likely that the
+              // dir listing will be stale and will claim a
+              // file segments_X exists when in fact it
+              // doesn't.  So, we catch this and handle it
+              // as if the file does not exist
+              if (infoStream.isEnabled("IFD")) {
+                infoStream.message("IFD", "init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
+              }
               sis = null;
-            }
-          }
-          if (sis != null) {
-            final SegmentInfos infos = sis;
-            for (SegmentInfo segmentInfo : infos) {
-              try {
-                /*
-                 * Force FI to load for each segment since we could see a
-                 * segments file and load successfully above if the files are
-                 * still referenced when they are deleted and the os doesn't let
-                 * you delete them. Yet its likely that fnm files are removed
-                 * while seg file is still around Since LUCENE-2984 we need FI
-                 * to find out if a seg has vectors and prox so we need those
-                 * files to be opened for a commit point.
-                 */
-                segmentInfo.getFieldInfos();
-              } catch (FileNotFoundException e) {
-                refresh(segmentInfo.name);
+            } catch (IOException e) {
+              if (SegmentInfos.generationFromSegmentsFileName(fileName) <= currentGen && directory.fileLength(fileName) > 0) {
+                throw e;
+              } else {
+                // Most likely we are opening an index that
+                // has an aborted "future" commit, so suppress
+                // exc in this case
                 sis = null;
-                if (infoStream.isEnabled("IFD")) {
-                  infoStream.message("IFD", "init: hit FileNotFoundException when loading commit \"" + fileName + "\"; skipping this commit point");
-                }
               }
             }
-           
-          }
-          if (sis != null) {
-            final CommitPoint commitPoint = new CommitPoint(commitsToDelete, directory, sis);
-            if (sis.getGeneration() == segmentInfos.getGeneration()) {
-              currentCommitPoint = commitPoint;
-            }
-            commits.add(commitPoint);
-            incRef(sis, true);
-
-            if (lastSegmentInfos == null || sis.getGeneration() > lastSegmentInfos.getGeneration()) {
-              lastSegmentInfos = sis;
+            if (sis != null) {
+              final CommitPoint commitPoint = new CommitPoint(commitsToDelete, directory, sis);
+              if (sis.getGeneration() == segmentInfos.getGeneration()) {
+                currentCommitPoint = commitPoint;
+              }
+              commits.add(commitPoint);
+              incRef(sis, true);
+              
+              if (lastSegmentInfos == null || sis.getGeneration() > lastSegmentInfos.getGeneration()) {
+                lastSegmentInfos = sis;
+              }
             }
           }
         }
@@ -356,7 +336,7 @@ final class IndexFileDeleter {
     for(int i=0;i<files.length;i++) {
       String fileName = files[i];
       if ((segmentName == null || fileName.startsWith(segmentPrefix1) || fileName.startsWith(segmentPrefix2)) &&
-          IndexFileNameFilter.INSTANCE.accept(null, fileName) &&
+          !fileName.endsWith("write.lock") &&
           !refCounts.containsKey(fileName) &&
           !fileName.equals(IndexFileNames.SEGMENTS_GEN)) {
         // Unreferenced file, so remove it
@@ -488,19 +468,19 @@ final class IndexFileDeleter {
     assert locked();
     // If this is a commit point, also incRef the
     // segments_N file:
-    for( final String fileName: segmentInfos.files(directory, isCommit) ) {
+    for(final String fileName: segmentInfos.files(directory, isCommit)) {
       incRef(fileName);
     }
   }
 
-  void incRef(Collection<String> files) throws IOException {
+  void incRef(Collection<String> files) {
     assert locked();
     for(final String file : files) {
       incRef(file);
     }
   }
 
-  void incRef(String fileName) throws IOException {
+  void incRef(String fileName) {
     assert locked();
     RefCount rc = getRefCount(fileName);
     if (infoStream.isEnabled("IFD")) {
@@ -591,7 +571,7 @@ final class IndexFileDeleter {
         infoStream.message("IFD", "delete \"" + fileName + "\"");
       }
       directory.deleteFile(fileName);
-    } catch (IOException e) {			  // if delete fails
+    } catch (IOException e) {  // if delete fails
       if (directory.fileExists(fileName)) {
 
         // Some operating systems (e.g. Windows) don't
@@ -685,7 +665,7 @@ final class IndexFileDeleter {
     }
 
     @Override
-    public Collection<String> getFileNames() throws IOException {
+    public Collection<String> getFileNames() {
       return files;
     }
 

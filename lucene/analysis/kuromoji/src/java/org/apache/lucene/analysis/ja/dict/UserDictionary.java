@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.ja.dict;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -172,7 +172,6 @@ public final class UserDictionary implements Dictionary {
   
   /**
    * Convert Map of index and wordIdAndLength to array of {wordId, index, length}
-   * @param input
    * @return array of {wordId, index, length}
    */
   private int[][] toIndexArray(Map<Integer, int[]> input) {
@@ -246,7 +245,7 @@ public final class UserDictionary implements Dictionary {
       return null;
     }
     
-    return allFeatures.split(INTERNAL_SEPARATOR);		
+    return allFeatures.split(INTERNAL_SEPARATOR);
   }
   
   
@@ -261,7 +260,7 @@ public final class UserDictionary implements Dictionary {
         sb.append(CSVUtil.quoteEscape(feature)).append(",");
       }
     } else if (fields.length == 1) { // One feature doesn't need to escape value
-      sb.append(allFeatures[fields[0]]).append(",");			
+      sb.append(allFeatures[fields[0]]).append(",");
     } else {
       for (int field : fields){
         sb.append(CSVUtil.quoteEscape(allFeatures[field])).append(",");

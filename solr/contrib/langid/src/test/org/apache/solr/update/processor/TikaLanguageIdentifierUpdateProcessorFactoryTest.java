@@ -1,6 +1,6 @@
 package org.apache.solr.update.processor;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,6 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 public class TikaLanguageIdentifierUpdateProcessorFactoryTest extends LanguageIdentifierUpdateProcessorFactoryTestCase {
   @Override
   protected LanguageIdentifierUpdateProcessor createLangIdProcessor(ModifiableSolrParams parameters) throws Exception {
-    return new TikaLanguageIdentifierUpdateProcessor(_parser.buildRequestFrom(null, parameters, null), resp, null);
+    return new TikaLanguageIdentifierUpdateProcessor(_parser.buildRequestFrom(h.getCore(), parameters, null), resp, null);
   }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,7 @@ import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -31,7 +31,7 @@ import org.apache.lucene.util._TestUtil;
 public class TestSegmentTermDocs extends LuceneTestCase {
   private Document testDoc = new Document();
   private Directory dir;
-  private SegmentInfo info;
+  private SegmentInfoPerCommit info;
 
   @Override
   public void setUp() throws Exception {
@@ -63,7 +63,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
 
     TermsEnum terms = reader.fields().terms(DocHelper.TEXT_FIELD_2_KEY).iterator(null);
     terms.seekCeil(new BytesRef("field"));
-    DocsEnum termDocs = _TestUtil.docs(random(), terms, reader.getLiveDocs(), null, true);
+    DocsEnum termDocs = _TestUtil.docs(random(), terms, reader.getLiveDocs(), null, DocsEnum.FLAG_FREQS);
     if (termDocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS)    {
       int docId = termDocs.docID();
       assertTrue(docId == 0);
@@ -87,7 +87,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                                          new BytesRef("bad"),
                                          reader.getLiveDocs(),
                                          null,
-                                         false);
+                                         0);
 
       assertNull(termDocs);
       reader.close();
@@ -101,7 +101,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                                          new BytesRef("bad"),
                                          reader.getLiveDocs(),
                                          null,
-                                         false);
+                                         0);
       assertNull(termDocs);
       reader.close();
     }
@@ -131,14 +131,14 @@ public class TestSegmentTermDocs extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
     
-    IndexReader reader = IndexReader.open(dir, indexDivisor);
+    IndexReader reader = DirectoryReader.open(dir, indexDivisor);
 
     DocsEnum tdocs = _TestUtil.docs(random(), reader,
                                     ta.field(),
                                     new BytesRef(ta.text()),
                                     MultiFields.getLiveDocs(reader),
                                     null,
-                                    true);
+                                    DocsEnum.FLAG_FREQS);
     
     // without optimization (assumption skipInterval == 16)
     
@@ -163,7 +163,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                            new BytesRef(ta.text()),
                            MultiFields.getLiveDocs(reader),
                            null,
-                           false);
+                           0);
     
     assertTrue(tdocs.advance(0) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(0, tdocs.docID());
@@ -181,7 +181,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                            new BytesRef(tb.text()),
                            MultiFields.getLiveDocs(reader),
                            null,
-                           true);
+                           DocsEnum.FLAG_FREQS);
 
     assertTrue(tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(10, tdocs.docID());
@@ -205,7 +205,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                            new BytesRef(tb.text()),
                            MultiFields.getLiveDocs(reader),
                            null,
-                           true);
+                           DocsEnum.FLAG_FREQS);
     
     assertTrue(tdocs.advance(5) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(10, tdocs.docID());
@@ -225,7 +225,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                            new BytesRef(tc.text()),
                            MultiFields.getLiveDocs(reader),
                            null,
-                           true);
+                           DocsEnum.FLAG_FREQS);
 
     assertTrue(tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(26, tdocs.docID());
@@ -251,7 +251,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
                            new BytesRef(tc.text()),
                            MultiFields.getLiveDocs(reader),
                            null,
-                           false);
+                           0);
     assertTrue(tdocs.advance(5) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(26, tdocs.docID());
     assertTrue(tdocs.advance(40) != DocIdSetIterator.NO_MORE_DOCS);
@@ -280,7 +280,7 @@ public class TestSegmentTermDocs extends LuceneTestCase {
   private void addDoc(IndexWriter writer, String value) throws IOException
   {
       Document doc = new Document();
-      doc.add(newField("content", value, TextField.TYPE_UNSTORED));
+      doc.add(newTextField("content", value, Field.Store.NO));
       writer.addDocument(doc);
   }
 }

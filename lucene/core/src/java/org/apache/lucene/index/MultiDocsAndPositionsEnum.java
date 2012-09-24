@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,10 +17,10 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 /**
  * Exposes flex API, merged from flex API of sub-segments.
@@ -38,16 +38,20 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   int currentBase;
   int doc = -1;
 
+  /** Sole constructor. */
   public MultiDocsAndPositionsEnum(MultiTermsEnum parent, int subReaderCount) {
     this.parent = parent;
     subDocsAndPositionsEnum = new DocsAndPositionsEnum[subReaderCount];
   }
 
+  /** Returns {@code true} if this instance can be reused by
+   *  the provided {@link MultiTermsEnum}. */
   public boolean canReuse(MultiTermsEnum parent) {
     return this.parent == parent;
   }
 
-  public MultiDocsAndPositionsEnum reset(final EnumWithSlice[] subs, final int numSubs) throws IOException {
+  /** Rre-use and reset this instance on the provided slices. */
+  public MultiDocsAndPositionsEnum reset(final EnumWithSlice[] subs, final int numSubs) {
     this.numSubs = numSubs;
     this.subs = new EnumWithSlice[subs.length];
     for(int i=0;i<subs.length;i++) {
@@ -56,20 +60,25 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
       this.subs[i].slice = subs[i].slice;
     }
     upto = -1;
+    doc = -1;
     current = null;
     return this;
   }
 
+  /** How many sub-readers we are merging.
+   *  @see #getSubs */
   public int getNumSubs() {
     return numSubs;
   }
 
+  /** Returns sub-readers we are merging. */
   public EnumWithSlice[] getSubs() {
     return subs;
   }
 
   @Override
-  public int freq() {
+  public int freq() throws IOException {
+    assert current != null;
     return current.freq();
   }
 
@@ -136,19 +145,33 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   }
 
   @Override
-  public boolean hasPayload() {
-    return current.hasPayload();
-  }
-
-  @Override
   public BytesRef getPayload() throws IOException {
     return current.getPayload();
   }
 
   // TODO: implement bulk read more efficiently than super
+  /** Holds a {@link DocsAndPositionsEnum} along with the
+   *  corresponding {@link ReaderSlice}. */
   public final static class EnumWithSlice {
+    EnumWithSlice() {
+    }
+
+    /** {@link DocsAndPositionsEnum} for this sub-reader. */
     public DocsAndPositionsEnum docsAndPositionsEnum;
-    public ReaderUtil.Slice slice;
+
+    /** {@link ReaderSlice} describing how this sub-reader
+     *  fits into the composite reader. */
+    public ReaderSlice slice;
+    
+    @Override
+    public String toString() {
+      return slice.toString()+":"+docsAndPositionsEnum;
+    }
+  }
+  
+  @Override
+  public String toString() {
+    return "MultiDocsAndPositionsEnum(" + Arrays.toString(getSubs()) + ")";
   }
 }
 

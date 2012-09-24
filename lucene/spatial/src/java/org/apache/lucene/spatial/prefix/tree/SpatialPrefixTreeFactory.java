@@ -18,16 +18,22 @@
 package org.apache.lucene.spatial.prefix.tree;
 
 import com.spatial4j.core.context.SpatialContext;
-import com.spatial4j.core.distance.DistanceUnits;
 import com.spatial4j.core.distance.DistanceUtils;
 
 import java.util.Map;
 
 /**
+ * Abstract Factory for creating {@link SpatialPrefixTree} instances with useful
+ * defaults and passed on configurations defined in a Map.
+ *
+ * @lucene.experimental
  */
 public abstract class SpatialPrefixTreeFactory {
 
   private static final double DEFAULT_GEO_MAX_DETAIL_KM = 0.001;//1m
+  public static final String PREFIX_TREE = "prefixTree";
+  public static final String MAX_LEVELS = "maxLevels";
+  public static final String MAX_DIST_ERR = "maxDistErr";
 
   protected Map<String, String> args;
   protected SpatialContext ctx;
@@ -39,7 +45,7 @@ public abstract class SpatialPrefixTreeFactory {
    */
   public static SpatialPrefixTree makeSPT(Map<String,String> args, ClassLoader classLoader, SpatialContext ctx) {
     SpatialPrefixTreeFactory instance;
-    String cname = args.get("prefixTree");
+    String cname = args.get(PREFIX_TREE);
     if (cname == null)
       cname = ctx.isGeo() ? "geohash" : "quad";
     if ("geohash".equalsIgnoreCase(cname))
@@ -65,23 +71,23 @@ public abstract class SpatialPrefixTreeFactory {
   }
 
   protected void initMaxLevels() {
-    String mlStr = args.get("maxLevels");
+    String mlStr = args.get(MAX_LEVELS);
     if (mlStr != null) {
       maxLevels = Integer.valueOf(mlStr);
       return;
     }
 
     double degrees;
-    String maxDetailDistStr = args.get("maxDetailDist");
+    String maxDetailDistStr = args.get(MAX_DIST_ERR);
     if (maxDetailDistStr == null) {
       if (!ctx.isGeo()) {
         return;//let default to max
       }
-      degrees = DistanceUtils.dist2Degrees(DEFAULT_GEO_MAX_DETAIL_KM, DistanceUnits.KILOMETERS.earthRadius());
+      degrees = DistanceUtils.dist2Degrees(DEFAULT_GEO_MAX_DETAIL_KM, DistanceUtils.EARTH_MEAN_RADIUS_KM);
     } else {
-      degrees = DistanceUtils.dist2Degrees(Double.parseDouble(maxDetailDistStr), ctx.getUnits().earthRadius());
+      degrees = Double.parseDouble(maxDetailDistStr);
     }
-    maxLevels = getLevelForDistance(degrees) + 1;//returns 1 greater
+    maxLevels = getLevelForDistance(degrees);
   }
 
   /** Calls {@link SpatialPrefixTree#getLevelForDistance(double)}. */

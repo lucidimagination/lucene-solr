@@ -1,5 +1,5 @@
 package org.apache.solr.spelling;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -78,11 +78,6 @@ public abstract class SolrSpellChecker {
   }
   /**
    * Integrate spelling suggestions from the various shards in a distributed environment.
-   * 
-   * @param mergeData
-   * @param numSug
-   * @param count
-   * @param extendedResults
    */
   public SpellingResult mergeSuggestions(SpellCheckMergeData mergeData, int numSug, int count, boolean extendedResults) {
     float min = 0.5f;
@@ -92,7 +87,12 @@ public abstract class SolrSpellChecker {
       //just use .5 as a default
     }
     
-    StringDistance sd = getStringDistance() == null ? new LevensteinDistance() : getStringDistance();    
+    StringDistance sd = null;
+    try {
+      sd = getStringDistance() == null ? new LevensteinDistance() : getStringDistance();    
+    } catch(UnsupportedOperationException uoe) {
+      sd = new LevensteinDistance();
+    }
     
     SpellingResult result = new SpellingResult();
     for (Map.Entry<String, HashSet<String>> entry : mergeData.origVsSuggested.entrySet()) {
@@ -155,14 +155,14 @@ public abstract class SolrSpellChecker {
   /**
    * Reloads the index.  Useful if an external process is responsible for building the spell checker.
    *
-   * @throws java.io.IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public abstract void reload(SolrCore core, SolrIndexSearcher searcher) throws IOException;
 
   /**
    * (re)Builds the spelling index.  May be a NOOP if the implementation doesn't require building, or can't be rebuilt.
    */
-  public abstract void build(SolrCore core, SolrIndexSearcher searcher);
+  public abstract void build(SolrCore core, SolrIndexSearcher searcher) throws IOException;
   
   /**
    * Get the value of {@link SpellingParams#SPELLCHECK_ACCURACY} if supported.  
@@ -190,4 +190,8 @@ public abstract class SolrSpellChecker {
    * @throws IOException if there is an error producing suggestions
    */
   public abstract SpellingResult getSuggestions(SpellingOptions options) throws IOException;
+  
+  public boolean isSuggestionsMayOverlap() {
+    return false;
+  }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -75,7 +75,7 @@ public abstract class AttributeImpl implements Cloneable, Attribute {
    * implementations.
    *
    * <p>Custom implementations look like this (e.g. for a combined attribute implementation):
-   * <pre>
+   * <pre class="prettyprint">
    *   public void reflectWith(AttributeReflector reflector) {
    *     reflector.reflect(CharTermAttribute.class, "term", term());
    *     reflector.reflect(PositionIncrementAttribute.class, "positionIncrement", getPositionIncrement());

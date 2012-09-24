@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,19 +18,17 @@ package org.apache.lucene.codecs.lucene40;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.PerDocConsumer;
 import org.apache.lucene.codecs.PerDocProducer;
 import org.apache.lucene.index.DocValues; // javadocs
 import org.apache.lucene.index.DocValues.Type; // javadocs
 import org.apache.lucene.index.PerDocWriteState;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.store.CompoundFileDirectory; // javadocs
 import org.apache.lucene.store.DataOutput; // javadocs
-import org.apache.lucene.util.CodecUtil; // javadocs
 import org.apache.lucene.util.packed.PackedInts; // javadocs
 
 /**
@@ -132,6 +130,10 @@ import org.apache.lucene.util.packed.PackedInts; // javadocs
  */
 public class Lucene40DocValuesFormat extends DocValuesFormat {
 
+  /** Sole constructor. */
+  public Lucene40DocValuesFormat() {
+  }
+
   @Override
   public PerDocConsumer docsConsumer(PerDocWriteState state) throws IOException {
     return new Lucene40DocValuesConsumer(state, Lucene40DocValuesConsumer.DOC_VALUES_SEGMENT_SUFFIX);
@@ -140,10 +142,5 @@ public class Lucene40DocValuesFormat extends DocValuesFormat {
   @Override
   public PerDocProducer docsProducer(SegmentReadState state) throws IOException {
     return new Lucene40DocValuesProducer(state, Lucene40DocValuesConsumer.DOC_VALUES_SEGMENT_SUFFIX);
-  }
-
-  @Override
-  public void files(SegmentInfo info, Set<String> files) throws IOException {
-    Lucene40DocValuesConsumer.files(info, files);
   }
 }

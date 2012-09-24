@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 
+import org.apache.lucene.document.Field;
 import org.apache.lucene.index.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,17 +59,13 @@ public class FileBasedSpellChecker extends AbstractLuceneSpellChecker {
   }
 
   @Override
-  public void build(SolrCore core, SolrIndexSearcher searcher) {
-    try {
-      loadExternalFileDictionary(core);
-      spellChecker.clearIndex();
-      // TODO: you should be able to specify the IWC params?
-      // TODO: if we enable this, codec gets angry since field won't exist in the schema
-      // config.setCodec(core.getCodec());
-      spellChecker.indexDictionary(dictionary, new IndexWriterConfig(core.getSolrConfig().luceneMatchVersion, null), false);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+  public void build(SolrCore core, SolrIndexSearcher searcher) throws IOException {
+    loadExternalFileDictionary(core);
+    spellChecker.clearIndex();
+    // TODO: you should be able to specify the IWC params?
+    // TODO: if we enable this, codec gets angry since field won't exist in the schema
+    // config.setCodec(core.getCodec());
+    spellChecker.indexDictionary(dictionary, new IndexWriterConfig(core.getSolrConfig().luceneMatchVersion, null), false);
   }
 
   /**
@@ -105,13 +102,13 @@ public class FileBasedSpellChecker extends AbstractLuceneSpellChecker {
 
         for (String s : lines) {
           Document d = new Document();
-          d.add(new TextField(WORD_FIELD_NAME, s));
+          d.add(new TextField(WORD_FIELD_NAME, s, Field.Store.NO));
           writer.addDocument(d);
         }
         writer.forceMerge(1);
         writer.close();
 
-        dictionary = new HighFrequencyDictionary(IndexReader.open(ramDir),
+        dictionary = new HighFrequencyDictionary(DirectoryReader.open(ramDir),
                 WORD_FIELD_NAME, 0.0f);
       } else {
         // check if character encoding is defined

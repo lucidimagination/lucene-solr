@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,7 @@ import java.io.IOException;
 import java.util.Map;
 
 abstract class InvertedDocEndConsumer {
-  abstract void flush(Map<FieldInfo, InvertedDocEndConsumerPerField> fieldsToFlush, SegmentWriteState state) throws IOException;
+  abstract void flush(Map<String, InvertedDocEndConsumerPerField> fieldsToFlush, SegmentWriteState state) throws IOException;
   abstract void abort();
   abstract InvertedDocEndConsumerPerField addField(DocInverterPerField docInverterPerField, FieldInfo fieldInfo);
   abstract void startDocument() throws IOException;

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -58,18 +58,19 @@ final class StoredFieldsConsumer {
   }
 
   public void flush(SegmentWriteState state) throws IOException {
+    int numDocs = state.segmentInfo.getDocCount();
 
-    if (state.numDocs > 0) {
+    if (numDocs > 0) {
       // It's possible that all documents seen in this segment
       // hit non-aborting exceptions, in which case we will
       // not have yet init'd the FieldsWriter:
       initFieldsWriter(state.context);
-      fill(state.numDocs);
+      fill(numDocs);
     }
 
     if (fieldsWriter != null) {
       try {
-        fieldsWriter.finish(state.numDocs);
+        fieldsWriter.finish(state.fieldInfos, numDocs);
       } finally {
         fieldsWriter.close();
         fieldsWriter = null;
@@ -80,7 +81,7 @@ final class StoredFieldsConsumer {
 
   private synchronized void initFieldsWriter(IOContext context) throws IOException {
     if (fieldsWriter == null) {
-      fieldsWriter = codec.storedFieldsFormat().fieldsWriter(docWriter.directory, docWriter.getSegment(), context);
+      fieldsWriter = codec.storedFieldsFormat().fieldsWriter(docWriter.directory, docWriter.getSegmentInfo(), context);
       lastDocID = 0;
     }
   }
@@ -125,7 +126,7 @@ final class StoredFieldsConsumer {
     assert docWriter.writer.testPoint("StoredFieldsWriter.finishDocument end");
   }
 
-  public void addField(IndexableField field, FieldInfo fieldInfo) throws IOException {
+  public void addField(IndexableField field, FieldInfo fieldInfo) {
     if (numStoredFields == storedFields.length) {
       int newSize = ArrayUtil.oversize(numStoredFields + 1, RamUsageEstimator.NUM_BYTES_OBJECT_REF);
       IndexableField[] newArray = new IndexableField[newSize];

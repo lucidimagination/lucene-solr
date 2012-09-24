@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -281,7 +281,7 @@ public final class BytesRefHash {
    *          <p>
    *          Hashcode is defined as:
    * 
-   *          <pre>
+   *          <pre class="prettyprint">
    * int hash = 0;
    * for (int i = offset; i &lt; offset + length; i++) {
    *   hash = 31 * hash + bytes[i];

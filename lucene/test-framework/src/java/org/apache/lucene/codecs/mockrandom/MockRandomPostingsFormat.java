@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.mockrandom;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,27 +19,25 @@ package org.apache.lucene.codecs.mockrandom;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 
-import org.apache.lucene.codecs.BlockTermsReader;
-import org.apache.lucene.codecs.BlockTermsWriter;
 import org.apache.lucene.codecs.BlockTreeTermsReader;
 import org.apache.lucene.codecs.BlockTreeTermsWriter;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.FixedGapTermsIndexReader;
-import org.apache.lucene.codecs.FixedGapTermsIndexWriter;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.PostingsReaderBase;
 import org.apache.lucene.codecs.PostingsWriterBase;
 import org.apache.lucene.codecs.TermStats;
-import org.apache.lucene.codecs.TermsIndexReaderBase;
-import org.apache.lucene.codecs.TermsIndexWriterBase;
-import org.apache.lucene.codecs.VariableGapTermsIndexReader;
-import org.apache.lucene.codecs.VariableGapTermsIndexWriter;
+import org.apache.lucene.codecs.blockterms.BlockTermsReader;
+import org.apache.lucene.codecs.blockterms.BlockTermsWriter;
+import org.apache.lucene.codecs.blockterms.FixedGapTermsIndexReader;
+import org.apache.lucene.codecs.blockterms.FixedGapTermsIndexWriter;
+import org.apache.lucene.codecs.blockterms.TermsIndexReaderBase;
+import org.apache.lucene.codecs.blockterms.TermsIndexWriterBase;
+import org.apache.lucene.codecs.blockterms.VariableGapTermsIndexReader;
+import org.apache.lucene.codecs.blockterms.VariableGapTermsIndexWriter;
 import org.apache.lucene.codecs.lucene40.Lucene40PostingsReader;
 import org.apache.lucene.codecs.lucene40.Lucene40PostingsWriter;
 import org.apache.lucene.codecs.mockintblock.MockFixedIntBlockPostingsFormat;
@@ -54,7 +52,6 @@ import org.apache.lucene.codecs.sep.SepPostingsReader;
 import org.apache.lucene.codecs.sep.SepPostingsWriter;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.Directory;
@@ -69,18 +66,27 @@ import org.apache.lucene.util._TestUtil;
  * Randomly combines terms index impl w/ postings impls.
  */
 
-public class MockRandomPostingsFormat extends PostingsFormat {
+public final class MockRandomPostingsFormat extends PostingsFormat {
   private final Random seedRandom;
   private final String SEED_EXT = "sd";
   
   public MockRandomPostingsFormat() {
-    // just for reading, we are gonna setSeed from the .seed file... right?
-    this(new Random());
+    // This ctor should *only* be used at read-time: get NPE if you use it!
+    this(null);
   }
   
   public MockRandomPostingsFormat(Random random) {
     super("MockRandom");
-    this.seedRandom = new Random(random.nextLong());
+    if (random == null) {
+      this.seedRandom = new Random(0L) {
+        @Override
+        protected int next(int arg0) {
+          throw new IllegalStateException("Please use MockRandomPostingsFormat(Random)");
+        }
+      };
+    } else {
+      this.seedRandom = new Random(random.nextLong());
+    }
   }
 
   // Chooses random IntStreamFactory depending on file's extension
@@ -138,10 +144,10 @@ public class MockRandomPostingsFormat extends PostingsFormat {
     final long seed = seedRandom.nextLong();
 
     if (LuceneTestCase.VERBOSE) {
-      System.out.println("MockRandomCodec: writing to seg=" + state.segmentName + " formatID=" + state.segmentSuffix + " seed=" + seed);
+      System.out.println("MockRandomCodec: writing to seg=" + state.segmentInfo.name + " formatID=" + state.segmentSuffix + " seed=" + seed);
     }
 
-    final String seedFileName = IndexFileNames.segmentFileName(state.segmentName, state.segmentSuffix, SEED_EXT);
+    final String seedFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, SEED_EXT);
     final IndexOutput out = state.directory.createOutput(seedFileName, state.context);
     try {
       out.writeLong(seed);
@@ -293,13 +299,13 @@ public class MockRandomPostingsFormat extends PostingsFormat {
       if (LuceneTestCase.VERBOSE) {
         System.out.println("MockRandomCodec: reading Sep postings");
       }
-      postingsReader = new SepPostingsReader(state.dir, state.segmentInfo,
+      postingsReader = new SepPostingsReader(state.dir, state.fieldInfos, state.segmentInfo,
                                              state.context, new MockIntStreamFactory(random), state.segmentSuffix);
     } else {
       if (LuceneTestCase.VERBOSE) {
         System.out.println("MockRandomCodec: reading Standard postings");
       }
-      postingsReader = new Lucene40PostingsReader(state.dir, state.segmentInfo, state.context, state.segmentSuffix);
+      postingsReader = new Lucene40PostingsReader(state.dir, state.fieldInfos, state.segmentInfo, state.context, state.segmentSuffix);
     }
 
     if (random.nextBoolean()) {
@@ -322,7 +328,7 @@ public class MockRandomPostingsFormat extends PostingsFormat {
       try {
         fields = new BlockTreeTermsReader(state.dir,
                                           state.fieldInfos,
-                                          state.segmentInfo.name,
+                                          state.segmentInfo,
                                           postingsReader,
                                           state.context,
                                           state.segmentSuffix,
@@ -392,7 +398,7 @@ public class MockRandomPostingsFormat extends PostingsFormat {
         fields = new BlockTermsReader(indexReader,
                                       state.dir,
                                       state.fieldInfos,
-                                      state.segmentInfo.name,
+                                      state.segmentInfo,
                                       postingsReader,
                                       state.context,
                                       termsCacheSize,
@@ -410,26 +416,5 @@ public class MockRandomPostingsFormat extends PostingsFormat {
     }
 
     return fields;
-  }
-
-  @Override
-  public void files(SegmentInfo segmentInfo, String segmentSuffix, Set<String> files) throws IOException {
-    final String seedFileName = IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, SEED_EXT);    
-    files.add(seedFileName);
-    SepPostingsReader.files(segmentInfo, segmentSuffix, files);
-    Lucene40PostingsReader.files(segmentInfo, segmentSuffix, files);
-    BlockTermsReader.files(segmentInfo, segmentSuffix, files);
-    BlockTreeTermsReader.files(segmentInfo, segmentSuffix, files);
-    FixedGapTermsIndexReader.files(segmentInfo, segmentSuffix, files);
-    VariableGapTermsIndexReader.files(segmentInfo, segmentSuffix, files);
-    // hackish!
-    Iterator<String> it = files.iterator();
-    while(it.hasNext()) {
-      final String file = it.next();
-      if (!segmentInfo.dir.fileExists(file)) {
-        it.remove();
-      }
-    }
-    //System.out.println("MockRandom.files return " + files);
   }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.xml.builders;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -107,8 +107,6 @@ public class NumericRangeFilterBuilder implements FilterBuilder {
    * any documents.
    * <p/>
    * Defaults to false.
-   *
-   * @param strictMode
    */
   public void setStrictMode(boolean strictMode) {
     this.strictMode = strictMode;
@@ -158,7 +156,7 @@ public class NumericRangeFilterBuilder implements FilterBuilder {
     @Override
     public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
       return null;
-		}
+    }
 
-	}
+  }
 }

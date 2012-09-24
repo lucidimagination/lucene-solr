@@ -17,26 +17,31 @@ package org.apache.solr.handler.component;
  * limitations under the License.
  */
 
+import java.io.IOException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.client.solrj.SolrResponse;
-import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.cloud.CloudDescriptor;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.cloud.*;
+import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.Hash;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
@@ -53,10 +58,6 @@ import org.apache.solr.update.UpdateLog;
 import org.apache.solr.util.RefCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.net.URL;
-import java.util.*;
 
 
 public class RealTimeGetComponent extends SearchComponent
@@ -141,7 +142,7 @@ public class RealTimeGetComponent extends SearchComponent
            // should currently be a List<Oper,Ver,Doc/Id>
            List entry = (List)o;
            assert entry.size() >= 3;
-           int oper = (Integer)entry.get(0);
+           int oper = (Integer)entry.get(0) & UpdateLog.OPERATION_MASK;
            switch (oper) {
              case UpdateLog.ADD:
                SolrDocument doc = toSolrDoc((SolrInputDocument)entry.get(entry.size()-1), req.getSchema());
@@ -211,7 +212,7 @@ public class RealTimeGetComponent extends SearchComponent
           // should currently be a List<Oper,Ver,Doc/Id>
           List entry = (List)o;
           assert entry.size() >= 3;
-          int oper = (Integer)entry.get(0);
+          int oper = (Integer)entry.get(0) & UpdateLog.OPERATION_MASK;
           switch (oper) {
             case UpdateLog.ADD:
               sid = (SolrInputDocument)entry.get(entry.size()-1);
@@ -255,6 +256,7 @@ public class RealTimeGetComponent extends SearchComponent
       SchemaField sf = schema.getFieldOrNull(f.name());
       Object val = null;
       if (sf != null) {
+        if (!sf.stored() || schema.isCopyFieldTarget(sf)) continue;
         val = sf.getType().toObject(f);   // object or external string?
       } else {
         val = f.stringValue();
@@ -277,6 +279,10 @@ public class RealTimeGetComponent extends SearchComponent
       Object existing = out.get(f.name());
       if (existing == null) {
         SchemaField sf = schema.getFieldOrNull(f.name());
+
+        // don't return copyField targets
+        if (sf != null && schema.isCopyFieldTarget(sf)) continue;
+
         if (sf != null && sf.multiValued()) {
           List<Object> vals = new ArrayList<Object>();
           vals.add( f );
@@ -296,12 +302,11 @@ public class RealTimeGetComponent extends SearchComponent
   private static SolrDocument toSolrDoc(SolrInputDocument sdoc, IndexSchema schema) {
     // TODO: do something more performant than this double conversion
     Document doc = DocumentBuilder.toDocument(sdoc, schema);
-    List<IndexableField> fields = doc.getFields();
 
     // copy the stored fields only
     Document out = new Document();
     for (IndexableField f : doc.getFields()) {
-      if (f.fieldType().stored()) {
+      if (f.fieldType().stored() ) {
         out.add(f);
       }
     }
@@ -346,20 +351,16 @@ public class RealTimeGetComponent extends SearchComponent
 
     // if shards=... then use that
     if (zkController != null && params.get("shards") == null) {
-      SchemaField sf = rb.req.getSchema().getUniqueKeyField();
-
       CloudDescriptor cloudDescriptor = rb.req.getCore().getCoreDescriptor().getCloudDescriptor();
 
       String collection = cloudDescriptor.getCollectionName();
 
-      CloudState cloudState = zkController.getCloudState();
+      ClusterState clusterState = zkController.getClusterState();
       
       Map<String, List<String>> shardToId = new HashMap<String, List<String>>();
       for (String id : allIds) {
-        BytesRef br = new BytesRef();
-        sf.getType().readableToIndexed(id, br);
-        int hash = Hash.murmurhash3_x86_32(br.bytes, br.offset, br.length, 0);
-        String shard = cloudState.getShard(hash,  collection);
+        int hash = Hash.murmurhash3_x86_32(id, 0, id.length(), 0);
+        String shard = clusterState.getShard(hash,  collection);
 
         List<String> idsForShard = shardToId.get(shard);
         if (idsForShard == null) {
@@ -520,8 +521,9 @@ public class RealTimeGetComponent extends SearchComponent
   public void processSync(ResponseBuilder rb, int nVersions, String sync) {
     List<String> replicas = StrUtils.splitSmart(sync, ",", true);
     
+    boolean cantReachIsSuccess = rb.req.getParams().getBool("cantReachIsSuccess", false);
     
-    PeerSync peerSync = new PeerSync(rb.req.getCore(), replicas, nVersions);
+    PeerSync peerSync = new PeerSync(rb.req.getCore(), replicas, nVersions, cantReachIsSuccess);
     boolean success = peerSync.sync();
     
     // TODO: more complex response?

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -145,7 +145,13 @@ public class DebugComponent extends SearchComponent
       }
 
       if (info == null) {
+        // No responses were received from shards. Show local query info.
         info = new SimpleOrderedMap<Object>();
+        SolrPluginUtils.doStandardQueryDebug(
+                rb.req, rb.getQueryString(),  rb.getQuery(), rb.isDebugQuery(), info);
+        if (rb.isDebugQuery() && rb.getQparser() != null) {
+          rb.getQparser().addDebugInfo(info);
+        }
       }
       if (rb.isDebugResults()) {
         int idx = info.indexOf("explain",0);

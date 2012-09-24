@@ -1,6 +1,6 @@
 package org.apache.solr.search.function.distance;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -35,11 +35,6 @@ public class StringDistanceFunction extends ValueSource {
   protected ValueSource str1, str2;
   protected StringDistance dist;
 
-  /**
-   * @param str1
-   * @param str2
-   * @param measure
-   */
   public StringDistanceFunction(ValueSource str1, ValueSource str2, StringDistance measure) {
     this.str1 = str1;
     this.str2 = str2;

@@ -1,5 +1,5 @@
 package org.apache.lucene.search.spans;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,9 +20,9 @@ package org.apache.lucene.search.spans;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.TermContext;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -57,7 +57,7 @@ public abstract class SpanPositionCheckQuery extends SpanQuery implements Clonea
 
   @Override
   public void extractTerms(Set<Term> terms) {
-	    match.extractTerms(terms);
+    match.extractTerms(terms);
   }
 
   /** 
@@ -176,7 +176,7 @@ public abstract class SpanPositionCheckQuery extends SpanQuery implements Clonea
     // TODO: Remove warning after API has been finalized
 
     @Override
-    public boolean isPayloadAvailable() {
+    public boolean isPayloadAvailable() throws IOException {
       return spans.isPayloadAvailable();
     }
 

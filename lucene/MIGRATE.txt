@@ -9,7 +9,7 @@ enumeration APIs.  Here are the major changes:
     by the BytesRef class (which provides an offset + length "slice"
     into an existing byte[]).
 
-  * Fields are separately enumerated (FieldsEnum) from the terms
+  * Fields are separately enumerated (Fields.iterator()) from the terms
     within each field (TermEnum).  So instead of this:
 
         TermEnum termsEnum = ...;
@@ -20,10 +20,9 @@ enumeration APIs.  Here are the major changes:
 
     Do this:
 
-        FieldsEnum fieldsEnum = ...;
-        String field;
-        while((field = fieldsEnum.next()) != null) {
-            TermsEnum termsEnum = fieldsEnum.terms();
+        for(String field : fields) {
+            Terms terms = fields.terms(field);
+            TermsEnum termsEnum = terms.iterator(null);
             BytesRef text;
             while((text = termsEnum.next()) != null) {
               System.out.println("field=" + field + "; text=" + text.utf8ToString());
@@ -55,30 +54,6 @@ enumeration APIs.  Here are the major changes:
     
         if ((doc=td.advance(target)) != DocsEnum.NO_MORE_DOCS) {
           ...
-        }
-
-    The bulk read API has also changed.  Instead of this:
-
-        int[] docs = new int[256];
-        int[] freqs = new int[256];
-
-        while(true) {
-          int count = td.read(docs, freqs)
-          if (count == 0) {
-            break;
-          }
-          // use docs[i], freqs[i]
-        }
-
-    do this:
-
-        DocsEnum.BulkReadResult bulk = td.getBulkResult();
-        while(true) {
-          int count = td.read();
-          if (count == 0) {
-            break;
-          }
-          // use bulk.docs.ints[i] and bulk.freqs.ints[i]
         }
 
   * TermPositions is renamed to DocsAndPositionsEnum, and no longer
@@ -145,7 +120,7 @@ enumeration APIs.  Here are the major changes:
     oal.util.ReaderUtil) and then step through those readers yourself,
     if you can (this is how Lucene drives searches).
 
-    If you pass a SegmentReader to MultiFields.fiels it will simply
+    If you pass a SegmentReader to MultiFields.fields it will simply
     return reader.fields(), so there is no performance hit in that
     case.
 
@@ -170,7 +145,7 @@ enumeration APIs.  Here are the major changes:
         Bits liveDocs = reader.getLiveDocs();
         DocsEnum docsEnum = null;
 
-        docsEnum = termsEnum.docs(liveDocs, docsEnum);
+        docsEnum = termsEnum.docs(liveDocs, docsEnum, needsFreqs);
 
     You can pass in a prior DocsEnum and it will be reused if possible.
 
@@ -185,9 +160,8 @@ enumeration APIs.  Here are the major changes:
 
     do this:
 
-        String field;
-        BytesRef text;
-        DocsEnum docsEnum = reader.termDocsEnum(reader.getLiveDocs(), field, text);
+        Term t;
+        DocsEnum docsEnum = reader.termDocsEnum(t);
 
     Likewise for DocsAndPositionsEnum.
 
@@ -334,17 +308,28 @@ based on document IDs, albeit the per-segment orientation.
 
 There are still valid use-cases where top-level readers ie. "atomic 
 views" on the index are desirable. Let say you want to iterate all terms 
-of a complete index for auto-completion or facetting, Lucene provides 
+of a complete index for auto-completion or faceting, Lucene provides
 utility wrappers like SlowCompositeReaderWrapper (LUCENE-2597) emulating 
 an AtomicReader. Note: using "atomicity emulators" can cause serious 
 slowdowns due to the need to merge terms, postings, DocValues, and 
 FieldCache, use them with care! 
 
-## LUCENE-2413: Analyzer package changes
+## LUCENE-4306: getSequentialSubReaders(), ReaderUtil.Gather
+
+The method IndexReader#getSequentialSubReaders() was moved to CompositeReader
+(see LUCENE-2858, LUCENE-3733) and made protected. It is solely used by
+CompositeReader itself to build its reader tree. To get all atomic leaves
+of a reader, use IndexReader#leaves(), which also provides the doc base
+of each leave. Readers that are already atomic return itself as leaf with
+doc base 0. To emulate Lucene 3.x getSequentialSubReaders(),
+use getContext().children().
+
+## LUCENE-2413,LUCENE-3396: Analyzer package changes
 
 Lucene's core and contrib analyzers, along with Solr's analyzers,
 were consolidated into lucene/analysis. During the refactoring some
-package names have changed:
+package names have changed, and ReusableAnalyzerBase was renamed to
+Analyzer:
 
   - o.a.l.analysis.KeywordAnalyzer -> o.a.l.analysis.core.KeywordAnalyzer
   - o.a.l.analysis.KeywordTokenizer -> o.a.l.analysis.core.KeywordTokenizer
@@ -369,7 +354,7 @@ package names have changed:
   - o.a.l.analysis.NormalizeCharMap -> o.a.l.analysis.charfilter.NormalizeCharMap
   - o.a.l.analysis.CharArraySet -> o.a.l.analysis.util.CharArraySet
   - o.a.l.analysis.CharArrayMap -> o.a.l.analysis.util.CharArrayMap
-  - o.a.l.analysis.ReusableAnalyzerBase -> o.a.l.analysis.util.ReusableAnalyzerBase
+  - o.a.l.analysis.ReusableAnalyzerBase -> o.a.l.analysis.Analyzer
   - o.a.l.analysis.StopwordAnalyzerBase -> o.a.l.analysis.util.StopwordAnalyzerBase
   - o.a.l.analysis.WordListLoader -> o.a.l.analysis.util.WordListLoader
   - o.a.l.analysis.CharTokenizer -> o.a.l.analysis.util.CharTokenizer
@@ -567,14 +552,14 @@ you can now do this:
   customizations won't run for certain MultiTermQuerys.
 
 * LUCENE-2691: The near-real-time API has moved from IndexWriter to
-  IndexReader.  Instead of IndexWriter.getReader(), call
-  IndexReader.open(IndexWriter) or IndexReader.reopen(IndexWriter).
+  DirectoryReader.  Instead of IndexWriter.getReader(), call
+  DirectoryReader.open(IndexWriter) or DirectoryReader.openIfChanged(IndexWriter).
 
 * LUCENE-2690: MultiTermQuery boolean rewrites per segment.
   Also MultiTermQuery.getTermsEnum() now takes an AttributeSource. FuzzyTermsEnum
   is both consumer and producer of attributes: MTQ.BoostAttribute is
   added to the FuzzyTermsEnum and MTQ's rewrite mode consumes it.
-  The other way round MTQ.TopTermsBooleanQueryRewrite supplys a
+  The other way round MTQ.TopTermsBooleanQueryRewrite supplies a
   global AttributeSource to each segments TermsEnum. The TermsEnum is consumer
   and gets the current minimum competitive boosts (MTQ.MaxNonCompetitiveBoostAttribute).
 
@@ -594,7 +579,7 @@ you can now do this:
 * LUCENE-1076: TieredMergePolicy is now the default merge policy.
   It's able to merge non-contiguous segments; this may cause problems
   for applications that rely on Lucene's internal document ID
-  assigment.  If so, you should instead use LogByteSize/DocMergePolicy
+  assignment.  If so, you should instead use LogByteSize/DocMergePolicy
   during indexing.
 
 * LUCENE-3722: Similarity methods and collection/term statistics now take
@@ -615,7 +600,7 @@ you can now do this:
   globally, or per-field).  To define another Strategy, implement Analyzer.ReuseStrategy.
 
 * LUCENE-3464: IndexReader.reopen has been renamed to
-  IndexReader.openIfChanged (a static method), and now returns null
+  DirectoryReader.openIfChanged (a static method), and now returns null
   (instead of the old reader) if there are no changes to the index, to
   prevent the common pitfall of accidentally closing the old reader.
   
@@ -629,3 +614,20 @@ you can now do this:
   instance exposing the inverted index of the one document.  From
   Fields you can enumerate all fields, terms, positions, offsets.
 
+* LUCENE-4227: If you were previously using Instantiated index, you
+  may want to use DirectPostingsFormat after upgrading: it stores all
+  postings in simple arrrays (byte[] for terms, int[] for docs, freqs,
+  positions, offsets).  Note that this only covers postings, whereas
+  Instantiated covered all other parts of the index as well.
+
+* LUCENE-3309: The expert FieldSelector API has been replaced with
+  StoredFieldVisitor.  The idea is the same (you have full control
+  over which fields should be loaded).  Instead of a single accept
+  method, StoredFieldVisitor has a needsField method: if that method
+  returns true then the field will be loaded and the appropriate
+  type-specific method will be invoked with that fields's value.
+
+* LUCENE-4122: Removed the Payload class and replaced with BytesRef.
+  PayloadAttribute's name is unchanged, it just uses the BytesRef
+  class to refer to the payload bytes/start offset/end offset 
+  (or null if there is no payload).

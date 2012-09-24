@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -399,14 +399,21 @@ public class ResponseBuilder
       rsp.getResponseHeader().add("partialResults", Boolean.TRUE);
     }
   }
+  
+  public long getNumberDocumentsFound() {
+    if (_responseDocs == null) {
+      return 0;
+    }
+    return _responseDocs.getNumFound();
+  }
 
   public ScoreDoc getScoreDoc()
   {
-	  return scoreDoc;
+    return scoreDoc;
   }
   
   public void setScoreDoc(ScoreDoc scoreDoc)
   {
-	  this.scoreDoc = scoreDoc;
+    this.scoreDoc = scoreDoc;
   }
 }

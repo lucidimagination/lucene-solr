@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -38,6 +38,9 @@ import org.apache.lucene.util.StringHelper;
  */
 public class SortField {
 
+  /**
+   * Specifies the type of the terms to be sorted, or special types such as CUSTOM
+   */
   public static enum Type {
 
     /** Sort by document score (relevance).  Sort values are Float and higher

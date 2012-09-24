@@ -5,21 +5,43 @@
     for standalone use.
   </description>
 
+  <target name="load-custom-tasks" unless="custom-tasks.loaded">
+    <dirname file="${ant.file.custom-tasks}" property="custom-tasks.dir"/>
+    <taskdef resource="lucene-solr.antlib.xml">
+      <classpath>
+        <pathelement location="${custom-tasks.dir}/../build/tools/classes/java" />
+        <fileset dir="${custom-tasks.dir}/lib" includes="asm-debug-all-4.0.jar" />
+      </classpath>
+    </taskdef>
+    <property name="custom-tasks.loaded" value="true"/>
+  </target>
+
+  <filtermapper id="license-mapper-defaults">
+    <!-- Normalize input paths. -->
+    <replacestring from="\" to="/" />
+    <replaceregex pattern="\.jar$" replace="" flags="gi" />
+    
+    <!-- Some typical snapshot/minimalized JAR suffixes. -->
+    <replaceregex pattern="-min$" replace="" flags="gi" />
+    <replaceregex pattern="SNAPSHOT$" replace="" flags="gi" />
+
+    <!-- Typical version patterns. -->
+    <replaceregex pattern="\.rc[0-9]+" replace="" flags="gi" />
+    <replaceregex pattern="\-(r)?([0-9\-\_\.])+(b(eta)?([0-9\-\.])*)?$" replace="" flags="gi" />
+
+    <!-- git hashcode pattern: its always 40 chars right? -->
+    <replaceregex pattern="\-[a-z0-9]{40,40}$" replace="" flags="gi" />
+  </filtermapper>
+
   <macrodef name="license-check-macro">
     <attribute name="dir" />
+    <attribute name="licensedir" />
     <element name="additional-excludes" optional="true" />
     <element name="additional-filters"  optional="true" />
     <sequential>
       <!-- LICENSE and NOTICE verification macro. -->
-      <dirname file="${ant.file.custom-tasks}" property="custom-tasks.dir"/>
-      <taskdef resource="lucene-solr.antlib.xml">
-        <classpath>
-          <pathelement location="${custom-tasks.dir}/../build/tools/classes/java" />
-        </classpath>
-      </taskdef>
-
       <echo>License check under: @{dir}</echo>
-      <licenses>
+      <licenses licenseDirectory="@{licensedir}">
         <fileset dir="@{dir}">
           <include name="**/*.jar" />
           <!-- Speed up scanning a bit. -->
@@ -33,24 +55,13 @@
         </fileset>
 
         <licenseMapper>
-          <filtermapper id="license-mapper-defaults">
-            <!-- Normalize input paths. -->
-            <replacestring from="\" to="/" />
-            <replaceregex pattern="\.jar$" replace="" flags="gi" />
-    
-            <!-- Some typical snapshot/minimalized JAR suffixes. -->
-            <replaceregex pattern="-min$" replace="" flags="gi" />
-            <replaceregex pattern="SNAPSHOT$" replace="" flags="gi" />
-
-            <!-- Non-typical version patterns. -->
-            <additional-filters />
-
-            <!-- Typical version patterns. -->
-            <replaceregex pattern="\-(r)?([0-9\-\_\.])+(b(eta)?([0-9\-\.])*)?$" replace="" flags="gi" />
-    
-            <!-- git hashcode pattern: its always 40 chars right? -->
-            <replaceregex pattern="\-[a-z0-9]{40,40}$" replace="" flags="gi" />
-          </filtermapper>
+          <chainedmapper>
+            <filtermapper refid="license-mapper-defaults"/>
+            <filtermapper>
+              <!-- Non-typical version patterns. -->
+              <additional-filters />
+            </filtermapper>
+          </chainedmapper>
         </licenseMapper>
       </licenses>
     </sequential>

@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.mockintblock;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,19 +18,18 @@ package org.apache.lucene.codecs.mockintblock;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
-import org.apache.lucene.codecs.BlockTermsReader;
-import org.apache.lucene.codecs.BlockTermsWriter;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.FixedGapTermsIndexReader;
-import org.apache.lucene.codecs.FixedGapTermsIndexWriter;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.PostingsReaderBase;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.codecs.TermsIndexReaderBase;
-import org.apache.lucene.codecs.TermsIndexWriterBase;
+import org.apache.lucene.codecs.blockterms.BlockTermsReader;
+import org.apache.lucene.codecs.blockterms.BlockTermsWriter;
+import org.apache.lucene.codecs.blockterms.FixedGapTermsIndexReader;
+import org.apache.lucene.codecs.blockterms.FixedGapTermsIndexWriter;
+import org.apache.lucene.codecs.blockterms.TermsIndexReaderBase;
+import org.apache.lucene.codecs.blockterms.TermsIndexWriterBase;
 import org.apache.lucene.codecs.intblock.VariableIntBlockIndexInput;
 import org.apache.lucene.codecs.intblock.VariableIntBlockIndexOutput;
 import org.apache.lucene.codecs.sep.IntIndexInput;
@@ -38,7 +37,6 @@ import org.apache.lucene.codecs.sep.IntIndexOutput;
 import org.apache.lucene.codecs.sep.IntStreamFactory;
 import org.apache.lucene.codecs.sep.SepPostingsReader;
 import org.apache.lucene.codecs.sep.SepPostingsWriter;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.store.Directory;
@@ -55,7 +53,7 @@ import org.apache.lucene.util.IOUtils;
  * int is <= 3, else 2*baseBlockSize.
  */
 
-public class MockVariableIntBlockPostingsFormat extends PostingsFormat {
+public final class MockVariableIntBlockPostingsFormat extends PostingsFormat {
   private final int baseBlockSize;
   
   public MockVariableIntBlockPostingsFormat() {
@@ -72,6 +70,10 @@ public class MockVariableIntBlockPostingsFormat extends PostingsFormat {
     return getName() + "(baseBlockSize="+ baseBlockSize + ")";
   }
 
+  /**
+   * If the first value is <= 3, writes baseBlockSize vInts at once,
+   * otherwise writes 2*baseBlockSize vInts.
+   */
   public static class MockIntFactory extends IntStreamFactory {
 
     private final int baseBlockSize;
@@ -87,7 +89,7 @@ public class MockVariableIntBlockPostingsFormat extends PostingsFormat {
       return new VariableIntBlockIndexInput(in) {
 
         @Override
-        protected BlockReader getBlockReader(final IndexInput in, final int[] buffer) throws IOException {
+        protected BlockReader getBlockReader(final IndexInput in, final int[] buffer) {
           return new BlockReader() {
             public void seek(long pos) {}
             public int readBlock() throws IOException {
@@ -179,6 +181,7 @@ public class MockVariableIntBlockPostingsFormat extends PostingsFormat {
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
     PostingsReaderBase postingsReader = new SepPostingsReader(state.dir,
+                                                              state.fieldInfos,
                                                               state.segmentInfo,
                                                               state.context,
                                                               new MockIntFactory(baseBlockSize), state.segmentSuffix);
@@ -204,7 +207,7 @@ public class MockVariableIntBlockPostingsFormat extends PostingsFormat {
       FieldsProducer ret = new BlockTermsReader(indexReader,
                                                 state.dir,
                                                 state.fieldInfos,
-                                                state.segmentInfo.name,
+                                                state.segmentInfo,
                                                 postingsReader,
                                                 state.context,
                                                 1024,
@@ -220,12 +223,5 @@ public class MockVariableIntBlockPostingsFormat extends PostingsFormat {
         }
       }
     }
-  }
-
-  @Override
-  public void files(SegmentInfo segmentInfo, String segmentSuffix, Set<String> files) throws IOException {
-    SepPostingsReader.files(segmentInfo, segmentSuffix, files);
-    BlockTermsReader.files(segmentInfo, segmentSuffix, files);
-    FixedGapTermsIndexReader.files(segmentInfo, segmentSuffix, files);
   }
 }

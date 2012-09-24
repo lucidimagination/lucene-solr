@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,10 @@ package org.apache.lucene.search.similarities;
  * @lucene.experimental
  */
 public class DistributionSPL extends Distribution {
+  
+  /** Sole constructor: parameter-free */
+  public DistributionSPL() {}
+
   @Override
   public final float score(BasicStats stats, float tfn, float lambda) {
     if (lambda == 1f) {

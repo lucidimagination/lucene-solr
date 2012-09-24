@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -96,7 +96,7 @@ public class FuzzyTermsEnum extends TermsEnum {
    * @param minSimilarity Minimum required similarity for terms from the reader. Pass an integer value
    *        representing edit distance. Passing a fraction is deprecated.
    * @param prefixLength Length of required common prefix. Default value is 0.
-   * @throws IOException
+   * @throws IOException if there is a low-level IO error
    */
   public FuzzyTermsEnum(Terms terms, AttributeSource atts, Term term, 
       final float minSimilarity, final int prefixLength, boolean transpositions) throws IOException {
@@ -122,7 +122,7 @@ public class FuzzyTermsEnum extends TermsEnum {
     this.realPrefixLength = prefixLength > termLength ? termLength : prefixLength;
     // if minSimilarity >= 1, we treat it as number of edits
     if (minSimilarity >= 1f) {
-      this.minSimilarity = 1 - (minSimilarity+1) / this.termLength;
+      this.minSimilarity = 0; // just driven by number of edits
       maxEdits = (int) minSimilarity;
       raw = true;
     } else {
@@ -272,14 +272,14 @@ public class FuzzyTermsEnum extends TermsEnum {
   }
   
   @Override
-  public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
-    return actualEnum.docs(liveDocs, reuse, needsFreqs);
+  public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
+    return actualEnum.docs(liveDocs, reuse, flags);
   }
   
   @Override
   public DocsAndPositionsEnum docsAndPositions(Bits liveDocs,
-                                               DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
-    return actualEnum.docsAndPositions(liveDocs, reuse, needsOffsets);
+                                               DocsAndPositionsEnum reuse, int flags) throws IOException {
+    return actualEnum.docsAndPositions(liveDocs, reuse, flags);
   }
   
   @Override
@@ -337,8 +337,7 @@ public class FuzzyTermsEnum extends TermsEnum {
     private final BoostAttribute boostAtt =
       attributes().addAttribute(BoostAttribute.class);
     
-    public AutomatonFuzzyTermsEnum(TermsEnum tenum, CompiledAutomaton compiled[]) 
-      throws IOException {
+    public AutomatonFuzzyTermsEnum(TermsEnum tenum, CompiledAutomaton compiled[]) {
       super(tenum, false);
       this.matchers = new ByteRunAutomaton[compiled.length];
       for (int i = 0; i < compiled.length; i++)
@@ -399,12 +398,17 @@ public class FuzzyTermsEnum extends TermsEnum {
     return scale_factor;
   }
   
-  /** @lucene.internal */
+  /**
+   * reuses compiled automata across different segments,
+   * because they are independent of the index
+   * @lucene.internal */
   public static interface LevenshteinAutomataAttribute extends Attribute {
     public List<CompiledAutomaton> automata();
   }
     
-  /** @lucene.internal */
+  /** 
+   * Stores compiled automata as a list (indexed by edit distance)
+   * @lucene.internal */
   public static final class LevenshteinAutomataAttributeImpl extends AttributeImpl implements LevenshteinAutomataAttribute {
     private final List<CompiledAutomaton> automata = new ArrayList<CompiledAutomaton>();
       

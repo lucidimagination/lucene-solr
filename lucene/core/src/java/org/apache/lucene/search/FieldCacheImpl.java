@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -52,7 +52,7 @@ import org.apache.lucene.util.packed.PackedInts;
  * @since   lucene 1.4
  */
 class FieldCacheImpl implements FieldCache {
-	
+
   private Map<Class<?>,Cache> caches;
   FieldCacheImpl() {
     init();
@@ -173,7 +173,7 @@ class FieldCacheImpl implements FieldCache {
         ((AtomicReader)key).addReaderClosedListener(purgeReader); 
       } else {
         // last chance
-        reader.addReaderClosedListener(purgeReader); 				
+        reader.addReaderClosedListener(purgeReader);
       }
     }
   }
@@ -286,7 +286,7 @@ class FieldCacheImpl implements FieldCache {
 
   /** Expert: Every composite-key in the internal cache is of this type. */
   static class Entry {
-    final String field;        // which Fieldable
+    final String field;        // which Field
     final Object custom;       // which custom comparator or parser
 
     /** Creates one of these objects for a custom comparator/parser. */
@@ -364,7 +364,7 @@ class FieldCacheImpl implements FieldCache {
               break;
             }
             final byte termval = parser.parseByte(term);
-            docs = termsEnum.docs(null, docs, false);
+            docs = termsEnum.docs(null, docs, 0);
             while (true) {
               final int docID = docs.nextDoc();
               if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -380,7 +380,7 @@ class FieldCacheImpl implements FieldCache {
               }
             }
           }
-        } catch (StopFillCacheException stop) {
+        } catch (FieldCache.StopFillCacheException stop) {
         }
       }
       if (setDocsWithField) {
@@ -437,7 +437,7 @@ class FieldCacheImpl implements FieldCache {
               break;
             }
             final short termval = parser.parseShort(term);
-            docs = termsEnum.docs(null, docs, false);
+            docs = termsEnum.docs(null, docs, 0);
             while (true) {
               final int docID = docs.nextDoc();
               if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -453,7 +453,7 @@ class FieldCacheImpl implements FieldCache {
               }
             }
           }
-        } catch (StopFillCacheException stop) {
+        } catch (FieldCache.StopFillCacheException stop) {
         }
       }
       if (setDocsWithField) {
@@ -541,7 +541,7 @@ class FieldCacheImpl implements FieldCache {
               retArray = new int[maxDoc];
             }
 
-            docs = termsEnum.docs(null, docs, false);
+            docs = termsEnum.docs(null, docs, 0);
             while (true) {
               final int docID = docs.nextDoc();
               if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -557,7 +557,7 @@ class FieldCacheImpl implements FieldCache {
               }
             }
           }
-        } catch (StopFillCacheException stop) {
+        } catch (FieldCache.StopFillCacheException stop) {
         }
       }
 
@@ -608,7 +608,7 @@ class FieldCacheImpl implements FieldCache {
             res = new FixedBitSet(maxDoc);
           }
 
-          docs = termsEnum.docs(null, docs, false);
+          docs = termsEnum.docs(null, docs, 0);
           // TODO: use bulk API
           while (true) {
             final int docID = docs.nextDoc();
@@ -691,7 +691,7 @@ class FieldCacheImpl implements FieldCache {
               retArray = new float[maxDoc];
             }
             
-            docs = termsEnum.docs(null, docs, false);
+            docs = termsEnum.docs(null, docs, 0);
             while (true) {
               final int docID = docs.nextDoc();
               if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -707,7 +707,7 @@ class FieldCacheImpl implements FieldCache {
               }
             }
           }
-        } catch (StopFillCacheException stop) {
+        } catch (FieldCache.StopFillCacheException stop) {
         }
       }
 
@@ -779,7 +779,7 @@ class FieldCacheImpl implements FieldCache {
               retArray = new long[maxDoc];
             }
 
-            docs = termsEnum.docs(null, docs, false);
+            docs = termsEnum.docs(null, docs, 0);
             while (true) {
               final int docID = docs.nextDoc();
               if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -795,7 +795,7 @@ class FieldCacheImpl implements FieldCache {
               }
             }
           }
-        } catch (StopFillCacheException stop) {
+        } catch (FieldCache.StopFillCacheException stop) {
         }
       }
 
@@ -868,7 +868,7 @@ class FieldCacheImpl implements FieldCache {
               retArray = new double[maxDoc];
             }
 
-            docs = termsEnum.docs(null, docs, false);
+            docs = termsEnum.docs(null, docs, 0);
             while (true) {
               final int docID = docs.nextDoc();
               if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -884,7 +884,7 @@ class FieldCacheImpl implements FieldCache {
               }
             }
           }
-        } catch (StopFillCacheException stop) {
+        } catch (FieldCache.StopFillCacheException stop) {
         }
       }
       if (retArray == null) { // no values
@@ -1042,12 +1042,12 @@ class FieldCacheImpl implements FieldCache {
       }
 
       @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
         throw new UnsupportedOperationException();
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
         throw new UnsupportedOperationException();
       }
 
@@ -1071,14 +1071,12 @@ class FieldCacheImpl implements FieldCache {
     }
   }
 
-  private static boolean DEFAULT_FASTER_BUT_MORE_RAM = true;
-
   public DocTermsIndex getTermsIndex(AtomicReader reader, String field) throws IOException {
-    return getTermsIndex(reader, field, DEFAULT_FASTER_BUT_MORE_RAM);
+    return getTermsIndex(reader, field, PackedInts.FAST);
   }
 
-  public DocTermsIndex getTermsIndex(AtomicReader reader, String field, boolean fasterButMoreRAM) throws IOException {
-    return (DocTermsIndex) caches.get(DocTermsIndex.class).get(reader, new Entry(field, Boolean.valueOf(fasterButMoreRAM)), false);
+  public DocTermsIndex getTermsIndex(AtomicReader reader, String field, float acceptableOverheadRatio) throws IOException {
+    return (DocTermsIndex) caches.get(DocTermsIndex.class).get(reader, new Entry(field, acceptableOverheadRatio), false);
   }
 
   static class DocTermsIndexCache extends Cache {
@@ -1092,7 +1090,7 @@ class FieldCacheImpl implements FieldCache {
 
       Terms terms = reader.terms(entryKey.field);
 
-      final boolean fasterButMoreRAM = ((Boolean) entryKey.custom).booleanValue();
+      final float acceptableOverheadRatio = ((Float) entryKey.custom).floatValue();
 
       final PagedBytes bytes = new PagedBytes(15);
 
@@ -1112,14 +1110,8 @@ class FieldCacheImpl implements FieldCache {
         // Try for coarse estimate for number of bits; this
         // should be an underestimate most of the time, which
         // is fine -- GrowableWriter will reallocate as needed
-        long numUniqueTerms = 0;
-        try {
-          numUniqueTerms = terms.size();
-        } catch (UnsupportedOperationException uoe) {
-          numUniqueTerms = -1;
-        }
-        if (numUniqueTerms != -1) {
-
+        long numUniqueTerms = terms.size();
+        if (numUniqueTerms != -1L) {
           if (numUniqueTerms > termCountHardLimit) {
             // app is misusing the API (there is more than
             // one term per doc); in this case we make best
@@ -1142,8 +1134,8 @@ class FieldCacheImpl implements FieldCache {
         startNumUniqueTerms = 1;
       }
 
-      GrowableWriter termOrdToBytesOffset = new GrowableWriter(startBytesBPV, 1+startNumUniqueTerms, fasterButMoreRAM);
-      final GrowableWriter docToTermOrd = new GrowableWriter(startTermsBPV, maxDoc, fasterButMoreRAM);
+      GrowableWriter termOrdToBytesOffset = new GrowableWriter(startBytesBPV, 1+startNumUniqueTerms, acceptableOverheadRatio);
+      final GrowableWriter docToTermOrd = new GrowableWriter(startTermsBPV, maxDoc, acceptableOverheadRatio);
 
       // 0 is reserved for "unset"
       bytes.copyUsingLengthPrefix(new BytesRef());
@@ -1169,7 +1161,7 @@ class FieldCacheImpl implements FieldCache {
             termOrdToBytesOffset = termOrdToBytesOffset.resize(ArrayUtil.oversize(1+termOrd, 1));
           }
           termOrdToBytesOffset.set(termOrd, bytes.copyUsingLengthPrefix(term));
-          docs = termsEnum.docs(null, docs, false);
+          docs = termsEnum.docs(null, docs, 0);
           while (true) {
             final int docID = docs.nextDoc();
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -1219,11 +1211,11 @@ class FieldCacheImpl implements FieldCache {
   // TODO: this if DocTermsIndex was already created, we
   // should share it...
   public DocTerms getTerms(AtomicReader reader, String field) throws IOException {
-    return getTerms(reader, field, DEFAULT_FASTER_BUT_MORE_RAM);
+    return getTerms(reader, field, PackedInts.FAST);
   }
 
-  public DocTerms getTerms(AtomicReader reader, String field, boolean fasterButMoreRAM) throws IOException {
-    return (DocTerms) caches.get(DocTerms.class).get(reader, new Entry(field, Boolean.valueOf(fasterButMoreRAM)), false);
+  public DocTerms getTerms(AtomicReader reader, String field, float acceptableOverheadRatio) throws IOException {
+    return (DocTerms) caches.get(DocTerms.class).get(reader, new Entry(field, acceptableOverheadRatio), false);
   }
 
   static final class DocTermsCache extends Cache {
@@ -1237,7 +1229,7 @@ class FieldCacheImpl implements FieldCache {
 
       Terms terms = reader.terms(entryKey.field);
 
-      final boolean fasterButMoreRAM = ((Boolean) entryKey.custom).booleanValue();
+      final float acceptableOverheadRatio = ((Float) entryKey.custom).floatValue();
 
       final int termCountHardLimit = reader.maxDoc();
 
@@ -1250,13 +1242,8 @@ class FieldCacheImpl implements FieldCache {
         // Try for coarse estimate for number of bits; this
         // should be an underestimate most of the time, which
         // is fine -- GrowableWriter will reallocate as needed
-        long numUniqueTerms = 0;
-        try {
-          numUniqueTerms = terms.size();
-        } catch (UnsupportedOperationException uoe) {
-          numUniqueTerms = -1;
-        }
-        if (numUniqueTerms != -1) {
+        long numUniqueTerms = terms.size();
+        if (numUniqueTerms != -1L) {
           if (numUniqueTerms > termCountHardLimit) {
             numUniqueTerms = termCountHardLimit;
           }
@@ -1268,7 +1255,7 @@ class FieldCacheImpl implements FieldCache {
         startBPV = 1;
       }
 
-      final GrowableWriter docToOffset = new GrowableWriter(startBPV, reader.maxDoc(), fasterButMoreRAM);
+      final GrowableWriter docToOffset = new GrowableWriter(startBPV, reader.maxDoc(), acceptableOverheadRatio);
       
       // pointer==0 means not set
       bytes.copyUsingLengthPrefix(new BytesRef());
@@ -1290,7 +1277,7 @@ class FieldCacheImpl implements FieldCache {
             break;
           }
           final long pointer = bytes.copyUsingLengthPrefix(term);
-          docs = termsEnum.docs(null, docs, false);
+          docs = termsEnum.docs(null, docs, 0);
           while (true) {
             final int docID = docs.nextDoc();
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {

@@ -10,7 +10,7 @@ import org.apache.lucene.queryparser.xml.ParserException;
 import org.apache.lucene.queryparser.xml.QueryBuilder;
 import org.w3c.dom.Element;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -82,12 +82,10 @@ public class UserInputQueryBuilder implements QueryBuilder {
   /**
    * Method to create a QueryParser - designed to be overridden
    *
-   * @param fieldName
-   * @param analyzer
    * @return QueryParser
    */
   protected QueryParser createQueryParser(String fieldName, Analyzer analyzer) {
     return new QueryParser(Version.LUCENE_CURRENT, fieldName, analyzer);
-	}
+  }
 
 }

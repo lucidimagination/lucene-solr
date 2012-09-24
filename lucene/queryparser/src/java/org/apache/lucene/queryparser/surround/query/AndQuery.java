@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,9 @@ import java.util.List;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.BooleanClause;
 
+/**
+ * Factory for conjunctions
+ */
 public class AndQuery extends ComposedQuery { 
   public AndQuery(List<SrndQuery> queries, boolean inf, String opName) { 
     super(queries, inf, opName);

@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,8 +18,8 @@ package org.apache.lucene.codecs.lucene40;
  */
 
 import java.io.IOException;
-import java.util.Set;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.StoredFieldsWriter;
@@ -42,7 +42,8 @@ import org.apache.lucene.store.IOContext;
  * <p>This contains, for each document, a pointer to its field data, as
  * follows:</p>
  * <ul>
- * <li>FieldIndex (.fdx) --&gt; &lt;FieldValuesPosition&gt; <sup>SegSize</sup></li>
+ * <li>FieldIndex (.fdx) --&gt; &lt;Header&gt;, &lt;FieldValuesPosition&gt; <sup>SegSize</sup></li>
+ * <li>Header --&gt; {@link CodecUtil#writeHeader CodecHeader}</li>
  * <li>FieldValuesPosition --&gt; {@link DataOutput#writeLong Uint64}</li>
  * </ul>
  * </li>
@@ -50,7 +51,8 @@ import org.apache.lucene.store.IOContext;
  * <p><a name="field_data" id="field_data"></a>The field data, or <tt>.fdt</tt> file.</p>
  * <p>This contains the stored fields of each document, as follows:</p>
  * <ul>
- * <li>FieldData (.fdt) --&gt; &lt;DocFieldData&gt; <sup>SegSize</sup></li>
+ * <li>FieldData (.fdt) --&gt; &lt;Header&gt;, &lt;DocFieldData&gt; <sup>SegSize</sup></li>
+ * <li>Header --&gt; {@link CodecUtil#writeHeader CodecHeader}</li>
  * <li>DocFieldData --&gt; FieldCount, &lt;FieldNum, Bits, Value&gt;
  * <sup>FieldCount</sup></li>
  * <li>FieldCount --&gt; {@link DataOutput#writeVInt VInt}</li>
@@ -79,6 +81,10 @@ import org.apache.lucene.store.IOContext;
  * @lucene.experimental */
 public class Lucene40StoredFieldsFormat extends StoredFieldsFormat {
 
+  /** Sole constructor. */
+  public Lucene40StoredFieldsFormat() {
+  }
+
   @Override
   public StoredFieldsReader fieldsReader(Directory directory, SegmentInfo si,
       FieldInfos fn, IOContext context) throws IOException {
@@ -86,13 +92,8 @@ public class Lucene40StoredFieldsFormat extends StoredFieldsFormat {
   }
 
   @Override
-  public StoredFieldsWriter fieldsWriter(Directory directory, String segment,
+  public StoredFieldsWriter fieldsWriter(Directory directory, SegmentInfo si,
       IOContext context) throws IOException {
-    return new Lucene40StoredFieldsWriter(directory, segment, context);
-  }
-
-  @Override
-  public void files(SegmentInfo info, Set<String> files) throws IOException {
-    Lucene40StoredFieldsReader.files(info, files);
+    return new Lucene40StoredFieldsWriter(directory, si.name, context);
   }
 }

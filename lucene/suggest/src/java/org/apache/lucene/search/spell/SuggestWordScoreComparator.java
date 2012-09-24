@@ -1,5 +1,5 @@
 package org.apache.lucene.search.spell;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,13 @@ import java.util.Comparator;
  *
  **/
 public class SuggestWordScoreComparator implements Comparator<SuggestWord> {
+  
+  /**
+   * Creates a new comparator that will compare by {@link SuggestWord#score},
+   * then by {@link SuggestWord#freq}, then by {@link SuggestWord#string}.
+   */
+  public SuggestWordScoreComparator() {}
+
   public int compare(SuggestWord first, SuggestWord second) {
     // first criteria: the distance
     if (first.score > second.score) {

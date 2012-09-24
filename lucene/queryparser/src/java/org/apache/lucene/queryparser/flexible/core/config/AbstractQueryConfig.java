@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.core.config;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -62,7 +62,7 @@ public abstract class AbstractQueryConfig {
   /**
    * Returns true if there is a value set with the given key, otherwise false.
    * 
-   * @param <T> @param <T> the value's type
+   * @param <T> the value's type
    * @param key the key, cannot be <code>null</code>
    * @return true if there is a value set with the given key, otherwise false
    */
@@ -81,7 +81,7 @@ public abstract class AbstractQueryConfig {
    * 
    * @param <T> the value's type
    * @param key the key, cannot be <code>null</code>
-   * @param value
+   * @param value value to set
    */
   public <T> void set(ConfigurationKey<T> key, T value) {
     

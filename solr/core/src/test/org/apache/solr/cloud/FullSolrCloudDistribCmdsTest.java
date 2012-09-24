@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,14 +18,13 @@ package org.apache.solr.cloud;
  */
 
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.util.concurrent.TimeoutException;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -38,17 +37,17 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.update.VersionInfo;
 import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
 import org.junit.BeforeClass;
 
 /**
  * Super basic testing, no shard restarting or anything.
  */
-public class FullSolrCloudDistribCmdsTest extends FullSolrCloudTest {
+@Slow
+public class FullSolrCloudDistribCmdsTest extends AbstractFullDistribZkTestBase {
   
   
   @BeforeClass
-  public static void beforeSuperClass() throws Exception {
+  public static void beforeSuperClass() {
   }
   
   public FullSolrCloudDistribCmdsTest() {
@@ -131,8 +130,7 @@ public class FullSolrCloudDistribCmdsTest extends FullSolrCloudTest {
     testThatCantForwardToLeaderFails();
   }
 
-  private void testThatCantForwardToLeaderFails() throws InterruptedException,
-      Exception, TimeoutException, IOException, KeeperException {
+  private void testThatCantForwardToLeaderFails() throws Exception {
     ZkNodeProps props = zkStateReader.getLeaderProps(DEFAULT_COLLECTION, "shard1");
     
     chaosMonkey.stopShard("shard1");
@@ -164,8 +162,8 @@ public class FullSolrCloudDistribCmdsTest extends FullSolrCloudTest {
     assertTrue("A whole shard is down - some of these should fail", fails > 0);
   }
 
-  private long addTwoDocsInOneRequest(long docId) throws SolrServerException,
-      IOException, Exception {
+  private long addTwoDocsInOneRequest(long docId) throws
+      Exception {
     QueryResponse results;
     UpdateRequest uReq;
     uReq = new UpdateRequest();
@@ -192,7 +190,7 @@ public class FullSolrCloudDistribCmdsTest extends FullSolrCloudTest {
     return docId;
   }
 
-  private long addUpdateDelete() throws Exception, SolrServerException,
+  private long addUpdateDelete() throws Exception,
       IOException {
     long docId = 99999999L;
     indexr("id", docId, t1, "originalcontent");
@@ -230,13 +228,13 @@ public class FullSolrCloudDistribCmdsTest extends FullSolrCloudTest {
     return docId;
   }
 
-  private void testDeleteByQueryDistrib() throws Exception, SolrServerException {
+  private void testDeleteByQueryDistrib() throws Exception {
     del("*:*");
     commit();
     assertEquals(0, query(cloudClient).getResults().getNumFound());
   }
 
-  private void testIndexingWithSuss() throws MalformedURLException, Exception {
+  private void testIndexingWithSuss() throws Exception {
     ConcurrentUpdateSolrServer suss = new ConcurrentUpdateSolrServer(
         ((HttpSolrServer) clients.get(0)).getBaseURL(), 3, 1);
     

@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.en;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -492,10 +492,9 @@ class PorterStemmer
     return dirty;
   }
 
-  /** Test program for demonstrating the Stemmer.  It reads a file and
+  /* Test program for demonstrating the Stemmer.  It reads a file and
    * stems each word, writing the result to standard out.
    * Usage: Stemmer file-name
-   */
   public static void main(String[] args) {
     PorterStemmer s = new PorterStemmer();
 
@@ -542,6 +541,6 @@ class PorterStemmer
         System.out.println("error reading " + args[i]);
       }
     }
-  }
+  }*/
 }
 

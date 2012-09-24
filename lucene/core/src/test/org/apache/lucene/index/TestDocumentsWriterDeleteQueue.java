@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -68,7 +68,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
         assertAllBetween(last2, j, bd2, ids);
         last2 = j + 1;
       }
-      assertEquals(uniqueValues.size(), queue.numGlobalTermDeletes());
+      assertEquals(j+1, queue.numGlobalTermDeletes());
     }
     assertEquals(uniqueValues, bd1.terms.keySet());
     assertEquals(uniqueValues, bd2.terms.keySet());

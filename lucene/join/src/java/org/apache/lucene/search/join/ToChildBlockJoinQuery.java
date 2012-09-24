@@ -1,6 +1,6 @@
 package org.apache.lucene.search.join;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -59,6 +59,14 @@ public class ToChildBlockJoinQuery extends Query {
   private final Query origParentQuery;
   private final boolean doScores;
 
+  /**
+   * Create a ToChildBlockJoinQuery.
+   * 
+   * @param parentQuery Query that matches parent documents
+   * @param parentsFilter Filter (must produce FixedBitSet
+   * per-segment) identifying the parent documents.
+   * @param doScores true if parent scores should be calculated
+   */
   public ToChildBlockJoinQuery(Query parentQuery, Filter parentsFilter, boolean doScores) {
     super();
     this.origParentQuery = parentQuery;
@@ -161,6 +169,7 @@ public class ToChildBlockJoinQuery extends Query {
     private final Bits acceptDocs;
 
     private float parentScore;
+    private float parentFreq = 1;
 
     private int childDoc = -1;
     private int parentDoc;
@@ -175,7 +184,7 @@ public class ToChildBlockJoinQuery extends Query {
 
     @Override
     public Collection<ChildScorer> getChildren() {
-      return Collections.singletonList(new ChildScorer(parentScorer, "BLOCK_JOIN"));
+      return Collections.singleton(new ChildScorer(parentScorer, "BLOCK_JOIN"));
     }
 
     @Override
@@ -218,6 +227,7 @@ public class ToChildBlockJoinQuery extends Query {
             if (childDoc < parentDoc) {
               if (doScores) {
                 parentScore = parentScorer.score();
+                parentFreq = parentScorer.freq();
               }
               //System.out.println("  " + childDoc);
               return childDoc;
@@ -248,6 +258,11 @@ public class ToChildBlockJoinQuery extends Query {
     }
 
     @Override
+    public float freq() throws IOException {
+      return parentFreq;
+    }
+
+    @Override
     public int advance(int childTarget) throws IOException {
       assert childTarget >= parentBits.length() || !parentBits.get(childTarget);
       
@@ -269,6 +284,7 @@ public class ToChildBlockJoinQuery extends Query {
         }
         if (doScores) {
           parentScore = parentScorer.score();
+          parentFreq = parentScorer.freq();
         }
         final int firstChild = parentBits.prevSetBit(parentDoc-1);
         //System.out.println("  firstChild=" + firstChild);

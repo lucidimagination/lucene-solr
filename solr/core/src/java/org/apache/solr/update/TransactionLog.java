@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,6 @@
 package org.apache.solr.update;
 
 import org.apache.lucene.util.BytesRef;
-import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.util.FastInputStream;
@@ -27,13 +26,21 @@ import org.apache.solr.common.util.JavaBinCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
-import java.rmi.registry.LocateRegistry;
-import java.util.*;
-import java.util.concurrent.CountDownLatch;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -129,11 +136,12 @@ public class TransactionLog {
   }
 
 
-  TransactionLog(File tlogFile, Collection<String> globalStrings) throws IOException {
+  TransactionLog(File tlogFile, Collection<String> globalStrings) {
     this(tlogFile, globalStrings, false);
   }
 
-  TransactionLog(File tlogFile, Collection<String> globalStrings, boolean openExisting) throws IOException {
+  TransactionLog(File tlogFile, Collection<String> globalStrings, boolean openExisting) {
+    boolean success = false;
     try {
       if (debug) {
         log.debug("New TransactionLog file=" + tlogFile + ", exists=" + tlogFile.exists() + ", size=" + tlogFile.length() + ", openExisting=" + openExisting);
@@ -144,7 +152,8 @@ public class TransactionLog {
       long start = raf.length();
       channel = raf.getChannel();
       os = Channels.newOutputStream(channel);
-      fos = FastOutputStream.wrap(os);
+      fos = new FastOutputStream(os, new byte[65536], 0);
+      // fos = FastOutputStream.wrap(os);
 
       if (openExisting) {
         if (start > 0) {
@@ -167,8 +176,18 @@ public class TransactionLog {
         addGlobalStrings(globalStrings);
       }
 
+      success = true;
+
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
+    } finally {
+      if (!success && raf != null) {
+        try {
+          raf.close();
+        } catch (Exception e) {
+          log.error("Error closing tlog file (after error opening)", e);
+        }
+      }
     }
   }
 
@@ -295,97 +314,123 @@ public class TransactionLog {
     numRecords++;
   }
 
+  private void checkWriteHeader(LogCodec codec, SolrInputDocument optional) throws IOException {
 
-  public long write(AddUpdateCommand cmd) {
-    LogCodec codec = new LogCodec();
-    long pos = 0;
+    // Unsynchronized access.  We can get away with an unsynchronized access here
+    // since we will never get a false non-zero when the position is in fact 0.
+    // rollback() is the only function that can reset to zero, and it blocks updates.
+    if (fos.size() != 0) return;
+
     synchronized (this) {
-      try {
-        pos = fos.size();   // if we had flushed, this should be equal to channel.position()
-        SolrInputDocument sdoc = cmd.getSolrInputDocument();
+      if (fos.size() != 0) return;  // check again while synchronized
+      if (optional != null) {
+        addGlobalStrings(optional.getFieldNames());
+      }
+      writeLogHeader(codec);
+    }
+  }
 
-        if (pos == 0) { // TODO: needs to be changed if we start writing a header first
-          addGlobalStrings(sdoc.getFieldNames());
-          writeLogHeader(codec);
-          pos = fos.size();
-        }
+  int lastAddSize;
+
+  public long write(AddUpdateCommand cmd, int flags) {
+    LogCodec codec = new LogCodec();
+    SolrInputDocument sdoc = cmd.getSolrInputDocument();
+
+    try {
+      checkWriteHeader(codec, sdoc);
+
+      // adaptive buffer sizing
+      int bufSize = lastAddSize;    // unsynchronized access of lastAddSize should be fine
+      bufSize = Math.min(1024*1024, bufSize+(bufSize>>3)+256);
+
+      MemOutputStream out = new MemOutputStream(new byte[bufSize]);
+      codec.init(out);
+      codec.writeTag(JavaBinCodec.ARR, 3);
+      codec.writeInt(UpdateLog.ADD | flags);  // should just take one byte
+      codec.writeLong(cmd.getVersion());
+      codec.writeSolrInputDocument(cmd.getSolrInputDocument());
+      lastAddSize = (int)out.size();
+
+      synchronized (this) {
+        long pos = fos.size();   // if we had flushed, this should be equal to channel.position()
+        assert pos != 0;
 
         /***
-        System.out.println("###writing at " + pos + " fos.size()=" + fos.size() + " raf.length()=" + raf.length());
+         System.out.println("###writing at " + pos + " fos.size()=" + fos.size() + " raf.length()=" + raf.length());
          if (pos != fos.size()) {
-          throw new RuntimeException("ERROR" + "###writing at " + pos + " fos.size()=" + fos.size() + " raf.length()=" + raf.length());
-        }
+         throw new RuntimeException("ERROR" + "###writing at " + pos + " fos.size()=" + fos.size() + " raf.length()=" + raf.length());
+         }
          ***/
 
-        codec.init(fos);
-        codec.writeTag(JavaBinCodec.ARR, 3);
-        codec.writeInt(UpdateLog.ADD);  // should just take one byte
-        codec.writeLong(cmd.getVersion());
-        codec.writeSolrInputDocument(cmd.getSolrInputDocument());
-
+        out.writeAll(fos);
         endRecord(pos);
         // fos.flushBuffer();  // flush later
         return pos;
-      } catch (IOException e) {
-        // TODO: reset our file pointer back to "pos", the start of this record.
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error logging add", e);
       }
+
+    } catch (IOException e) {
+      // TODO: reset our file pointer back to "pos", the start of this record.
+      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error logging add", e);
     }
   }
 
-  public long writeDelete(DeleteUpdateCommand cmd) {
+  public long writeDelete(DeleteUpdateCommand cmd, int flags) {
     LogCodec codec = new LogCodec();
-    synchronized (this) {
-      try {
-        long pos = fos.size();   // if we had flushed, this should be equal to channel.position()
-        if (pos == 0) {
-          writeLogHeader(codec);
-          pos = fos.size();
-        }
-        codec.init(fos);
-        codec.writeTag(JavaBinCodec.ARR, 3);
-        codec.writeInt(UpdateLog.DELETE);  // should just take one byte
-        codec.writeLong(cmd.getVersion());
-        BytesRef br = cmd.getIndexedId();
-        codec.writeByteArray(br.bytes, br.offset, br.length);
 
+    try {
+      checkWriteHeader(codec, null);
+
+      BytesRef br = cmd.getIndexedId();
+
+      MemOutputStream out = new MemOutputStream(new byte[20 + br.length]);
+      codec.init(out);
+      codec.writeTag(JavaBinCodec.ARR, 3);
+      codec.writeInt(UpdateLog.DELETE | flags);  // should just take one byte
+      codec.writeLong(cmd.getVersion());
+      codec.writeByteArray(br.bytes, br.offset, br.length);
+
+      synchronized (this) {
+        long pos = fos.size();   // if we had flushed, this should be equal to channel.position()
+        assert pos != 0;
+        out.writeAll(fos);
         endRecord(pos);
         // fos.flushBuffer();  // flush later
-
         return pos;
+      }
+
+    } catch (IOException e) {
+      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
+    }
+
+  }
+
+  public long writeDeleteByQuery(DeleteUpdateCommand cmd, int flags) {
+    LogCodec codec = new LogCodec();
+    try {
+      checkWriteHeader(codec, null);
+
+      MemOutputStream out = new MemOutputStream(new byte[20 + (cmd.query.length())]);
+      codec.init(out);
+      codec.writeTag(JavaBinCodec.ARR, 3);
+      codec.writeInt(UpdateLog.DELETE_BY_QUERY | flags);  // should just take one byte
+      codec.writeLong(cmd.getVersion());
+      codec.writeStr(cmd.query);
+
+      synchronized (this) {
+        long pos = fos.size();   // if we had flushed, this should be equal to channel.position()
+        out.writeAll(fos);
+        endRecord(pos);
+        // fos.flushBuffer();  // flush later
+        return pos;
+      }
       } catch (IOException e) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
       }
-    }
-  }
 
-  public long writeDeleteByQuery(DeleteUpdateCommand cmd) {
-    LogCodec codec = new LogCodec();
-    synchronized (this) {
-      try {
-        long pos = fos.size();   // if we had flushed, this should be equal to channel.position()
-        if (pos == 0) {
-          writeLogHeader(codec);
-          pos = fos.size();
-        }
-        codec.init(fos);
-        codec.writeTag(JavaBinCodec.ARR, 3);
-        codec.writeInt(UpdateLog.DELETE_BY_QUERY);  // should just take one byte
-        codec.writeLong(cmd.getVersion());
-        codec.writeStr(cmd.query);
-
-        endRecord(pos);
-        // fos.flushBuffer();  // flush later
-
-        return pos;
-      } catch (IOException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
-      }
-    }
   }
 
 
-  public long writeCommit(CommitUpdateCommand cmd) {
+  public long writeCommit(CommitUpdateCommand cmd, int flags) {
     LogCodec codec = new LogCodec();
     synchronized (this) {
       try {
@@ -397,7 +442,7 @@ public class TransactionLog {
         }
         codec.init(fos);
         codec.writeTag(JavaBinCodec.ARR, 3);
-        codec.writeInt(UpdateLog.COMMIT);  // should just take one byte
+        codec.writeInt(UpdateLog.COMMIT | flags);  // should just take one byte
         codec.writeLong(cmd.getVersion());
         codec.writeStr(END_MESSAGE);  // ensure these bytes are (almost) last in the file
 
@@ -540,7 +585,7 @@ public class TransactionLog {
     /** Returns the next object from the log, or null if none available.
      *
      * @return The log record, or null if EOF
-     * @throws IOException
+     * @throws IOException If there is a low-level I/O error.
      */
     public Object next() throws IOException, InterruptedException {
       long pos = fis.position();
@@ -596,7 +641,7 @@ public class TransactionLog {
     ChannelFastInputStream fis;
     private LogCodec codec = new LogCodec() {
       @Override
-      public SolrInputDocument readSolrInputDocument(FastInputStream dis) throws IOException {
+      public SolrInputDocument readSolrInputDocument(FastInputStream dis) {
         // Given that the SolrInputDocument is last in an add record, it's OK to just skip
         // reading it completely.
         return null;
@@ -629,7 +674,7 @@ public class TransactionLog {
     /** Returns the next object from the log, or null if none available.
      *
      * @return The log record, or null if EOF
-     * @throws IOException
+     * @throws IOException If there is a low-level I/O error.
      */
     public Object next() throws IOException {
       if (prevPos <= 0) return null;
@@ -739,4 +784,5 @@ class ChannelFastInputStream extends FastInputStream {
     return "readFromStream="+readFromStream +" pos="+pos +" end="+end + " bufferPos="+getBufferPos() + " position="+position() ;
   }
 }
+
 

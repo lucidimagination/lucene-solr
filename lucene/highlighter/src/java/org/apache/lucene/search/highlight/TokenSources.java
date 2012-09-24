@@ -3,7 +3,7 @@
  */
 package org.apache.lucene.search.highlight;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -37,6 +37,7 @@ import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 
@@ -91,12 +92,8 @@ public class TokenSources {
    * minimal (1000 invocations still registers 0 ms). So this "lazy" (flexible?)
    * approach to coding is probably acceptable
    * 
-   * @param reader
-   * @param docId
-   * @param field
-   * @param analyzer
    * @return null if field not stored correctly
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public static TokenStream getAnyTokenStream(IndexReader reader, int docId,
       String field, Analyzer analyzer) throws IOException {
@@ -124,18 +121,7 @@ public class TokenSources {
   }
 
   private static boolean hasPositions(Terms vector) throws IOException {
-    final TermsEnum termsEnum = vector.iterator(null);
-    if (termsEnum.next() != null) {
-      DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, false);
-      if (dpEnum != null) {
-        int pos = dpEnum.nextPosition();
-        if (pos >= 0) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+    return vector.hasPositions();
   }
 
   /**
@@ -159,7 +145,6 @@ public class TokenSources {
    * compression (less disk IO) or slower (more CPU burn) depending on the
    * content.
    * 
-   * @param tpv
    * @param tokenPositionsGuaranteedContiguous true if the token position
    *        numbers have no overlaps or gaps. If looking to eek out the last
    *        drops of performance, set to true. If in doubt, set to false.
@@ -191,7 +176,7 @@ public class TokenSources {
       }
 
       @Override
-      public boolean incrementToken() throws IOException {
+      public boolean incrementToken() {
         if (currentToken >= tokens.length) {
           return false;
         }
@@ -219,18 +204,21 @@ public class TokenSources {
     DocsAndPositionsEnum dpEnum = null;
     while ((text = termsEnum.next()) != null) {
 
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
       if (dpEnum == null) {
         throw new IllegalArgumentException(
             "Required TermVector Offset information was not found");
       }
-
       final String term = text.utf8ToString();
 
       dpEnum.nextDoc();
       final int freq = dpEnum.freq();
       for(int posUpto=0;posUpto<freq;posUpto++) {
         final int pos = dpEnum.nextPosition();
+        if (dpEnum.startOffset() < 0) {
+          throw new IllegalArgumentException(
+              "Required TermVector Offset information was not found");
+        }
         final Token token = new Token(term,
                                       dpEnum.startOffset(),
                                       dpEnum.endOffset());

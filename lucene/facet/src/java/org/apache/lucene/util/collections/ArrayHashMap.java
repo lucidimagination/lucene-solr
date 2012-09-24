@@ -3,7 +3,7 @@ package org.apache.lucene.util.collections;
 import java.util.Arrays;
 import java.util.Iterator;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -389,10 +389,8 @@ public class ArrayHashMap<K,V> implements Iterable<V> {
 
   /** Prints the baseHash array, used for debugging purposes. */
   @SuppressWarnings("unused")
-  private void printBaseHash() {
-    for (int i : baseHash) {
-      System.out.println(i + ".\t" + i);
-    }
+  private String getBaseHashAsString() {
+    return Arrays.toString(this.baseHash);
   }
 
   /**

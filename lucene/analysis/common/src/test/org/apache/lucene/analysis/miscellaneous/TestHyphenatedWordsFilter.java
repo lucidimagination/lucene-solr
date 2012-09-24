@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,37 +32,37 @@ import org.apache.lucene.analysis.core.KeywordTokenizer;
  * HyphenatedWordsFilter test
  */
 public class TestHyphenatedWordsFilter extends BaseTokenStreamTestCase {
-	public void testHyphenatedWords() throws Exception {
-		String input = "ecologi-\r\ncal devel-\r\n\r\nop compre-\u0009hensive-hands-on and ecologi-\ncal";
-		// first test
-		TokenStream ts = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);
-		ts = new HyphenatedWordsFilter(ts);
-		assertTokenStreamContents(ts, 
-		    new String[] { "ecological", "develop", "comprehensive-hands-on", "and", "ecological" });
-	}
-	
-	/**
-	 * Test that HyphenatedWordsFilter behaves correctly with a final hyphen
-	 */
-	public void testHyphenAtEnd() throws Exception {
-	    String input = "ecologi-\r\ncal devel-\r\n\r\nop compre-\u0009hensive-hands-on and ecology-";
-	    // first test
-	    TokenStream ts = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);
-	    ts = new HyphenatedWordsFilter(ts);
-	    assertTokenStreamContents(ts, 
-	        new String[] { "ecological", "develop", "comprehensive-hands-on", "and", "ecology-" });
-	}
-	
-	public void testOffsets() throws Exception {
-	  String input = "abc- def geh 1234- 5678-";
+  public void testHyphenatedWords() throws Exception {
+    String input = "ecologi-\r\ncal devel-\r\n\r\nop compre-\u0009hensive-hands-on and ecologi-\ncal";
+    // first test
+    TokenStream ts = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);
+    ts = new HyphenatedWordsFilter(ts);
+    assertTokenStreamContents(ts,
+        new String[] { "ecological", "develop", "comprehensive-hands-on", "and", "ecological" });
+  }
+
+  /**
+   * Test that HyphenatedWordsFilter behaves correctly with a final hyphen
+   */
+  public void testHyphenAtEnd() throws Exception {
+      String input = "ecologi-\r\ncal devel-\r\n\r\nop compre-\u0009hensive-hands-on and ecology-";
+      // first test
+      TokenStream ts = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);
+      ts = new HyphenatedWordsFilter(ts);
+      assertTokenStreamContents(ts,
+          new String[] { "ecological", "develop", "comprehensive-hands-on", "and", "ecology-" });
+  }
+
+  public void testOffsets() throws Exception {
+    String input = "abc- def geh 1234- 5678-";
     TokenStream ts = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);
     ts = new HyphenatedWordsFilter(ts);
     assertTokenStreamContents(ts, 
         new String[] { "abcdef", "geh", "12345678-" },
         new int[] { 0, 9, 13 },
         new int[] { 8, 12, 24 });
-	}
-	
+  }
+
   /** blast some random strings through the analyzer */
   public void testRandomString() throws Exception {
     Analyzer a = new Analyzer() {
@@ -74,7 +74,7 @@ public class TestHyphenatedWordsFilter extends BaseTokenStreamTestCase {
       }
     };
     
-    checkRandomData(random(), a, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
   }
   
   public void testEmptyTerm() throws IOException {

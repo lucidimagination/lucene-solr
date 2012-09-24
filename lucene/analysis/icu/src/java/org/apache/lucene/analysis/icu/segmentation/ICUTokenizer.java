@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.icu.segmentation;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,8 @@ public final class ICUTokenizer extends Tokenizer {
   /** true length of text in the buffer */
   private int length = 0; 
   /** length in buffer that can be evaluated safely, up to a safe end point */
-  private int usableLength = 0; 
+  // note: usableLength is -1 here to best-effort AIOOBE consumers that don't call reset()
+  private int usableLength = -1; 
   /** accumulated offset of previous buffers for this reader, for offsetAtt */
   private int offset = 0; 
 
@@ -101,15 +102,9 @@ public final class ICUTokenizer extends Tokenizer {
     breaker.setText(buffer, 0, 0);
     length = usableLength = offset = 0;
   }
-
-  @Override
-  public void reset(Reader input) throws IOException {
-    super.reset(input);
-    reset();
-  }
   
   @Override
-  public void end() throws IOException {
+  public void end() {
     final int finalOffset = (length < 0) ? offset : offset + length;
     offsetAtt.setOffset(correctOffset(finalOffset), correctOffset(finalOffset));
   }  
@@ -144,7 +139,7 @@ public final class ICUTokenizer extends Tokenizer {
    * Refill the buffer, accumulating the offset and setting usableLength to the
    * last unambiguous break position
    * 
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   private void refill() throws IOException {
     offset += usableLength;

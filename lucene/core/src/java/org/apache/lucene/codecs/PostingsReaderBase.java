@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -41,6 +41,14 @@ import org.apache.lucene.util.Bits;
 // TermsDict + PostingsReader/WriterBase == PostingsConsumer/Producer
 public abstract class PostingsReaderBase implements Closeable {
 
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected PostingsReaderBase() {
+  }
+
+  /** Performs any initialization, such as reading and
+   *  verifying the header from the provided terms
+   *  dictionary {@link IndexInput}. */
   public abstract void init(IndexInput termsIn) throws IOException;
 
   /** Return a newly created empty TermState */
@@ -51,12 +59,12 @@ public abstract class PostingsReaderBase implements Closeable {
 
   /** Must fully consume state, since after this call that
    *  TermState may be reused. */
-  public abstract DocsEnum docs(FieldInfo fieldInfo, BlockTermState state, Bits skipDocs, DocsEnum reuse, boolean needsFreqs) throws IOException;
+  public abstract DocsEnum docs(FieldInfo fieldInfo, BlockTermState state, Bits skipDocs, DocsEnum reuse, int flags) throws IOException;
 
   /** Must fully consume state, since after this call that
    *  TermState may be reused. */
   public abstract DocsAndPositionsEnum docsAndPositions(FieldInfo fieldInfo, BlockTermState state, Bits skipDocs, DocsAndPositionsEnum reuse,
-                                                        boolean needsOffsets) throws IOException;
+                                                        int flags) throws IOException;
 
   public abstract void close() throws IOException;
 

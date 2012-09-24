@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,6 +27,7 @@ import org.apache.lucene.search.similarities.Similarity;
 final class TermScorer extends Scorer {
   private final DocsEnum docsEnum;
   private final Similarity.ExactSimScorer docScorer;
+  private final int docFreq;
   
   /**
    * Construct a <code>TermScorer</code>.
@@ -38,11 +39,14 @@ final class TermScorer extends Scorer {
    * @param docScorer
    *          The </code>Similarity.ExactSimScorer</code> implementation 
    *          to be used for score computations.
+   * @param docFreq
+   *          per-segment docFreq of this term
    */
-  TermScorer(Weight weight, DocsEnum td, Similarity.ExactSimScorer docScorer) throws IOException {
+  TermScorer(Weight weight, DocsEnum td, Similarity.ExactSimScorer docScorer, int docFreq) {
     super(weight);
     this.docScorer = docScorer;
     this.docsEnum = td;
+    this.docFreq = docFreq;
   }
 
   @Override
@@ -51,7 +55,7 @@ final class TermScorer extends Scorer {
   }
 
   @Override
-  public float freq() {
+  public float freq() throws IOException {
     return docsEnum.freq();
   }
 
@@ -66,7 +70,7 @@ final class TermScorer extends Scorer {
   }
   
   @Override
-  public float score() {
+  public float score() throws IOException {
     assert docID() != NO_MORE_DOCS;
     return docScorer.score(docsEnum.docID(), docsEnum.freq());  
   }
@@ -89,4 +93,17 @@ final class TermScorer extends Scorer {
   @Override
   public String toString() { return "scorer(" + weight + ")"; }
 
+  // TODO: benchmark if the specialized conjunction really benefits
+  // from this, or if instead its from sorting by docFreq, or both
+
+  DocsEnum getDocsEnum() {
+    return docsEnum;
+  }
+  
+  // TODO: generalize something like this for scorers?
+  // even this is just an estimation...
+  
+  int getDocFreq() {
+    return docFreq;
+  }
 }

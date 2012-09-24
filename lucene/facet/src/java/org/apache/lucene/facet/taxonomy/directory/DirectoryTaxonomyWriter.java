@@ -11,16 +11,25 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.facet.taxonomy.CategoryPath;
+import org.apache.lucene.facet.taxonomy.TaxonomyReader;
+import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
+import org.apache.lucene.facet.taxonomy.writercache.TaxonomyWriterCache;
+import org.apache.lucene.facet.taxonomy.writercache.cl2o.Cl2oTaxonomyWriterCache;
+import org.apache.lucene.facet.taxonomy.writercache.lru.LruTaxonomyWriterCache;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
@@ -29,29 +38,20 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.LogByteSizeMergePolicy;
-import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.ReaderManager;
+import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.TieredMergePolicy;
-import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.lucene.store.NativeFSLockFactory;
 import org.apache.lucene.store.SimpleFSLockFactory;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
 
-import org.apache.lucene.facet.taxonomy.CategoryPath;
-import org.apache.lucene.facet.taxonomy.TaxonomyReader;
-import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
-import org.apache.lucene.facet.taxonomy.writercache.TaxonomyWriterCache;
-import org.apache.lucene.facet.taxonomy.writercache.cl2o.Cl2oTaxonomyWriterCache;
-import org.apache.lucene.facet.taxonomy.writercache.lru.LruTaxonomyWriterCache;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -96,14 +96,21 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    */
   public static final String INDEX_CREATE_TIME = "index.create.time";
 
-  private IndexWriter indexWriter;
-  private int nextID;
+  private final Directory dir;
+  private final IndexWriter indexWriter;
+  private final TaxonomyWriterCache cache;
+  private final AtomicInteger cacheMisses = new AtomicInteger(0);
+  
+  /** Records the taxonomy index creation time, updated on replaceTaxonomy as well. */
+  private String createTime;
+  
   private char delimiter = Consts.DEFAULT_DELIMITER;
   private SinglePositionTokenStream parentStream = new SinglePositionTokenStream(Consts.PAYLOAD_PARENT);
   private Field parentStreamField;
   private Field fullPathField;
-
-  private TaxonomyWriterCache cache;
+  private int cacheMissesUntilFill = 11;
+  private boolean shouldFillCache = true;
+  
   /**
    * We call the cache "complete" if we know that every category in our
    * taxonomy is in the cache. When the cache is <B>not</B> complete, and
@@ -114,13 +121,13 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * categories, or if a put() to the cache ever returned true (meaning
    * that some of the cached data was cleared).
    */
-  private boolean cacheIsComplete;
-  private DirectoryReader reader;
-  private int cacheMisses;
+  private volatile boolean cacheIsComplete;
+  private volatile ReaderManager readerManager;
+  private volatile boolean shouldRefreshReaderManager;
+  private volatile boolean isClosed = false;
+  private volatile ParentArray parentArray;
+  private volatile int nextID;
 
-  /** Records the taxonomy index creation time. */
-  private final String createTime;
-  
   /** Reads the commit data from a Directory. */
   private static Map<String, String> readCommitData(Directory dir) throws IOException {
     SegmentInfos infos = new SegmentInfos();
@@ -129,16 +136,16 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   }
   
   /**
-   * setDelimiter changes the character that the taxonomy uses in its internal
-   * storage as a delimiter between category components. Do not use this
-   * method unless you really know what you are doing. It has nothing to do
-   * with whatever character the application may be using to represent
-   * categories for its own use.
-   * <P>
+   * Changes the character that the taxonomy uses in its internal storage as a
+   * delimiter between category components. Do not use this method unless you
+   * really know what you are doing. It has nothing to do with whatever
+   * character the application may be using to represent categories for its own
+   * use.
+   * <p>
    * If you do use this method, make sure you call it before any other methods
-   * that actually queries the taxonomy. Moreover, make sure you always pass
-   * the same delimiter for all LuceneTaxonomyWriter and LuceneTaxonomyReader
-   * objects you create for the same directory.
+   * that actually queries the taxonomy. Moreover, make sure you always pass the
+   * same delimiter for all taxonomy writer and reader instances you create for
+   * the same directory.
    */
   public void setDelimiter(char delimiter) {
     ensureOpen();
@@ -207,21 +214,20 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
       }
     }
     
+    dir = directory;
     IndexWriterConfig config = createIndexWriterConfig(openMode);
-    indexWriter = openIndexWriter(directory, config);
+    indexWriter = openIndexWriter(dir, config);
     
     // verify (to some extent) that merge policy in effect would preserve category docids 
     assert !(indexWriter.getConfig().getMergePolicy() instanceof TieredMergePolicy) : 
       "for preserving category docids, merging none-adjacent segments is not allowed";
     
-    reader = null;
-
-    FieldType ft = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
     ft.setOmitNorms(true);
     parentStreamField = new Field(Consts.FIELD_PAYLOADS, parentStream, ft);
-    fullPathField = new Field(Consts.FULL, "", StringField.TYPE_STORED);
+    fullPathField = new StringField(Consts.FULL, "", Field.Store.YES);
 
-    this.nextID = indexWriter.maxDoc();
+    nextID = indexWriter.maxDoc();
 
     if (cache == null) {
       cache = defaultTaxonomyWriterCache();
@@ -233,17 +239,15 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
       // Make sure that the taxonomy always contain the root category
       // with category id 0.
       addCategory(new CategoryPath());
-      refreshReader();
     } else {
       // There are some categories on the disk, which we have not yet
       // read into the cache, and therefore the cache is incomplete.
-      // We chose not to read all the categories into the cache now,
+      // We choose not to read all the categories into the cache now,
       // to avoid terrible performance when a taxonomy index is opened
       // to add just a single category. We will do it later, after we
       // notice a few cache misses.
       cacheIsComplete = false;
     }
-    cacheMisses = 0;
   }
 
   /**
@@ -289,23 +293,27 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
         new KeywordAnalyzer()).setOpenMode(openMode).setMergePolicy(
         new LogByteSizeMergePolicy());
   }
-
-  // Currently overridden by a unit test that verifies that every index we open is close()ed.
-  /**
-   * Open an {@link IndexReader} from the internal {@link IndexWriter}, by
-   * calling {@link IndexReader#open(IndexWriter, boolean)}. Extending classes can override
-   * this method to return their own {@link IndexReader}.
-   */
-  protected DirectoryReader openReader() throws IOException {
-    return DirectoryReader.open(indexWriter, true); 
+  
+  /** Opens a {@link ReaderManager} from the internal {@link IndexWriter}. */
+  private void initReaderManager() throws IOException {
+    if (readerManager == null) {
+      synchronized (this) {
+        // verify that the taxo-writer hasn't been closed on us.
+        ensureOpen();
+        if (readerManager == null) {
+          readerManager = new ReaderManager(indexWriter, false);
+          shouldRefreshReaderManager = false;
+        }
+      }
+    }
   }
 
   /**
-   * Creates a new instance with a default cached as defined by
+   * Creates a new instance with a default cache as defined by
    * {@link #defaultTaxonomyWriterCache()}.
    */
   public DirectoryTaxonomyWriter(Directory directory, OpenMode openMode)
-  throws CorruptIndexException, LockObtainFailedException, IOException {
+  throws IOException {
     this(directory, openMode, defaultTaxonomyWriterCache());
   }
 
@@ -323,9 +331,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
 
   // convenience constructors:
 
-  public DirectoryTaxonomyWriter(Directory d)
-  throws CorruptIndexException, LockObtainFailedException,
-  IOException {
+  public DirectoryTaxonomyWriter(Directory d) throws IOException {
     this(d, OpenMode.CREATE_OR_APPEND);
   }
 
@@ -335,29 +341,17 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * {@link Directory}.
    */
   @Override
-  public synchronized void close() throws CorruptIndexException, IOException {
-    if (indexWriter != null) {
+  public synchronized void close() throws IOException {
+    if (!isClosed) {
       indexWriter.commit(combinedCommitData(null));
       doClose();
     }
   }
   
-  private void doClose() throws CorruptIndexException, IOException {
+  private void doClose() throws IOException {
     indexWriter.close();
-    indexWriter = null;
+    isClosed = true;
     closeResources();
-  }
-
-  /**
-   * Returns the number of memory bytes used by the cache.
-   * @return Number of cache bytes in memory, for CL2O only; zero otherwise.
-   */
-  public int getCacheMemoryUsage() {
-    ensureOpen();
-    if (this.cache == null || !(this.cache instanceof Cl2oTaxonomyWriterCache)) {
-      return 0;
-    }
-    return ((Cl2oTaxonomyWriterCache)this.cache).getMemoryUsage();
   }
 
   /**
@@ -368,13 +362,12 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * <code>super.closeResources()</code> call in your implementation.
    */
   protected synchronized void closeResources() throws IOException {
-    if (reader != null) {
-      reader.close();
-      reader = null;
+    if (readerManager != null) {
+      readerManager.close();
+      readerManager = null;
     }
     if (cache != null) {
       cache.close();
-      cache = null;
     }
   }
 
@@ -383,52 +376,58 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * returning the category's ordinal, or a negative number in case the
    * category does not yet exist in the taxonomy.
    */
-  protected int findCategory(CategoryPath categoryPath) throws IOException {
-    // If we can find the category in our cache, we can return the
-    // response directly from it:
+  protected synchronized int findCategory(CategoryPath categoryPath) throws IOException {
+    // If we can find the category in the cache, or we know the cache is
+    // complete, we can return the response directly from it
     int res = cache.get(categoryPath);
-    if (res >= 0) {
+    if (res >= 0 || cacheIsComplete) {
       return res;
     }
-    // If we know that the cache is complete, i.e., contains every category
-    // which exists, we can return -1 immediately. However, if the cache is
-    // not complete, we need to check the disk.
-    if (cacheIsComplete) {
-      return -1;
-    }
-    cacheMisses++;
+
+    cacheMisses.incrementAndGet();
     // After a few cache misses, it makes sense to read all the categories
     // from disk and into the cache. The reason not to do this on the first
     // cache miss (or even when opening the writer) is that it will
     // significantly slow down the case when a taxonomy is opened just to
     // add one category. The idea only spending a long time on reading
-    // after enough time was spent on cache misses is known as a "online
+    // after enough time was spent on cache misses is known as an "online
     // algorithm".
-    if (perhapsFillCache()) {
-      return cache.get(categoryPath);
+    perhapsFillCache();
+    res = cache.get(categoryPath);
+    if (res >= 0 || cacheIsComplete) {
+      // if after filling the cache from the info on disk, the category is in it
+      // or the cache is complete, return whatever cache.get returned.
+      return res;
     }
 
-    // We need to get an answer from the on-disk index. If a reader
-    // is not yet open, do it now:
-    if (reader == null) {
-      reader = openReader();
-    }
+    // if we get here, it means the category is not in the cache, and it is not
+    // complete, and therefore we must look for the category on disk.
+    
+    // We need to get an answer from the on-disk index.
+    initReaderManager();
 
-    // TODO (Facet): avoid Multi*?
-    Bits liveDocs = MultiFields.getLiveDocs(reader);
-    DocsEnum docs = MultiFields.getTermDocsEnum(reader, liveDocs, Consts.FULL, 
-                                                new BytesRef(categoryPath.toString(delimiter)),
-                                                false);
-    if (docs == null || docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS) {
-      return -1; // category does not exist in taxonomy
+    int doc = -1;
+    DirectoryReader reader = readerManager.acquire();
+    try {
+      final BytesRef catTerm = new BytesRef(categoryPath.toString(delimiter));
+      for (AtomicReaderContext ctx : reader.leaves()) {
+        Terms terms = ctx.reader().terms(Consts.FULL);
+        if (terms != null) {
+          TermsEnum termsEnum = terms.iterator(null);
+          if (termsEnum.seekExact(catTerm, true)) {
+            // TODO: is it really ok that null is passed here as liveDocs?
+            DocsEnum docs = termsEnum.docs(null, null, 0);
+            doc = docs.nextDoc() + ctx.docBase;
+          }
+        }
+      }
+    } finally {
+      readerManager.release(reader);
     }
-    // Note: we do NOT add to the cache the fact that the category
-    // does not exist. The reason is that our only use for this
-    // method is just before we actually add this category. If
-    // in the future this usage changes, we should consider caching
-    // the fact that the category is not in the taxonomy.
-    addToCache(categoryPath, docs.docID());
-    return docs.docID();
+    if (doc > 0) {
+      addToCache(categoryPath, doc);
+    }
+    return doc;
   }
 
   /**
@@ -437,67 +436,81 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * case the category does not yet exist in the taxonomy.
    */
   private int findCategory(CategoryPath categoryPath, int prefixLen)
-  throws IOException {
+      throws IOException {
     int res = cache.get(categoryPath, prefixLen);
-    if (res >= 0) {
+    if (res >= 0 || cacheIsComplete) {
       return res;
     }
-    if (cacheIsComplete) {
-      return -1;
+    
+    cacheMisses.incrementAndGet();
+    perhapsFillCache();
+    res = cache.get(categoryPath, prefixLen);
+    if (res >= 0 || cacheIsComplete) {
+      return res;
     }
-    cacheMisses++;
-    if (perhapsFillCache()) {
-      return cache.get(categoryPath, prefixLen);
+
+    initReaderManager();
+    
+    int doc = -1;
+    DirectoryReader reader = readerManager.acquire();
+    try {
+      final BytesRef catTerm = new BytesRef(categoryPath.toString(delimiter, prefixLen));
+      for (AtomicReaderContext ctx : reader.leaves()) {
+        Terms terms = ctx.reader().terms(Consts.FULL);
+        if (terms != null) {
+          TermsEnum termsEnum = terms.iterator(null);
+          if (termsEnum.seekExact(catTerm, true)) {
+            // TODO: is it really ok that null is passed here as liveDocs?
+            DocsEnum docs = termsEnum.docs(null, null, 0);
+            doc = docs.nextDoc() + ctx.docBase;
+          }
+        }
+      }
+    } finally {
+      readerManager.release(reader);
     }
-    if (reader == null) {
-      reader = openReader();
+    
+    if (doc > 0) {
+      addToCache(categoryPath, prefixLen, doc);
     }
-    Bits liveDocs = MultiFields.getLiveDocs(reader);
-    DocsEnum docs = MultiFields.getTermDocsEnum(reader, liveDocs, Consts.FULL, 
-                                                new BytesRef(categoryPath.toString(delimiter, prefixLen)),
-                                                false);
-    if (docs == null || docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS) {
-      return -1; // category does not exist in taxonomy
-    }
-    addToCache(categoryPath, prefixLen, docs.docID());
-    return docs.docID();
+    return doc;
   }
 
-  // TODO (Facet): addCategory() is synchronized. This means that if indexing is
-  // multi-threaded, a new category that needs to be written to disk (and
-  // potentially even trigger a lengthy merge) locks out other addCategory()
-  // calls - even those which could immediately return a cached value.
-  // We definitely need to fix this situation!
   @Override
-  public synchronized int addCategory(CategoryPath categoryPath) throws IOException {
+  public int addCategory(CategoryPath categoryPath) throws IOException {
     ensureOpen();
-    // If the category is already in the cache and/or the taxonomy, we
-    // should return its existing ordinal:
-    int res = findCategory(categoryPath);
+    // check the cache outside the synchronized block. this results in better
+    // concurrency when categories are there.
+    int res = cache.get(categoryPath);
     if (res < 0) {
-      // This is a new category, and we need to insert it into the index
-      // (and the cache). Actually, we might also need to add some of
-      // the category's ancestors before we can add the category itself
-      // (while keeping the invariant that a parent is always added to
-      // the taxonomy before its child). internalAddCategory() does all
-      // this recursively:
-      res = internalAddCategory(categoryPath, categoryPath.length());
+      // the category is not in the cache - following code cannot be executed in parallel.
+      synchronized (this) {
+        res = findCategory(categoryPath);
+        if (res < 0) {
+          // This is a new category, and we need to insert it into the index
+          // (and the cache). Actually, we might also need to add some of
+          // the category's ancestors before we can add the category itself
+          // (while keeping the invariant that a parent is always added to
+          // the taxonomy before its child). internalAddCategory() does all
+          // this recursively
+          res = internalAddCategory(categoryPath, categoryPath.length());
+        }
+      }
     }
     return res;
-
   }
 
   /**
    * Add a new category into the index (and the cache), and return its new
    * ordinal.
-   * <P>
+   * <p>
    * Actually, we might also need to add some of the category's ancestors
    * before we can add the category itself (while keeping the invariant that a
    * parent is always added to the taxonomy before its child). We do this by
    * recursion.
    */
   private int internalAddCategory(CategoryPath categoryPath, int length)
-  throws CorruptIndexException, IOException {
+      throws IOException {
 
     // Find our parent's ordinal (recursively adding the parent category
     // to the taxonomy if it's not already there). Then add the parent
@@ -524,18 +537,17 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * {@link AlreadyClosedException} if it is.
    */
   protected final void ensureOpen() {
-    if (indexWriter == null) {
+    if (isClosed) {
       throw new AlreadyClosedException("The taxonomy writer has already been closed");
     }
   }
   
-  // Note that the methods calling addCategoryDocument() are synchornized,
-  // so this method is effectively synchronized as well, but we'll add
-  // synchronized to be on the safe side, and we can reuse class-local objects
-  // instead of allocating them every time
-  protected synchronized int addCategoryDocument(CategoryPath categoryPath,
-                                                  int length, int parent)
-      throws CorruptIndexException, IOException {
+  /**
+   * Note that the methods calling addCategoryDocument() are synchornized, so
+   * this method is effectively synchronized as well.
+   */
+  private int addCategoryDocument(CategoryPath categoryPath, int length,
+      int parent) throws IOException {
     // Before Lucene 2.9, position increments >=0 were supported, so we
     // added 1 to parent to allow the parent -1 (the parent of the root).
     // Unfortunately, starting with Lucene 2.9, after LUCENE-1542, this is
@@ -545,7 +557,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     // we write here (e.g., to write parent+2), and need to do a workaround
     // in the reader (which knows that anyway only category 0 has a parent
     // -1).    
-    parentStream.set(parent+1);
+    parentStream.set(Math.max(parent+1, 1));
     Document d = new Document();
     d.add(parentStreamField);
 
@@ -558,8 +570,11 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     indexWriter.addDocument(d);
     int id = nextID++;
 
+    // added a category document, mark that ReaderManager is not up-to-date
+    shouldRefreshReaderManager = true;
+    
     addToCache(categoryPath, length, id);
-
+    
     // also add to the parent array
     getParentArray().add(id, parent);
 
@@ -597,44 +612,41 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
       if (returned) {
         return false;
       }
-      returned = true;
-      return true;
+      return returned = true;
     }
   }
 
-  private void addToCache(CategoryPath categoryPath, int id)
-  throws CorruptIndexException, IOException {
+  private void addToCache(CategoryPath categoryPath, int id) throws IOException {
     if (cache.put(categoryPath, id)) {
       // If cache.put() returned true, it means the cache was limited in
-      // size, became full, so parts of it had to be cleared.
-      // Unfortunately we don't know which part was cleared - it is
-      // possible that a relatively-new category that hasn't yet been
-      // committed to disk (and therefore isn't yet visible in our
-      // "reader") was deleted from the cache, and therefore we must
-      // now refresh the reader.
-      // Because this is a slow operation, cache implementations are
-      // expected not to delete entries one-by-one but rather in bulk
-      // (LruTaxonomyWriterCache removes the 2/3rd oldest entries).
-      refreshReader();
+      // size, became full, and parts of it had to be evicted. It is
+      // possible that a relatively-new category that isn't yet visible
+      // to our 'reader' was evicted, and therefore we must now refresh 
+      // the reader.
+      refreshReaderManager();
       cacheIsComplete = false;
     }
   }
 
   private void addToCache(CategoryPath categoryPath, int prefixLen, int id)
-  throws CorruptIndexException, IOException {
+      throws IOException {
     if (cache.put(categoryPath, prefixLen, id)) {
-      refreshReader();
+      refreshReaderManager();
       cacheIsComplete = false;
     }
   }
 
-  protected synchronized void refreshReader() throws IOException {
-    if (reader != null) {
-      DirectoryReader r2 = DirectoryReader.openIfChanged(reader);
-      if (r2 != null) {
-        reader.close();
-        reader = r2;
-      }
+  private synchronized void refreshReaderManager() throws IOException {
+    // this method is synchronized since it cannot happen concurrently with
+    // addCategoryDocument -- when this method returns, we must know that the
+    // reader manager's state is current. also, it sets shouldRefresh to false, 
+    // and this cannot overlap with addCatDoc too.
+    // NOTE: since this method is sync'ed, it can call maybeRefresh, instead of
+    // maybeRefreshBlocking. If ever this is changed, make sure to change the
+    // call too.
+    if (shouldRefreshReaderManager && readerManager != null) {
+      readerManager.maybeRefresh();
+      shouldRefreshReaderManager = false;
     }
   }
   
@@ -645,10 +657,9 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * See {@link TaxonomyWriter#commit()}
    */ 
   @Override
-  public synchronized void commit() throws CorruptIndexException, IOException {
+  public synchronized void commit() throws IOException {
     ensureOpen();
     indexWriter.commit(combinedCommitData(null));
-    refreshReader();
   }
 
   /**
@@ -671,10 +682,9 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * See {@link TaxonomyWriter#commit(Map)}. 
    */
   @Override
-  public synchronized void commit(Map<String,String> commitUserData) throws CorruptIndexException, IOException {
+  public synchronized void commit(Map<String,String> commitUserData) throws IOException {
     ensureOpen();
     indexWriter.commit(combinedCommitData(commitUserData));
-    refreshReader();
   }
   
   /**
@@ -682,7 +692,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * See {@link IndexWriter#prepareCommit}.
    */
   @Override
-  public synchronized void prepareCommit() throws CorruptIndexException, IOException {
+  public synchronized void prepareCommit() throws IOException {
     ensureOpen();
     indexWriter.prepareCommit(combinedCommitData(null));
   }
@@ -692,302 +702,170 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * See {@link IndexWriter#prepareCommit(Map)}
    */
   @Override
-  public synchronized void prepareCommit(Map<String,String> commitUserData) throws CorruptIndexException, IOException {
+  public synchronized void prepareCommit(Map<String,String> commitUserData) throws IOException {
     ensureOpen();
     indexWriter.prepareCommit(combinedCommitData(commitUserData));
   }
   
-  /**
-   * getSize() returns the number of categories in the taxonomy.
-   * <P>
-   * Because categories are numbered consecutively starting with 0, it means
-   * the taxonomy contains ordinals 0 through getSize()-1.
-   * <P>
-   * Note that the number returned by getSize() is often slightly higher than
-   * the number of categories inserted into the taxonomy; This is because when
-   * a category is added to the taxonomy, its ancestors are also added
-   * automatically (including the root, which always get ordinal 0).
-   */
   @Override
-  synchronized public int getSize() {
+  public int getSize() {
     ensureOpen();
-    return indexWriter.maxDoc();
+    return nextID;
   }
-
-  private boolean alreadyCalledFillCache = false;
-
+  
   /**
-   * Set the number of cache misses before an attempt is made to read the
-   * entire taxonomy into the in-memory cache.
-   * <P> 
-   * LuceneTaxonomyWriter holds an in-memory cache of recently seen
-   * categories to speed up operation. On each cache-miss, the on-disk index
-   * needs to be consulted. When an existing taxonomy is opened, a lot of
-   * slow disk reads like that are needed until the cache is filled, so it
-   * is more efficient to read the entire taxonomy into memory at once.
-   * We do this complete read after a certain number (defined by this method)
-   * of cache misses.
-   * <P>
-   * If the number is set to <CODE>0</CODE>, the entire taxonomy is read
-   * into the cache on first use, without fetching individual categories
-   * first.
-   * <P>
-   * Note that if the memory cache of choice is limited in size, and cannot
-   * hold the entire content of the on-disk taxonomy, then it is never
-   * read in its entirety into the cache, regardless of the setting of this
-   * method. 
+   * Set the number of cache misses before an attempt is made to read the entire
+   * taxonomy into the in-memory cache.
+   * <p>
+   * This taxonomy writer holds an in-memory cache of recently seen categories
+   * to speed up operation. On each cache-miss, the on-disk index needs to be
+   * consulted. When an existing taxonomy is opened, a lot of slow disk reads
+   * like that are needed until the cache is filled, so it is more efficient to
+   * read the entire taxonomy into memory at once. We do this complete read
+   * after a certain number (defined by this method) of cache misses.
+   * <p>
+   * If the number is set to {@code 0}, the entire taxonomy is read into the
+   * cache on first use, without fetching individual categories first.
+   * <p>
+   * NOTE: it is assumed that this method is called immediately after the
+   * taxonomy writer has been created.
    */
   public void setCacheMissesUntilFill(int i) {
     ensureOpen();
     cacheMissesUntilFill = i;
   }
   
-  private int cacheMissesUntilFill = 11;
+  // we need to guarantee that if several threads call this concurrently, only
+  // one executes it, and after it returns, the cache is updated and is either
+  // complete or not.
+  private synchronized void perhapsFillCache() throws IOException {
+    if (cacheMisses.get() < cacheMissesUntilFill) {
+      return;
+    }
+    
+    if (!shouldFillCache) {
+      // we already filled the cache once, there's no need to re-fill it
+      return;
+    }
+    shouldFillCache = false;
+    
+    initReaderManager();
 
-  private boolean perhapsFillCache() throws IOException {
-    // Note: we assume that we're only called when cacheIsComplete==false.
-    // TODO (Facet): parametrize this criterion:
-    if (cacheMisses < cacheMissesUntilFill) {
-      return false;
-    }
-    // If the cache was already filled (or we decided not to fill it because
-    // there was no room), there is no sense in trying it again.
-    if (alreadyCalledFillCache) {
-      return false;
-    }
-    alreadyCalledFillCache = true;
-    // TODO (Facet): we should probably completely clear the cache before starting
-    // to read it?
-    if (reader == null) {
-      reader = openReader();
-    }
-
-    if (!cache.hasRoom(reader.numDocs())) {
-      return false;
-    }
-
-    CategoryPath cp = new CategoryPath();
-    Terms terms = MultiFields.getTerms(reader, Consts.FULL);
-    // The check is done here to avoid checking it on every iteration of the
-    // below loop. A null term wlil be returned if there are no terms in the
-    // lexicon, or after the Consts.FULL term. However while the loop is
-    // executed we're safe, because we only iterate as long as there are next()
-    // terms.
-    if (terms != null) {
-      TermsEnum termsEnum = terms.iterator(null);
-      Bits liveDocs = MultiFields.getLiveDocs(reader);
+    boolean aborted = false;
+    DirectoryReader reader = readerManager.acquire();
+    try {
+      CategoryPath cp = new CategoryPath();
+      TermsEnum termsEnum = null;
       DocsEnum docsEnum = null;
-      while (termsEnum.next() != null) {
-        BytesRef t = termsEnum.term();
-        // Since we guarantee uniqueness of categories, each term has exactly
-        // one document. Also, since we do not allow removing categories (and
-        // hence documents), there are no deletions in the index. Therefore, it
-        // is sufficient to call next(), and then doc(), exactly once with no
-        // 'validation' checks.
-        docsEnum = termsEnum.docs(liveDocs, docsEnum, false);
-        docsEnum.nextDoc();
-        cp.clear();
-        // TODO (Facet): avoid String creation/use bytes?
-        cp.add(t.utf8ToString(), delimiter);
-        cache.put(cp, docsEnum.docID());
+      for (AtomicReaderContext ctx : reader.leaves()) {
+        Terms terms = ctx.reader().terms(Consts.FULL);
+        if (terms != null) { // cannot really happen, but be on the safe side
+          termsEnum = terms.iterator(termsEnum);
+          while (termsEnum.next() != null) {
+            if (!cache.isFull()) {
+              BytesRef t = termsEnum.term();
+              // Since we guarantee uniqueness of categories, each term has exactly
+              // one document. Also, since we do not allow removing categories (and
+              // hence documents), there are no deletions in the index. Therefore, it
+              // is sufficient to call next(), and then doc(), exactly once with no
+              // 'validation' checks.
+              cp.clear();
+              cp.add(t.utf8ToString(), delimiter);
+              docsEnum = termsEnum.docs(null, docsEnum, 0);
+              boolean res = cache.put(cp, docsEnum.nextDoc() + ctx.docBase);
+              assert !res : "entries should not have been evicted from the cache";
+            } else {
+              // the cache is full and the next put() will evict entries from it, therefore abort the iteration.
+              aborted = true;
+              break;
+            }
+          }
+        }
+        if (aborted) {
+          break;
+        }
+      }
+    } finally {
+      readerManager.release(reader);
+    }
+
+    cacheIsComplete = !aborted;
+    if (cacheIsComplete) {
+      synchronized (this) {
+        // everything is in the cache, so no need to keep readerManager open.
+        // this block is executed in a sync block so that it works well with
+        // initReaderManager called in parallel.
+        readerManager.close();
+        readerManager = null;
       }
     }
-
-    cacheIsComplete = true;
-    // No sense to keep the reader open - we will not need to read from it
-    // if everything is in the cache.
-    reader.close();
-    reader = null;
-    return true;
   }
 
-  private ParentArray parentArray;
-  private synchronized ParentArray getParentArray() throws IOException {
-    if (parentArray==null) {
-      if (reader == null) {
-        reader = openReader();
+  private ParentArray getParentArray() throws IOException {
+    if (parentArray == null) {
+      synchronized (this) {
+        if (parentArray == null) {
+          initReaderManager();
+          parentArray = new ParentArray();
+          DirectoryReader reader = readerManager.acquire();
+          try {
+            parentArray.refresh(reader);
+          } finally {
+            readerManager.release(reader);
+          }
+        }
       }
-      parentArray = new ParentArray();
-      parentArray.refresh(reader);
     }
     return parentArray;
   }
+  
   @Override
   public int getParent(int ordinal) throws IOException {
     ensureOpen();
     // Note: the following if() just enforces that a user can never ask
     // for the parent of a nonexistant category - even if the parent array
     // was allocated bigger than it really needs to be.
-    if (ordinal >= getSize()) {
-      throw new ArrayIndexOutOfBoundsException();
+    if (ordinal >= nextID) {
+      throw new ArrayIndexOutOfBoundsException("requested ordinal is bigger than the largest ordinal in the taxonomy");
     }
     return getParentArray().getArray()[ordinal];
   }
-
+  
   /**
-   * Take all the categories of one or more given taxonomies, and add them to
-   * the main taxonomy (this), if they are not already there.
-   * <P>
-   * Additionally, fill a <I>mapping</I> for each of the added taxonomies,
-   * mapping its ordinals to the ordinals in the enlarged main taxonomy.
-   * These mapping are saved into an array of OrdinalMap objects given by the
-   * user, one for each of the given taxonomies (not including "this", the main
-   * taxonomy). Often the first of these will be a MemoryOrdinalMap and the
-   * others will be a DiskOrdinalMap - see discussion in {OrdinalMap}. 
-   * <P> 
-   * Note that the taxonomies to be added are given as Directory objects,
-   * not opened TaxonomyReader/TaxonomyWriter objects, so if any of them are
-   * currently managed by an open TaxonomyWriter, make sure to commit() (or
-   * close()) it first. The main taxonomy (this) is an open TaxonomyWriter,
-   * and does not need to be commit()ed before this call. 
+   * Takes the categories from the given taxonomy directory, and adds the
+   * missing ones to this taxonomy. Additionally, it fills the given
+   * {@link OrdinalMap} with a mapping from the original ordinal to the new
+   * ordinal.
    */
-  public void addTaxonomies(Directory[] taxonomies, OrdinalMap[] ordinalMaps) throws IOException {
+  public void addTaxonomy(Directory taxoDir, OrdinalMap map) throws IOException {
     ensureOpen();
-    // To prevent us stepping on the rest of this class's decisions on when
-    // to open a reader, and when not, we'll be opening a new reader instead
-    // of using the existing "reader" object:
-    IndexReader mainreader = openReader();
-    // TODO (Facet): can this then go segment-by-segment and avoid MultiDocsEnum etc?
-    Terms terms = MultiFields.getTerms(mainreader, Consts.FULL);
-    assert terms != null; // TODO (Facet): explicit check / throw exception?
-    TermsEnum mainte = terms.iterator(null);
-    DocsEnum mainde = null;
-
-    IndexReader[] otherreaders = new IndexReader[taxonomies.length];
-    TermsEnum[] othertes = new TermsEnum[taxonomies.length];
-    DocsEnum[] otherdocsEnum = new DocsEnum[taxonomies.length]; // just for reuse
-    for (int i=0; i<taxonomies.length; i++) {
-      otherreaders[i] = DirectoryReader.open(taxonomies[i]);
-      terms = MultiFields.getTerms(otherreaders[i], Consts.FULL);
-      assert terms != null; // TODO (Facet): explicit check / throw exception?
-      othertes[i] = terms.iterator(null);
-      // Also tell the ordinal maps their expected sizes:
-      ordinalMaps[i].setSize(otherreaders[i].numDocs());
-    }
-
-    CategoryPath cp = new CategoryPath();
-
-    // We keep a "current" cursor over the alphabetically-ordered list of
-    // categories in each taxonomy. We start the cursor on the first
-    // (alphabetically) category of each taxonomy:
-
-    String currentMain;
-    String[] currentOthers = new String[taxonomies.length];
-    currentMain = nextTE(mainte);
-    int otherTaxonomiesLeft = 0;
-    for (int i=0; i<taxonomies.length; i++) {
-      currentOthers[i] = nextTE(othertes[i]);
-      if (currentOthers[i]!=null) {
-        otherTaxonomiesLeft++;
-      }
-    }
-
-    // And then, at each step look at the first (alphabetically) of the
-    // current taxonomies.
-    // NOTE: The most efficient way we could have done this is using a
-    // PriorityQueue. But for simplicity, and assuming that usually we'll
-    // have a very small number of other taxonomies (often just 1), we use
-    // a more naive algorithm (o(ntaxonomies) instead of o(ln ntaxonomies)
-    // per step)
-
-    while (otherTaxonomiesLeft>0) {
-      // TODO: use a pq here
-      String first=null;
-      for (int i=0; i<taxonomies.length; i++) {
-        if (currentOthers[i]==null) continue;
-        if (first==null || first.compareTo(currentOthers[i])>0) {
-          first = currentOthers[i];
+    DirectoryReader r = DirectoryReader.open(taxoDir);
+    try {
+      final int size = r.numDocs();
+      final OrdinalMap ordinalMap = map;
+      ordinalMap.setSize(size);
+      CategoryPath cp = new CategoryPath();
+      int base = 0;
+      TermsEnum te = null;
+      DocsEnum docs = null;
+      for (final AtomicReaderContext ctx : r.leaves()) {
+        final AtomicReader ar = ctx.reader();
+        final Terms terms = ar.terms(Consts.FULL);
+        te = terms.iterator(te);
+        while (te.next() != null) {
+          String value = te.term().utf8ToString();
+          cp.clear();
+          cp.add(value, Consts.DEFAULT_DELIMITER);
+          final int ordinal = addCategory(cp);
+          docs = te.docs(null, docs, 0);
+          ordinalMap.addMapping(docs.nextDoc() + base, ordinal);
         }
+        base += ar.maxDoc(); // no deletions, so we're ok
       }
-      int comp = 0;
-      if (currentMain==null || (comp = currentMain.compareTo(first))>0) {
-        // If 'first' is before currentMain, or currentMain is null,
-        // then 'first' is a new category and we need to add it to the
-        // main taxonomy. Then for all taxonomies with this 'first'
-        // category, we need to add the new category number to their
-        // map, and move to the next category in all of them.
-        cp.clear();
-        cp.add(first, delimiter);
-        // We can call internalAddCategory() instead of addCategory()
-        // because we know the category hasn't been seen yet.
-        int newordinal = internalAddCategory(cp, cp.length());
-        // TODO (Facet): we already had this term in our hands before, in nextTE...
-        // // TODO (Facet): no need to make this term?
-        for (int i=0; i<taxonomies.length; i++) {
-          if (first.equals(currentOthers[i])) {
-            // remember the remapping of this ordinal. Note how
-            // this requires reading a posting list from the index -
-            // but since we do this in lexical order of terms, just
-            // like Lucene's merge works, we hope there are few seeks.
-            // TODO (Facet): is there a quicker way? E.g., not specifying the
-            // next term by name every time?
-            otherdocsEnum[i] = othertes[i].docs(MultiFields.getLiveDocs(otherreaders[i]), otherdocsEnum[i], false);
-            otherdocsEnum[i].nextDoc(); // TODO (Facet): check?
-            int origordinal = otherdocsEnum[i].docID();
-            ordinalMaps[i].addMapping(origordinal, newordinal);
-            // and move to the next category in the i'th taxonomy 
-            currentOthers[i] = nextTE(othertes[i]);
-            if (currentOthers[i]==null) {
-              otherTaxonomiesLeft--;
-            }
-          }
-        }
-      } else if (comp==0) {
-        // 'first' and currentMain are the same, so both the main and some
-        // other taxonomies need to be moved, but a category doesn't need
-        // to be added because it already existed in the main taxonomy.
-
-        // TODO (Facet): Again, is there a quicker way?
-        mainde = mainte.docs(MultiFields.getLiveDocs(mainreader), mainde, false);
-        mainde.nextDoc(); // TODO (Facet): check?
-        int newordinal = mainde.docID();
-
-        currentMain = nextTE(mainte);
-        for (int i=0; i<taxonomies.length; i++) {
-          if (first.equals(currentOthers[i])) {
-            // TODO (Facet): again, is there a quicker way?
-            otherdocsEnum[i] = othertes[i].docs(MultiFields.getLiveDocs(otherreaders[i]), otherdocsEnum[i], false);
-            otherdocsEnum[i].nextDoc(); // TODO (Facet): check?
-            int origordinal = otherdocsEnum[i].docID();
-            ordinalMaps[i].addMapping(origordinal, newordinal);
-
-            // and move to the next category 
-            currentOthers[i] = nextTE(othertes[i]);
-            if (currentOthers[i]==null) {
-              otherTaxonomiesLeft--;
-            }
-          }
-        }
-      } else /* comp > 0 */ {
-        // The currentMain doesn't appear in any of the other taxonomies -
-        // we don't need to do anything, just continue to the next one
-        currentMain = nextTE(mainte);
-      }
+      ordinalMap.addDone();
+    } finally {
+      r.close();
     }
-
-    // Close all the readers we've opened, and also tell the ordinal maps
-    // we're done adding to them
-    mainreader.close();
-    for (int i=0; i<taxonomies.length; i++) {
-      otherreaders[i].close();
-      // We never actually added a mapping for the root ordinal - let's do
-      // it now, just so that the map is complete (every ordinal between 0
-      // and size-1 is remapped)
-      ordinalMaps[i].addMapping(0, 0);
-      ordinalMaps[i].addDone();
-    }
-  }
-
-  /**
-   * Expert:  This method is only for expert use.
-   * Note also that any call to refresh() will invalidate the returned reader,
-   * so the caller needs to take care of appropriate locking.
-   * 
-   * @return lucene indexReader
-   */
-  DirectoryReader getInternalIndexReader() {
-    ensureOpen();
-    return this.reader;
   }
 
   /**
@@ -1113,13 +991,6 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     }
   }
 
-  private static final String nextTE(TermsEnum te) throws IOException {
-    if (te.next() != null) {
-      return te.term().utf8ToString(); // TODO (Facet): avoid String creation/use Bytes?
-    } 
-    return null;
-  }
-
   /**
    * Rollback changes to the taxonomy writer and closes the instance. Following
    * this method the instance becomes unusable (calling any of its API methods
@@ -1132,4 +1003,32 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     doClose();
   }
   
+  /**
+   * Replaces the current taxonomy with the given one. This method should
+   * generally be called in conjunction with
+   * {@link IndexWriter#addIndexes(Directory...)} to replace both the taxonomy
+   * as well as the search index content.
+   */
+  public synchronized void replaceTaxonomy(Directory taxoDir) throws IOException {
+    // replace the taxonomy by doing IW optimized operations
+    indexWriter.deleteAll();
+    indexWriter.addIndexes(taxoDir);
+    shouldRefreshReaderManager = true;
+    nextID = indexWriter.maxDoc();
+    
+    // need to clear the cache, so that addCategory won't accidentally return
+    // old categories that are in the cache.
+    cache.clear();
+    cacheIsComplete = false;
+    shouldFillCache = true;
+    
+    // update createTime as a taxonomy replace is just like it has be recreated
+    createTime = Long.toString(System.nanoTime());
+  }
+
+  /** Returns the {@link Directory} of this taxonomy writer. */
+  public Directory getDirectory() {
+    return dir;
+  }
+
 }

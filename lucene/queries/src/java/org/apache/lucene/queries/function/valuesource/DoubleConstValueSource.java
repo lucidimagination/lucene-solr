@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,9 @@ import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
 import java.io.IOException;
 import java.util.Map;
 
+/**
+ * Function that returns a constant double value for every document.
+ */
 public class DoubleConstValueSource extends ConstNumberSource {
   final double constant;
   private final float fv;

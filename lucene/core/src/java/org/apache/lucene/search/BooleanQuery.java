@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -156,7 +156,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
 
   /** Returns an iterator on the clauses in this query. It implements the {@link Iterable} interface to
    * make it possible to do:
-   * <pre>for (BooleanClause clause : booleanQuery) {}</pre>
+   * <pre class="prettyprint">for (BooleanClause clause : booleanQuery) {}</pre>
    */
   public final Iterator<BooleanClause> iterator() { return clauses().iterator(); }
 
@@ -213,7 +213,11 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     }
 
     public float coord(int overlap, int maxOverlap) {
-      return similarity.coord(overlap, maxOverlap);
+      // LUCENE-4300: in most cases of maxOverlap=1, BQ rewrites itself away,
+      // so coord() is not applied. But when BQ cannot optimize itself away
+      // for a single clause (minNrShouldMatch, prohibited clauses, etc), its
+      // important not to apply coord(1,1) for consistency, it might not be 1.0F
+      return maxOverlap == 1 ? 1F : similarity.coord(overlap, maxOverlap);
     }
 
     @Override
@@ -328,7 +332,14 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
           optional.add(subScorer);
         }
       }
-      
+
+      // NOTE: we could also use BooleanScorer, if we knew
+      // this BooleanQuery was embedded in another
+      // BooleanQuery that was also using BooleanScorer (ie,
+      // BooleanScorer can nest).  But this is hard to
+      // detect and we never do so today... (ie, we only
+      // return BooleanScorer for topScorer):
+
       // Check if we can return a BooleanScorer
       if (!scoreDocsInOrder && topScorer && required.size() == 0) {
         return new BooleanScorer(this, disableCoord, minNrShouldMatch, optional, prohibited, maxCoord);
@@ -358,49 +369,15 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       final DocsAndFreqs[] docsAndFreqs = new DocsAndFreqs[weights.size()];
       for (int i = 0; i < docsAndFreqs.length; i++) {
         final TermWeight weight = (TermWeight) weights.get(i);
-        final TermsEnum termsEnum = weight.getTermsEnum(context);
-        if (termsEnum == null) {
+        final Scorer scorer = weight.scorer(context, true, false, acceptDocs);
+        if (scorer == null) {
           return null;
+        } else {
+          assert scorer instanceof TermScorer;
+          docsAndFreqs[i] = new DocsAndFreqs((TermScorer) scorer);
         }
-        final ExactSimScorer docScorer = weight.createDocScorer(context);
-        final DocsEnum docsAndFreqsEnum = termsEnum.docs(acceptDocs, null, true);
-        if (docsAndFreqsEnum == null) {
-          // TODO: we could carry over TermState from the
-          // terms we already seek'd to, to save re-seeking
-          // to make the match-only scorer, but it's likely
-          // rare that BQ mixes terms from omitTf and
-          // non-omitTF fields:
-
-          // At least one sub cannot provide freqs; abort
-          // and fallback to full match-only scorer:
-          return createMatchOnlyConjunctionTermScorer(context, acceptDocs);
-        }
-
-        docsAndFreqs[i] = new DocsAndFreqs(docsAndFreqsEnum,
-                                           docsAndFreqsEnum,
-                                           termsEnum.docFreq(), docScorer);
       }
       return new ConjunctionTermScorer(this, disableCoord ? 1.0f : coord(
-          docsAndFreqs.length, docsAndFreqs.length), docsAndFreqs);
-    }
-
-    private Scorer createMatchOnlyConjunctionTermScorer(AtomicReaderContext context, Bits acceptDocs)
-        throws IOException {
-
-      final DocsAndFreqs[] docsAndFreqs = new DocsAndFreqs[weights.size()];
-      for (int i = 0; i < docsAndFreqs.length; i++) {
-        final TermWeight weight = (TermWeight) weights.get(i);
-        final TermsEnum termsEnum = weight.getTermsEnum(context);
-        if (termsEnum == null) {
-          return null;
-        }
-        final ExactSimScorer docScorer = weight.createDocScorer(context);
-        docsAndFreqs[i] = new DocsAndFreqs(null,
-                                           termsEnum.docs(acceptDocs, null, false),
-                                           termsEnum.docFreq(), docScorer);
-      }
-
-      return new MatchOnlyConjunctionTermScorer(this, disableCoord ? 1.0f : coord(
           docsAndFreqs.length, docsAndFreqs.length), docsAndFreqs);
     }
     
@@ -427,7 +404,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   public Query rewrite(IndexReader reader) throws IOException {
     if (minNrShouldMatch == 0 && clauses.size() == 1) {                    // optimize 1-clause queries
       BooleanClause c = clauses.get(0);
-      if (!c.isProhibited()) {			  // just return clause
+      if (!c.isProhibited()) {  // just return clause
 
         Query query = c.getQuery().rewrite(reader);    // rewrite first
 
@@ -498,7 +475,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
 
       Query subQuery = c.getQuery();
       if (subQuery != null) {
-        if (subQuery instanceof BooleanQuery) {	  // wrap sub-bools in parens
+        if (subQuery instanceof BooleanQuery) {  // wrap sub-bools in parens
           buffer.append("(");
           buffer.append(subQuery.toString(field));
           buffer.append(")");

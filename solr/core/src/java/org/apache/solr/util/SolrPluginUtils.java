@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -229,57 +229,69 @@ public class SolrPluginUtils {
    * @return The debug info
    * @throws java.io.IOException if there was an IO error
    */
-  public static NamedList doStandardDebug(SolrQueryRequest req,
-                                          String userQuery,
-                                          Query query,
-                                          DocList results, boolean dbgQuery, boolean dbgResults)
-    throws IOException {
-
-    NamedList dbg = null;
-
-    dbg = new SimpleOrderedMap();
-
-    SolrIndexSearcher searcher = req.getSearcher();
-    IndexSchema schema = req.getSchema();
-
-    boolean explainStruct
-            = req.getParams().getBool(CommonParams.EXPLAIN_STRUCT, false);
-
+  public static NamedList doStandardDebug(
+          SolrQueryRequest req,
+          String userQuery,
+          Query query,
+          DocList results,
+          boolean dbgQuery,
+          boolean dbgResults)
+          throws IOException 
+  {
+    NamedList dbg = new SimpleOrderedMap();
+    doStandardQueryDebug(req, userQuery, query, dbgQuery, dbg);
+    doStandardResultsDebug(req, query, results, dbgResults, dbg);
+    return dbg;
+  }
+  
+  public static void doStandardQueryDebug(
+          SolrQueryRequest req,
+          String userQuery,
+          Query query,
+          boolean dbgQuery,
+          NamedList dbg)
+  {
     if (dbgQuery) {
       /* userQuery may have been pre-processed .. expose that */
       dbg.add("rawquerystring", req.getParams().get(CommonParams.Q));
       dbg.add("querystring", userQuery);
 
-      /* QueryParsing.toString isn't perfect, use it to see converted
+     /* QueryParsing.toString isn't perfect, use it to see converted
       * values, use regular toString to see any attributes of the
       * underlying Query it may have missed.
       */
-      dbg.add("parsedquery", QueryParsing.toString(query, schema));
+      dbg.add("parsedquery", QueryParsing.toString(query, req.getSchema()));
       dbg.add("parsedquery_toString", query.toString());
     }
-
+  }
+  
+  public static void doStandardResultsDebug(
+          SolrQueryRequest req,
+          Query query,
+          DocList results,
+          boolean dbgResults,
+          NamedList dbg) throws IOException
+  {
     if (dbgResults) {
-      NamedList<Explanation> explain
-              = getExplanations(query, results, searcher, schema);
-      dbg.add("explain", explainStruct ?
-              explanationsToNamedLists(explain) :
-              explanationsToStrings(explain));
+      SolrIndexSearcher searcher = req.getSearcher();
+      IndexSchema schema = req.getSchema();
+      boolean explainStruct = req.getParams().getBool(CommonParams.EXPLAIN_STRUCT, false);
+
+      NamedList<Explanation> explain = getExplanations(query, results, searcher, schema);
+      dbg.add("explain", explainStruct
+              ? explanationsToNamedLists(explain)
+              : explanationsToStrings(explain));
 
       String otherQueryS = req.getParams().get(CommonParams.EXPLAIN_OTHER);
       if (otherQueryS != null && otherQueryS.length() > 0) {
-        DocList otherResults = doSimpleQuery
-                (otherQueryS, req, 0, 10);
+        DocList otherResults = doSimpleQuery(otherQueryS, req, 0, 10);
         dbg.add("otherQuery", otherQueryS);
-        NamedList<Explanation> explainO
-                = getExplanations(query, otherResults, searcher, schema);
-        dbg.add("explainOther", explainStruct ?
-                explanationsToNamedLists(explainO) :
-                explanationsToStrings(explainO));
+        NamedList<Explanation> explainO = getExplanations(query, otherResults, searcher, schema);
+        dbg.add("explainOther", explainStruct
+                ? explanationsToNamedLists(explainO)
+                : explanationsToStrings(explainO));
       }
     }
-
-
-    return dbg;
   }
 
   public static NamedList<Object> explanationToNamedList(Explanation e) {
@@ -377,6 +389,9 @@ public class SolrPluginUtils {
     }
 
   }
+  private static final Pattern whitespacePattern = Pattern.compile("\\s+");
+  private static final Pattern caratPattern = Pattern.compile("\\^");
+  private static final Pattern tildePattern = Pattern.compile("[~]");
 
   /**
    * Given a string containing fieldNames and boost info,
@@ -408,16 +423,59 @@ public class SolrPluginUtils {
     }
     Map<String, Float> out = new HashMap<String,Float>(7);
     for (String in : fieldLists) {
-      if (null == in || "".equals(in.trim()))
+      if (null == in) {
         continue;
-      String[] bb = in.trim().split("\\s+");
+      }
+      in = in.trim();
+      if(in.length()==0) {
+        continue;
+      }
+      
+      String[] bb = whitespacePattern.split(in);
       for (String s : bb) {
-        String[] bbb = s.split("\\^");
+        String[] bbb = caratPattern.split(s);
         out.put(bbb[0], 1 == bbb.length ? null : Float.valueOf(bbb[1]));
       }
     }
     return out;
   }
+  /**
+  
+  /**
+   * Like {@link #parseFieldBoosts}, but allows for an optional slop value prefixed by "~".
+   *
+   * @param fieldLists - an array of Strings eg. <code>{"fieldOne^2.3", "fieldTwo", fieldThree~5^-0.4}</code>
+   * @param wordGrams - (0=all words, 2,3 = shingle size)
+   * @param defaultSlop - the default slop for this param
+   * @return - FieldParams containing the fieldname,boost,slop,and shingle size
+   */
+  public static List<FieldParams> parseFieldBoostsAndSlop(String[] fieldLists,int wordGrams,int defaultSlop) {
+    if (null == fieldLists || 0 == fieldLists.length) {
+        return new ArrayList<FieldParams>();
+    }
+    List<FieldParams> out = new ArrayList<FieldParams>();
+    for (String in : fieldLists) {
+      if (null == in) {
+        continue;
+      }
+      in = in.trim();
+      if(in.length()==0) {
+        continue;
+      }
+      String[] fieldConfigs = whitespacePattern.split(in);
+      for (String s : fieldConfigs) {
+        String[] fieldAndSlopVsBoost = caratPattern.split(s);
+        String[] fieldVsSlop = tildePattern.split(fieldAndSlopVsBoost[0]);
+        String field = fieldVsSlop[0];
+        int slop  = (2 == fieldVsSlop.length) ? Integer.valueOf(fieldVsSlop[1]) : defaultSlop;
+        Float boost = (1 == fieldAndSlopVsBoost.length) ? 1  : Float.valueOf(fieldAndSlopVsBoost[1]);
+        FieldParams fp = new FieldParams(field,wordGrams,slop,boost);
+        out.add(fp);
+      }
+    }
+    return out;
+  }
+
 
   /**
    * Checks the number of optional clauses in the query, and compares it

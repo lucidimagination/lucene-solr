@@ -10,7 +10,7 @@ import org.apache.lucene.facet.search.PayloadIterator;
 import org.apache.lucene.util.Vint8;
 import org.apache.lucene.util.Vint8.Position;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -50,7 +50,7 @@ public class EnhancementsPayloadIterator extends PayloadIterator {
    *            A reader of the index.
    * @param term
    *            The category term to iterate.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public EnhancementsPayloadIterator(
       List<CategoryEnhancement> enhancementsList,

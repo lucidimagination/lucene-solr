@@ -10,7 +10,7 @@ import org.apache.lucene.facet.search.params.FacetRequest;
 import org.apache.lucene.facet.search.results.FacetResult;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -81,7 +81,7 @@ public abstract class FacetsAccumulator {
   public abstract List<FacetResult> accumulate(ScoredDocIDs docids) throws IOException;
 
   /**
-   * @return the complement threshold
+   * Returns the complement threshold.
    * @see #setComplementThreshold(double)
    */
   public double getComplementThreshold() {
@@ -107,6 +107,7 @@ public abstract class FacetsAccumulator {
    * <p>
    * To disable complements pass {@link #DISABLE_COMPLEMENT}.
    * @param complementThreshold the complement threshold to set
+   * @see #getComplementThreshold()
    */
   public void setComplementThreshold(double complementThreshold) {
     this.complementThreshold = complementThreshold;

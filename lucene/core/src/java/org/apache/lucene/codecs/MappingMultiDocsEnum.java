@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,6 +20,8 @@ package org.apache.lucene.codecs;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.MultiDocsEnum;
+import org.apache.lucene.index.MultiDocsEnum.EnumWithSlice;
+
 import java.io.IOException;
 
 /**
@@ -33,13 +35,17 @@ public final class MappingMultiDocsEnum extends DocsEnum {
   private MultiDocsEnum.EnumWithSlice[] subs;
   int numSubs;
   int upto;
-  int[] currentMap;
+  MergeState.DocMap currentMap;
   DocsEnum current;
   int currentBase;
   int doc = -1;
   private MergeState mergeState;
 
-  MappingMultiDocsEnum reset(MultiDocsEnum docsEnum) throws IOException {
+  /** Sole constructor. */
+  public MappingMultiDocsEnum() {
+  }
+
+  MappingMultiDocsEnum reset(MultiDocsEnum docsEnum) {
     this.numSubs = docsEnum.getNumSubs();
     this.subs = docsEnum.getSubs();
     upto = -1;
@@ -47,12 +53,25 @@ public final class MappingMultiDocsEnum extends DocsEnum {
     return this;
   }
 
+  /** Sets the {@link MergeState}, which is used to re-map
+   *  document IDs. */
   public void setMergeState(MergeState mergeState) {
     this.mergeState = mergeState;
   }
+  
+  /** How many sub-readers we are merging.
+   *  @see #getSubs */
+  public int getNumSubs() {
+    return numSubs;
+  }
+
+  /** Returns sub-readers we are merging. */
+  public EnumWithSlice[] getSubs() {
+    return subs;
+  }
 
   @Override
-  public int freq() {
+  public int freq() throws IOException {
     return current.freq();
   }
 
@@ -62,7 +81,7 @@ public final class MappingMultiDocsEnum extends DocsEnum {
   }
 
   @Override
-  public int advance(int target) throws IOException {
+  public int advance(int target) {
     throw new UnsupportedOperationException();
   }
 
@@ -78,18 +97,16 @@ public final class MappingMultiDocsEnum extends DocsEnum {
           current = subs[upto].docsEnum;
           currentBase = mergeState.docBase[reader];
           currentMap = mergeState.docMaps[reader];
-          assert currentMap == null || currentMap.length == subs[upto].slice.length: "readerIndex=" + reader + " subs.len=" + subs.length + " len1=" + currentMap.length + " vs " + subs[upto].slice.length;
+          assert currentMap.maxDoc() == subs[upto].slice.length: "readerIndex=" + reader + " subs.len=" + subs.length + " len1=" + currentMap.maxDoc() + " vs " + subs[upto].slice.length;
         }
       }
 
       int doc = current.nextDoc();
       if (doc != NO_MORE_DOCS) {
-        if (currentMap != null) {
-          // compact deletions
-          doc = currentMap[doc];
-          if (doc == -1) {
-            continue;
-          }
+        // compact deletions
+        doc = currentMap.get(doc);
+        if (doc == -1) {
+          continue;
         }
         return this.doc = currentBase + doc;
       } else {

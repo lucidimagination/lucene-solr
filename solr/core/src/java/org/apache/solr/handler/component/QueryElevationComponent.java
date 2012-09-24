@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -296,7 +296,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   /**
    * Helpful for testing without loading config.xml
    *
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   void setTopQueryResults(IndexReader reader, String query, String[] ids, String[] ex) throws IOException {
     if (ids == null) {
@@ -385,9 +385,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
             //we are only going to mark items as excluded, not actually exclude them.  This works
             //with the EditorialMarkerFactory
             rb.req.getContext().put(EXCLUDED, booster.excludeIds);
-            for (TermQuery tq : booster.exclude) {
-              newq.add(new BooleanClause(tq, BooleanClause.Occur.SHOULD));
-            }
           }
         }
         rb.setQuery(newq);
@@ -480,7 +477,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   private SentinelIntSet ordSet; //the key half of the map
   private BytesRef[] termValues;//the value half of the map
 
-  public ElevationComparatorSource(final QueryElevationComponent.ElevationObj elevations) throws IOException {
+  public ElevationComparatorSource(final QueryElevationComponent.ElevationObj elevations) {
     this.elevations = elevations;
     int size = elevations.ids.size();
     ordSet = new SentinelIntSet(size, -1);
@@ -506,7 +503,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         bottomVal = values[slot];
       }
 
-      private int docVal(int doc) throws IOException {
+      private int docVal(int doc) {
         if (ordSet.size() > 0) {
           int slot = ordSet.find(doc);
           if (slot >= 0) {
@@ -519,12 +516,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       }
 
       @Override
-      public int compareBottom(int doc) throws IOException {
+      public int compareBottom(int doc) {
         return bottomVal - docVal(doc);
       }
 
       @Override
-      public void copy(int slot, int doc) throws IOException {
+      public void copy(int slot, int doc) {
         values[slot] = docVal(doc);
       }
 
@@ -543,7 +540,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         for (String id : elevations.ids) {
           term.copyChars(id);
           if (seen.contains(id) == false  && termsEnum.seekExact(term, false)) {
-            docsEnum = termsEnum.docs(liveDocs, docsEnum, false);
+            docsEnum = termsEnum.docs(liveDocs, docsEnum, 0);
             if (docsEnum != null) {
               int docId = docsEnum.nextDoc();
               if (docId == DocIdSetIterator.NO_MORE_DOCS ) continue;  // must have been deleted
@@ -560,9 +557,14 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       public Integer value(int slot) {
         return values[slot];
       }
+
+      @Override
+      public int compareDocToValue(int doc, Integer valueObj) {
+        final int value = valueObj.intValue();
+        final int docValue = docVal(doc);
+        return docValue - value;  // values will be small enough that there is no overflow concern
+      }
     };
   }
+  }
 }
-}
-
-

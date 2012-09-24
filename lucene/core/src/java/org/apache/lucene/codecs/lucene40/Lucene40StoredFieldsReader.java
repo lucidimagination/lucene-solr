@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene40;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.lucene.codecs.lucene40;
 
 import java.io.IOException;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.FieldInfo;
@@ -33,7 +34,8 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.IOUtils;
 
 import java.io.Closeable;
-import java.util.Set;
+
+import static org.apache.lucene.codecs.lucene40.Lucene40StoredFieldsWriter.*;
 
 /**
  * Class responsible for access to stored document fields.
@@ -44,8 +46,6 @@ import java.util.Set;
  * @lucene.internal
  */
 public final class Lucene40StoredFieldsReader extends StoredFieldsReader implements Cloneable, Closeable {
-  private final static int FORMAT_SIZE = 4;
-
   private final FieldInfos fieldInfos;
   private final IndexInput fieldsStream;
   private final IndexInput indexStream;
@@ -61,10 +61,10 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
   @Override
   public Lucene40StoredFieldsReader clone() {
     ensureOpen();
-    return new Lucene40StoredFieldsReader(fieldInfos, numTotalDocs, size, (IndexInput)fieldsStream.clone(), (IndexInput)indexStream.clone());
+    return new Lucene40StoredFieldsReader(fieldInfos, numTotalDocs, size, fieldsStream.clone(), indexStream.clone());
   }
   
-  // Used only by clone
+  /** Used only by clone. */
   private Lucene40StoredFieldsReader(FieldInfos fieldInfos, int numTotalDocs, int size, IndexInput fieldsStream, IndexInput indexStream) {
     this.fieldInfos = fieldInfos;
     this.numTotalDocs = numTotalDocs;
@@ -73,26 +73,25 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
     this.indexStream = indexStream;
   }
 
+  /** Sole constructor. */
   public Lucene40StoredFieldsReader(Directory d, SegmentInfo si, FieldInfos fn, IOContext context) throws IOException {
     final String segment = si.name;
     boolean success = false;
     fieldInfos = fn;
     try {
-      fieldsStream = d.openInput(IndexFileNames.segmentFileName(segment, "", Lucene40StoredFieldsWriter.FIELDS_EXTENSION), context);
-      final String indexStreamFN = IndexFileNames.segmentFileName(segment, "", Lucene40StoredFieldsWriter.FIELDS_INDEX_EXTENSION);
+      fieldsStream = d.openInput(IndexFileNames.segmentFileName(segment, "", FIELDS_EXTENSION), context);
+      final String indexStreamFN = IndexFileNames.segmentFileName(segment, "", FIELDS_INDEX_EXTENSION);
       indexStream = d.openInput(indexStreamFN, context);
       
-      // its a 4.0 codec: so its not too-old, its corrupt.
-      // TODO: change this to CodecUtil.checkHeader
-      if (Lucene40StoredFieldsWriter.FORMAT_CURRENT != indexStream.readInt()) {
-        throw new CorruptIndexException("unexpected fdx header: " + indexStream);
-      }
-
-      final long indexSize = indexStream.length() - FORMAT_SIZE;
+      CodecUtil.checkHeader(indexStream, CODEC_NAME_IDX, VERSION_START, VERSION_CURRENT);
+      CodecUtil.checkHeader(fieldsStream, CODEC_NAME_DAT, VERSION_START, VERSION_CURRENT);
+      assert HEADER_LENGTH_DAT == fieldsStream.getFilePointer();
+      assert HEADER_LENGTH_IDX == indexStream.getFilePointer();
+      final long indexSize = indexStream.length() - HEADER_LENGTH_IDX;
       this.size = (int) (indexSize >> 3);
       // Verify two sources of "maxDoc" agree:
-      if (this.size != si.docCount) {
-        throw new CorruptIndexException("doc counts differ for segment " + segment + ": fieldsReader shows " + this.size + " but segmentInfo shows " + si.docCount);
+      if (this.size != si.getDocCount()) {
+        throw new CorruptIndexException("doc counts differ for segment " + segment + ": fieldsReader shows " + this.size + " but segmentInfo shows " + si.getDocCount());
       }
       numTotalDocs = (int) (indexSize >> 3);
       success = true;
@@ -121,7 +120,7 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
    * Closes the underlying {@link org.apache.lucene.store.IndexInput} streams.
    * This means that the Fields values will not be accessible.
    *
-   * @throws IOException
+   * @throws IOException If an I/O error occurs
    */
   public final void close() throws IOException {
     if (!closed) {
@@ -130,15 +129,17 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
     }
   }
 
+  /** Returns number of documents. */
   public final int size() {
     return size;
   }
 
   private void seekIndex(int docID) throws IOException {
-    indexStream.seek(FORMAT_SIZE + docID * 8L);
+    indexStream.seek(HEADER_LENGTH_IDX + docID * 8L);
   }
 
-  public final void visitDocument(int n, StoredFieldVisitor visitor) throws CorruptIndexException, IOException {
+  @Override
+  public final void visitDocument(int n, StoredFieldVisitor visitor) throws IOException {
     seekIndex(n);
     fieldsStream.seek(indexStream.readLong());
 
@@ -148,7 +149,7 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
       FieldInfo fieldInfo = fieldInfos.fieldInfo(fieldNumber);
       
       int bits = fieldsStream.readByte() & 0xFF;
-      assert bits <= (Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_MASK | Lucene40StoredFieldsWriter.FIELD_IS_BINARY): "bits=" + Integer.toHexString(bits);
+      assert bits <= (FIELD_IS_NUMERIC_MASK | FIELD_IS_BINARY): "bits=" + Integer.toHexString(bits);
 
       switch(visitor.needsField(fieldInfo)) {
         case YES:
@@ -164,19 +165,19 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
   }
 
   private void readField(StoredFieldVisitor visitor, FieldInfo info, int bits) throws IOException {
-    final int numeric = bits & Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_MASK;
+    final int numeric = bits & FIELD_IS_NUMERIC_MASK;
     if (numeric != 0) {
       switch(numeric) {
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_INT:
+        case FIELD_IS_NUMERIC_INT:
           visitor.intField(info, fieldsStream.readInt());
           return;
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_LONG:
+        case FIELD_IS_NUMERIC_LONG:
           visitor.longField(info, fieldsStream.readLong());
           return;
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_FLOAT:
+        case FIELD_IS_NUMERIC_FLOAT:
           visitor.floatField(info, Float.intBitsToFloat(fieldsStream.readInt()));
           return;
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_DOUBLE:
+        case FIELD_IS_NUMERIC_DOUBLE:
           visitor.doubleField(info, Double.longBitsToDouble(fieldsStream.readLong()));
           return;
         default:
@@ -186,7 +187,7 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
       final int length = fieldsStream.readVInt();
       byte bytes[] = new byte[length];
       fieldsStream.readBytes(bytes, 0, length);
-      if ((bits & Lucene40StoredFieldsWriter.FIELD_IS_BINARY) != 0) {
+      if ((bits & FIELD_IS_BINARY) != 0) {
         visitor.binaryField(info, bytes, 0, bytes.length);
       } else {
         visitor.stringField(info, new String(bytes, 0, bytes.length, IOUtils.CHARSET_UTF_8));
@@ -195,15 +196,15 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
   }
   
   private void skipField(int bits) throws IOException {
-    final int numeric = bits & Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_MASK;
+    final int numeric = bits & FIELD_IS_NUMERIC_MASK;
     if (numeric != 0) {
       switch(numeric) {
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_INT:
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_FLOAT:
+        case FIELD_IS_NUMERIC_INT:
+        case FIELD_IS_NUMERIC_FLOAT:
           fieldsStream.readInt();
           return;
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_LONG:
-        case Lucene40StoredFieldsWriter.FIELD_IS_NUMERIC_DOUBLE:
+        case FIELD_IS_NUMERIC_LONG:
+        case FIELD_IS_NUMERIC_DOUBLE:
           fieldsStream.readLong();
           return;
         default: 
@@ -239,10 +240,5 @@ public final class Lucene40StoredFieldsReader extends StoredFieldsReader impleme
     fieldsStream.seek(startOffset);
 
     return fieldsStream;
-  }
-
-  public static void files(SegmentInfo info, Set<String> files) throws IOException {
-    files.add(IndexFileNames.segmentFileName(info.name, "", Lucene40StoredFieldsWriter.FIELDS_INDEX_EXTENSION));
-    files.add(IndexFileNames.segmentFileName(info.name, "", Lucene40StoredFieldsWriter.FIELDS_EXTENSION));
   }
 }

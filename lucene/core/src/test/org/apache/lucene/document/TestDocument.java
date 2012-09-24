@@ -1,6 +1,6 @@
 package org.apache.lucene.document;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -55,8 +55,8 @@ public class TestDocument extends LuceneTestCase {
     FieldType ft = new FieldType();
     ft.setStored(true);
     IndexableField stringFld = new Field("string", binaryVal, ft);
-    IndexableField binaryFld = new StoredField("binary", binaryVal.getBytes());
-    IndexableField binaryFld2 = new StoredField("binary", binaryVal2.getBytes());
+    IndexableField binaryFld = new StoredField("binary", binaryVal.getBytes("UTF-8"));
+    IndexableField binaryFld2 = new StoredField("binary", binaryVal2.getBytes("UTF-8"));
     
     doc.add(stringFld);
     doc.add(binaryFld);
@@ -66,7 +66,6 @@ public class TestDocument extends LuceneTestCase {
     assertTrue(binaryFld.binaryValue() != null);
     assertTrue(binaryFld.fieldType().stored());
     assertFalse(binaryFld.fieldType().indexed());
-    assertFalse(binaryFld.fieldType().tokenized());
     
     String binaryTest = doc.getBinaryValue("binary").utf8ToString();
     assertTrue(binaryTest.equals(binaryVal));
@@ -134,7 +133,7 @@ public class TestDocument extends LuceneTestCase {
     FieldType ft = new FieldType();
     ft.setStored(true);
     new Field("name", "value", ft); // okay
-    new StringField("name", "value"); // okay
+    new StringField("name", "value", Field.Store.NO); // okay
     try {
       new Field("name", "value", new FieldType());
       fail();
@@ -206,16 +205,16 @@ public class TestDocument extends LuceneTestCase {
     Document doc = new Document();
     FieldType stored = new FieldType();
     stored.setStored(true);
-    doc.add(new Field("keyword", "test1", StringField.TYPE_STORED));
-    doc.add(new Field("keyword", "test2", StringField.TYPE_STORED));
-    doc.add(new Field("text", "test1", TextField.TYPE_STORED));
-    doc.add(new Field("text", "test2", TextField.TYPE_STORED));
+    doc.add(new StringField("keyword", "test1", Field.Store.YES));
+    doc.add(new StringField("keyword", "test2", Field.Store.YES));
+    doc.add(new TextField("text", "test1", Field.Store.YES));
+    doc.add(new TextField("text", "test2", Field.Store.YES));
     doc.add(new Field("unindexed", "test1", stored));
     doc.add(new Field("unindexed", "test2", stored));
     doc
-        .add(new TextField("unstored", "test1"));
+        .add(new TextField("unstored", "test1", Field.Store.NO));
     doc
-        .add(new TextField("unstored", "test2"));
+        .add(new TextField("unstored", "test2", Field.Store.NO));
     return doc;
   }
   
@@ -250,10 +249,10 @@ public class TestDocument extends LuceneTestCase {
   
   public void testFieldSetValue() throws Exception {
     
-    Field field = new Field("id", "id1", StringField.TYPE_STORED);
+    Field field = new StringField("id", "id1", Field.Store.YES);
     Document doc = new Document();
     doc.add(field);
-    doc.add(new Field("keyword", "test", StringField.TYPE_STORED));
+    doc.add(new StringField("keyword", "test", Field.Store.YES));
     
     Directory dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
@@ -347,7 +346,7 @@ public class TestDocument extends LuceneTestCase {
       assertEquals(2, tvs.size());
       TermsEnum tvsEnum = tvs.iterator(null);
       assertEquals(new BytesRef("abc"), tvsEnum.next());
-      final DocsAndPositionsEnum dpEnum = tvsEnum.docsAndPositions(null, null, false);
+      final DocsAndPositionsEnum dpEnum = tvsEnum.docsAndPositions(null, null);
       if (field.equals("tv")) {
         assertNull(dpEnum);
       } else {
@@ -361,30 +360,22 @@ public class TestDocument extends LuceneTestCase {
     dir.close();
   }
   
-  public void testBoost() throws Exception {
-    Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    iwc.setMergePolicy(newLogMergePolicy());
-    IndexWriter iw = new IndexWriter(dir, iwc);
+  public void testNumericFieldAsString() throws Exception {
     Document doc = new Document();
-    doc.add(new Field("field1", "sometext", StringField.TYPE_STORED));
-    doc.add(new TextField("field2", "sometext"));
-    doc.add(new StringField("foo", "bar"));
-    iw.addDocument(doc); // add an 'ok' document
-    try {
-      doc = new Document();
-      // try to boost with norms omitted
-      StringField field = new StringField("foo", "baz");
-      field.setBoost(5.0f);
-      doc.add(field);
-      iw.addDocument(doc);
-      fail("didn't get any exception, boost silently discarded");
-    } catch (UnsupportedOperationException expected) {
-      // expected
-    }
-    DirectoryReader ir = DirectoryReader.open(iw, false);
-    assertEquals(1, ir.numDocs());
-    assertEquals("sometext", ir.document(0).get("field1"));
+    doc.add(new IntField("int", 5, Field.Store.YES));
+    assertEquals("5", doc.get("int"));
+    assertNull(doc.get("somethingElse"));
+    doc.add(new IntField("int", 4, Field.Store.YES));
+    assertArrayEquals(new String[] { "5", "4" }, doc.getValues("int"));
+    
+    Directory dir = newDirectory();
+    RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
+    iw.addDocument(doc);
+    DirectoryReader ir = iw.getReader();
+    Document sdoc = ir.document(0);
+    assertEquals("5", sdoc.get("int"));
+    assertNull(sdoc.get("somethingElse"));
+    assertArrayEquals(new String[] { "5", "4" }, sdoc.getValues("int"));
     ir.close();
     iw.close();
     dir.close();

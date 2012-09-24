@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,10 @@ import org.apache.lucene.search.Explanation;
  * @lucene.experimental
  */
 public class LambdaDF extends Lambda {
+  
+  /** Sole constructor: parameter-free */
+  public LambdaDF() {}
+
   @Override
   public final float lambda(BasicStats stats) {
     return (stats.getDocFreq()+1F) / (stats.getNumberOfDocuments()+1F);

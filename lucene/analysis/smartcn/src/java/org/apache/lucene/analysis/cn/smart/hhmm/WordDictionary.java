@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -133,8 +133,7 @@ class WordDictionary extends AbstractDictionary {
   /**
    * Load coredict.mem internally from the jar file.
    * 
-   * @throws ClassNotFoundException
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public void load() throws IOException, ClassNotFoundException {
     InputStream input = this.getClass().getResourceAsStream("coredict.mem");
@@ -145,14 +144,9 @@ class WordDictionary extends AbstractDictionary {
     try {
       loadFromObjectInputStream(new FileInputStream(serialObj));
       return true;
-    } catch (FileNotFoundException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
-      e.printStackTrace();
-    } catch (ClassNotFoundException e) {
-      e.printStackTrace();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
-    return false;
   }
 
   private void loadFromObjectInputStream(InputStream serialObjectInputStream)
@@ -186,12 +180,9 @@ class WordDictionary extends AbstractDictionary {
    * 
    * @param dctFilePath path to word dictionary (coredict.dct)
    * @return number of words read
-   * @throws FileNotFoundException
-   * @throws IOException
-   * @throws UnsupportedEncodingException
+   * @throws IOException If there is a low-level I/O error.
    */
-  private int loadMainDataFromFile(String dctFilePath)
-      throws FileNotFoundException, IOException, UnsupportedEncodingException {
+  private int loadMainDataFromFile(String dctFilePath) throws IOException {
     int i, cnt, length, total = 0;
     // The file only counted 6763 Chinese characters plus 5 reserved slots 3756~3760.
     // The 3756th is used (as a header) to store information.

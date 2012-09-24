@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -105,27 +105,6 @@ public class RAMInputStream extends IndexInput implements Cloneable {
     }
   }
 
-  @Override
-  public void copyBytes(IndexOutput out, long numBytes) throws IOException {
-    assert numBytes >= 0: "numBytes=" + numBytes;
-    
-    long left = numBytes;
-    while (left > 0) {
-      if (bufferPosition == bufferLength) {
-        ++currentBufferIndex;
-        switchCurrentBuffer(true);
-      }
-      
-      final int bytesInBuffer = bufferLength - bufferPosition;
-      final int toCopy = (int) (bytesInBuffer < left ? bytesInBuffer : left);
-      out.writeBytes(currentBuffer, bufferPosition, toCopy);
-      bufferPosition += toCopy;
-      left -= toCopy;
-    }
-    
-    assert left == 0: "Insufficient bytes to copy: numBytes=" + numBytes + " copied=" + (numBytes - left);
-  }
-  
   @Override
   public long getFilePointer() {
     return currentBufferIndex < 0 ? 0 : bufferStart + bufferPosition;

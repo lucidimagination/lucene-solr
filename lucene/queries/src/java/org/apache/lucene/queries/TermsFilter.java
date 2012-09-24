@@ -1,6 +1,6 @@
 package org.apache.lucene.queries;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,8 +42,6 @@ public class TermsFilter extends Filter {
 
   /**
    * Adds a term to the list of acceptable terms
-   *
-   * @param term
    */
   public void addTerm(Term term) {
     terms.add(term);
@@ -65,7 +63,7 @@ public class TermsFilter extends Filter {
 
     BytesRef br = new BytesRef();
     String lastField = null;
-    Terms termsC = null;
+    Terms termsC;
     TermsEnum termsEnum = null;
     DocsEnum docs = null;
     for (Term term : terms) {
@@ -80,8 +78,9 @@ public class TermsFilter extends Filter {
 
       if (terms != null) { // TODO this check doesn't make sense, decide which variable its supposed to be for
         br.copyBytes(term.bytes());
+        assert termsEnum != null;
         if (termsEnum.seekCeil(br) == TermsEnum.SeekStatus.FOUND) {
-          docs = termsEnum.docs(acceptDocs, docs, false);
+          docs = termsEnum.docs(acceptDocs, docs, 0);
           while (docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             result.set(docs.docID());
           }

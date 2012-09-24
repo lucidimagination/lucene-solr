@@ -1,5 +1,5 @@
 package org.apache.solr.schema;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -79,6 +79,11 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
   @Override
   protected void init(IndexSchema schema, Map<String, String> args) {
     super.init(schema, args);
+    if (this.isMultiValued()) { 
+      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, 
+                              "CurrencyField types can not be multiValued: " + 
+                              this.typeName);
+    }
     this.schema = schema;
     this.exchangeRateProviderClass = args.get(PARAM_RATE_PROVIDER_CLASS);
     this.defaultCurrency = args.get(PARAM_DEFAULT_CURRENCY);
@@ -131,14 +136,24 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
   }
 
   @Override
+  public void checkSchemaField(final SchemaField field) throws SolrException {
+    super.checkSchemaField(field);
+    if (field.multiValued()) {
+      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, 
+                              "CurrencyFields can not be multiValued: " + 
+                              field.getName());
+    }
+  }
+
+  @Override
   public IndexableField[] createFields(SchemaField field, Object externalVal, float boost) {
     CurrencyValue value = CurrencyValue.parse(externalVal.toString(), defaultCurrency);
 
     IndexableField[] f = new IndexableField[field.stored() ? 3 : 2];
     SchemaField amountField = getAmountField(field);
-    f[0] = amountField.createField(String.valueOf(value.getAmount()), amountField.omitNorms() ? 1F : boost);
+    f[0] = amountField.createField(String.valueOf(value.getAmount()), amountField.indexed() && !amountField.omitNorms() ? boost : 1F);
     SchemaField currencyField = getCurrencyField(field);
-    f[1] = currencyField.createField(value.getCurrencyCode(), currencyField.omitNorms() ? 1F : boost);
+    f[1] = currencyField.createField(value.getCurrencyCode(), currencyField.indexed() && !currencyField.omitNorms() ? boost : 1F);
 
     if (field.stored()) {
       org.apache.lucene.document.FieldType customType = new org.apache.lucene.document.FieldType();
@@ -148,7 +163,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
       if (storedValue.indexOf(",") < 0) {
         storedValue += "," + defaultCurrency;
       }
-      f[2] = createField(field.getName(), storedValue, customType, boost);
+      f[2] = createField(field.getName(), storedValue, customType, 1F);
     }
 
     return f;

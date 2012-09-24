@@ -69,16 +69,16 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     // add the first doc
     Document doc = new Document();
     String dummyTitle = "this is a dummy title ";
-    doc.add(new Field("title", dummyTitle, TextField.TYPE_STORED));
+    doc.add(new TextField("title", dummyTitle, Field.Store.YES));
     String dummyContent = "there is some content written here";
-    doc.add(new Field("contents", dummyContent, TextField.TYPE_STORED));
+    doc.add(new TextField("contents", dummyContent, Field.Store.YES));
     writer.addDocument(doc, analyzer);
     writer.commit();
 
     // try the search over the first doc
     DirectoryReader directoryReader = DirectoryReader.open(dir);
     IndexSearcher indexSearcher = new IndexSearcher(directoryReader);
-    TopDocs result = indexSearcher.search(new MatchAllDocsQuery(), 10);
+    TopDocs result = indexSearcher.search(new MatchAllDocsQuery(), 1);
     assertTrue(result.totalHits > 0);
     Document d = indexSearcher.doc(result.scoreDocs[0].doc);
     assertNotNull(d);
@@ -90,16 +90,16 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     // add a second doc
     doc = new Document();
     String dogmasTitle = "dogmas";
-    doc.add(new Field("title", dogmasTitle, TextField.TYPE_STORED));
+    doc.add(new TextField("title", dogmasTitle, Field.Store.YES));
     String dogmasContents = "white men can't jump";
-    doc.add(new Field("contents", dogmasContents, TextField.TYPE_STORED));
+    doc.add(new TextField("contents", dogmasContents, Field.Store.YES));
     writer.addDocument(doc, analyzer);
     writer.commit();
 
     directoryReader.close();
     directoryReader = DirectoryReader.open(dir);
     indexSearcher = new IndexSearcher(directoryReader);
-    result = indexSearcher.search(new MatchAllDocsQuery(), 10);
+    result = indexSearcher.search(new MatchAllDocsQuery(), 2);
     Document d1 = indexSearcher.doc(result.scoreDocs[1].doc);
     assertNotNull(d1);
     assertNotNull(d1.getField("title"));
@@ -109,7 +109,7 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
 
     // do a matchalldocs query to retrieve both docs
     indexSearcher = new IndexSearcher(directoryReader);
-    result = indexSearcher.search(new MatchAllDocsQuery(), 10);
+    result = indexSearcher.search(new MatchAllDocsQuery(), 2);
     assertEquals(2, result.totalHits);
     writer.close();
     indexSearcher.getIndexReader().close();
@@ -119,7 +119,7 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
   @Test
   public void testRandomStrings() throws Exception {
     checkRandomData(random(), new UIMABaseAnalyzer("/uima/TestAggregateSentenceAE.xml", "org.apache.lucene.uima.ts.TokenAnnotation"),
-        1000 * RANDOM_MULTIPLIER);
+        100 * RANDOM_MULTIPLIER);
   }
 
 }

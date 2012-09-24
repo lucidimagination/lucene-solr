@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,6 +32,9 @@ import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.packed.PackedInts;
 
 /**
+ * Utility class for merging SortedBytes DocValues
+ * instances.
+ *  
  * @lucene.internal
  */
 public final class SortedBytesMergeUtils {
@@ -40,6 +43,8 @@ public final class SortedBytesMergeUtils {
     // no instance
   }
 
+  /** Creates the {@link MergeContext} necessary for merging
+   *  the ordinals. */
   public static MergeContext init(Type type, DocValues[] docValues,
       Comparator<BytesRef> comp, int mergeDocCount) {
     int size = -1;
@@ -54,15 +59,32 @@ public final class SortedBytesMergeUtils {
     }
     return new MergeContext(comp, mergeDocCount, size, type);
   }
-
+  /**
+   * Encapsulates contextual information about the merge. 
+   * This class holds document id to ordinal mappings, offsets for
+   * variable length values and the comparator to sort the merged
+   * bytes.
+   * 
+   * @lucene.internal
+   */
   public static final class MergeContext {
     private final Comparator<BytesRef> comp;
     private final BytesRef missingValue = new BytesRef();
+
+    /** How many bytes each value occupies, or -1 if it
+     *  varies. */
     public final int sizePerValues; // -1 if var length
+
     final Type type;
+
+    /** Maps each document to the ordinal for its value. */
     public final int[] docToEntry;
+
+    /** File-offset for each document; will be null if it's
+     *  not needed (eg fixed-size values). */
     public long[] offsets; // if non-null #mergeRecords collects byte offsets here
 
+    /** Sole constructor. */
     public MergeContext(Comparator<BytesRef> comp, int mergeDocCount,
         int size, Type type) {
       assert type == Type.BYTES_FIXED_SORTED || type == Type.BYTES_VAR_SORTED;
@@ -75,13 +97,17 @@ public final class SortedBytesMergeUtils {
       }
       docToEntry = new int[mergeDocCount];
     }
-    
+
+    /** Returns number of documents merged. */
     public int getMergeDocCount() {
       return docToEntry.length;
     }
   }
 
-  public static List<SortedSourceSlice> buildSlices(int[] docBases, int[][] docMaps,
+  /** Creates the {@link SortedSourceSlice}s for
+   *  merging. */
+  public static List<SortedSourceSlice> buildSlices(
+      int[] docBases, MergeState.DocMap[] docMaps,
       DocValues[] docValues, MergeContext ctx) throws IOException {
     final List<SortedSourceSlice> slices = new ArrayList<SortedSourceSlice>();
     for (int i = 0; i < docValues.length; i++) {
@@ -111,15 +137,15 @@ public final class SortedBytesMergeUtils {
    * mapping in docIDToRelativeOrd. After the merge SortedSourceSlice#ordMapping
    * contains the new global ordinals for the relative index.
    */
-  private static void createOrdMapping(int[] docBases, int[][] docMaps,
+  private static void createOrdMapping(int[] docBases, MergeState.DocMap[] docMaps,
       SortedSourceSlice currentSlice) {
     final int readerIdx = currentSlice.readerIdx;
-    final int[] currentDocMap = docMaps[readerIdx];
+    final MergeState.DocMap currentDocMap = docMaps[readerIdx];
     final int docBase = currentSlice.docToOrdStart;
     assert docBase == docBases[readerIdx];
-    if (currentDocMap != null) { // we have deletes
-      for (int i = 0; i < currentDocMap.length; i++) {
-        final int doc = currentDocMap[i];
+    if (currentDocMap != null && currentDocMap.hasDeletions()) { // we have deletes
+      for (int i = 0; i < currentDocMap.maxDoc(); i++) {
+        final int doc = currentDocMap.get(i);
         if (doc != -1) { // not deleted
           final int ord = currentSlice.source.ord(i); // collect ords strictly
                                                       // increasing
@@ -139,6 +165,8 @@ public final class SortedBytesMergeUtils {
     }
   }
 
+  /** Does the "real work" of merging the slices and
+   *  computing the ord mapping. */
   public static int mergeRecords(MergeContext ctx, BytesRefConsumer consumer,
       List<SortedSourceSlice> slices) throws IOException {
     final RecordMerger merger = new RecordMerger(new MergeQueue(slices.size(),
@@ -168,13 +196,40 @@ public final class SortedBytesMergeUtils {
     return merger.currentOrd;
   }
   
+  /**
+   * Implementation of this interface consume the merged bytes with their
+   * corresponding ordinal and byte offset. The offset is the byte offset in
+   * target sorted source where the currently merged {@link BytesRef} instance
+   * should be stored at.
+   */
   public static interface BytesRefConsumer {
+    
+    /**
+     * Consumes a single {@link BytesRef}. The provided {@link BytesRef}
+     * instances are strictly increasing with respect to the used
+     * {@link Comparator} used for merging
+     * 
+     * @param ref
+     *          the {@link BytesRef} to consume
+     * @param ord
+     *          the ordinal of the given {@link BytesRef} in the merge target
+     * @param offset
+     *          the byte offset of the given {@link BytesRef} in the merge
+     *          target
+     * @throws IOException
+     *           if an {@link IOException} occurs
+     */
     public void consume(BytesRef ref, int ord, long offset) throws IOException;
   }
   
+  /**
+   * A simple {@link BytesRefConsumer} that writes the merged {@link BytesRef}
+   * instances sequentially to an {@link IndexOutput}.
+   */
   public static final class IndexOutputBytesRefConsumer implements BytesRefConsumer {
     private final IndexOutput datOut;
     
+    /** Sole constructor. */
     public IndexOutputBytesRefConsumer(IndexOutput datOut) {
       this.datOut = datOut;
     }
@@ -185,7 +240,15 @@ public final class SortedBytesMergeUtils {
           currentMergedBytes.length);      
     }
   }
-
+  
+  /**
+   * {@link RecordMerger} merges a list of {@link SortedSourceSlice} lazily by
+   * consuming the sorted source records one by one and de-duplicates records
+   * that are shared across slices. The algorithm is based on a lazy priority queue
+   * that prevents reading merge sources into heap memory. 
+   * 
+   * @lucene.internal
+   */
   private static final class RecordMerger {
     private final MergeQueue queue;
     private final SortedSourceSlice[] top;
@@ -217,7 +280,7 @@ public final class SortedBytesMergeUtils {
       current = top[0].current;
     }
 
-    private void pushTop() throws IOException {
+    private void pushTop() {
       // call next() on each top, and put back into queue
       for (int i = 0; i < numTop; i++) {
         top[i].current = top[i].next();
@@ -230,6 +293,12 @@ public final class SortedBytesMergeUtils {
     }
   }
 
+  /**
+   * {@link SortedSourceSlice} represents a single {@link SortedSource} merge candidate.
+   * It encapsulates ordinal and pre-calculated target doc id to ordinal mappings.
+   * This class also holds state private to the merge process.
+   * @lucene.internal
+   */
   public static class SortedSourceSlice {
     final SortedSource source;
     final int readerIdx;
@@ -279,7 +348,10 @@ public final class SortedBytesMergeUtils {
       }
       return null;
     }
-    
+
+    /** Fills in the absolute ords for this slice. 
+     * 
+     * @return the provided {@code docToOrd} */
     public int[] toAbsolutOrds(int[] docToOrd) {
       for (int i = docToOrdStart; i < docToOrdEnd; i++) {
         final int mappedOrd = docIDToRelativeOrd[i];
@@ -290,6 +362,7 @@ public final class SortedBytesMergeUtils {
       return docToOrd;
     }
 
+    /** Writes ords for this slice. */
     public void writeOrds(PackedInts.Writer writer) throws IOException {
       for (int i = docToOrdStart; i < docToOrdEnd; i++) {
         final int mappedOrd = docIDToRelativeOrd[i];

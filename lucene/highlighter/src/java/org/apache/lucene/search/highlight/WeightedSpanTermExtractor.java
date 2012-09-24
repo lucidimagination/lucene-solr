@@ -1,6 +1,6 @@
 package org.apache.lucene.search.highlight;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,6 +32,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.memory.MemoryIndex;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.spans.FieldMaskingSpanQuery;
@@ -43,7 +44,6 @@ import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.Spans;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.TermContext;
 
 /**
  * Class used to extract {@link WeightedSpanTerm}s from a {@link Query} based on whether 
@@ -88,7 +88,7 @@ public class WeightedSpanTermExtractor {
    *          Query to extract Terms from
    * @param terms
    *          Map to place created WeightedSpanTerms in
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   protected void extract(Query query, Map<String,WeightedSpanTerm> terms) throws IOException {
     if (query instanceof BooleanQuery) {
@@ -221,7 +221,7 @@ public class WeightedSpanTermExtractor {
    *          Map to place created WeightedSpanTerms in
    * @param spanQuery
    *          SpanQuery to extract Terms from
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   protected void extractWeightedSpanTerms(Map<String,WeightedSpanTerm> terms, SpanQuery spanQuery) throws IOException {
     Set<String> fieldNames;
@@ -309,7 +309,7 @@ public class WeightedSpanTermExtractor {
    *          Map to place created WeightedSpanTerms in
    * @param query
    *          Query to extract Terms from
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   protected void extractWeightedTerms(Map<String,WeightedSpanTerm> terms, Query query) throws IOException {
     Set<Term> nonWeightedTerms = new HashSet<Term>();
@@ -362,7 +362,7 @@ public class WeightedSpanTermExtractor {
    * @param tokenStream
    *          of text to be highlighted
    * @return Map containing WeightedSpanTerms
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public Map<String,WeightedSpanTerm> getWeightedSpanTerms(Query query, TokenStream tokenStream)
       throws IOException {
@@ -381,7 +381,7 @@ public class WeightedSpanTermExtractor {
    * @param fieldName
    *          restricts Term's used based on field name
    * @return Map containing WeightedSpanTerms
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public Map<String,WeightedSpanTerm> getWeightedSpanTerms(Query query, TokenStream tokenStream,
       String fieldName) throws IOException {
@@ -417,7 +417,7 @@ public class WeightedSpanTermExtractor {
    * @param reader
    *          to use for scoring
    * @return Map of WeightedSpanTerms with quasi tf/idf scores
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   public Map<String,WeightedSpanTerm> getWeightedSpanTermsWithScores(Query query, TokenStream tokenStream, String fieldName,
       IndexReader reader) throws IOException {
@@ -431,7 +431,7 @@ public class WeightedSpanTermExtractor {
     Map<String,WeightedSpanTerm> terms = new PositionCheckingMap<String>();
     extract(query, terms);
 
-    int totalNumDocs = reader.numDocs();
+    int totalNumDocs = reader.maxDoc();
     Set<String> weightedTerms = terms.keySet();
     Iterator<String> it = weightedTerms.iterator();
 
@@ -439,12 +439,8 @@ public class WeightedSpanTermExtractor {
       while (it.hasNext()) {
         WeightedSpanTerm weightedSpanTerm = terms.get(it.next());
         int docFreq = reader.docFreq(new Term(fieldName, weightedSpanTerm.term));
-        // docFreq counts deletes
-        if(totalNumDocs < docFreq) {
-          docFreq = totalNumDocs;
-        }
         // IDF algorithm taken from DefaultSimilarity class
-        float idf = (float) (Math.log((float) totalNumDocs / (double) (docFreq + 1)) + 1.0);
+        float idf = (float) (Math.log(totalNumDocs / (double) (docFreq + 1)) + 1.0);
         weightedSpanTerm.weight *= idf;
       }
     } finally {
@@ -555,8 +551,6 @@ public class WeightedSpanTermExtractor {
    * ensure an efficient reset - if you are already using a different caching
    * {@link TokenStream} impl and you don't want it to be wrapped, set this to
    * false.
-   * 
-   * @param wrap
    */
   public void setWrapIfNotCachingTokenFilter(boolean wrap) {
     this.wrapToCaching = wrap;

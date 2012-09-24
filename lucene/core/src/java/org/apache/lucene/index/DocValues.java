@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,6 +18,7 @@ package org.apache.lucene.index;
  */
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Comparator;
 
 import org.apache.lucene.codecs.DocValuesFormat;
@@ -31,6 +32,7 @@ import org.apache.lucene.document.PackedLongDocValuesField; // javadocs
 import org.apache.lucene.document.ShortDocValuesField; // javadocs
 import org.apache.lucene.document.SortedBytesDocValuesField; // javadocs
 import org.apache.lucene.document.StraightBytesDocValuesField; // javadocs
+import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.packed.PackedInts;
 
@@ -47,6 +49,17 @@ import org.apache.lucene.util.packed.PackedInts;
  * IndexReader.
  * <p>
  * {@link DocValues} are fully integrated into the {@link DocValuesFormat} API.
+ * <p>
+ * NOTE: DocValues is a strongly typed per-field API. Type changes within an
+ * indexing session can result in exceptions if the type has changed in a way that
+ * the previously give type for a field can't promote the value without losing
+ * information. For instance a field initially indexed with {@link Type#FIXED_INTS_32}
+ * can promote a value with {@link Type#FIXED_INTS_8} but can't promote
+ * {@link Type#FIXED_INTS_64}. During segment merging type-promotion exceptions are suppressed. 
+ * Fields will be promoted to their common denominator or automatically transformed
+ * into a 3rd type like {@link Type#BYTES_VAR_STRAIGHT} to prevent data loss and merge exceptions.
+ * This behavior is considered <i>best-effort</i> might change in future releases.
+ * </p>
  * 
  * @see Type for limitations and default implementation documentation
  * @see ByteDocValuesField for adding byte values to the index
@@ -65,11 +78,17 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 public abstract class DocValues implements Closeable {
 
+  /** Zero length DocValues array. */
   public static final DocValues[] EMPTY_ARRAY = new DocValues[0];
 
   private volatile SourceCache cache = new SourceCache.DirectSourceCache();
   private final Object cacheLock = new Object();
   
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected DocValues() {
+  }
+
   /**
    * Loads a new {@link Source} instance for this {@link DocValues} field
    * instance. Source instances returned from this method are not cached. It is
@@ -92,7 +111,7 @@ public abstract class DocValues implements Closeable {
    * <p>
    * {@link Source} instances obtained from this method are closed / released
    * from the cache once this {@link DocValues} instance is closed by the
-   * {@link IndexReader}, {@link Fields} or {@link FieldsEnum} the
+   * {@link IndexReader}, {@link Fields} or the
    * {@link DocValues} was created from.
    */
   public Source getSource() throws IOException {
@@ -160,9 +179,12 @@ public abstract class DocValues implements Closeable {
    * @see DocValues#getDirectSource()
    */
   public static abstract class Source {
-    
+
+    /** {@link Type} of this {@code Source}. */
     protected final Type type;
 
+    /** Sole constructor. (For invocation by subclass 
+     *  constructors, typically implicit.) */
     protected Source(Type type) {
       this.type = type;
     }
@@ -195,7 +217,6 @@ public abstract class DocValues implements Closeable {
      * Returns a {@link BytesRef} for the given document id or throws an
      * {@link UnsupportedOperationException} if this source doesn't support
      * <tt>byte[]</tt> values.
-     * @throws IOException 
      * 
      * @throws UnsupportedOperationException
      *           if this source doesn't support <tt>byte[]</tt> values.
@@ -249,6 +270,8 @@ public abstract class DocValues implements Closeable {
 
     private final Comparator<BytesRef> comparator;
 
+    /** Sole constructor. (For invocation by subclass 
+     * constructors, typically implicit.) */
     protected SortedSource(Type type, Comparator<BytesRef> comparator) {
       super(type);
       this.comparator = comparator;
@@ -391,6 +414,18 @@ public abstract class DocValues implements Closeable {
       @Override
       public Object getArray() {
         return null;
+      }
+
+      @Override
+      public int get(int index, long[] arr, int off, int len) {
+        len = Math.min(len, size() - index);
+        Arrays.fill(arr, off, off+len, 0);
+        return len;
+      }
+
+      @Override
+      public long ramBytesUsed() {
+        return 0;
       }
     };
 
@@ -661,6 +696,11 @@ public abstract class DocValues implements Closeable {
    */
   public static abstract class SourceCache {
 
+    /** Sole constructor. (For invocation by subclass 
+     * constructors, typically implicit.) */
+    protected SourceCache() {
+    }
+
     /**
      * Atomically loads a {@link Source} into the cache from the given
      * {@link DocValues} and returns it iff no other {@link Source} has already
@@ -692,6 +732,10 @@ public abstract class DocValues implements Closeable {
      */
     public static final class DirectSourceCache extends SourceCache {
       private Source ref;
+
+      /** Sole constructor. */
+      public DirectSourceCache() {
+      }
 
       public synchronized Source load(DocValues values) throws IOException {
         if (ref == null) {

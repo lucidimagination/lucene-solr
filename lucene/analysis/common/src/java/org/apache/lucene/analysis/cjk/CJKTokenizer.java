@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.cjk;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -307,11 +307,5 @@ public final class CJKTokenizer extends Tokenizer {
       offset = bufferIndex = dataLen = 0;
       preIsTokened = false;
       tokenType = WORD_TYPE;
-    }
-    
-    @Override
-    public void reset(Reader reader) throws IOException {
-      super.reset(reader);
-      reset();
     }
 }

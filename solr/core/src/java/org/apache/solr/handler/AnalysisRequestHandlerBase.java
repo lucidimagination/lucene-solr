@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,15 +18,12 @@
 package org.apache.solr.handler;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.CharReader;
-import org.apache.lucene.analysis.CharStream;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.*;
 import org.apache.lucene.analysis.util.CharFilterFactory;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.index.Payload;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeSource;
@@ -42,6 +39,7 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.FieldType;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.util.*;
 import org.apache.commons.lang.ArrayUtils;
@@ -107,13 +105,13 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
     if( cfiltfacs != null ){
       String source = value;
       for(CharFilterFactory cfiltfac : cfiltfacs ){
-        CharStream reader = CharReader.get(new StringReader(source));
+        Reader reader = new StringReader(source);
         reader = cfiltfac.create(reader);
         source = writeCharStream(namedList, reader);
       }
     }
 
-    TokenStream tokenStream = tfac.create(tokenizerChain.initReader(new StringReader(value)));
+    TokenStream tokenStream = tfac.create(tokenizerChain.initReader(null, new StringReader(value)));
     List<AttributeSource> tokens = analyzeTokenStream(tokenStream);
 
     namedList.add(tokenStream.getClass().getName(), convertTokensToNamedLists(tokens, context));
@@ -273,9 +271,9 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
             k = ATTRIBUTE_MAPPING.get(k);
           }
           
-          if (value instanceof Payload) {
-            final Payload p = (Payload) value;
-            value = new BytesRef(p.getData()).toString();
+          if (value instanceof BytesRef) {
+            final BytesRef p = (BytesRef) value;
+            value = p.toString();
           }
 
           tokenNamedList.add(k, value);
@@ -288,7 +286,7 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
     return tokensNamedLists;
   }
   
-  private String writeCharStream(NamedList<Object> out, CharStream input ){
+  private String writeCharStream(NamedList<Object> out, Reader input ){
     final int BUFFER_SIZE = 1024;
     char[] buf = new char[BUFFER_SIZE];
     int len = 0;
@@ -327,7 +325,7 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
     }
 
     @Override
-    public boolean incrementToken() throws IOException {
+    public boolean incrementToken() {
       if (tokenIterator.hasNext()) {
         clearAttributes();
         AttributeSource next = tokenIterator.next();

@@ -22,6 +22,15 @@ import com.spatial4j.core.shape.Shape;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Bounded Cache of Shapes associated with docIds.  Note, multiple Shapes can be
+ * associated with a given docId.
+ * <p>
+ * WARNING: This class holds the data in an extremely inefficient manner as all Points are in memory as objects and they
+ * are stored in many ArrayLists (one per document).  So it works but doesn't scale.  It will be replaced in the future.
+ *
+ * @lucene.internal
+ */
 public class ShapeFieldCache<T extends Shape> {
   private List<T>[] cache;
   public int defaultLength;

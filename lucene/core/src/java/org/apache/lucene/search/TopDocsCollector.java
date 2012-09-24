@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,8 +33,8 @@ import org.apache.lucene.util.PriorityQueue;
  */
 public abstract class TopDocsCollector<T extends ScoreDoc> extends Collector {
 
-  // This is used in case topDocs() is called with illegal parameters, or there
-  // simply aren't (enough) results.
+  /** This is used in case topDocs() is called with illegal parameters, or there
+   *  simply aren't (enough) results. */
   protected static final TopDocs EMPTY_TOPDOCS = new TopDocs(0, new ScoreDoc[0], Float.NaN);
   
   /**

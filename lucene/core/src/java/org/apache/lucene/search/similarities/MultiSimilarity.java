@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,8 +34,11 @@ import org.apache.lucene.util.BytesRef;
  * @lucene.experimental
  */
 public class MultiSimilarity extends Similarity {
+  /** the sub-similarities used to create the combined score */
   protected final Similarity sims[];
   
+  /** Creates a MultiSimilarity which will sum the scores
+   * of the provided <code>sims</code>. */
   public MultiSimilarity(Similarity sims[]) {
     this.sims = sims;
   }

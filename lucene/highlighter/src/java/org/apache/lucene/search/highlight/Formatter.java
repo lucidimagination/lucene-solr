@@ -1,5 +1,5 @@
 package org.apache.lucene.search.highlight;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,10 +24,10 @@ package org.apache.lucene.search.highlight;
  */
 public interface Formatter
 {
-	/**
-	 * @param originalText The section of text being considered for markup
-	 * @param tokenGroup contains one or several overlapping Tokens along with
-	 * their scores and positions.
-	 */
-	String highlightTerm(String originalText, TokenGroup tokenGroup);
+  /**
+   * @param originalText The section of text being considered for markup
+   * @param tokenGroup contains one or several overlapping Tokens along with
+   * their scores and positions.
+   */
+  String highlightTerm(String originalText, TokenGroup tokenGroup);
 }

@@ -31,10 +31,21 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * Abstract parent class for analysis factories {@link TokenizerFactory},
  * {@link TokenFilterFactory} and {@link CharFilterFactory}.
+ * <p>
+ * The typical lifecycle for a factory consumer is:
+ * <ol>
+ *   <li>Create factory via its a no-arg constructor
+ *   <li>Set version emulation by calling {@link #setLuceneMatchVersion(Version)}
+ *   <li>Calls {@link #init(Map)} passing arguments as key-value mappings.
+ *   <li>(Optional) If the factory uses resources such as files, {@link ResourceLoaderAware#inform(ResourceLoader)} is called to initialize those resources.
+ *   <li>Consumer calls create() to obtain instances.
+ * </ol>
  */
 public abstract class AbstractAnalysisFactory {
 
@@ -44,6 +55,9 @@ public abstract class AbstractAnalysisFactory {
   /** the luceneVersion arg */
   protected Version luceneMatchVersion = null;
 
+  /**
+   * Initialize this factory via a set of key-value pairs.
+   */
   public void init(Map<String,String> args) {
     this.args = args;
   }
@@ -57,7 +71,7 @@ public abstract class AbstractAnalysisFactory {
    * to inform user, that for this factory a {@link #luceneMatchVersion} is required */
   protected final void assureMatchVersion() {
     if (luceneMatchVersion == null) {
-      throw new InitializationException("Configuration Error: Factory '" + this.getClass().getName() +
+      throw new IllegalArgumentException("Configuration Error: Factory '" + this.getClass().getName() +
         "' needs a 'luceneMatchVersion' parameter");
     }
   }
@@ -84,7 +98,7 @@ public abstract class AbstractAnalysisFactory {
       if (useDefault) {
         return defaultVal;
       }
-      throw new InitializationException("Configuration Error: missing parameter '" + name + "'");
+      throw new IllegalArgumentException("Configuration Error: missing parameter '" + name + "'");
     }
     return Integer.parseInt(s);
   }
@@ -97,11 +111,32 @@ public abstract class AbstractAnalysisFactory {
     String s = args.get(name);
     if (s==null) {
       if (useDefault) return defaultVal;
-      throw new InitializationException("Configuration Error: missing parameter '" + name + "'");
+      throw new IllegalArgumentException("Configuration Error: missing parameter '" + name + "'");
     }
     return Boolean.parseBoolean(s);
   }
 
+  /**
+   * Compiles a pattern for the value of the specified argument key <code>name</code> 
+   */
+  protected Pattern getPattern(String name) {
+    try {
+      String pat = args.get(name);
+      if (null == pat) {
+        throw new IllegalArgumentException("Configuration Error: missing parameter '" + name + "'");
+      }
+      return Pattern.compile(args.get(name));
+    } catch (PatternSyntaxException e) {
+      throw new IllegalArgumentException
+        ("Configuration Error: '" + name + "' can not be parsed in " +
+         this.getClass().getSimpleName(), e);
+    }
+  }
+
+  /**
+   * Returns as {@link CharArraySet} from wordFiles, which
+   * can be a comma-separated list of filenames
+   */
   protected CharArraySet getWordSet(ResourceLoader loader,
       String wordFiles, boolean ignoreCase) throws IOException {
     assureMatchVersion();
@@ -113,12 +148,19 @@ public abstract class AbstractAnalysisFactory {
       words = new CharArraySet(luceneMatchVersion,
           files.size() * 10, ignoreCase);
       for (String file : files) {
-        List<String> wlist = loader.getLines(file.trim());
+        List<String> wlist = getLines(loader, file.trim());
         words.addAll(StopFilter.makeStopSet(luceneMatchVersion, wlist,
             ignoreCase));
       }
     }
     return words;
+  }
+  
+  /**
+   * Returns the resource's lines (with content treated as UTF-8)
+   */
+  protected List<String> getLines(ResourceLoader loader, String resource) throws IOException {
+    return WordlistLoader.getLines(loader.openResource(resource), IOUtils.CHARSET_UTF_8);
   }
 
   /** same as {@link #getWordSet(ResourceLoader, String, boolean)},

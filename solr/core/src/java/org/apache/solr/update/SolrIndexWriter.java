@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -54,20 +54,38 @@ public class SolrIndexWriter extends IndexWriter {
   String name;
   private DirectoryFactory directoryFactory;
 
-  public SolrIndexWriter(String name, String path, DirectoryFactory directoryFactory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec, boolean forceNewDirectory) throws IOException {
-    super(
-        directoryFactory.get(path, config.lockType, forceNewDirectory),
-        config.toIndexWriterConfig(schema).
-            setOpenMode(create ? IndexWriterConfig.OpenMode.CREATE : IndexWriterConfig.OpenMode.APPEND).
-            setIndexDeletionPolicy(delPolicy).setCodec(codec).setInfoStream(toInfoStream(config))
-    );
+  public static SolrIndexWriter create(String name, String path, DirectoryFactory directoryFactory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec, boolean forceNewDirectory) throws IOException {
+
+    SolrIndexWriter w = null;
+    final Directory d = directoryFactory.get(path, config.lockType, forceNewDirectory);
+    try {
+      w = new SolrIndexWriter(name, path, d, create, schema, 
+                              config, delPolicy, codec, forceNewDirectory);
+      w.setDirectoryFactory(directoryFactory);
+      return w;
+    } finally {
+      if (null == w && null != d) { 
+        directoryFactory.doneWithDirectory(d);
+        directoryFactory.release(d);
+      }
+    }
+  }
+
+  private SolrIndexWriter(String name, String path, Directory directory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec, boolean forceNewDirectory) throws IOException {
+    super(directory,
+          config.toIndexWriterConfig(schema).
+          setOpenMode(create ? IndexWriterConfig.OpenMode.CREATE : IndexWriterConfig.OpenMode.APPEND).
+          setIndexDeletionPolicy(delPolicy).setCodec(codec).setInfoStream(toInfoStream(config))
+          );
     log.debug("Opened Writer " + name);
     this.name = name;
-
-    this.directoryFactory = directoryFactory;
     numOpens.incrementAndGet();
   }
   
+  private void setDirectoryFactory(DirectoryFactory factory) {
+    this.directoryFactory = factory;
+  }
+
   private static InfoStream toInfoStream(SolrIndexConfig config) throws IOException {
     String infoStreamFile = config.infoStreamFile;
     if (infoStreamFile != null) {
@@ -75,7 +93,7 @@ public class SolrIndexWriter extends IndexWriter {
       File parent = f.getParentFile();
       if (parent != null) parent.mkdirs();
       FileOutputStream fos = new FileOutputStream(f, true);
-      return new PrintStreamInfoStream(new PrintStream(fos, true));
+      return new PrintStreamInfoStream(new PrintStream(fos, true, "UTF-8"));
     } else {
       return InfoStream.NO_OUTPUT;
     }
@@ -122,10 +140,11 @@ public class SolrIndexWriter extends IndexWriter {
     final InfoStream infoStream = isClosed ? null : getConfig().getInfoStream();    
     try {
       super.close();
+    } finally {
       if(infoStream != null) {
         infoStream.close();
       }
-    } finally {
+      
       isClosed = true;
 
       directoryFactory.release(directory);
@@ -140,6 +159,8 @@ public class SolrIndexWriter extends IndexWriter {
       super.rollback();
     } finally {
       isClosed = true;
+      directoryFactory.release(getDirectory());
+      numCloses.incrementAndGet();
     }
   }
 

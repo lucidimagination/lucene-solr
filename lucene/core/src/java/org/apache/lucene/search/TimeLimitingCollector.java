@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -86,7 +86,7 @@ public class TimeLimitingCollector extends Collector {
    * set the baseline through this method in your prelude.
    * <p>
    * Example usage:
-   * <pre>
+   * <pre class="prettyprint">
    *   Counter clock = ...;
    *   long baseline = clock.get();
    *   // ... prepare search
@@ -96,7 +96,6 @@ public class TimeLimitingCollector extends Collector {
    * </pre>
    * </p>
    * @see #setBaseline() 
-   * @param clockTime
    */
   public void setBaseline(long clockTime) {
     t0 = clockTime;
@@ -225,6 +224,8 @@ public class TimeLimitingCollector extends Collector {
   }
 
   /**
+   * Thread used to timeout search requests.
+   * Can be stopped completely with {@link TimerThread#stopTimer()}
    * @lucene.experimental
    */
   public static final class TimerThread extends Thread  {

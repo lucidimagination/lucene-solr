@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,6 +30,10 @@ import static org.apache.lucene.search.similarities.SimilarityBase.log2;
  * but with less practical problems. 
  */
 public class BasicModelBE extends BasicModel {
+  
+  /** Sole constructor: parameter-free */
+  public BasicModelBE() {}
+
   @Override
   public final float score(BasicStats stats, float tfn) {
     double F = stats.getTotalTermFreq() + 1 + tfn;

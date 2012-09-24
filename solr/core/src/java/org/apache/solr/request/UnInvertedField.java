@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -125,11 +125,12 @@ public class UnInvertedField extends DocTermOrds {
       if (deState == null) {
         deState = new SolrIndexSearcher.DocsEnumState();
         deState.fieldName = field;
-        // deState.termsEnum = te.tenum;
+        deState.liveDocs = searcher.getAtomicReader().getLiveDocs();
         deState.termsEnum = te;  // TODO: check for MultiTermsEnum in SolrIndexSearcher could now fail?
         deState.docsEnum = docsEnum;
         deState.minSetSizeCached = maxTermDocFreq;
       }
+
       docsEnum = deState.docsEnum;
       DocSet set = searcher.getDocSet(deState);
       maxTermCounts[termNum] = set.size();
@@ -455,7 +456,7 @@ public class UnInvertedField extends DocTermOrds {
    * @param baseDocs The {@link org.apache.solr.search.DocSet} to gather the stats on
    * @param facet One or more fields to facet on.
    * @return The {@link org.apache.solr.handler.component.StatsValues} collected
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public StatsValues getStats(SolrIndexSearcher searcher, DocSet baseDocs, String[] facet) throws IOException {
     //this function is ripped off nearly wholesale from the getCounts function to use

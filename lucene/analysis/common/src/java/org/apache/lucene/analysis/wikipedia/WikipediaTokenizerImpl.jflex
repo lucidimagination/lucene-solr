@@ -27,6 +27,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 %function getNextToken
 %pack
 %char
+%buffer 4096
 
 %{
 
@@ -135,7 +136,7 @@ NUM        = ({ALPHANUM} {P} {HAS_DIGIT}
 TAGS = "<"\/?{ALPHANUM}({WHITESPACE}*{ALPHANUM}=\"{ALPHANUM}\")*">"
 
 // punctuation
-P	         = ("_"|"-"|"/"|"."|",")
+P           = ("_"|"-"|"/"|"."|",")
 
 // at least one digit
 HAS_DIGIT  =

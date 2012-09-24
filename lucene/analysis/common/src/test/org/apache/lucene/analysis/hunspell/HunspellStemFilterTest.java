@@ -1,5 +1,5 @@
 package org.apache.lucene.analysis.hunspell;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,6 +30,7 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
 import org.apache.lucene.analysis.miscellaneous.KeywordMarkerFilter;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 public class HunspellStemFilterTest  extends BaseTokenStreamTestCase {
@@ -38,6 +39,10 @@ public class HunspellStemFilterTest  extends BaseTokenStreamTestCase {
   @BeforeClass
   public static void beforeClass() throws IOException, ParseException {
     DICTIONARY = createDict(true);
+  }
+  @AfterClass
+  public static void afterClass() {
+    DICTIONARY = null;
   }
   public static HunspellDictionary createDict(boolean ignoreCase) throws IOException, ParseException {
     InputStream affixStream = HunspellStemmerTest.class.getResourceAsStream("test.aff");
@@ -72,7 +77,7 @@ public class HunspellStemFilterTest  extends BaseTokenStreamTestCase {
         return new TokenStreamComponents(tokenizer, new HunspellStemFilter(tokenizer, DICTIONARY));
       }  
     };
-    checkRandomData(random(), analyzer, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
   }
   
   public void testEmptyTerm() throws IOException {

@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,16 +17,16 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.LuceneTestCase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+
 
 /**
  * https://issues.apache.org/jira/browse/LUCENE-1974
@@ -36,7 +36,6 @@ import org.junit.BeforeClass;
  *    BooleanScorer.score(Collector collector, int max, int firstDocID)
  * 
  * Line 273, end=8192, subScorerDocID=11378, then more got false?
- * 
  */
 public class TestPrefixInBooleanQuery extends LuceneTestCase {
 
@@ -51,7 +50,7 @@ public class TestPrefixInBooleanQuery extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
 
     Document doc = new Document();
-    Field field = newField(FIELD, "meaninglessnames", StringField.TYPE_UNSTORED);
+    Field field = newStringField(FIELD, "meaninglessnames", Field.Store.NO);
     doc.add(field);
     
     for (int i = 0; i < 5137; ++i) {

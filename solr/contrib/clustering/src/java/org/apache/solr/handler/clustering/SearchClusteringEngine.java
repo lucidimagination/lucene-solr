@@ -1,5 +1,5 @@
 package org.apache.solr.handler.clustering;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,6 @@ public abstract class SearchClusteringEngine extends ClusteringEngine {
    * Returns the set of field names to load.
    * Concrete classes can override this method if needed.
    * Default implementation returns null, that is, all stored fields are loaded.
-   * @param sreq
    * @return set of field names to load
    */
   protected Set<String> getFieldsToLoad(SolrQueryRequest sreq){

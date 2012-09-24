@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,11 +22,11 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.util.DOMUtil;
 import org.apache.solr.core.SolrConfig;
+import org.apache.solr.core.SolrResourceLoader;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
@@ -72,16 +72,19 @@ public abstract class AbstractPluginLoader<T>
   
   /**
    * Create a plugin from an XML configuration.  Plugins are defined using:
-   *   <plugin name="name1" class="solr.ClassName">
+   * <pre class="prettyprint">
+   * {@code
+   * <plugin name="name1" class="solr.ClassName">
    *      ...
-   *   </plugin>
+   * </plugin>}
+   * </pre>
    * 
    * @param name - The registered name.  In the above example: "name1"
    * @param className - class name for requested plugin.  In the above example: "solr.ClassName"
    * @param node - the XML node defining this plugin
    */
   @SuppressWarnings("unchecked")
-  protected T create( ResourceLoader loader, String name, String className, Node node ) throws Exception
+  protected T create( SolrResourceLoader loader, String name, String className, Node node ) throws Exception
   {
     return loader.newInstance(className, pluginClassType, getDefaultPackages());
   }
@@ -101,16 +104,19 @@ public abstract class AbstractPluginLoader<T>
   abstract protected void init( T plugin, Node node ) throws Exception;
 
   /**
+   * Initializes and registers each plugin in the list.
    * Given a NodeList from XML in the form:
-   * 
-   *  <plugins>
+   * <pre class="prettyprint">
+   * {@code
+   * <plugins>
    *    <plugin name="name1" class="solr.ClassName" >
    *      ...
    *    </plugin>
    *    <plugin name="name2" class="solr.ClassName" >
    *      ...
    *    </plugin>
-   *  </plugins>
+   * </plugins>}
+   * </pre>
    * 
    * This will initialize and register each plugin from the list.  A class will 
    * be generated for each class name and registered to the given name.
@@ -120,11 +126,14 @@ public abstract class AbstractPluginLoader<T>
    * plugins at startup.
    * 
    * One (and only one) plugin may declare itself to be the 'default' plugin using:
-   *    <plugin name="name2" class="solr.ClassName" default="true">
+   * <pre class="prettyprint">
+   * {@code
+   *    <plugin name="name2" class="solr.ClassName" default="true">}
+   * </pre>
    * If a default element is defined, it will be returned from this function.
    * 
    */
-  public T load( ResourceLoader loader, NodeList nodes )
+  public T load( SolrResourceLoader loader, NodeList nodes )
   {
     List<PluginInitInfo> info = new ArrayList<PluginInitInfo>();
     T defaultPlugin = null;
@@ -133,10 +142,9 @@ public abstract class AbstractPluginLoader<T>
       for (int i=0; i<nodes.getLength(); i++) {
         Node node = nodes.item(i);
   
-        // In a production environment, we can tolerate an error in some request handlers, 
-        // still load the others, and have a working system.
+        String name = null;
         try {
-          String name       = DOMUtil.getAttr(node,"name", requireName?type:null);
+          name              = DOMUtil.getAttr(node,"name", requireName?type:null);
           String className  = DOMUtil.getAttr(node,"class", type);
           String defaultStr = DOMUtil.getAttr(node,"default", null );
             
@@ -168,7 +176,9 @@ public abstract class AbstractPluginLoader<T>
         catch (Exception ex) {
           SolrException e = new SolrException
             (ErrorCode.SERVER_ERROR,
-             "Plugin init failure for " + type + ":" + ex.getMessage(), ex);
+             "Plugin init failure for " + type + 
+             (null != name ? (" \"" + name + "\"") : "") +
+             ": " + ex.getMessage(), ex);
           throw e;
         }
       }
@@ -189,9 +199,13 @@ public abstract class AbstractPluginLoader<T>
   }
   
   /**
-   * Given a NodeList from XML in the form:
+   * Initializes and registers a single plugin.
    * 
-   * <plugin name="name1" class="solr.ClassName" > ... </plugin>
+   * Given a NodeList from XML in the form:
+   * <pre class="prettyprint">
+   * {@code
+   * <plugin name="name1" class="solr.ClassName" > ... </plugin>}
+   * </pre>
    * 
    * This will initialize and register a single plugin. A class will be
    * generated for the plugin and registered to the given name.
@@ -203,7 +217,7 @@ public abstract class AbstractPluginLoader<T>
    * The created class for the plugin will be returned from this function.
    * 
    */
-  public T loadSingle(ResourceLoader loader, Node node) {
+  public T loadSingle(SolrResourceLoader loader, Node node) {
     List<PluginInitInfo> info = new ArrayList<PluginInitInfo>();
     T plugin = null;
 

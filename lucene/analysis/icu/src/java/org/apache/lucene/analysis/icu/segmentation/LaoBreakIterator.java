@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.icu.segmentation;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -73,6 +73,10 @@ public class LaoBreakIterator extends BreakIterator {
     laoSet.freeze();
   }
   
+  /** 
+   * Creates a new iterator, performing the backtracking verification
+   * across the provided <code>rules</code>.
+   */
   public LaoBreakIterator(RuleBasedBreakIterator rules) {
     this.rules = (RuleBasedBreakIterator) rules.clone();
     this.verify = (RuleBasedBreakIterator) rules.clone();

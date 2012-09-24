@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,9 +22,12 @@ import org.apache.velocity.exception.ResourceNotFoundException;
 import org.apache.commons.collections.ExtendedProperties;
 import org.apache.solr.core.SolrResourceLoader;
 
+import java.io.IOException;
 import java.io.InputStream;
 
-// TODO: the name of this class seems ridiculous
+/**
+  * Velocity resource loader wrapper around Solr resource loader
+  */
 public class SolrVelocityResourceLoader extends ResourceLoader {
   private SolrResourceLoader loader;
 
@@ -39,7 +42,11 @@ public class SolrVelocityResourceLoader extends ResourceLoader {
 
   @Override
   public InputStream getResourceStream(String template_name) throws ResourceNotFoundException {
-    return loader.openResource(template_name);
+    try {
+      return loader.openResource("velocity/" + template_name);
+    } catch (IOException ioe) {
+      throw new ResourceNotFoundException(ioe);
+    }
   }
 
   @Override

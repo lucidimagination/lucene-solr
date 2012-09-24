@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.xml.builders;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,10 @@ import org.apache.lucene.queryparser.xml.ParserException;
 import org.apache.lucene.queryparser.xml.QueryBuilder;
 import org.w3c.dom.Element;
 
+/**
+ * Interface for retrieving a {@link SpanQuery}.
+ */
 public interface SpanQueryBuilder extends QueryBuilder {
-	
-	public SpanQuery getSpanQuery(Element e) throws ParserException;
+
+  public SpanQuery getSpanQuery(Element e) throws ParserException;
 }

@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,19 +45,19 @@ abstract class RewriteQuery<SQ extends SrndQuery> extends Query {
   @Override
   public String toString(String field) {
     return getClass().getName()
-	  + (field == null ? "" : "(unused: " + field + ")")
-	  + "(" + fieldName
-	  + ", " + srndQuery.toString()
-	  + ", " + qf.toString()
-	  + ")";
+    + (field == null ? "" : "(unused: " + field + ")")
+    + "(" + fieldName
+    + ", " + srndQuery.toString()
+    + ", " + qf.toString()
+    + ")";
   }
 
   @Override
   public int hashCode() {
     return getClass().hashCode()
-	  ^ fieldName.hashCode()
-	  ^ qf.hashCode()
-	  ^ srndQuery.hashCode();
+    ^ fieldName.hashCode()
+    ^ qf.hashCode()
+    ^ srndQuery.hashCode();
   }
 
   @Override
@@ -68,11 +68,13 @@ abstract class RewriteQuery<SQ extends SrndQuery> extends Query {
       return false;
     RewriteQuery other = (RewriteQuery)obj;
     return fieldName.equals(other.fieldName)
-	&& qf.equals(other.qf)
-	&& srndQuery.equals(other.srndQuery);
+  && qf.equals(other.qf)
+  && srndQuery.equals(other.srndQuery);
   }
 
-  /** @throws UnsupportedOperationException */
+  /** 
+   * Not supported by this query.
+   * @throws UnsupportedOperationException always: clone is not supported. */
   @Override
   public RewriteQuery clone() {
     throw new UnsupportedOperationException();

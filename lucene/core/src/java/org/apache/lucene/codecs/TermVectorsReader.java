@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,7 +29,12 @@ import org.apache.lucene.index.Fields;
  * 
  * @lucene.experimental
  */
-public abstract class TermVectorsReader implements Cloneable,Closeable {
+public abstract class TermVectorsReader implements Cloneable, Closeable {
+
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected TermVectorsReader() {
+  }
 
   /** Returns term vectors for this document, or null if
    *  term vectors were not indexed. If offsets are

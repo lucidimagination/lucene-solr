@@ -5,7 +5,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Serializable;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -570,7 +570,7 @@ public class CategoryPath implements Serializable, Cloneable, Comparable<Categor
    * changed later by the user. Copying the contents into a new object is a
    * solution.
    * <P>
-   * This constructor </I>does not</I> copy the capacity (spare buffer size)
+   * This constructor <I>does not</I> copy the capacity (spare buffer size)
    * of the existing CategoryPath. Rather, the new object occupies exactly the
    * space it needs, without any spare. This is the expected behavior in the
    * typical use case outlined in the previous paragraph.
@@ -1013,7 +1013,7 @@ public class CategoryPath implements Serializable, Cloneable, Comparable<Categor
     osw.flush();
   }
   
-  private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+  private void readObject(java.io.ObjectInputStream in) throws IOException {
     InputStreamReader isr = new InputStreamReader(in, "UTF-8");
     this.deserializeFromStreamReader(isr);
   }

@@ -1,5 +1,5 @@
 package org.apache.lucene.sandbox.queries;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -102,7 +102,7 @@ public class DuplicateFilter extends Filter {
       if (currTerm == null) {
         break;
       } else {
-        docs = termsEnum.docs(acceptDocs, docs, false);
+        docs = termsEnum.docs(acceptDocs, docs, 0);
         int doc = docs.nextDoc();
         if (doc != DocIdSetIterator.NO_MORE_DOCS) {
           if (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE) {
@@ -142,7 +142,7 @@ public class DuplicateFilter extends Filter {
       } else {
         if (termsEnum.docFreq() > 1) {
           // unset potential duplicates
-          docs = termsEnum.docs(acceptDocs, docs, false);
+          docs = termsEnum.docs(acceptDocs, docs, 0);
           int doc = docs.nextDoc();
           if (doc != DocIdSetIterator.NO_MORE_DOCS) {
             if (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE) {

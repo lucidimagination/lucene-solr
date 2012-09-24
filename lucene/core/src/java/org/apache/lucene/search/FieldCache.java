@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,6 +45,9 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 public interface FieldCache {
 
+  /**
+   * Placeholder indicating creation of this cache is currently in-progress.
+   */
   public static final class CreationPlaceholder {
     Object value;
   }
@@ -53,6 +56,7 @@ public interface FieldCache {
    * Hack: When thrown from a Parser (NUMERIC_UTILS_* ones), this stops
    * processing terms and returns the current FieldCache
    * array.
+   * @lucene.internal
    */
   public static final class StopFillCacheException extends RuntimeException {
   }
@@ -213,7 +217,7 @@ public interface FieldCache {
   public static final IntParser NUMERIC_UTILS_INT_PARSER=new IntParser(){
     public int parseInt(BytesRef term) {
       if (NumericUtils.getPrefixCodedIntShift(term) > 0)
-        throw new FieldCacheImpl.StopFillCacheException();
+        throw new StopFillCacheException();
       return NumericUtils.prefixCodedToInt(term);
     }
     @Override
@@ -229,7 +233,7 @@ public interface FieldCache {
   public static final FloatParser NUMERIC_UTILS_FLOAT_PARSER=new FloatParser(){
     public float parseFloat(BytesRef term) {
       if (NumericUtils.getPrefixCodedIntShift(term) > 0)
-        throw new FieldCacheImpl.StopFillCacheException();
+        throw new StopFillCacheException();
       return NumericUtils.sortableIntToFloat(NumericUtils.prefixCodedToInt(term));
     }
     @Override
@@ -245,7 +249,7 @@ public interface FieldCache {
   public static final LongParser NUMERIC_UTILS_LONG_PARSER = new LongParser(){
     public long parseLong(BytesRef term) {
       if (NumericUtils.getPrefixCodedLongShift(term) > 0)
-        throw new FieldCacheImpl.StopFillCacheException();
+        throw new StopFillCacheException();
       return NumericUtils.prefixCodedToLong(term);
     }
     @Override
@@ -261,7 +265,7 @@ public interface FieldCache {
   public static final DoubleParser NUMERIC_UTILS_DOUBLE_PARSER = new DoubleParser(){
     public double parseDouble(BytesRef term) {
       if (NumericUtils.getPrefixCodedLongShift(term) > 0)
-        throw new FieldCacheImpl.StopFillCacheException();
+        throw new StopFillCacheException();
       return NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(term));
     }
     @Override
@@ -494,7 +498,7 @@ public interface FieldCache {
    *  faster lookups (default is "true").  Note that the
    *  first call for a given reader and field "wins",
    *  subsequent calls will share the same cache entry. */
-  public DocTerms getTerms (AtomicReader reader, String field, boolean fasterButMoreRAM)
+  public DocTerms getTerms (AtomicReader reader, String field, float acceptableOverheadRatio)
   throws IOException;
 
   /** Returned by {@link #getTermsIndex} */
@@ -504,7 +508,7 @@ public interface FieldCache {
       // this special case is the reason that Arrays.binarySearch() isn't useful.
       if (key == null)
         return 0;
-	  
+  
       int low = 1;
       int high = numOrd()-1;
 
@@ -571,7 +575,7 @@ public interface FieldCache {
    *  faster lookups (default is "true").  Note that the
    *  first call for a given reader and field "wins",
    *  subsequent calls will share the same cache entry. */
-  public DocTermsIndex getTermsIndex (AtomicReader reader, String field, boolean fasterButMoreRAM)
+  public DocTermsIndex getTermsIndex (AtomicReader reader, String field, float acceptableOverheadRatio)
   throws IOException;
 
   /**

@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,6 +24,10 @@ import org.apache.lucene.search.Explanation;
  * @lucene.experimental
  */
 public class AfterEffectL extends AfterEffect {
+  
+  /** Sole constructor: parameter-free */
+  public AfterEffectL() {}
+
   @Override
   public final float score(BasicStats stats, float tfn) {
     return 1 / (tfn + 1);

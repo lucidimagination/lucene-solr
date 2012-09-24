@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -46,7 +46,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( 
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    FieldType customType = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(StringField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -59,7 +59,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     Terms vector = r.getTermVectors(0).terms("field");
     assertNotNull(vector);
     TermsEnum termsEnum = vector.iterator(null);
@@ -69,7 +69,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     // Token "" occurred once
     assertEquals(1, termsEnum.totalTermFreq());
 
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     dpEnum.nextPosition();
     assertEquals(8, dpEnum.startOffset());
@@ -78,7 +78,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
 
     // Token "abcd" occurred three times
     assertEquals(new BytesRef("abcd"), termsEnum.next());
-    dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+    dpEnum = termsEnum.docsAndPositions(null, dpEnum);
     assertEquals(3, termsEnum.totalTermFreq());
 
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -105,7 +105,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -115,10 +115,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
     assertEquals(2, termsEnum.totalTermFreq());
 
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -140,7 +140,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -150,10 +150,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
     assertEquals(2, termsEnum.totalTermFreq());
 
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -179,7 +179,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     TokenStream stream = analyzer.tokenStream("field", new StringReader("abcd   "));
     stream.reset(); // TODO: weird to reset before wrapping with CachingTokenFilter... correct?
     stream = new CachingTokenFilter(stream);
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -189,10 +189,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
     assertEquals(2, termsEnum.totalTermFreq());
 
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -215,7 +215,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( 
         TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET, true)));
     Document doc = new Document();
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -225,10 +225,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
     assertEquals(2, termsEnum.totalTermFreq());
 
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -251,7 +251,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( 
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -262,10 +262,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
 
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     dpEnum.nextPosition();
@@ -273,14 +273,14 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     assertEquals(4, dpEnum.endOffset());
 
     assertNotNull(termsEnum.next());
-    dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+    dpEnum = termsEnum.docsAndPositions(null, dpEnum);
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     dpEnum.nextPosition();
     assertEquals(11, dpEnum.startOffset());
     assertEquals(17, dpEnum.endOffset());
 
     assertNotNull(termsEnum.next());
-    dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+    dpEnum = termsEnum.docsAndPositions(null, dpEnum);
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     dpEnum.nextPosition();
     assertEquals(18, dpEnum.startOffset());
@@ -296,7 +296,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( 
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -307,10 +307,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
 
     assertEquals(1, (int) termsEnum.totalTermFreq());
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -319,7 +319,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     assertEquals(7, dpEnum.endOffset());
 
     assertNotNull(termsEnum.next());
-    dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+    dpEnum = termsEnum.docsAndPositions(null, dpEnum);
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     dpEnum.nextPosition();
     assertEquals(8, dpEnum.startOffset());
@@ -335,7 +335,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( 
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document doc = new Document();
-    FieldType customType = new FieldType(TextField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     customType.setStoreTermVectorPositions(true);
     customType.setStoreTermVectorOffsets(true);
@@ -350,10 +350,10 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     w.addDocument(doc);
     w.close();
 
-    IndexReader r = IndexReader.open(dir);
+    IndexReader r = DirectoryReader.open(dir);
     TermsEnum termsEnum = r.getTermVectors(0).terms("field").iterator(null);
     assertNotNull(termsEnum.next());
-    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, true);
+    DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
 
     assertEquals(1, (int) termsEnum.totalTermFreq());
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -362,7 +362,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     assertEquals(4, dpEnum.endOffset());
 
     assertNotNull(termsEnum.next());
-    dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+    dpEnum = termsEnum.docsAndPositions(null, dpEnum);
     assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     dpEnum.nextPosition();
     assertEquals(6, dpEnum.startOffset());
@@ -396,7 +396,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
 
       document = new Document();
       document.add(storedField);
-      FieldType customType2 = new FieldType(StringField.TYPE_UNSTORED);
+      FieldType customType2 = new FieldType(StringField.TYPE_NOT_STORED);
       customType2.setStoreTermVectors(true);
       customType2.setStoreTermVectorPositions(true);
       customType2.setStoreTermVectorOffsets(true);
@@ -407,7 +407,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
       writer.forceMerge(1);
       writer.close();
 
-      IndexReader reader = IndexReader.open(dir);
+      IndexReader reader = DirectoryReader.open(dir);
       for(int i=0;i<reader.numDocs();i++) {
         reader.document(i);
         reader.getTermVectors(i);
@@ -451,7 +451,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
 
       document = new Document();
       document.add(storedField);
-      FieldType customType2 = new FieldType(StringField.TYPE_UNSTORED);
+      FieldType customType2 = new FieldType(StringField.TYPE_NOT_STORED);
       customType2.setStoreTermVectors(true);
       customType2.setStoreTermVectorPositions(true);
       customType2.setStoreTermVectorOffsets(true);
@@ -461,7 +461,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
       writer.forceMerge(1);
       writer.close();
 
-      IndexReader reader = IndexReader.open(dir);
+      IndexReader reader = DirectoryReader.open(dir);
       assertNull(reader.getTermVectors(0));
       assertNull(reader.getTermVectors(1));
       assertNotNull(reader.getTermVectors(2));
@@ -485,7 +485,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
 
     Field storedField = newField("stored", "stored", customType);
     document.add(storedField);
-    FieldType customType2 = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType customType2 = new FieldType(StringField.TYPE_NOT_STORED);
     customType2.setStoreTermVectors(true);
     customType2.setStoreTermVectorPositions(true);
     customType2.setStoreTermVectorOffsets(true);
@@ -506,7 +506,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir);
+    IndexReader reader = DirectoryReader.open(dir);
     for(int i=0;i<10;i++) {
       reader.getTermVectors(i);
       reader.document(i);
@@ -521,19 +521,19 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document document = new Document();
-    FieldType customType2 = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType customType2 = new FieldType(StringField.TYPE_NOT_STORED);
     customType2.setStoreTermVectors(true);
     customType2.setStoreTermVectorPositions(true);
     customType2.setStoreTermVectorOffsets(true);
     document.add(newField("tvtest", "a b c", customType2));
     iw.addDocument(document);
     document = new Document();
-    document.add(newField("tvtest", "x y z", TextField.TYPE_UNSTORED));
+    document.add(newTextField("tvtest", "x y z", Field.Store.NO));
     iw.addDocument(document);
     // Make first segment
     iw.commit();
 
-    FieldType customType = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(StringField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     document.add(newField("tvtest", "a b c", customType));
     iw.addDocument(document);
@@ -551,21 +551,21 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     Document document = new Document();
-    FieldType customType = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType customType = new FieldType(StringField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);
     document.add(newField("tvtest", "a b c", customType));
     iw.addDocument(document);
     iw.commit();
 
     document = new Document();
-    document.add(newField("tvtest", "x y z", TextField.TYPE_UNSTORED));
+    document.add(newTextField("tvtest", "x y z", Field.Store.NO));
     iw.addDocument(document);
     // Make first segment
     iw.commit();
 
     iw.forceMerge(1);
 
-    FieldType customType2 = new FieldType(StringField.TYPE_UNSTORED);
+    FieldType customType2 = new FieldType(StringField.TYPE_NOT_STORED);
     customType2.setStoreTermVectors(true);
     document.add(newField("tvtest", "a b c", customType2));
     iw.addDocument(document);

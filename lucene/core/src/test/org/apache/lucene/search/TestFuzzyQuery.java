@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,8 +22,9 @@ import java.util.Arrays;
 import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -100,7 +101,7 @@ public class TestFuzzyQuery extends LuceneTestCase {
     }
 
     // not similar enough:
-    query = new FuzzyQuery(new Term("field", "xxxxx"), FuzzyQuery.defaultMaxEdits, 0);  	
+    query = new FuzzyQuery(new Term("field", "xxxxx"), FuzzyQuery.defaultMaxEdits, 0);
     hits = searcher.search(query, null, 1000).scoreDocs;
     assertEquals(0, hits.length);
     query = new FuzzyQuery(new Term("field", "aaccc"), FuzzyQuery.defaultMaxEdits, 0);   // edit distance to "aaaaa" = 3
@@ -184,6 +185,41 @@ public class TestFuzzyQuery extends LuceneTestCase {
     query = new FuzzyQuery(new Term("anotherfield", "ddddX"), FuzzyQuery.defaultMaxEdits, 0);   
     hits = searcher.search(query, null, 1000).scoreDocs;
     assertEquals(0, hits.length);
+
+    reader.close();
+    directory.close();
+  }
+  
+  public void test2() throws Exception {
+    Directory directory = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
+    addDoc("LANGE", writer);
+    addDoc("LUETH", writer);
+    addDoc("PIRSING", writer);
+    addDoc("RIEGEL", writer);
+    addDoc("TRZECZIAK", writer);
+    addDoc("WALKER", writer);
+    addDoc("WBR", writer);
+    addDoc("WE", writer);
+    addDoc("WEB", writer);
+    addDoc("WEBE", writer);
+    addDoc("WEBER", writer);
+    addDoc("WEBERE", writer);
+    addDoc("WEBREE", writer);
+    addDoc("WEBEREI", writer);
+    addDoc("WBRE", writer);
+    addDoc("WITTKOPF", writer);
+    addDoc("WOJNAROWSKI", writer);
+    addDoc("WRICKE", writer);
+
+    IndexReader reader = writer.getReader();
+    IndexSearcher searcher = newSearcher(reader);
+    writer.close();
+
+    FuzzyQuery query = new FuzzyQuery(new Term("field", "WEBER"), 2, 1);
+    //query.setRewriteMethod(FuzzyQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    assertEquals(8, hits.length);
 
     reader.close();
     directory.close();
@@ -324,7 +360,7 @@ public class TestFuzzyQuery extends LuceneTestCase {
   
   private void addDoc(String text, RandomIndexWriter writer) throws IOException {
     Document doc = new Document();
-    doc.add(newField("field", text, TextField.TYPE_STORED));
+    doc.add(newTextField("field", text, Field.Store.YES));
     writer.addDocument(doc);
   }
 }

@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,11 +45,11 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     int num = atLeast(31);
     for (int i = 0; i < num; i++) {
       Document doc = new Document();
-      doc.add(newField("f", "a b c d b c d c d d", TextField.TYPE_UNSTORED));
+      doc.add(newTextField("f", "a b c d b c d c d d", Field.Store.NO));
       w.addDocument(doc);
 
       doc = new Document();
-      doc.add(newField("f", "a b c d", TextField.TYPE_UNSTORED));
+      doc.add(newTextField("f", "a b c d", Field.Store.NO));
       w.addDocument(doc);
     }
 
@@ -75,7 +75,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     private final Set<String> relationships;
 
     public CountingCollector(Collector other) {
-      this(other, new HashSet<String>(Arrays.asList(Occur.MUST.toString(), Occur.SHOULD.toString(), Occur.MUST_NOT.toString())));
+      this(other, new HashSet<String>(Arrays.asList("MUST", "SHOULD", "MUST_NOT")));
     }
 
     public CountingCollector(Collector other, Set<String> relationships) {
@@ -145,7 +145,6 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     }
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void testBooleanQuery() throws Exception {
     TermQuery aQuery = new TermQuery(new Term("f", "a"));
@@ -161,17 +160,21 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     query.add(inner, Occur.MUST);
     query.add(aQuery, Occur.MUST);
     query.add(dQuery, Occur.MUST);
-    @SuppressWarnings({"rawtypes","unchecked"}) Set<String>[] occurList = new Set[] {
-        Collections.singleton(Occur.MUST.toString()), 
-        new HashSet<String>(Arrays.asList(Occur.MUST.toString(), Occur.SHOULD.toString()))
-    };
-    for (Set<String> occur : occurList) {
+    
+    // Only needed in Java6; Java7+ has a @SafeVarargs annotated Arrays#asList()!
+    // see http://docs.oracle.com/javase/7/docs/api/java/lang/SafeVarargs.html
+    @SuppressWarnings("unchecked") final Iterable<Set<String>> occurList = Arrays.asList(
+        Collections.singleton("MUST"), 
+        new HashSet<String>(Arrays.asList("MUST", "SHOULD"))
+    );
+    
+    for (final Set<String> occur : occurList) {
       CountingCollector c = new CountingCollector(TopScoreDocCollector.create(
           10, true), occur);
       s.search(query, null, c);
       final int maxDocs = s.getIndexReader().maxDoc();
       assertEquals(maxDocs, c.docCounts.size());
-      boolean includeOptional = occur.contains(Occur.SHOULD.toString());
+      boolean includeOptional = occur.contains("SHOULD");
       for (int i = 0; i < maxDocs; i++) {
         Map<Query, Float> doc0 = c.docCounts.get(i);
         assertEquals(includeOptional ? 5 : 4, doc0.size());

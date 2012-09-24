@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,8 +22,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.lucene.index.CompositeReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.Term;
@@ -41,7 +41,7 @@ import org.apache.lucene.util._TestUtil;
 //   - test pulling docs in 2nd round trip...
 //   - filter too
 
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestShardSearching extends ShardSearchingTestBase {
 
   private static class PreviousSearchState {
@@ -77,8 +77,7 @@ public class TestShardSearching extends ShardSearchingTestBase {
       System.out.println("TEST: numNodes=" + numNodes + " runTimeSec=" + runTimeSec + " maxSearcherAgeSeconds=" + maxSearcherAgeSeconds);
     }
 
-    start(_TestUtil.getTempDir("TestShardSearching").toString(),
-          numNodes,
+    start(numNodes,
           runTimeSec,
           maxSearcherAgeSeconds
           );
@@ -311,13 +310,11 @@ public class TestShardSearching extends ShardSearchingTestBase {
 
     final int numNodes = shardSearcher.nodeVersions.length;
     int[] base = new int[numNodes];
-    final IndexReader[] subs = ((CompositeReader) mockSearcher.getIndexReader()).getSequentialSubReaders();
-    assertEquals(numNodes, subs.length);
+    final List<IndexReaderContext> subs = mockSearcher.getTopReaderContext().children();
+    assertEquals(numNodes, subs.size());
 
-    int docCount = 0;
     for(int nodeID=0;nodeID<numNodes;nodeID++) {
-      base[nodeID] = docCount;
-      docCount += subs[nodeID].maxDoc();
+      base[nodeID] = subs.get(nodeID).docBaseInParent;
     }
 
     if (VERBOSE) {

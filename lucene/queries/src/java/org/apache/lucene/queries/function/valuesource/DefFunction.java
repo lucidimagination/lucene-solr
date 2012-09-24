@@ -1,5 +1,5 @@
 package org.apache.lucene.queries.function.valuesource;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,6 +27,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * {@link ValueSource} implementation which only returns the values from the provided
+ * ValueSources which are available for a particular docId.  Consequently, when combined
+ * with a {@link ConstValueSource}, this function serves as a way to return a default
+ * value when the values for a field are unavailable.
+ */
 public class DefFunction extends MultiFunction {
   public DefFunction(List<ValueSource> sources) {
     super(sources);

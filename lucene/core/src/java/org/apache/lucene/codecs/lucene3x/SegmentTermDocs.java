@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -54,7 +54,7 @@ class SegmentTermDocs {
   protected IndexOptions indexOptions;
   
   public SegmentTermDocs(IndexInput freqStream, TermInfosReader tis, FieldInfos fieldInfos) {
-    this.freqStream = (IndexInput) freqStream.clone();
+    this.freqStream = freqStream.clone();
     this.tis = tis;
     this.fieldInfos = fieldInfos;
     skipInterval = tis.getSkipInterval();
@@ -89,8 +89,8 @@ class SegmentTermDocs {
   void seek(TermInfo ti, Term term) throws IOException {
     count = 0;
     FieldInfo fi = fieldInfos.fieldInfo(term.field());
-    this.indexOptions = (fi != null) ? fi.indexOptions : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
-    currentFieldStoresPayloads = (fi != null) ? fi.storePayloads : false;
+    this.indexOptions = (fi != null) ? fi.getIndexOptions() : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
+    currentFieldStoresPayloads = (fi != null) ? fi.hasPayloads() : false;
     if (ti == null) {
       df = 0;
     } else {
@@ -112,7 +112,6 @@ class SegmentTermDocs {
 
   public final int doc() { return doc; }
   public final int freq() {
-    assert indexOptions != IndexOptions.DOCS_ONLY;
     return freq;
   }
 
@@ -202,7 +201,7 @@ class SegmentTermDocs {
     // don't skip if the target is close (within skipInterval docs away)
     if ((target - skipInterval) >= doc && df >= skipInterval) {                      // optimized case
       if (skipListReader == null)
-        skipListReader = new Lucene3xSkipListReader((IndexInput) freqStream.clone(), maxSkipLevels, skipInterval); // lazily clone
+        skipListReader = new Lucene3xSkipListReader(freqStream.clone(), maxSkipLevels, skipInterval); // lazily clone
 
       if (!haveSkipped) {                          // lazily initialize skip stream
         skipListReader.init(skipPointer, freqBasePointer, proxBasePointer, df, currentFieldStoresPayloads);

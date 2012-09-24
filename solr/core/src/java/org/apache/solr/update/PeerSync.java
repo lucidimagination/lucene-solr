@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,12 +27,11 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.http.NoHttpResponseException;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.CoreConnectionPNames;
+import org.apache.http.client.HttpClient;
+import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -48,12 +47,14 @@ import org.apache.solr.handler.component.ShardResponse;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.solr.update.processor.DistributedUpdateProcessorFactory;
 import org.apache.solr.update.processor.RunUpdateProcessorFactory;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
+import static org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase.FROMLEADER;
 
 /** @lucene.experimental */
 public class PeerSync  {
@@ -77,17 +78,16 @@ public class PeerSync  {
   private Set<Long> requestedUpdateSet;
   private long ourLowThreshold;  // 20th percentile
   private long ourHighThreshold; // 80th percentile
-  private static ThreadSafeClientConnManager mgr = new ThreadSafeClientConnManager();
-  private static DefaultHttpClient client = new DefaultHttpClient(mgr);
+  private boolean cantReachIsSuccess;
+  private static final HttpClient client;
   static {
-    mgr.setDefaultMaxPerRoute(20);
-    mgr.setMaxTotal(10000);
-    client.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 30000);
-    client.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 30000);
-
-    // prevent retries  (note: this didn't work when set on mgr.. needed to be set on client)
-    DefaultHttpRequestRetryHandler retryhandler = new DefaultHttpRequestRetryHandler(0, false);
-    client.setHttpRequestRetryHandler(retryhandler);
+    ModifiableSolrParams params = new ModifiableSolrParams();
+    params.set(HttpClientUtil.PROP_MAX_CONNECTIONS_PER_HOST, 20);
+    params.set(HttpClientUtil.PROP_MAX_CONNECTIONS, 10000);
+    params.set(HttpClientUtil.PROP_CONNECTION_TIMEOUT, 30000);
+    params.set(HttpClientUtil.PROP_SO_TIMEOUT, 30000);
+    params.set(HttpClientUtil.PROP_USE_RETRY, false);
+    client = HttpClientUtil.createClient(params);
   }
 
   // comparator that sorts by absolute value, putting highest first
@@ -128,18 +128,15 @@ public class PeerSync  {
     Exception updateException;
   }
 
-
-  /**
-   *
-   * @param core
-   * @param replicas
-   * @param nUpdates
-   */
   public PeerSync(SolrCore core, List<String> replicas, int nUpdates) {
+    this(core, replicas, nUpdates, false);
+  }
+  
+  public PeerSync(SolrCore core, List<String> replicas, int nUpdates, boolean cantReachIsSuccess) {
     this.replicas = replicas;
     this.nUpdates = nUpdates;
     this.maxUpdates = nUpdates;
-
+    this.cantReachIsSuccess = cantReachIsSuccess;
 
     
     uhandler = core.getUpdateHandler();
@@ -166,7 +163,7 @@ public class PeerSync  {
     String myURL = "";
 
     if (zkController != null) {
-      myURL = zkController.getZkServerAddress();
+      myURL = zkController.getBaseUrl();
     }
 
     // TODO: core name turns up blank in many tests - find URL if cloud enabled?
@@ -215,6 +212,7 @@ public class PeerSync  {
     if (startingVersions != null) {
       if (startingVersions.size() == 0) {
         // no frame of reference to tell of we've missed updates
+        log.warn("no frame of reference to tell of we've missed updates");
         return false;
       }
       Collections.sort(startingVersions, absComparator);
@@ -233,7 +231,7 @@ public class PeerSync  {
       }
 
       // let's merge the lists
-      List<Long> newList = new ArrayList(ourUpdates);
+      List<Long> newList = new ArrayList<Long>(ourUpdates);
       for (Long ver : startingVersions) {
         if (Math.abs(ver) < smallestNewUpdate) {
           newList.add(ver);
@@ -299,20 +297,25 @@ public class PeerSync  {
       // If the replica went down between asking for versions and asking for specific updates, that
       // shouldn't be treated as success since we counted on getting those updates back (and avoided
       // redundantly asking other replicas for them).
-      if (sreq.purpose == 1 && srsp.getException() instanceof SolrServerException) {
+      if (cantReachIsSuccess && sreq.purpose == 1 && srsp.getException() instanceof SolrServerException) {
         Throwable solrException = ((SolrServerException) srsp.getException())
             .getRootCause();
-        if (solrException instanceof ConnectException
+        if (solrException instanceof ConnectException || solrException instanceof ConnectTimeoutException
             || solrException instanceof NoHttpResponseException) {
-          log.info(msg() + " couldn't connect to " + srsp.getShardAddress() + ", counting as success");
+          log.warn(msg() + " couldn't connect to " + srsp.getShardAddress() + ", counting as success");
 
           return true;
         }
       }
+      
+      if (cantReachIsSuccess && sreq.purpose == 1 && srsp.getException() instanceof SolrException && ((SolrException) srsp.getException()).code() == 503) {
+        log.warn(msg() + " got a 503 from " + srsp.getShardAddress() + ", counting as success");
+        return true;
+      }
       // TODO: at least log???
       // srsp.getException().printStackTrace(System.out);
-      
-      log.warn(msg() + " exception talking to " + srsp.getShardAddress() + ", counting as success");
+     
+      log.warn(msg() + " exception talking to " + srsp.getShardAddress() + ", failed", srsp.getException());
       
       return false;
     }
@@ -431,7 +434,7 @@ public class PeerSync  {
     }
 
     ModifiableSolrParams params = new ModifiableSolrParams();
-    params.set(DistributedUpdateProcessor.SEEN_LEADER, true);
+    params.set(DISTRIB_UPDATE_PARAM, FROMLEADER.toString());
     // params.set("peersync",true); // debugging
     SolrQueryRequest req = new LocalSolrQueryRequest(uhandler.core, params);
     SolrQueryResponse rsp = new SolrQueryResponse();
@@ -457,8 +460,8 @@ public class PeerSync  {
         if (debug) {
           log.debug(msg() + "raw update record " + o);
         }
-        
-        int oper = (Integer)entry.get(0);
+
+        int oper = (Integer)entry.get(0) & UpdateLog.OPERATION_MASK;
         long version = (Long) entry.get(1);
         if (version == lastVersion && version != 0) continue;
         lastVersion = version;

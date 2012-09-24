@@ -1,6 +1,6 @@
 package org.apache.lucene.util.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -89,7 +89,7 @@ public final class Util {
    *  pair where the output is equal to the target, and will
    *  return null if that output does not exist.
    *
-   *  <p>NOTE: this only works with FST<Long>, only
+   *  <p>NOTE: this only works with {@code FST<Long>}, only
    *  works when the outputs are ascending in order with
    *  the inputs and only works when you shared
    *  the outputs (pass doShare=true to {@link
@@ -335,6 +335,7 @@ public final class Util {
 
       final List<MinResult<T>> results = new ArrayList<MinResult<T>>();
 
+      final FST.BytesReader fstReader = fst.getBytesReader(0);
       final T NO_OUTPUT = fst.outputs.getNoOutput();
 
       // TODO: we could enable FST to sorting arcs by weight
@@ -366,7 +367,7 @@ public final class Util {
           FST.Arc<T> minArc = null;
 
           path = new FSTPath<T>(NO_OUTPUT, fromNode, comparator);
-          fst.readFirstTargetArc(fromNode, path.arc);
+          fst.readFirstTargetArc(fromNode, path.arc, fstReader);
 
           // Bootstrap: find the min starting arc
           while (true) {
@@ -383,7 +384,7 @@ public final class Util {
             if (path.arc.isLast()) {
               break;
             }
-            fst.readNextArc(path.arc);
+            fst.readNextArc(path.arc, fstReader);
           }
 
           assert minArc != null;
@@ -439,7 +440,7 @@ public final class Util {
         while (true) {
 
           //System.out.println("\n    cycle path: " + path);         
-          fst.readFirstTargetArc(path.arc, path.arc);
+          fst.readFirstTargetArc(path.arc, path.arc, fstReader);
 
           // For each arc leaving this node:
           boolean foundZero = false;
@@ -463,7 +464,7 @@ public final class Util {
             if (path.arc.isLast()) {
               break;
             }
-            fst.readNextArc(path.arc);
+            fst.readNextArc(path.arc, fstReader);
           }
 
           assert foundZero;
@@ -598,12 +599,13 @@ public final class Util {
     emitDotState(out, "initial", "point", "white", "");
 
     final T NO_OUTPUT = fst.outputs.getNoOutput();
+    final FST.BytesReader r = fst.getBytesReader(0);
 
     // final FST.Arc<T> scratchArc = new FST.Arc<T>();
 
     {
       final String stateColor;
-      if (fst.isExpandedTarget(startArc)) {
+      if (fst.isExpandedTarget(startArc, r)) {
         stateColor = expandedNodeColor;
       } else {
         stateColor = null;
@@ -625,8 +627,6 @@ public final class Util {
     out.write("  initial -> " + startArc.target + "\n");
 
     int level = 0;
-
-    final FST.BytesReader r = fst.getBytesReader(0);
 
     while (!nextLevelQueue.isEmpty()) {
       // we could double buffer here, but it doesn't matter probably.
@@ -666,7 +666,7 @@ public final class Util {
               }
               */
               final String stateColor;
-              if (fst.isExpandedTarget(arc)) {
+              if (fst.isExpandedTarget(arc, r)) {
                 stateColor = expandedNodeColor;
               } else {
                 stateColor = null;
@@ -766,6 +766,19 @@ public final class Util {
       return "0x" + Integer.toHexString(label);
     }
   }
+
+  /** Just maps each UTF16 unit (char) to the ints in an
+   *  IntsRef. */
+  public static IntsRef toUTF16(CharSequence s, IntsRef scratch) {
+    final int charLimit = s.length();
+    scratch.offset = 0;
+    scratch.length = charLimit;
+    scratch.grow(charLimit);
+    for (int idx = 0; idx < charLimit; idx++) {
+      scratch.ints[idx] = (int) s.charAt(idx);
+    }
+    return scratch;
+  }    
 
   /** Decodes the Unicode codepoints from the provided
    *  CharSequence and places them in the provided scratch

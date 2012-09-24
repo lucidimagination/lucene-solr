@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.standard.builders;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,6 +30,10 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.BooleanQuery.TooManyClauses;
 
+/**
+ * Builds a BooleanQuery of SHOULD clauses, possibly with
+ * some minimum number to match.
+ */
 public class AnyQueryNodeBuilder implements StandardQueryBuilder {
 
   public AnyQueryNodeBuilder() {

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -47,6 +47,7 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
 
   private int mergeThreadPriority = -1;
 
+  /** List of currently active {@link MergeThread}s. */
   protected List<MergeThread> mergeThreads = new ArrayList<MergeThread>();
 
   // Max number of merge threads allowed to be running at
@@ -63,10 +64,20 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
   // throttling the incoming threads
   private int maxMergeCount = maxThreadCount+2;
 
+  /** {@link Directory} that holds the index. */
   protected Directory dir;
 
+  /** {@link IndexWriter} that owns this instance. */
   protected IndexWriter writer;
+
+  /** How many {@link MergeThread}s have kicked off (this is use
+   *  to name them). */
   protected int mergeThreadCount;
+
+  /** Sole constructor, with all settings set to default
+   *  values. */
+  public ConcurrentMergeScheduler() {
+  }
 
   /** Sets the max # simultaneous merge threads that should
    *  be running at once.  This must be <= {@link
@@ -81,7 +92,9 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
     maxThreadCount = count;
   }
 
-  /** @see #setMaxThreadCount(int) */
+  /** Returns {@code maxThreadCount}.
+   *
+   * @see #setMaxThreadCount(int) */
   public int getMaxThreadCount() {
     return maxThreadCount;
   }
@@ -129,7 +142,7 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
     updateMergeThreads();
   }
 
-  // Larger merges come first
+  /** Sorts {@link MergeThread}s; larger merges come first. */
   protected static final Comparator<MergeThread> compareByMergeDocCount = new Comparator<MergeThread>() {
     public int compare(MergeThread t1, MergeThread t2) {
       final MergePolicy.OneMerge m1 = t1.getCurrentMerge();
@@ -210,7 +223,7 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
    * Returns true if verbosing is enabled. This method is usually used in
    * conjunction with {@link #message(String)}, like that:
    * 
-   * <pre>
+   * <pre class="prettyprint">
    * if (verbose()) {
    *   message(&quot;your message&quot;);
    * }
@@ -243,27 +256,34 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
     sync();
   }
 
-  /** Wait for any running merge threads to finish */
+  /** Wait for any running merge threads to finish. This call is not interruptible as used by {@link #close()}. */
   public void sync() {
-    while (true) {
-      MergeThread toSync = null;
-      synchronized (this) {
-        for (MergeThread t : mergeThreads) {
-          if (t.isAlive()) {
-            toSync = t;
-            break;
+    boolean interrupted = false;
+    try {
+      while (true) {
+        MergeThread toSync = null;
+        synchronized (this) {
+          for (MergeThread t : mergeThreads) {
+            if (t.isAlive()) {
+              toSync = t;
+              break;
+            }
           }
         }
-      }
-      if (toSync != null) {
-        try {
-          toSync.join();
-        } catch (InterruptedException ie) {
-          throw new ThreadInterruptedException(ie);
+        if (toSync != null) {
+          try {
+            toSync.join();
+          } catch (InterruptedException ie) {
+            // ignore this Exception, we will retry until all threads are dead
+            interrupted = true;
+          }
+        } else {
+          break;
         }
-      } else {
-        break;
       }
+    } finally {
+      // finally, restore interrupt status:
+      if (interrupted) Thread.currentThread().interrupt();
     }
   }
 
@@ -391,6 +411,8 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
     return thread;
   }
 
+  /** Runs a merge thread, which may run one or more merges
+   *  in sequence. */
   protected class MergeThread extends Thread {
 
     IndexWriter tWriter;
@@ -398,19 +420,24 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
     MergePolicy.OneMerge runningMerge;
     private volatile boolean done;
 
-    public MergeThread(IndexWriter writer, MergePolicy.OneMerge startMerge) throws IOException {
+    /** Sole constructor. */
+    public MergeThread(IndexWriter writer, MergePolicy.OneMerge startMerge) {
       this.tWriter = writer;
       this.startMerge = startMerge;
     }
 
+    /** Record the currently running merge. */
     public synchronized void setRunningMerge(MergePolicy.OneMerge merge) {
       runningMerge = merge;
     }
 
+    /** Return the currently running merge. */
     public synchronized MergePolicy.OneMerge getRunningMerge() {
       return runningMerge;
     }
 
+    /** Return the current merge, or null if this {@code
+     *  MergeThread} is done. */
     public synchronized MergePolicy.OneMerge getCurrentMerge() {
       if (done) {
         return null;
@@ -421,6 +448,7 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
       }
     }
 
+    /** Set the priority of this thread. */
     public void setThreadPriority(int pri) {
       try {
         setPriority(pri);

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -39,8 +39,7 @@ public class CustomUpdateRequestProcessorFactory extends UpdateRequestProcessorF
 
   @Override
   public UpdateRequestProcessor getInstance(SolrQueryRequest req, SolrQueryResponse rsp, UpdateRequestProcessor next) {
-    // TODO Auto-generated method stub
-    return null;
+    return new CustomUpdateRequestProcessor(next);
   }
 }
 

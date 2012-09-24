@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -108,7 +108,7 @@ public abstract class Weight {
    *          but possibly filtering other documents)
    *          
    * @return a {@link Scorer} which scores documents in/out-of order.
-   * @throws IOException
+   * @throws IOException if there is a low-level I/O error
    */
   public abstract Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
       boolean topScorer, Bits acceptDocs) throws IOException;

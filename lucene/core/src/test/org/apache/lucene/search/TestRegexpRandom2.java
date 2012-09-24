@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,7 +27,6 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -66,7 +65,7 @@ public class TestRegexpRandom2 extends LuceneTestCase {
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.KEYWORD, false))
         .setMaxBufferedDocs(_TestUtil.nextInt(random(), 50, 1000)));
     Document doc = new Document();
-    Field field = newField(fieldName, "", StringField.TYPE_UNSTORED);
+    Field field = newStringField(fieldName, "", Field.Store.NO);
     doc.add(field);
     List<String> terms = new ArrayList<String>();
     int num = atLeast(200);
@@ -118,7 +117,7 @@ public class TestRegexpRandom2 extends LuceneTestCase {
       CharacterRunAutomaton runAutomaton = new CharacterRunAutomaton(automaton);
       CharsRef utf16 = new CharsRef(10);
 
-      private SimpleAutomatonTermsEnum(TermsEnum tenum) throws IOException {
+      private SimpleAutomatonTermsEnum(TermsEnum tenum) {
         super(tenum);
         setInitialSeekTerm(new BytesRef(""));
       }

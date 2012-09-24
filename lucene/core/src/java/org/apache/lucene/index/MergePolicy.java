@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,7 +24,6 @@ import java.util.Map;
 
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MergeInfo;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.SetOnce.AlreadySetException;
 import org.apache.lucene.util.SetOnce;
 
@@ -57,7 +56,7 @@ import org.apache.lucene.util.SetOnce;
  * @lucene.experimental
  */
 
-public abstract class MergePolicy implements java.io.Closeable {
+public abstract class MergePolicy implements java.io.Closeable, Cloneable {
 
   /** OneMerge provides the information necessary to perform
    *  an individual primitive merge operation, resulting in
@@ -67,28 +66,36 @@ public abstract class MergePolicy implements java.io.Closeable {
 
   public static class OneMerge {
 
-    SegmentInfo info;               // used by IndexWriter
+    SegmentInfoPerCommit info;      // used by IndexWriter
     boolean registerDone;           // used by IndexWriter
     long mergeGen;                  // used by IndexWriter
     boolean isExternal;             // used by IndexWriter
     int maxNumSegments = -1;        // used by IndexWriter
+
+    /** Estimated size in bytes of the merged segment. */
     public long estimatedMergeBytes;       // used by IndexWriter
     List<SegmentReader> readers;        // used by IndexWriter
-    List<Bits> readerLiveDocs;      // used by IndexWriter
-    public final List<SegmentInfo> segments;
+
+    /** Segments to be merged. */
+    public final List<SegmentInfoPerCommit> segments;
+
+    /** Number of documents in the merged segment. */
     public final int totalDocCount;
     boolean aborted;
     Throwable error;
     boolean paused;
 
-    public OneMerge(List<SegmentInfo> segments) {
+    /** Sole constructor.
+     * @param segments List of {@link SegmentInfoPerCommit}s
+     *        to be merged. */
+    public OneMerge(List<SegmentInfoPerCommit> segments) {
       if (0 == segments.size())
         throw new RuntimeException("segments must include at least one segment");
       // clone the list, as the in list may be based off original SegmentInfos and may be modified
-      this.segments = new ArrayList<SegmentInfo>(segments);
+      this.segments = new ArrayList<SegmentInfoPerCommit>(segments);
       int count = 0;
-      for(SegmentInfo info : segments) {
-        count += info.docCount;
+      for(SegmentInfoPerCommit info : segments) {
+        count += info.info.getDocCount();
       }
       totalDocCount = count;
     }
@@ -118,6 +125,8 @@ public abstract class MergePolicy implements java.io.Closeable {
       return aborted;
     }
 
+    /** Called periodically by {@link IndexWriter} while
+     *  merging to see if the merge is aborted. */
     public synchronized void checkAborted(Directory dir) throws MergeAbortedException {
       if (aborted) {
         throw new MergeAbortedException("merge is aborted: " + segString(dir));
@@ -137,6 +146,9 @@ public abstract class MergePolicy implements java.io.Closeable {
       }
     }
 
+    /** Set or clear whether this merge is paused paused (for example
+     *  {@link ConcurrentMergeScheduler} will pause merges
+     *  if too many are running). */
     synchronized public void setPause(boolean paused) {
       this.paused = paused;
       if (!paused) {
@@ -145,10 +157,15 @@ public abstract class MergePolicy implements java.io.Closeable {
       }
     }
 
+    /** Returns true if this merge is paused.
+     *
+     *  @see #setPause(boolean) */
     synchronized public boolean getPause() {
       return paused;
     }
 
+    /** Returns a readable description of the current merge
+     *  state. */
     public String segString(Directory dir) {
       StringBuilder b = new StringBuilder();
       final int numSegments = segments.size();
@@ -156,8 +173,9 @@ public abstract class MergePolicy implements java.io.Closeable {
         if (i > 0) b.append(' ');
         b.append(segments.get(i).toString(dir, 0));
       }
-      if (info != null)
-        b.append(" into ").append(info.name);
+      if (info != null) {
+        b.append(" into ").append(info.info.name);
+      }
       if (maxNumSegments != -1)
         b.append(" [maxNumSegments=" + maxNumSegments + "]");
       if (aborted) {
@@ -172,8 +190,8 @@ public abstract class MergePolicy implements java.io.Closeable {
      * */
     public long totalBytesSize() throws IOException {
       long total = 0;
-      for (SegmentInfo info : segments) {
-        total += info.sizeInBytes();
+      for (SegmentInfoPerCommit info : segments) {
+        total += info.info.sizeInBytes();
       }
       return total;
     }
@@ -184,12 +202,13 @@ public abstract class MergePolicy implements java.io.Closeable {
      * */
     public int totalNumDocs() throws IOException {
       int total = 0;
-      for (SegmentInfo info : segments) {
-        total += info.docCount;
+      for (SegmentInfoPerCommit info : segments) {
+        total += info.info.getDocCount();
       }
       return total;
     }
-    
+
+    /** Return {@link MergeInfo} describing this merge. */
     public MergeInfo getMergeInfo() {
       return new MergeInfo(totalDocCount, estimatedMergeBytes, isExternal, maxNumSegments);
     }    
@@ -209,10 +228,19 @@ public abstract class MergePolicy implements java.io.Closeable {
 
     public final List<OneMerge> merges = new ArrayList<OneMerge>();
 
+    /** Sole constructor.  Use {@link
+     *  #add(MergePolicy.OneMerge)} to add merges. */
+    public MergeSpecification() {
+    }
+
+    /** Adds the provided {@link OneMerge} to this
+     *  specification. */
     public void add(OneMerge merge) {
       merges.add(merge);
     }
 
+    /** Returns a description of the merges in this
+    *  specification. */
     public String segString(Directory dir) {
       StringBuilder b = new StringBuilder();
       b.append("MergeSpec:\n");
@@ -228,15 +256,18 @@ public abstract class MergePolicy implements java.io.Closeable {
   public static class MergeException extends RuntimeException {
     private Directory dir;
 
+    /** Create a {@code MergeException}. */
     public MergeException(String message, Directory dir) {
       super(message);
       this.dir = dir;
     }
 
+    /** Create a {@code MergeException}. */
     public MergeException(Throwable exc, Directory dir) {
       super(exc);
       this.dir = dir;
     }
+
     /** Returns the {@link Directory} of the index that hit
      *  the exception. */
     public Directory getDirectory() {
@@ -244,16 +275,38 @@ public abstract class MergePolicy implements java.io.Closeable {
     }
   }
 
+  /** Thrown when a merge was explicity aborted because
+   *  {@link IndexWriter#close(boolean)} was called with
+   *  <code>false</code>.  Normally this exception is
+   *  privately caught and suppresed by {@link IndexWriter}.  */
   public static class MergeAbortedException extends IOException {
+    /** Create a {@link MergeAbortedException}. */
     public MergeAbortedException() {
       super("merge is aborted");
     }
+
+    /** Create a {@link MergeAbortedException} with a
+     *  specified message. */
     public MergeAbortedException(String message) {
       super(message);
     }
   }
 
-  protected final SetOnce<IndexWriter> writer;
+  /** {@link IndexWriter} that contains this instance. */
+  protected SetOnce<IndexWriter> writer;
+
+  @Override
+  public MergePolicy clone() {
+    MergePolicy clone;
+    try {
+      clone = (MergePolicy) super.clone();
+    } catch (CloneNotSupportedException e) {
+      // should not happen
+      throw new RuntimeException(e);
+    }
+    clone.writer = new SetOnce<IndexWriter>();
+    return clone;
+  }
 
   /**
    * Creates a new merge policy instance. Note that if you intend to use it
@@ -285,7 +338,7 @@ public abstract class MergePolicy implements java.io.Closeable {
    *          the total set of segments in the index
    */
   public abstract MergeSpecification findMerges(SegmentInfos segmentInfos)
-      throws CorruptIndexException, IOException;
+      throws IOException;
 
   /**
    * Determine what set of merge operations is necessary in
@@ -309,8 +362,8 @@ public abstract class MergePolicy implements java.io.Closeable {
    *          produced by a cascaded merge.
    */
   public abstract MergeSpecification findForcedMerges(
-          SegmentInfos segmentInfos, int maxSegmentCount, Map<SegmentInfo,Boolean> segmentsToMerge)
-      throws CorruptIndexException, IOException;
+          SegmentInfos segmentInfos, int maxSegmentCount, Map<SegmentInfoPerCommit,Boolean> segmentsToMerge)
+      throws IOException;
 
   /**
    * Determine what set of merge operations is necessary in order to expunge all
@@ -320,7 +373,7 @@ public abstract class MergePolicy implements java.io.Closeable {
    *          the total set of segments in the index
    */
   public abstract MergeSpecification findForcedDeletesMerges(
-      SegmentInfos segmentInfos) throws CorruptIndexException, IOException;
+      SegmentInfos segmentInfos) throws IOException;
 
   /**
    * Release all resources for the policy.
@@ -330,5 +383,5 @@ public abstract class MergePolicy implements java.io.Closeable {
   /**
    * Returns true if a new segment (regardless of its origin) should use the compound file format.
    */
-  public abstract boolean useCompoundFile(SegmentInfos segments, SegmentInfo newSegment) throws IOException;
+  public abstract boolean useCompoundFile(SegmentInfos segments, SegmentInfoPerCommit newSegment) throws IOException;
 }

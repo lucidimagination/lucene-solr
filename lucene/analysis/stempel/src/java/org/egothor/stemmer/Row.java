@@ -57,6 +57,7 @@ package org.egothor.stemmer;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.util.Iterator;
 import java.util.TreeMap;
 
@@ -219,7 +220,7 @@ public class Row {
    * Character.
    * 
    * @param way the Character associated with the desired Cell
-   * @return the reference, or -1 if the Cell is <tt>null,/tt>
+   * @return the reference, or -1 if the Cell is <tt>null</tt>
    */
   public int getRef(Character way) {
     Cell c = at(way);
@@ -292,15 +293,15 @@ public class Row {
   }
   
   /**
-   * Write the contents of this Row to stdout.
+   * Write the contents of this Row to the printstream.
    */
-  public void print() {
+  public void print(PrintStream out) {
     for (Iterator<Character> i = cells.keySet().iterator(); i.hasNext();) {
       Character ch = i.next();
       Cell c = at(ch);
-      System.out.print("[" + ch + ":" + c + "]");
+      out.print("[" + ch + ":" + c + "]");
     }
-    System.out.println();
+    out.println();
   }
   
   Cell at(Character index) {

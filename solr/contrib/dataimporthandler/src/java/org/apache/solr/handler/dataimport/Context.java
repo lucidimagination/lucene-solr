@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -136,7 +136,7 @@ public abstract class Context {
    * get a value by name in the given scope (entity, document,global)
    *
    * @param name  the key
-   * @param scope the scope from which the value is to be retreived
+   * @param scope the scope from which the value is to be retrieved
    * @return the object stored in the given scope with the given key
    */
   public abstract Object getSessionAttribute(String name, String scope);
@@ -151,7 +151,7 @@ public abstract class Context {
 
   /**
    * The request parameters passed over HTTP for this command the values in the
-   * map are either String(for single valued parameters) or List<String> (for
+   * map are either String(for single valued parameters) or List&lt;String&gt; (for
    * multi-valued parameters)
    *
    * @return the request parameters passed in the URL to initiate this process
@@ -198,23 +198,20 @@ public abstract class Context {
   public abstract String getScriptLanguage();
 
   /**delete a document by id
-   * @param id
    */
   public abstract void deleteDoc(String id);
 
   /**delete documents by query
-   * @param query
    */
   public abstract void deleteDocByQuery(String query);
 
   /**Use this directly to  resolve variable
-   * @param var the variable neme 
+   * @param var the variable name 
    * @return the resolved value
    */
   public abstract Object resolve(String var);
 
   /** Resolve variables in a template
-   * @param template
    *
    * @return The string w/ variables resolved
    */

@@ -34,11 +34,17 @@ import java.io.IOException;
 import java.util.LinkedList;
 
 /**
- * Performs a spatial intersection filter against a field indexed with {@link SpatialPrefixTree}, a Trie.
- * SPT yields terms (grids) at length 1 and at greater lengths corresponding to greater precisions.
- * This filter recursively traverses each grid length and uses methods on {@link Shape} to efficiently know
- * that all points at a prefix fit in the shape or not to either short-circuit unnecessary traversals or to efficiently
- * load all enclosed points.
+ * Performs a spatial intersection filter between a query shape and a field
+ * indexed with {@link SpatialPrefixTree}, a Trie. SPT yields terms (grids) at
+ * length 1 (aka "Level 1") and at greater lengths corresponding to greater
+ * precisions. This filter recursively traverses each grid length and uses
+ * methods on {@link Shape} to efficiently know that all points at a prefix fit
+ * in the shape or not to either short-circuit unnecessary traversals or to
+ * efficiently load all enclosed points.  If no indexed data lies in a portion
+ * of the shape then that portion of the query shape is quickly passed over
+ * without decomposing the shape unnecessarily.
+ *
+ * @lucene.internal
  */
 public class RecursivePrefixTreeFilter extends Filter {
 
@@ -110,7 +116,7 @@ RE "scan" threshold:
       if (seekStat == TermsEnum.SeekStatus.NOT_FOUND)
         continue;
       if (cell.getLevel() == detailLevel || cell.isLeaf()) {
-        docsEnum = termsEnum.docs(acceptDocs, docsEnum, false);
+        docsEnum = termsEnum.docs(acceptDocs, docsEnum, 0);
         addDocs(docsEnum,bits);
       } else {//any other intersection
         //If the next indexed term is the leaf marker, then add all of them
@@ -118,7 +124,7 @@ RE "scan" threshold:
         assert StringHelper.startsWith(nextCellTerm, cellTerm);
         scanCell = grid.getNode(nextCellTerm.bytes, nextCellTerm.offset, nextCellTerm.length, scanCell);
         if (scanCell.isLeaf()) {
-          docsEnum = termsEnum.docs(acceptDocs, docsEnum, false);
+          docsEnum = termsEnum.docs(acceptDocs, docsEnum, 0);
           addDocs(docsEnum,bits);
           termsEnum.next();//move pointer to avoid potential redundant addDocs() below
         }
@@ -140,10 +146,10 @@ RE "scan" threshold:
             if (termLevel == detailLevel || scanCell.isLeaf()) {
               //TODO should put more thought into implications of box vs point
               Shape cShape = termLevel == grid.getMaxLevels() ? scanCell.getCenter() : scanCell.getShape();
-              if(queryShape.relate(cShape, grid.getSpatialContext()) == SpatialRelation.DISJOINT)
+              if(queryShape.relate(cShape) == SpatialRelation.DISJOINT)
                 continue;
 
-              docsEnum = termsEnum.docs(acceptDocs, docsEnum, false);
+              docsEnum = termsEnum.docs(acceptDocs, docsEnum, 0);
               addDocs(docsEnum,bits);
             }
           }//term loop
@@ -163,7 +169,7 @@ RE "scan" threshold:
 
   @Override
   public String toString() {
-    return "GeoFilter{fieldName='" + fieldName + '\'' + ", shape=" + queryShape + '}';
+    return getClass().getSimpleName()+"{fieldName='" + fieldName + '\'' + ", shape=" + queryShape + '}';
   }
 
   @Override

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,8 @@
 
 package org.apache.lucene.analysis.util;
 
+import java.io.IOException;
+
 /**
  * Interface for a component that needs to be initialized by
  * an implementation of {@link ResourceLoader}.
@@ -25,5 +27,9 @@ package org.apache.lucene.analysis.util;
  */
 public interface ResourceLoaderAware {
 
-  void inform(ResourceLoader loader);
+  /**
+   * Initializes this component with the provided ResourceLoader
+   * (used for loading classes, files, etc).
+   */
+  void inform(ResourceLoader loader) throws IOException;
 }

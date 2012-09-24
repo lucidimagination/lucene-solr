@@ -1,6 +1,6 @@
 package org.apache.lucene.queries.function.docvalues;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,10 @@ import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueBool;
 
-
+/**
+ * Abstract {@link FunctionValues} implementation which supports retrieving boolean values.
+ * Implementations can control how the boolean values are loaded through {@link #boolVal(int)}}
+ */
 public abstract class BoolDocValues extends FunctionValues {
   protected final ValueSource vs;
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.demo;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -140,7 +140,7 @@ public class IndexFiles {
    *  
    * @param writer Writer to the index where the given file/dir info will be stored
    * @param file The file to index, or the directory to recurse into to find files to index
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error
    */
   static void indexDocs(IndexWriter writer, File file)
     throws IOException {
@@ -174,7 +174,7 @@ public class IndexFiles {
           // field that is indexed (i.e. searchable), but don't tokenize 
           // the field into separate words and don't index term frequency
           // or positional information:
-          Field pathField = new Field("path", file.getPath(), StringField.TYPE_STORED);
+          Field pathField = new StringField("path", file.getPath(), Field.Store.YES);
           doc.add(pathField);
 
           // Add the last modified date of the file a field named "modified".
@@ -184,7 +184,7 @@ public class IndexFiles {
           // year/month/day/hour/minutes/seconds, down the resolution you require.
           // For example the long value 2011021714 would mean
           // February 17, 2011, 2-3 PM.
-          doc.add(new LongField("modified", file.lastModified()));
+          doc.add(new LongField("modified", file.lastModified(), Field.Store.NO));
 
           // Add the contents of the file to a field named "contents".  Specify a Reader,
           // so that the text of the file is tokenized and indexed, but not stored.

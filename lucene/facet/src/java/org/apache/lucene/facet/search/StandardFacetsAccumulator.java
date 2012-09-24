@@ -19,7 +19,7 @@ import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.facet.util.PartitionsUtils;
 import org.apache.lucene.facet.util.ScoredDocIdsUtils;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -230,10 +230,7 @@ public class StandardFacetsAccumulator extends FacetsAccumulator {
   /**
    * Iterate over the documents for this partition and fill the facet arrays with the correct
    * count/complement count/value.
-   * @param docids
-   * @param facetArrays
-   * @param partition
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   private final void fillArraysForPartition(ScoredDocIDs docids,
       FacetArrays facetArrays, int partition) throws IOException {

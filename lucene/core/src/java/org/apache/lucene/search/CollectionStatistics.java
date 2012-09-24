@@ -3,7 +3,7 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.IndexReader; // javadocs
 import org.apache.lucene.index.Terms;       // javadocs
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,7 +34,7 @@ public class CollectionStatistics {
   public CollectionStatistics(String field, long maxDoc, long docCount, long sumTotalTermFreq, long sumDocFreq) {
     assert maxDoc >= 0;
     assert docCount >= -1 && docCount <= maxDoc; // #docs with field must be <= #docs
-    assert sumDocFreq >= -1;
+    assert sumDocFreq == -1 || sumDocFreq >= docCount; // #postings must be >= #docs with field
     assert sumTotalTermFreq == -1 || sumTotalTermFreq >= sumDocFreq; // #positions must be >= #postings
     this.field = field;
     this.maxDoc = maxDoc;

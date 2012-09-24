@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.ramonly;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,16 +19,17 @@ package org.apache.lucene.codecs.ramonly;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsConsumer;
@@ -39,9 +40,7 @@ import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
@@ -50,7 +49,6 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CodecUtil;
 import org.apache.lucene.util.IOUtils;
 
 /** Stores all postings data in RAM, but writes a small
@@ -59,7 +57,7 @@ import org.apache.lucene.util.IOUtils;
  *
  *  NOTE: this codec sorts terms by reverse-unicode-order! */
 
-public class RAMOnlyPostingsFormat extends PostingsFormat {
+public final class RAMOnlyPostingsFormat extends PostingsFormat {
 
   // For fun, test that we can override how terms are
   // sorted, and basic things still work -- this comparator
@@ -114,8 +112,8 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public FieldsEnum iterator() {
-      return new RAMFieldsEnum(this);
+    public Iterator<String> iterator() {
+      return Collections.unmodifiableSet(fieldToTerms.keySet()).iterator();
     }
 
     @Override
@@ -129,9 +127,11 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     long sumTotalTermFreq;
     long sumDocFreq;
     int docCount;
+    final FieldInfo info;
 
-    RAMField(String field) {
+    RAMField(String field, FieldInfo info) {
       this.field = field;
+      this.info = info;
     }
 
     @Override
@@ -162,6 +162,21 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     @Override
     public Comparator<BytesRef> getComparator() {
       return reverseUnicodeComparator;
+    }
+
+    @Override
+    public boolean hasOffsets() {
+      return info.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
+    }
+
+    @Override
+    public boolean hasPositions() {
+      return info.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
+    }
+    
+    @Override
+    public boolean hasPayloads() {
+      return info.hasPayloads();
     }
   }
 
@@ -197,10 +212,10 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
 
     @Override
     public TermsConsumer addField(FieldInfo field) {
-      if (field.indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0) {
+      if (field.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0) {
         throw new UnsupportedOperationException("this codec cannot index offsets");
       }
-      RAMField ramField = new RAMField(field.name);
+      RAMField ramField = new RAMField(field.name, field);
       postings.fieldToTerms.put(field.name, ramField);
       termsConsumer.reset(ramField);
       return termsConsumer;
@@ -288,33 +303,6 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     }
   }
 
-  // Classes for reading from the postings state
-  static class RAMFieldsEnum extends FieldsEnum {
-    private final RAMPostings postings;
-    private final Iterator<String> it;
-    private String current;
-
-    public RAMFieldsEnum(RAMPostings postings) {
-      this.postings = postings;
-      this.it = postings.fieldToTerms.keySet().iterator();
-    }
-
-    @Override
-    public String next() {
-      if (it.hasNext()) {
-        current = it.next();
-      } else {
-        current = null;
-      }
-      return current;
-    }
-
-    @Override
-    public Terms terms() {
-      return postings.fieldToTerms.get(current);
-    }
-  }
-
   static class RAMTermsEnum extends TermsEnum {
     Iterator<String> it;
     String current;
@@ -388,15 +376,12 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) {
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) {
       return new RAMDocsEnum(ramField.termToDocs.get(current), liveDocs);
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) {
-      if (needsOffsets) {
-        return null;
-      }
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) {
       return new RAMDocsAndPositionsEnum(ramField.termToDocs.get(current), liveDocs);
     }
   }
@@ -439,7 +424,7 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public int freq() {
+    public int freq() throws IOException {
       return current.positions.length;
     }
 
@@ -487,7 +472,7 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public int freq() {
+    public int freq() throws IOException {
       return current.positions.length;
     }
 
@@ -512,13 +497,12 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public boolean hasPayload() {
-      return current.payloads != null && current.payloads[posUpto-1] != null;
-    }
-
-    @Override
     public BytesRef getPayload() {
-      return new BytesRef(current.payloads[posUpto-1]);
+      if (current.payloads != null && current.payloads[posUpto-1] != null) {
+        return new BytesRef(current.payloads[posUpto-1]);
+      } else {
+        return null;
+      }
     }
   }
 
@@ -540,7 +524,7 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     // TODO -- ok to do this up front instead of
     // on close....?  should be ok?
     // Write our ID:
-    final String idFileName = IndexFileNames.segmentFileName(writeState.segmentName, writeState.segmentSuffix, ID_EXTENSION);
+    final String idFileName = IndexFileNames.segmentFileName(writeState.segmentInfo.name, writeState.segmentSuffix, ID_EXTENSION);
     IndexOutput out = writeState.directory.createOutput(idFileName, writeState.context);
     boolean success = false;
     try {
@@ -588,11 +572,5 @@ public class RAMOnlyPostingsFormat extends PostingsFormat {
     synchronized(state) {
       return state.get(id);
     }
-  }
-
-  @Override
-  public void files(SegmentInfo segmentInfo, String segmentSuffix, Set<String> files) {
-    final String idFileName = IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, ID_EXTENSION);
-    files.add(idFileName);
   }
 }

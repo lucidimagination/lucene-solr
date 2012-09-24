@@ -12,7 +12,7 @@ import org.apache.lucene.util.BytesRef;
 
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -106,7 +106,7 @@ class ParentArray {
     Bits liveDocs = MultiFields.getLiveDocs(indexReader);
     DocsAndPositionsEnum positions = MultiFields.getTermPositionsEnum(indexReader, liveDocs,
                                                                       Consts.FIELD_PAYLOADS, new BytesRef(Consts.PAYLOAD_PARENT),
-                                                                      false);
+                                                                      DocsAndPositionsEnum.FLAG_PAYLOADS);
       if ((positions == null || positions.advance(first) == DocIdSetIterator.NO_MORE_DOCS) && first < num) {
         throw new CorruptIndexException("Missing parent data for category " + first);
       }
@@ -147,7 +147,7 @@ class ParentArray {
    * NOTE: add() and refresh() CANNOT be used together. If you call add(),
    * this changes the arrays and refresh() can no longer be used.
    */
-  void add(int ordinal, int parentOrdinal) throws IOException {
+  void add(int ordinal, int parentOrdinal) {
     if (ordinal >= prefetchParentOrdinal.length) {
       // grow the array, if necessary.
       // In Java 6, we could just do Arrays.copyOf()...

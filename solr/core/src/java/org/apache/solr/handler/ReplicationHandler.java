@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,7 +42,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexDeletionPolicy;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
@@ -284,7 +283,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private volatile SnapPuller tempSnapPuller;
 
-  public boolean doFetch(SolrParams solrParams, boolean force) {
+  public boolean doFetch(SolrParams solrParams, boolean forceReplication) {
     String masterUrl = solrParams == null ? null : solrParams.get(MASTER_URL);
     if (!snapPullLock.tryLock())
       return false;
@@ -295,7 +294,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
         nl.remove(SnapPuller.POLL_INTERVAL);
         tempSnapPuller = new SnapPuller(nl, this, core);
       }
-      return tempSnapPuller.fetchLatestIndex(core, force);
+      return tempSnapPuller.fetchLatestIndex(core, forceReplication);
     } catch (Exception e) {
       SolrException.log(LOG, "SnapPull failed ", e);
     } finally {
@@ -569,8 +568,6 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   /**
    * Used for showing statistics and progress information.
-   *
-   * @param showSlaveDetails
    */
   private NamedList<Object> getReplicationDetails(boolean showSlaveDetails) {
     NamedList<Object> details = new SimpleOrderedMap<Object>();
@@ -602,10 +599,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     if (showSlaveDetails && snapPuller != null) {
       Properties props = loadReplicationProperties();
       try {
-        NamedList<String> command = new NamedList<String>();
-        command.add(COMMAND, CMD_DETAILS);
-        command.add("slave", "false");
-        NamedList nl = snapPuller.getCommandResponse(command);
+        NamedList nl = snapPuller.getDetails();
         slave.add("masterDetails", nl.get(CMD_DETAILS));
       } catch (Exception e) {
         LOG.warn("Exception while invoking 'details' method for replication on master ", e);
@@ -823,7 +817,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
         List<String> files = Arrays.asList(includeConfFiles.split(","));
         for (String file : files) {
           if (file.trim().length() == 0) continue;
-          String[] strs = file.split(":");
+          String[] strs = file.trim().split(":");
           // if there is an alias add it or it is null
           confFileNameAlias.add(strs[0], strs.length > 1 ? strs[1] : null);
         }
@@ -891,7 +885,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
           }
 
           // reboot the writer on the new index
-          core.getUpdateHandler().newIndexWriter();
+          core.getUpdateHandler().newIndexWriter(true);
 
         } catch (IOException e) {
           LOG.warn("Unable to get IndexCommit on startup", e);
@@ -946,7 +940,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
         stream.write(out);
       }
 
-      public void write(Writer writer, SolrQueryRequest request, SolrQueryResponse response) throws IOException {
+      public void write(Writer writer, SolrQueryRequest request, SolrQueryResponse response) {
         throw new RuntimeException("This is a binary writer , Cannot write to a characterstream");
       }
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,7 @@ public class TopDocs {
   
   /** Sets the maximum score value encountered. */
   public void setMaxScore(float maxScore) {
-    this.maxScore=maxScore;
+    this.maxScore = maxScore;
   }
 
   /** Constructs a TopDocs with a default maxScore=Float.NaN. */

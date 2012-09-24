@@ -1,6 +1,6 @@
 package org.apache.lucene;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,6 +33,49 @@ import org.apache.lucene.search.*;
 
 /** JUnit adaptation of an older test case SearchTest. */
 public class TestSearch extends LuceneTestCase {
+
+  public void testNegativeQueryBoost() throws Exception {
+    Query q = new TermQuery(new Term("foo", "bar"));
+    q.setBoost(-42f);
+    assertEquals(-42f, q.getBoost(), 0.0f);
+
+    Directory directory = newDirectory();
+    try {
+      Analyzer analyzer = new MockAnalyzer(random());
+      IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+      
+      IndexWriter writer = new IndexWriter(directory, conf);
+      try {
+        Document d = new Document();
+        d.add(newTextField("foo", "bar", Field.Store.YES));
+        writer.addDocument(d);
+      } finally {
+        writer.close();
+      }
+      
+      IndexReader reader = DirectoryReader.open(directory);
+      try {
+        IndexSearcher searcher = new IndexSearcher(reader);
+        
+        ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+        assertEquals(1, hits.length);
+        assertTrue("score is not negative: " + hits[0].score,
+                   hits[0].score < 0);
+
+        Explanation explain = searcher.explain(q, hits[0].doc);
+        assertEquals("score doesn't match explanation",
+                     hits[0].score, explain.getValue(), 0.001f);
+        assertTrue("explain doesn't think doc is a match",
+                   explain.isMatch());
+
+      } finally {
+        reader.close();
+      }
+    } finally {
+      directory.close();
+    }
+
+  }
 
     /** This test performs a number of searches. It also compares output
      *  of searches using multi-file index segments with single-file
@@ -86,13 +129,13 @@ public class TestSearch extends LuceneTestCase {
       };
       for (int j = 0; j < docs.length; j++) {
         Document d = new Document();
-        d.add(newField("contents", docs[j], TextField.TYPE_STORED));
-        d.add(newField("id", ""+j, StringField.TYPE_UNSTORED));
+        d.add(newTextField("contents", docs[j], Field.Store.YES));
+        d.add(newStringField("id", ""+j, Field.Store.NO));
         writer.addDocument(d);
       }
       writer.close();
 
-      IndexReader reader = IndexReader.open(directory);
+      IndexReader reader = DirectoryReader.open(directory);
       IndexSearcher searcher = new IndexSearcher(reader);
 
       ScoreDoc[] hits = null;

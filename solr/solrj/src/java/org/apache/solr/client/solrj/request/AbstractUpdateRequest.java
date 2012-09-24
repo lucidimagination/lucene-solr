@@ -1,5 +1,5 @@
 package org.apache.solr.client.solrj.request;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,7 +30,7 @@ import java.io.IOException;
  *
  *
  **/
-public abstract class AbstractUpdateRequest extends SolrRequest {
+public abstract class AbstractUpdateRequest extends SolrRequest implements IsUpdateRequest {
   protected ModifiableSolrParams params;
   protected int commitWithin = -1;
 
@@ -48,7 +48,15 @@ public abstract class AbstractUpdateRequest extends SolrRequest {
     return setAction(action, waitFlush, waitSearcher, 1);
   }
 
+  public AbstractUpdateRequest setAction(ACTION action, boolean waitFlush, boolean waitSearcher, boolean softCommit ) {
+    return setAction(action, waitFlush, waitSearcher, softCommit, 1);
+  }
+
   public AbstractUpdateRequest setAction(ACTION action, boolean waitFlush, boolean waitSearcher, int maxSegments ) {
+    return setAction(action, waitFlush, waitSearcher, false, maxSegments);
+  }
+
+  public AbstractUpdateRequest setAction(ACTION action, boolean waitFlush, boolean waitSearcher, boolean softCommit, int maxSegments ) {
     if (params == null)
       params = new ModifiableSolrParams();
 
@@ -58,15 +66,20 @@ public abstract class AbstractUpdateRequest extends SolrRequest {
     }
     else if( action == ACTION.COMMIT ) {
       params.set( UpdateParams.COMMIT, "true" );
+      params.set( UpdateParams.SOFT_COMMIT, String.valueOf(softCommit));
     }
     params.set( UpdateParams.WAIT_SEARCHER, String.valueOf(waitSearcher));
     return this;
   }
 
-  public AbstractUpdateRequest setAction(ACTION action, boolean waitFlush, boolean waitSearcher, int maxSegments , boolean expungeDeletes) {
-    setAction(action, waitFlush, waitSearcher,maxSegments) ;
+  public AbstractUpdateRequest setAction(ACTION action, boolean waitFlush, boolean waitSearcher, int maxSegments , boolean softCommit, boolean expungeDeletes) {
+    setAction(action, waitFlush, waitSearcher,softCommit,maxSegments) ;
     params.set(UpdateParams.EXPUNGE_DELETES, String.valueOf(expungeDeletes));
     return this;
+  }
+
+  public AbstractUpdateRequest setAction(ACTION action, boolean waitFlush, boolean waitSearcher, int maxSegments , boolean expungeDeletes) {
+    return setAction(action, waitFlush, waitSearcher,maxSegments,false,expungeDeletes);
   }
 
   /**

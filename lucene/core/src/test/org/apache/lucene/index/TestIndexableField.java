@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,7 +25,7 @@ import java.util.Iterator;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -60,17 +60,26 @@ public class TestIndexableField extends LuceneTestCase {
 
       @Override
       public boolean storeTermVectors() {
-        return counter % 2 == 1 && counter % 10 != 9;
+        return indexed() && counter % 2 == 1 && counter % 10 != 9;
       }
 
       @Override
       public boolean storeTermVectorOffsets() {
-        return counter % 2 == 1 && counter % 10 != 9;
+        return storeTermVectors() && counter % 10 != 9;
       }
 
       @Override
       public boolean storeTermVectorPositions() {
-        return counter % 2 == 1 && counter % 10 != 9;
+        return storeTermVectors() && counter % 10 != 9;
+      }
+      
+      @Override
+      public boolean storeTermVectorPayloads() {
+        if (PREFLEX_IMPERSONATION_IS_ACTIVE) {
+          return false; // 3.x doesnt support
+        } else {
+          return storeTermVectors() && counter % 10 != 9;
+        }
       }
 
       @Override
@@ -194,7 +203,7 @@ public class TestIndexableField extends LuceneTestCase {
               assert fieldUpto < fieldCount;
               if (fieldUpto == 0) {
                 fieldUpto = 1;
-                return newField("id", ""+finalDocCount, StringField.TYPE_STORED);
+                return newStringField("id", ""+finalDocCount, Field.Store.YES);
               } else {
                 return new MyField(finalBaseCount + (fieldUpto++-1));
               }
@@ -264,14 +273,14 @@ public class TestIndexableField extends LuceneTestCase {
             TermsEnum termsEnum = tfv.iterator(null);
             assertEquals(new BytesRef(""+counter), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, false);
+            DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(1, dpEnum.nextPosition());
 
             assertEquals(new BytesRef("text"), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
+            dpEnum = termsEnum.docsAndPositions(null, dpEnum);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(0, dpEnum.nextPosition());

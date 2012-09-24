@@ -2,7 +2,7 @@ package org.apache.lucene.util.collections;
 
 import java.util.Arrays;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -273,8 +273,6 @@ public class IntToIntMap {
 
   /**
    * Calculating the baseHash index using the internal <code>hashFactor</code>.
-   * 
-   * @param key
    */
   protected int calcBaseHashIndex(int key) {
     return key & hashFactor;
@@ -337,7 +335,6 @@ public class IntToIntMap {
   /**
    * Find the actual index of a given key.
    * 
-   * @param key
    * @return index of the key. zero if the key wasn't found.
    */
   protected int find(int key) {
@@ -368,8 +365,6 @@ public class IntToIntMap {
    * Some methods use the baseHashIndex. If those call {@link #find} there's
    * no need to re-calculate that hash.
    * 
-   * @param key
-   * @param baseHashIndex
    * @return the index of the given key, or 0 as 'Ground' if the key wasn't
    *         found.
    */
@@ -458,10 +453,8 @@ public class IntToIntMap {
    * Prints the baseHash array, used for debug purposes.
    */
   @SuppressWarnings("unused")
-  private void printBaseHash() {
-    for (int i = 0; i < this.baseHash.length; i++) {
-      System.out.println(i + ".\t" + baseHash[i]);
-    }
+  private String getBaseHashAsString() {
+    return Arrays.toString(this.baseHash);
   }
 
   /**

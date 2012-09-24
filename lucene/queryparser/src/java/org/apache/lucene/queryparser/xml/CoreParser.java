@@ -11,7 +11,7 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.InputStream;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,6 @@ public class CoreParser implements QueryBuilder {
    * Construct an XML parser that uses a single instance QueryParser for handling
    * UserQuery tags - all parse operations are synchronised on this parser
    *
-   * @param analyzer
    * @param parser A QueryParser which will be synchronized on during parse calls.
    */
   public CoreParser(Analyzer analyzer, QueryParser parser) {
@@ -56,7 +55,6 @@ public class CoreParser implements QueryBuilder {
    * Constructs an XML parser that creates a QueryParser for each UserQuery request.
    *
    * @param defaultField The default field name used by QueryParsers constructed for UserQuery tags
-   * @param analyzer
    */
   public CoreParser(String defaultField, Analyzer analyzer) {
     this(defaultField, analyzer, null);
@@ -153,5 +151,5 @@ public class CoreParser implements QueryBuilder {
 
   public Query getQuery(Element e) throws ParserException {
     return queryFactory.getQuery(e);
-	}
+  }
 }

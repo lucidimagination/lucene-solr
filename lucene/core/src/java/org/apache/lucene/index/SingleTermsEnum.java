@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.search.MultiTermQuery;  // javadocs
 import org.apache.lucene.util.BytesRef;
 
@@ -28,7 +26,7 @@ import org.apache.lucene.util.BytesRef;
  * For example, this can be used by {@link MultiTermQuery}s
  * that need only visit one term, but want to preserve
  * MultiTermQuery semantics such as {@link
- * MultiTermQuery#rewriteMethod}.
+ * MultiTermQuery#getRewriteMethod}.
  */
 public final class SingleTermsEnum extends FilteredTermsEnum {
   private final BytesRef singleRef;
@@ -39,7 +37,7 @@ public final class SingleTermsEnum extends FilteredTermsEnum {
    * After calling the constructor the enumeration is already pointing to the term,
    * if it exists.
    */
-  public SingleTermsEnum(TermsEnum tenum, BytesRef termText) throws IOException {
+  public SingleTermsEnum(TermsEnum tenum, BytesRef termText) {
     super(tenum);
     singleRef = termText;
     setInitialSeekTerm(termText);

@@ -1,6 +1,6 @@
 package org.apache.lucene.document;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,18 +26,18 @@ import org.apache.lucene.util.NumericUtils;
 
 /**
  * <p>
- * This class provides a {@link Field} that enables indexing of long values
+ * Field that indexes <code>long</code> values
  * for efficient range filtering and sorting. Here's an example usage:
  * 
- * <pre>
- * document.add(new LongField(name, 6L));
+ * <pre class="prettyprint">
+ * document.add(new LongField(name, 6L, Field.Store.NO));
  * </pre>
  * 
  * For optimal performance, re-use the <code>LongField</code> and
  * {@link Document} instance for more than one document:
  * 
- * <pre>
- *  LongField field = new LongField(name, 0L);
+ * <pre class="prettyprint">
+ *  LongField field = new LongField(name, 0L, Field.Store.NO);
  *  Document document = new Document();
  *  document.add(field);
  * 
@@ -68,10 +68,6 @@ import org.apache.lucene.util.NumericUtils;
  * <code>LongField</code>, use the normal numeric sort types, eg
  * {@link org.apache.lucene.search.SortField.Type#LONG}. <code>LongField</code> 
  * values can also be loaded directly from {@link FieldCache}.</p>
- *
- * <p>By default, a <code>LongField</code>'s value is not stored but
- * is indexed for range filtering and sorting.  You can use
- * {@link StoredField} to also store the value.
  *
  * <p>You may add the same field name as an <code>LongField</code> to
  * the same document more than once.  Range querying and
@@ -128,26 +124,57 @@ import org.apache.lucene.util.NumericUtils;
 
 public final class LongField extends Field {
   
-  public static final FieldType TYPE = new FieldType();
+  /** 
+   * Type for a LongField that is not stored:
+   * normalization factors, frequencies, and positions are omitted.
+   */
+  public static final FieldType TYPE_NOT_STORED = new FieldType();
   static {
-    TYPE.setIndexed(true);
-    TYPE.setTokenized(true);
-    TYPE.setOmitNorms(true);
-    TYPE.setIndexOptions(IndexOptions.DOCS_ONLY);
-    TYPE.setNumericType(FieldType.NumericType.LONG);
-    TYPE.freeze();
+    TYPE_NOT_STORED.setIndexed(true);
+    TYPE_NOT_STORED.setTokenized(true);
+    TYPE_NOT_STORED.setOmitNorms(true);
+    TYPE_NOT_STORED.setIndexOptions(IndexOptions.DOCS_ONLY);
+    TYPE_NOT_STORED.setNumericType(FieldType.NumericType.LONG);
+    TYPE_NOT_STORED.freeze();
   }
 
-  /** Creates an LongField with the provided value
+  /** 
+   * Type for a stored LongField:
+   * normalization factors, frequencies, and positions are omitted.
+   */
+  public static final FieldType TYPE_STORED = new FieldType();
+  static {
+    TYPE_STORED.setIndexed(true);
+    TYPE_STORED.setTokenized(true);
+    TYPE_STORED.setOmitNorms(true);
+    TYPE_STORED.setIndexOptions(IndexOptions.DOCS_ONLY);
+    TYPE_STORED.setNumericType(FieldType.NumericType.LONG);
+    TYPE_STORED.setStored(true);
+    TYPE_STORED.freeze();
+  }
+
+  /** Creates a stored or un-stored LongField with the provided value
    *  and default <code>precisionStep</code> {@link
-   *  NumericUtils#PRECISION_STEP_DEFAULT} (4). */
-  public LongField(String name, long value) {
-    super(name, TYPE);
+   *  NumericUtils#PRECISION_STEP_DEFAULT} (4). 
+   *  @param name field name
+   *  @param value 64-bit long value
+   *  @param stored Store.YES if the content should also be stored
+   *  @throws IllegalArgumentException if the field name is null.
+   */
+  public LongField(String name, long value, Store stored) {
+    super(name, stored == Store.YES ? TYPE_STORED : TYPE_NOT_STORED);
     fieldsData = Long.valueOf(value);
   }
   
   /** Expert: allows you to customize the {@link
-   *  FieldType}. */
+   *  FieldType}. 
+   *  @param name field name
+   *  @param value 64-bit long value
+   *  @param type customized field type: must have {@link FieldType#numericType()}
+   *         of {@link FieldType.NumericType#LONG}.
+   *  @throws IllegalArgumentException if the field name or type is null, or
+   *          if the field type does not have a LONG numericType()
+   */
   public LongField(String name, long value, FieldType type) {
     super(name, type);
     if (type.numericType() != FieldType.NumericType.LONG) {

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,7 +23,7 @@ import java.util.Collection;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
@@ -41,8 +41,6 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
     
   /**
    * LUCENE-3627: This test fails.
-   * 
-   * @throws Exception
    */
   public void testCrashCorruptsIndexing() throws Exception {
     path = _TestUtil.getTempDir("testCrashCorruptsIndexing");
@@ -60,8 +58,6 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
    * index 1 document and commit.
    * prepare for crashing.
    * index 1 more document, and upon commit, creation of segments_2 will crash.
-   * 
-   * @throws IOException
    */
   private void indexAndCrashOnCreateOutputSegments2() throws IOException {
     Directory realDirectory = FSDirectory.open(path);
@@ -93,8 +89,6 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
     
   /**
    * Attempts to index another 1 document.
-   * 
-   * @throws IOException
    */
   private void indexAfterRestart() throws IOException {
     Directory realDirectory = newFSDirectory(path);
@@ -115,13 +109,10 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
     
   /**
    * Run an example search.
-   * 
-   * @throws IOException
-   * @throws ParseException
    */
   private void searchForFleas(final int expectedTotalHits) throws IOException {
     Directory realDirectory = newFSDirectory(path);
-    IndexReader indexReader = IndexReader.open(realDirectory);
+    IndexReader indexReader = DirectoryReader.open(realDirectory);
     IndexSearcher indexSearcher = newSearcher(indexReader);
     TopDocs topDocs = indexSearcher.search(new TermQuery(new Term(TEXT_FIELD, "fleas")), 10);
     assertNotNull(topDocs);
@@ -137,7 +128,7 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
    */
   private Document getDocument() {
     Document document = new Document();
-    document.add(newField(TEXT_FIELD, "my dog has fleas", TextField.TYPE_UNSTORED));
+    document.add(newTextField(TEXT_FIELD, "my dog has fleas", Field.Store.NO));
     return document;
   }
     
@@ -169,17 +160,11 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
       this.crashAfterCreateOutput = name;
     }
         
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void close() throws IOException {
       realDirectory.close();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public IndexOutput createOutput(String name, IOContext cxt) throws IOException {
       IndexOutput indexOutput = realDirectory.createOutput(name, cxt);
@@ -195,49 +180,31 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
       return indexOutput;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void deleteFile(String name) throws IOException {
       realDirectory.deleteFile(name);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean fileExists(String name) throws IOException {
       return realDirectory.fileExists(name);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public long fileLength(String name) throws IOException {
       return realDirectory.fileLength(name);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String[] listAll() throws IOException {
       return realDirectory.listAll();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public IndexInput openInput(String name, IOContext cxt) throws IOException {
       return realDirectory.openInput(name, cxt);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void sync(Collection<String> names) throws IOException {
       realDirectory.sync(names);

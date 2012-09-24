@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,6 +34,7 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.schema.IndexSchema;
 
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.LocalSolrQueryRequest;
@@ -52,7 +53,7 @@ import org.junit.Test;
  * (mainly via TrimFieldUpdateProcessor) and the logic of other various 
  * subclasses.
  */
-public class FieldMutatingUpdateProcessorTest extends SolrTestCaseJ4 {
+public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -86,12 +87,7 @@ public class FieldMutatingUpdateProcessorTest extends SolrTestCaseJ4 {
             ,"//long[@name='first_foo_l'][.='"+count+"']"
             ,"//long[@name='min_foo_l'][.='-34']"
             );
-
-
-
   }
-
-
 
   public void testTrimAll() throws Exception {
     SolrInputDocument d = null;
@@ -559,6 +555,265 @@ public class FieldMutatingUpdateProcessorTest extends SolrTestCaseJ4 {
    
   }
 
+  public void testTruncate() throws Exception {
+    SolrInputDocument d = null;
+
+    d = processAdd("truncate", 
+                   doc(f("id", "1111"),
+                       f("trunc", "123456789", "", 42, "abcd")));
+
+    assertNotNull(d);
+
+    assertEquals(Arrays.asList("12345", "", 42, "abcd"),
+                 d.getFieldValues("trunc"));
+  }
+
+  public void testIgnore() throws Exception {
+
+    IndexSchema schema = h.getCore().getSchema();
+    assertNull("test expects 'foo_giberish' to not be a valid field, looks like schema was changed out from under us",
+               schema.getFieldTypeNoEx("foo_giberish"));
+    assertNotNull("test expects 't_raw' to be a valid field, looks like schema was changed out from under us",
+                  schema.getFieldTypeNoEx("t_raw"));
+    assertNotNull("test expects 'foo_s' to be a valid field, looks like schema was changed out from under us",
+                  schema.getFieldTypeNoEx("foo_s"));
+ 
+    SolrInputDocument d = null;
+    
+    d = processAdd("ignore-not-in-schema",       
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    
+    assertNotNull(d);
+    assertFalse(d.containsKey("foo_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"), 
+                 d.getFieldValues("t_raw"));
+    assertEquals("hoss", d.getFieldValue("foo_s"));
+
+    d = processAdd("ignore-some",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+
+    assertNotNull(d);
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"), 
+                 d.getFieldValues("foo_giberish"));
+    assertFalse(d.containsKey("t_raw"));
+    assertEquals("hoss", d.getFieldValue("foo_s"));
+    
+
+  }
+
+  public void testCloneField() throws Exception {
+
+    SolrInputDocument d = null;
+
+    // regardless of chain, all of these should be equivilent
+    for (String chain : Arrays.asList("clone-single", "clone-multi", 
+                                      "clone-array","clone-selector" )) {
+
+      // simple clone
+      d = processAdd(chain,       
+                     doc(f("id", "1111"),
+                         f("source0_s", "NOT COPIED"),
+                         f("source1_s", "123456789", "", 42, "abcd")));
+      assertNotNull(chain, d);
+      assertEquals(chain,
+                   Arrays.asList("123456789", "", 42, "abcd"), 
+                   d.getFieldValues("source1_s"));
+      assertEquals(chain,
+                   Arrays.asList("123456789", "", 42, "abcd"), 
+                   d.getFieldValues("dest_s"));
+
+      // append to existing values, preserve boost
+      d = processAdd(chain,       
+                     doc(f("id", "1111"),
+                         field("dest_s", 2.3f, "orig1", "orig2"),
+                         f("source0_s", "NOT COPIED"),
+                         f("source1_s", "123456789", "", 42, "abcd")));
+      assertNotNull(chain, d);
+      assertEquals(chain,
+                   Arrays.asList("123456789", "", 42, "abcd"), 
+                   d.getFieldValues("source1_s"));
+      assertEquals(chain,
+                   Arrays.asList("orig1", "orig2", "123456789", "", 42, "abcd"),
+                   d.getFieldValues("dest_s"));
+      assertEquals(chain + ": dest boost changed", 
+                   2.3f, d.getField("dest_s").getBoost(), 0.0f);
+    }
+
+    // should be equivilent for any chain matching source1_s and source2_s
+    for (String chain : Arrays.asList("clone-multi",
+                                      "clone-array","clone-selector" )) {
+
+      // simple clone
+      d = processAdd(chain,       
+                     doc(f("id", "1111"),
+                         f("source0_s", "NOT COPIED"),
+                         f("source1_s", "123456789", "", 42, "abcd"),
+                         f("source2_s", "xxx", 999)));
+      assertNotNull(chain, d);
+      assertEquals(chain,
+                   Arrays.asList("123456789", "", 42, "abcd"), 
+                   d.getFieldValues("source1_s"));
+      assertEquals(chain,
+                   Arrays.asList("xxx", 999),
+                   d.getFieldValues("source2_s"));
+      assertEquals(chain,
+                   Arrays.asList("123456789", "", 42, "abcd", "xxx", 999), 
+                   d.getFieldValues("dest_s"));
+
+      // append to existing values, preserve boost
+      d = processAdd(chain,       
+                     doc(f("id", "1111"),
+                         field("dest_s", 2.3f, "orig1", "orig2"),
+                         f("source0_s", "NOT COPIED"),
+                         f("source1_s", "123456789", "", 42, "abcd"),
+                         f("source2_s", "xxx", 999)));
+      assertNotNull(chain, d);
+      assertEquals(chain,
+                   Arrays.asList("123456789", "", 42, "abcd"), 
+                   d.getFieldValues("source1_s"));
+      assertEquals(chain,
+                   Arrays.asList("xxx", 999),
+                   d.getFieldValues("source2_s"));
+      assertEquals(chain,
+                   Arrays.asList("orig1", "orig2", 
+                                 "123456789", "", 42, "abcd",
+                                 "xxx", 999),
+                   d.getFieldValues("dest_s"));
+      assertEquals(chain + ": dest boost changed", 
+                   2.3f, d.getField("dest_s").getBoost(), 0.0f);
+    }
+  }
+
+  public void testCloneFieldExample() throws Exception {
+
+    SolrInputDocument d = null;
+
+    // test example from the javadocs
+    d = processAdd("multiple-clones",       
+                   doc(f("id", "1111"),
+                       f("category", "misc"),
+                       f("authors", "Isaac Asimov", "John Brunner"),
+                       f("editors", "John W. Campbell"),
+                       f("store1_price", 87),
+                       f("store2_price", 78),
+                       f("list_price", 1000)));
+    assertNotNull(d);
+    assertEquals("misc",d.getFieldValue("category"));
+    assertEquals("misc",d.getFieldValue("category_s"));
+    assertEquals(Arrays.asList("Isaac Asimov", "John Brunner"),
+                 d.getFieldValues("authors"));
+    assertEquals(Arrays.asList("John W. Campbell"),
+                 d.getFieldValues("editors"));
+    assertEquals(Arrays.asList("Isaac Asimov", "John Brunner", 
+                               "John W. Campbell"),
+                 d.getFieldValues("contributors"));
+    assertEquals(87,d.getFieldValue("store1_price"));
+    assertEquals(78,d.getFieldValue("store2_price"));
+    assertEquals(1000,d.getFieldValue("list_price"));
+    assertEquals(Arrays.asList(87, 78),
+                 d.getFieldValues("all_prices"));
+
+  } 
+
+  public void testCountValues() throws Exception {
+
+    SolrInputDocument d = null;
+
+    // trivial 
+    d = processAdd("count",       
+                   doc(f("id", "1111"),
+                       f("count_field", "aaa", "bbb", "ccc")));
+
+    assertNotNull(d);
+    assertEquals(3, d.getFieldValue("count_field"));
+
+    // edge case: no values to count, means no count 
+    // (use default if you want one)
+    d = processAdd("count",       
+                   doc(f("id", "1111")));
+
+    assertNotNull(d);
+    assertFalse(d.containsKey("count_field"));
+
+    // typical usecase: clone and count 
+    d = processAdd("clone-then-count",       
+                   doc(f("id", "1111"),
+                       f("category", "scifi", "war", "space"),
+                       f("editors", "John W. Campbell"),
+                       f("list_price", 1000)));
+    assertNotNull(d);
+    assertEquals(Arrays.asList("scifi", "war", "space"),
+                 d.getFieldValues("category"));
+    assertEquals(3,
+                 d.getFieldValue("category_count"));
+    assertEquals(Arrays.asList("John W. Campbell"),
+                 d.getFieldValues("editors"));
+    assertEquals(1000,d.getFieldValue("list_price"));
+
+    // typical usecase: clone and count demonstrating default
+    d = processAdd("clone-then-count",       
+                   doc(f("id", "1111"),
+                       f("editors", "Anonymous"),
+                       f("list_price", 1000)));
+    assertNotNull(d);
+    assertEquals(0,
+                 d.getFieldValue("category_count"));
+    assertEquals(Arrays.asList("Anonymous"),
+                 d.getFieldValues("editors"));
+    assertEquals(1000,d.getFieldValue("list_price"));
+
+    
+
+
+  } 
+
+  public void testCloneCombinations() throws Exception {
+
+    SolrInputDocument d = null;
+
+    // maxChars
+    d = processAdd("clone-max-chars",
+                   doc(f("id", "1111"),
+                       f("field1", "text")));
+    assertNotNull(d);
+    assertEquals("text",d.getFieldValue("field1"));
+    assertEquals("tex",d.getFieldValue("toField"));
+
+    // move
+    d = processAdd("clone-move",
+                   doc(f("id", "1111"),
+                       f("field1", "text")));
+    assertNotNull(d);
+    assertEquals("text",d.getFieldValue("toField"));
+    assertFalse(d.containsKey("field1"));
+
+    // replace
+    d = processAdd("clone-replace",
+                   doc(f("id", "1111"),
+                       f("toField", "IGNORED"),
+                       f("field1", "text")));
+    assertNotNull(d);
+    assertEquals("text", d.getFieldValue("field1"));
+    assertEquals("text", d.getFieldValue("toField"));
+
+    // append
+    d = processAdd("clone-append",
+                   doc(f("id", "1111"),
+                       f("toField", "aaa"),
+                       f("field1", "bbb"),
+                       f("field2", "ccc")));
+    assertNotNull(d);
+    assertEquals("bbb", d.getFieldValue("field1"));
+    assertEquals("ccc", d.getFieldValue("field2"));
+    assertEquals("aaa; bbb; ccc", d.getFieldValue("toField"));
+  } 
+
   public void testConcatDefaults() throws Exception {
     SolrInputDocument d = null;
     d = processAdd("concat-defaults", 
@@ -613,64 +868,4 @@ public class FieldMutatingUpdateProcessorTest extends SolrTestCaseJ4 {
                  3.0F, d.getField("foo_s").getBoost(), 0.0F);
   }
 
-  /** 
-   * Convinience method for building up SolrInputDocuments
-   */
-  SolrInputDocument doc(SolrInputField... fields) {
-    SolrInputDocument d = new SolrInputDocument();
-    for (SolrInputField f : fields) {
-      d.put(f.getName(), f);
-    }
-    return d;
-  }
-
-  /** 
-   * Convinience method for building up SolrInputFields
-   */
-  SolrInputField field(String name, float boost, Object... values) {
-    SolrInputField f = new SolrInputField(name);
-    for (Object v : values) {
-      f.addValue(v, 1.0F);
-    }
-    f.setBoost(boost);
-    return f;
-  }
-
-  /** 
-   * Convinience method for building up SolrInputFields with default boost
-   */
-  SolrInputField f(String name, Object... values) {
-    return field(name, 1.0F, values);
-  }
-
-
-  /**
-   * Runs a document through the specified chain, and returns the final 
-   * document used when the chain is completed (NOTE: some chains may 
-   * modifiy the document in place
-   */
-  SolrInputDocument processAdd(final String chain, 
-                               final SolrInputDocument docIn) 
-    throws IOException {
-
-    SolrCore core = h.getCore();
-    UpdateRequestProcessorChain pc = core.getUpdateProcessingChain(chain);
-    assertNotNull("No Chain named: " + chain, pc);
-
-    SolrQueryResponse rsp = new SolrQueryResponse();
-
-    SolrQueryRequest req = new LocalSolrQueryRequest
-      (core, new ModifiableSolrParams());
-    try {
-      AddUpdateCommand cmd = new AddUpdateCommand(req);
-      cmd.solrDoc = docIn;
-
-      UpdateRequestProcessor processor = pc.createProcessor(req, rsp);
-      processor.processAdd(cmd);
-
-      return cmd.solrDoc;
-    } finally {
-      req.close();
-    }
-  }
 }

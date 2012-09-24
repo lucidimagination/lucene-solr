@@ -3,7 +3,7 @@ package org.apache.lucene.util.encoding;
 import java.io.IOException;
 import java.io.OutputStream;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,7 +24,7 @@ import java.io.OutputStream;
  * An abstract implementation of {@link IntEncoder} which is served as a filter
  * on the values to encode. An encoder filter wraps another {@link IntEncoder}
  * which does the actual encoding. This allows for chaining filters and
- * encoders, such as: <code><pre>
+ * encoders, such as: <code><pre class="prettyprint">
  * new UniqueValuesIntEncoder(new DGapIntEncoder(new VInt8IntEnoder()));
  * {@link UniqueValuesIntEncoder} followed by {@link DGapIntEncoder}
   </pre></code>

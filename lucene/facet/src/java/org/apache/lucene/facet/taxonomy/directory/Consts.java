@@ -1,13 +1,9 @@
 package org.apache.lucene.facet.taxonomy.directory;
 
-import java.io.IOException;
-
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.StoredFieldVisitor;
-import org.apache.lucene.index.StoredFieldVisitor.Status;
-import org.apache.lucene.store.IndexInput;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -42,12 +38,13 @@ abstract class Consts {
   public static final class LoadFullPathOnly extends StoredFieldVisitor {
     private String fullPath;
 
-    public void stringField(FieldInfo fieldInfo, String value) throws IOException {
+    @Override
+    public void stringField(FieldInfo fieldInfo, String value) {
       fullPath = value;
     }
 
     @Override
-    public Status needsField(FieldInfo fieldInfo) throws IOException {
+    public Status needsField(FieldInfo fieldInfo) {
       return fullPath == null ? Status.YES : Status.STOP;
     }
 

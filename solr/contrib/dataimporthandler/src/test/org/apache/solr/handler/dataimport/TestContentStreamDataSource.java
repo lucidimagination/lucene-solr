@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -40,7 +40,7 @@ import java.util.List;
  * @since solr 1.4
  */
 public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCase {
-  private static final String CONF_DIR = "dih/solr/conf/";
+  private static final String CONF_DIR = "dih/solr/collection1/conf/";
   SolrInstance instance = null;
   JettySolrRunner jetty;
 
@@ -68,7 +68,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
     params.set("command", "full-import");
     params.set("clean", "false");
     req.setParams(params);
-    String url = "http://localhost:" + jetty.getLocalPort() + "/solr";
+    String url = "http://127.0.0.1:" + jetty.getLocalPort() + "/solr";
     HttpSolrServer solrServer = new HttpSolrServer(url);
     solrServer.request(req);
     ModifiableSolrParams qparams = new ModifiableSolrParams();
@@ -88,7 +88,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
         "clean", "false", UpdateParams.COMMIT, "false", 
         UpdateParams.COMMIT_WITHIN, "1000");
     req.setParams(params);
-    String url = "http://localhost:" + jetty.getLocalPort() + "/solr";
+    String url = "http://127.0.0.1:" + jetty.getLocalPort() + "/solr";
     HttpSolrServer solrServer = new HttpSolrServer(url);
     solrServer.request(req);
     Thread.sleep(100);
@@ -151,8 +151,8 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
 
 
       homeDir = new File(home, "inst");
-      dataDir = new File(homeDir, "data");
-      confDir = new File(homeDir, "conf");
+      dataDir = new File(homeDir + "/collection1", "data");
+      confDir = new File(homeDir + "/collection1", "conf");
 
       homeDir.mkdirs();
       dataDir.mkdirs();

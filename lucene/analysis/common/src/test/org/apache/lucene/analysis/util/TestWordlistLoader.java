@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -46,8 +46,8 @@ public class TestWordlistLoader extends LuceneTestCase {
 
   private void checkSet(CharArraySet wordset) {
     assertEquals(3, wordset.size());
-    assertTrue(wordset.contains("ONE"));		// case is not modified
-    assertTrue(wordset.contains("two"));		// surrounding whitespace is removed
+    assertTrue(wordset.contains("ONE"));  // case is not modified
+    assertTrue(wordset.contains("two"));  // surrounding whitespace is removed
     assertTrue(wordset.contains("three"));
     assertFalse(wordset.contains("four"));
   }

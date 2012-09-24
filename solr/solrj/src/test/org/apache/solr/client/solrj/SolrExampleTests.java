@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,8 +20,10 @@ package org.apache.solr.client.solrj;
 
 import java.io.IOException;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,6 +32,7 @@ import junit.framework.Assert;
 import org.apache.lucene.util._TestUtil;
 import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.request.DirectXmlRequest;
@@ -67,6 +70,9 @@ import org.junit.Test;
  */
 abstract public class SolrExampleTests extends SolrJettyTestBase
 {
+  static {
+    ignoreException("uniqueKey");
+  }
   /**
    * query the example
    */
@@ -489,7 +495,9 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     }
     
     try {
-      server.deleteByQuery( "??::?? ignore_exception" ); // query syntax error
+      //the df=text here is a kluge for the test to supply a default field in case there is none in schema.xml
+      // alternatively, the resulting assertion could be modified to assert that no default field is specified.
+      server.deleteByQuery( "{!df=text} ??::?? ignore_exception" ); // query syntax error
       Assert.fail("should have a number format exception");
     }
     catch(SolrException ex) {
@@ -499,9 +507,44 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     catch(Throwable t) {
       t.printStackTrace();
       Assert.fail("should have thrown a SolrException! not: "+t);
+
+    }
+    SolrInputDocument doc = new SolrInputDocument();
+    doc.addField("id", "DOCID", 1.0f);
+    doc.addField("id", "DOCID2", 1.0f);
+    doc.addField("name", "hello", 1.0f);
+
+    if (server instanceof HttpSolrServer) {
+      try {
+        server.add(doc);
+        fail("Should throw exception!");
+      } catch (SolrException ex) {
+        assertEquals(400, ex.code());
+        assertTrue(ex.getMessage().indexOf(
+            "contains multiple values for uniqueKey") > 0); // The reason should get passed through
+      } catch (Throwable t) {
+        Assert.fail("should have thrown a SolrException! not: " + t);
+      }
+    } else if (server instanceof ConcurrentUpdateSolrServer) {
+      //XXX concurrentupdatesolrserver reports errors differently
+      ConcurrentUpdateSolrServer cs = (ConcurrentUpdateSolrServer) server;
+      Field field = getCUSSExceptionField(cs);
+      field.set(cs,  null);
+      cs.add(doc);
+      cs.blockUntilFinished();
+      Throwable lastError = (Throwable)field.get(cs);
+      assertNotNull("Should throw exception!", lastError); //XXX 
+    } else {
+      log.info("Ignorig update test for client:" + server.getClass().getName());
     }
   }
-
+  
+  private static Field getCUSSExceptionField(Object cs)
+      throws SecurityException, NoSuchFieldException, IllegalArgumentException {
+    Field field = cs.getClass().getDeclaredField("lastError");
+    field.setAccessible(true);
+    return field;
+  }
 
   @Test
   public void testAugmentFields() throws Exception
@@ -668,16 +711,11 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertNumFound( "*:*", 3 ); // make sure it got in
     
     // should be able to handle multiple delete commands in a single go
-    StringWriter xml = new StringWriter();
-    xml.append( "<delete>" );
+    List<String> ids = new ArrayList<String>();
     for( SolrInputDocument d : doc ) {
-      xml.append( "<id>" );
-      XML.escapeCharData( (String)d.getField( "id" ).getFirstValue(), xml );
-      xml.append( "</id>" );
+      ids.add(d.getFieldValue("id").toString());
     }
-    xml.append( "</delete>" );
-    DirectXmlRequest up = new DirectXmlRequest( "/update", xml.toString() );
-    server.request( up );
+    server.deleteById(ids);
     server.commit();
     assertNumFound( "*:*", 0 ); // make sure it got out
   }
@@ -901,8 +939,15 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
   }
 
   @Test
-  public void testPivotFacet() throws Exception
-  {    
+  public void testPivotFacets() throws Exception {
+    doPivotFacetTest(false);
+  }
+    
+  public void testPivotFacetsMissing() throws Exception {
+    doPivotFacetTest(true);
+  }
+    
+  private void doPivotFacetTest(boolean missing) throws Exception {
     SolrServer server = getSolrServer();
     
     // Empty the database...
@@ -923,13 +968,14 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     docs.add( makeTestDoc( "id", id++, "features", "bbb",  "cat", "b", "inStock", true ) );
     docs.add( makeTestDoc( "id", id++, "features", "bbb",  "cat", "b", "inStock", false ) );
     docs.add( makeTestDoc( "id", id++, "features", "bbb",  "cat", "b", "inStock", true ) );
-    docs.add( makeTestDoc( "id", id++ ) ); // something not matching
+    docs.add( makeTestDoc( "id", id++,  "cat", "b" ) ); // something not matching all fields
     server.add( docs );
     server.commit();
     
     SolrQuery query = new SolrQuery( "*:*" );
     query.addFacetPivotField("features,cat", "cat,features", "features,cat,inStock" );
     query.setFacetMinCount( 0 );
+    query.setFacetMissing( missing );
     query.setRows( 0 );
     
     QueryResponse rsp = server.query( query );
@@ -953,10 +999,12 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     //  features=aaa (5)
     //    cat=a (3)
     //    cat=b (2)
-    
-    List<PivotField> pivot = pivots.getVal( 0 );
+    //  features missing (1)
+    //    cat=b (1)
+
     assertEquals( "features,cat", pivots.getName( 0 ) );
-    assertEquals( 2, pivot.size() );
+    List<PivotField> pivot = pivots.getVal( 0 );
+    assertEquals( missing ? 3 : 2, pivot.size() );
     
     PivotField ff = pivot.get( 0 );
     assertEquals( "features", ff.getField() );
@@ -969,27 +1017,72 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertEquals(   4, counts.get(0).getCount() );
     assertEquals( "a", counts.get(1).getValue() );
     assertEquals(   2, counts.get(1).getCount() );
-    
 
-    //  PIVOT: cat,features
-    //  cat=b (6)
-    //    features=bbb (4)
-    //    features=aaa (2)
-    //  cat=a (5)
-    //    features=aaa (3)
-    //    features=bbb (2)
-    
     ff = pivot.get( 1 );
     assertEquals( "features", ff.getField() );
     assertEquals( "aaa", ff.getValue() );
     assertEquals( 5, ff.getCount() );
     counts = ff.getPivot();
     assertEquals( 2, counts.size() );
+    assertEquals( "cat", counts.get(0).getField() );
     assertEquals( "a", counts.get(0).getValue() );
     assertEquals(   3, counts.get(0).getCount() );
     assertEquals( "b", counts.get(1).getValue() );
     assertEquals(   2, counts.get(1).getCount() );
-    
+
+    if (missing) {
+      ff = pivot.get( 2 );
+      assertEquals( "features", ff.getField() );
+      assertEquals( null, ff.getValue() );
+      assertEquals( 1, ff.getCount() );
+      counts = ff.getPivot();
+      assertEquals( 1, counts.size() );
+      assertEquals( "cat", counts.get(0).getField() );
+      assertEquals( "b", counts.get(0).getValue() );
+      assertEquals( 1, counts.get(0).getCount() );
+    }
+
+    //  PIVOT: cat,features
+    //  cat=b (7)
+    //    features=bbb (4)
+    //    features=aaa (2)
+    //    features missing (1)
+    //  cat=a (5)
+    //    features=aaa (3)
+    //    features=bbb (2)
+
+    assertEquals( "cat,features", pivots.getName( 1 ) );
+    pivot = pivots.getVal( 1 );
+    assertEquals( 2, pivot.size() );
+
+    ff = pivot.get( 0 );
+    assertEquals( "cat", ff.getField() );
+    assertEquals( "b", ff.getValue() );
+    assertEquals( 7, ff.getCount() );
+    counts = ff.getPivot();
+    assertEquals( missing ? 3 : 2, counts.size() );
+    assertEquals( "features", counts.get(0).getField() );
+    assertEquals( "bbb", counts.get(0).getValue() );
+    assertEquals( 4, counts.get(0).getCount() );
+    assertEquals( "aaa", counts.get(1).getValue() );
+    assertEquals( 2, counts.get(1).getCount() );
+    if ( missing ) {
+      assertEquals( null, counts.get(2).getValue() );
+      assertEquals( 1, counts.get(2).getCount() );
+    }
+
+    ff = pivot.get( 1 );
+    assertEquals( "cat", ff.getField() );
+    assertEquals( "a", ff.getValue() );
+    assertEquals( 5, ff.getCount() );
+    counts = ff.getPivot();
+    assertEquals( 2, counts.size() );
+    assertEquals( "features", counts.get(0).getField() );
+    assertEquals( "aaa", counts.get(0).getValue() );
+    assertEquals( 3, counts.get(0).getCount() );
+    assertEquals( "bbb", counts.get(1).getValue() );
+    assertEquals( 2, counts.get(1).getCount() );
+
     // Three deep:
     //  PIVOT: features,cat,inStock
     //  features=bbb (6)
@@ -1006,10 +1099,13 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     //    cat=b (2)
     //      inStock=false (1)
     //      inStock=true (1)
-    
-    pivot = pivots.getVal( 2 );
+    //  features missing (1)
+    //    cat=b (1)
+    //      inStock missing (1)
+
     assertEquals( "features,cat,inStock", pivots.getName( 2 ) );
-    assertEquals( 2, pivot.size() );
+    pivot = pivots.getVal( 2 );
+    assertEquals( missing ? 3 : 2, pivot.size() );
     PivotField p = pivot.get( 1 ).getPivot().get(0);     // get(1) should be features=AAAA, then get(0) should be cat=a
     assertEquals( "cat", p.getField() );
     assertEquals( "a", p.getValue() );
@@ -1019,6 +1115,25 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertEquals( "inStock",    counts.get(0).getField() );
     assertEquals( Boolean.TRUE, counts.get(0).getValue() );
     assertEquals(  2,           counts.get(0).getCount() );
+
+    if (missing) {
+      p = pivot.get( 2 );
+      assertEquals( "features", p.getField() );
+      assertEquals( null, p.getValue() );
+      assertEquals( 1, p.getCount() );
+      assertEquals( 1, p.getPivot().size() );
+      p = p.getPivot().get(0);
+      assertEquals( "cat", p.getField() );
+      assertEquals( "b", p.getValue() );
+      assertEquals( 1, p.getCount() );
+      assertEquals( 1, p.getPivot().size() );
+      p = p.getPivot().get(0);
+      assertEquals( "inStock", p.getField() );
+      assertEquals( null, p.getValue() );
+      assertEquals( 1, p.getCount() );
+      assertEquals( null, p.getPivot() );
+    }
+
   }
   
   public static SolrInputDocument makeTestDoc( Object ... kvp )
@@ -1103,7 +1218,6 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     QueryResponse rsp = server.query( query );
     assertEquals(1, rsp.getResults().getNumFound());
   }
-  
 
   @Test
   public void testRealtimeGet() throws Exception
@@ -1121,7 +1235,7 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     server.commit();  // Since the transaction log is disabled in the example, we need to commit
     
     SolrQuery q = new SolrQuery();
-    q.setQueryType("/get");
+    q.setRequestHandler("/get");
     q.set("id", "DOCID");
     q.set("fl", "id,name,aaa:[value v=aaa]");
     
@@ -1141,6 +1255,71 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertEquals("DOCID", out.get("id"));
     assertEquals("hello", out.get("name"));
     assertEquals("aaa", out.get("aaa"));
+  }
+  
+  @Test
+  public void testUpdateField() throws Exception {
+    //no versions
+    SolrServer server = getSolrServer();
+    server.deleteByQuery("*:*");
+    server.commit();
+    SolrInputDocument doc = new SolrInputDocument();
+    doc.addField("id", "unique");
+    doc.addField("name", "gadget");
+    doc.addField("price_f", 1);
+    server.add(doc);
+    server.commit();
+    SolrQuery q = new SolrQuery("*:*");
+    q.setFields("id","price_f","name", "_version_");
+    QueryResponse resp = server.query(q);
+    assertEquals("Doc count does not match", 1, resp.getResults().getNumFound());
+    Long version = (Long)resp.getResults().get(0).getFirstValue("_version_");
+    assertNotNull("no version returned", version);
+    assertEquals(1.0f, resp.getResults().get(0).getFirstValue("price_f"));
+
+    //update "price" with incorrect version (optimistic locking)
+    HashMap<String, Object> oper = new HashMap<String, Object>();  //need better api for this???
+    oper.put("set",100);
+
+    doc = new SolrInputDocument();
+    doc.addField("id", "unique");
+    doc.addField("_version_", version+1);
+    doc.addField("price_f", oper);
+    try {
+      server.add(doc);
+      if(server instanceof HttpSolrServer) { //XXX concurrent server reports exceptions differently
+        fail("Operation should throw an exception!");
+      } else {
+        server.commit(); //just to be sure the client has sent the doc
+        assertTrue("CUSS did not report an error", ((Throwable)getCUSSExceptionField(server).get(server)).getMessage().contains("Conflict"));
+      }
+    } catch (SolrException se) {
+      assertTrue("No identifiable error message", se.getMessage().contains("version conflict for unique"));
+    }
+    
+    //update "price", use correct version (optimistic locking)
+    doc = new SolrInputDocument();
+    doc.addField("id", "unique");
+    doc.addField("_version_", version);
+    doc.addField("price_f", oper);
+    server.add(doc);
+    server.commit();
+    resp = server.query(q);
+    assertEquals("Doc count does not match", 1, resp.getResults().getNumFound());
+    assertEquals("price was not updated?", 100.0f, resp.getResults().get(0).getFirstValue("price_f"));
+    assertEquals("no name?", "gadget", resp.getResults().get(0).getFirstValue("name"));
+
+    //update "price", no version
+    oper.put("set", 200);
+    doc = new SolrInputDocument();
+    doc.addField("id", "unique");
+    doc.addField("price_f", oper);
+    server.add(doc);
+    server.commit();
+    resp = server.query(q);
+    assertEquals("Doc count does not match", 1, resp.getResults().getNumFound());
+    assertEquals("price was not updated?", 200.0f, resp.getResults().get(0).getFirstValue("price_f"));
+    assertEquals("no name?", "gadget", resp.getResults().get(0).getFirstValue("name"));
   }
   
   @Test

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -163,7 +163,6 @@ public class ClientUtils
   /**
    * Returns a formatter that can be use by the current thread if needed to
    * convert Date objects to the Internal representation.
-   * @throws ParseException
    *
    * @deprecated Use {@link org.apache.solr.common.util.DateUtil#parseDate(String)}
    */

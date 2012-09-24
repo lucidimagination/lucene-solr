@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -48,7 +48,20 @@ public abstract class FilteredTermsEnum extends TermsEnum {
    * the enum should call {@link #nextSeekTerm} and step forward.
    * @see #accept(BytesRef)
    */
-  protected static enum AcceptStatus {YES, YES_AND_SEEK, NO, NO_AND_SEEK, END};
+  protected static enum AcceptStatus {
+    /** Accept the term and position the enum at the next term. */
+    YES, 
+    /** Accept the term and advance ({@link FilteredTermsEnum#nextSeekTerm(BytesRef)})
+     * to the next term. */
+    YES_AND_SEEK, 
+    /** Reject the term and position the enum at the next term. */
+    NO, 
+    /** Reject the term and advance ({@link FilteredTermsEnum#nextSeekTerm(BytesRef)})
+     * to the next term. */
+    NO_AND_SEEK, 
+    /** Reject the term and stop enumerating. */
+    END
+  };
   
   /** Return if term is accepted, not accepted or the iteration should ended
    * (and possibly seek).
@@ -82,7 +95,7 @@ public abstract class FilteredTermsEnum extends TermsEnum {
    * <P>You can only use this method, if you keep the default
    * implementation of {@link #nextSeekTerm}.
    */
-  protected final void setInitialSeekTerm(BytesRef term) throws IOException {
+  protected final void setInitialSeekTerm(BytesRef term) {
     this.initialSeekTerm = term;
   }
   
@@ -137,7 +150,8 @@ public abstract class FilteredTermsEnum extends TermsEnum {
   }
 
   /** This enum does not support seeking!
-   * @throws UnsupportedOperationException
+   * @throws UnsupportedOperationException In general, subclasses do not
+   *         support seeking.
    */
   @Override
   public boolean seekExact(BytesRef term, boolean useCache) throws IOException {
@@ -145,7 +159,8 @@ public abstract class FilteredTermsEnum extends TermsEnum {
   }
 
   /** This enum does not support seeking!
-   * @throws UnsupportedOperationException
+   * @throws UnsupportedOperationException In general, subclasses do not
+   *         support seeking.
    */
   @Override
   public SeekStatus seekCeil(BytesRef term, boolean useCache) throws IOException {
@@ -153,7 +168,8 @@ public abstract class FilteredTermsEnum extends TermsEnum {
   }
 
   /** This enum does not support seeking!
-   * @throws UnsupportedOperationException
+   * @throws UnsupportedOperationException In general, subclasses do not
+   *         support seeking.
    */
   @Override
   public void seekExact(long ord) throws IOException {
@@ -166,17 +182,18 @@ public abstract class FilteredTermsEnum extends TermsEnum {
   }
 
   @Override
-  public DocsEnum docs(Bits bits, DocsEnum reuse, boolean needsFreqs) throws IOException {
-    return tenum.docs(bits, reuse, needsFreqs);
+  public DocsEnum docs(Bits bits, DocsEnum reuse, int flags) throws IOException {
+    return tenum.docs(bits, reuse, flags);
   }
     
   @Override
-  public DocsAndPositionsEnum docsAndPositions(Bits bits, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
-    return tenum.docsAndPositions(bits, reuse, needsOffsets);
+  public DocsAndPositionsEnum docsAndPositions(Bits bits, DocsAndPositionsEnum reuse, int flags) throws IOException {
+    return tenum.docsAndPositions(bits, reuse, flags);
   }
   
   /** This enum does not support seeking!
-   * @throws UnsupportedOperationException
+   * @throws UnsupportedOperationException In general, subclasses do not
+   *         support seeking.
    */
   @Override
   public void seekExact(BytesRef term, TermState state) throws IOException {

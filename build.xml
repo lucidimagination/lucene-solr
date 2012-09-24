@@ -24,7 +24,10 @@
     </subant>
   </target>
 
-  <target name="test" description="Test both Lucene and Solr" depends="validate">
+  <target name="precommit" description="Run basic checks before committing"
+          depends="check-svn-working-copy,validate,documentation-lint"/>
+
+  <target name="test" description="Test both Lucene and Solr">
     <sequential>
       <subant target="test" inheritall="false" failonerror="true">
         <fileset dir="lucene" includes="build.xml" />
@@ -33,31 +36,58 @@
     </sequential>
   </target>
 
-  <target name="javadocs" description="Generate Lucene and Solr javadocs">
+  <target name="pitest" description="Test both Lucene and Solr">
     <sequential>
-      <subant target="javadocs" inheritall="false" failonerror="true">
+      <subant target="pitest" inheritall="false" failonerror="false">
         <fileset dir="lucene" includes="build.xml" />
         <fileset dir="solr" includes="build.xml" />
       </subant>
     </sequential>
   </target>
 
-  <target name="javadocs-lint">
+  <target name="documentation" description="Generate Lucene and Solr Documentation">
     <sequential>
-      <subant target="javadocs-lint" inheritall="false" failonerror="true">
+      <subant target="documentation" inheritall="false" failonerror="true">
         <fileset dir="lucene" includes="build.xml" />
         <fileset dir="solr" includes="build.xml" />
       </subant>
     </sequential>
   </target>
 
-  <target name="validate" description="Validate dependencies, licenses, etc.">
-    <sequential><subant target="validate" inheritall="false" failonerror="true">
+  <target name="documentation-lint">
+    <sequential>
+      <subant target="documentation-lint" inheritall="false" failonerror="true">
         <fileset dir="lucene" includes="build.xml" />
         <fileset dir="solr" includes="build.xml" />
-      </subant></sequential>
+      </subant>
+    </sequential>
   </target>
 
+  <target name="validate" description="Validate dependencies, licenses, etc." depends="-validate-source-patterns">
+    <subant target="validate" inheritall="false" failonerror="true">
+      <fileset dir="lucene" includes="build.xml" />
+      <fileset dir="solr" includes="build.xml" />
+    </subant>
+  </target>
+  
+  <target name="-validate-source-patterns" unless="disable.source-patterns">
+    <!-- check that there are no nocommits or @author javadoc tags: -->
+    <property name="validate.currDir" location="."/>
+    <pathconvert pathsep="${line.separator}" dirsep="/" property="validate.patternsFound" setonempty="false">
+      <fileset dir="${validate.currDir}">
+        <include name="**/*.java"/>
+        <exclude name="**/backwards/**"/>
+        <or>
+          <containsregexp expression="@author\b" casesensitive="yes"/>
+          <containsregexp expression="\bno(n|)commit\b" casesensitive="no"/>
+          <containsregexp expression="\t" casesensitive="no"/>
+        </or>
+      </fileset>
+      <map from="${validate.currDir}${file.separator}" to="* "/>
+    </pathconvert>
+    <fail if="validate.patternsFound">The following files contain @author tags, tabs or nocommits:${line.separator}${validate.patternsFound}</fail>
+  </target>
+	
   <target name="rat-sources" description="Runs rat across all sources and tests">
     <sequential><subant target="rat-sources" inheritall="false" failonerror="true">
         <fileset dir="lucene" includes="build.xml" />
@@ -65,7 +95,7 @@
     </subant></sequential>
   </target>
 
-  <target name="resolve" description="Resolves all dependencies">
+  <target name="resolve" depends="clean-jars" description="Resolves all dependencies">
     <sequential><subant target="resolve" inheritall="false" failonerror="true">
         <fileset dir="lucene" includes="build.xml" />
         <fileset dir="solr" includes="build.xml" />
@@ -84,6 +114,8 @@
 
   <property name="version" value="4.0-SNAPSHOT"/>
   <property name="maven-build-dir" value="maven-build"/>
+  <property name="maven-version" value="2.2.1"/>
+  
   <target name="get-maven-poms"
           description="Copy Maven POMs from dev-tools/maven/ to ${maven-build-dir}/">
     <copy todir="${maven-build-dir}" overwrite="true">
@@ -116,7 +148,34 @@
     </sequential>
   </target>
 
-  <target name="eclipse" description="Setup Eclipse configuration" depends="resolve">
+  <target name="validate-maven-dependencies" depends="generate-maven-artifacts" description="Validates maven dependencies, licenses, etc">
+    <subant target="-validate-maven-dependencies" inheritall="false" failonerror="true">
+      <property name="filtered.pom.templates.uptodate" value="true"/>
+      <fileset dir="lucene" includes="build.xml"/>
+      <fileset dir="solr" includes="build.xml"/>
+    </subant>
+  </target>
+  
+  <target name="run-maven-build" depends="get-maven-poms" description="Runs the Maven build using automatically generated POMs">
+    <subant target="run-maven-build" inheritall="false" failonerror="true">
+      <propertyset>
+        <propertyref prefix="maven-"/>
+      </propertyset>
+      <fileset dir="." includes="extra-targets.xml" />
+    </subant>
+  </target>
+  
+  <target name="remove-maven-artifacts" description="Removes all Lucene/Solr Maven artifacts from the local repository">
+    <echo message="Removing all Lucene/Solr Maven artifacts from '${user.home}/.m2/repository'..."/>
+    <delete includeemptydirs="true">
+      <fileset dir="${user.home}/.m2/repository" erroronmissingdir="false">
+        <include name="org/apache/lucene/**"/>
+        <include name="org/apache/solr/**"/>
+      </fileset>
+    </delete>
+  </target>
+
+  <target name="eclipse" depends="clean-jars, resolve" description="Setup Eclipse configuration">
     <copy file="dev-tools/eclipse/dot.project" tofile=".project" overwrite="false"/>
     <copy file="dev-tools/eclipse/dot.classpath" tofile=".classpath" overwrite="true"/>
     <mkdir dir=".settings"/>
@@ -129,7 +188,7 @@
     </echo>
   </target>
 
-  <target name="idea" description="Setup IntelliJ IDEA configuration" depends="resolve">
+  <target name="idea" depends="clean-jars, resolve" description="Setup IntelliJ IDEA configuration">
     <copy todir=".">
       <fileset dir="dev-tools/idea"/>
     </copy>
@@ -138,6 +197,7 @@
       File | Project Structure | Project | Project SDK.
     </echo>
   </target>
+
   <target name="clean-idea"
           description="Removes all IntelliJ IDEA configuration files">
     <delete dir=".idea" failonerror="true"/>
@@ -146,6 +206,7 @@
       <fileset dir="solr" includes="**/*.iml"/>
       <fileset dir="lucene" includes="**/*.iml"/>
     </delete>
+    <delete dir="idea-build" failonerror="true"/>
   </target>
 
   <target name="clean" description="Clean Lucene and Solr">
@@ -176,21 +237,101 @@
   </target>
 
   <target name="jar-checksums" description="Recompute SHA1 checksums for all JAR files.">
-    <delete>
-      <fileset dir="${basedir}">
-        <include name="**/*.jar.sha1"/>
-      </fileset>
-    </delete>
+    <sequential>
+      <subant target="jar-checksums" inheritall="false" failonerror="true">
+        <fileset dir="lucene" includes="build.xml" />
+        <fileset dir="solr" includes="build.xml" />
+      </subant>
+    </sequential>
+  </target>
 
-    <checksum algorithm="SHA1" fileext=".sha1">
-      <fileset dir="${basedir}">
-        <include name="**/*.jar"/>
-      </fileset>
-    </checksum>
+  <!-- define here, as common-build is not included! -->
+  <property name="python32.exe" value="python3.2" />
+  <property name="fakeRelease" value="lucene/build/fakeRelease"/>
+  <property name="fakeReleaseTmp" value="lucene/build/fakeReleaseTmp"/>
+  <property name="fakeReleaseVersion" value="4.0"/> <!-- *not* -SNAPSHOT, the real version -->
 
-    <fixcrlf 
-      srcdir="${basedir}"
-      includes="**/*.jar.sha1"
-      eol="lf" fixlast="true" encoding="US-ASCII" />
+  <target name="nightly-smoke" description="Builds an unsigned release and smoke tests it" depends="clean">
+   <sequential>
+     <fail unless="JAVA6_HOME">JAVA6_HOME property is not defined.</fail>
+     <fail unless="JAVA7_HOME">JAVA7_HOME property is not defined.</fail>
+     <subant target="prepare-release-no-sign" inheritall="false" failonerror="true">
+       <fileset dir="lucene" includes="build.xml" />
+       <fileset dir="solr" includes="build.xml" />
+       <property name="version" value="${fakeReleaseVersion}" />
+     </subant>
+     <delete dir="${fakeRelease}"/>
+     <delete dir="${fakeReleaseTmp}"/>
+     <mkdir dir="${fakeRelease}"/>
+     <copy todir="${fakeRelease}/lucene">
+       <fileset dir="lucene/dist"/>
+     </copy>
+     <copy todir="${fakeRelease}/lucene/changes">
+       <fileset dir="lucene/build/docs/changes"/>
+     </copy>
+     <get src="http://people.apache.org/keys/group/lucene.asc" 
+          dest="${fakeRelease}/lucene/KEYS"/>
+     <copy todir="${fakeRelease}/solr">
+       <fileset dir="solr/package"/>
+     </copy>
+     <copy file="${fakeRelease}/lucene/KEYS" todir="${fakeRelease}/solr"/>
+     <makeurl file="${fakeRelease}" validate="false" property="fakeRelease.uri"/>
+     <exec executable="${python32.exe}" failonerror="true">
+       <arg value="-u"/>
+       <arg value="dev-tools/scripts/smokeTestRelease.py"/>
+       <arg value="${fakeRelease.uri}"/>
+       <arg value="${fakeReleaseVersion}"/>
+       <arg value="${fakeReleaseTmp}"/>
+       <arg value="false"/>
+       <env key="JAVA6_HOME" value="${JAVA6_HOME}"/>
+       <env key="JAVA7_HOME" value="${JAVA7_HOME}"/>
+     </exec>
+     <delete dir="${fakeRelease}"/>
+     <delete dir="${fakeReleaseTmp}"/>
+   </sequential>
+  </target>
+  
+  <target name="check-svn-working-copy">
+    <subant target="check-svn-working-copy" inheritall="false" failonerror="true">
+      <fileset dir="." includes="extra-targets.xml" />
+    </subant>
+  </target>
+
+  <!-- Calls only generate-clover-reports on Lucene, as Solr's is just a clone with other target; the database itsself is fixed -->
+  <target name="generate-clover-reports">
+    <subant target="generate-clover-reports" inheritall="false" failonerror="true">
+      <fileset dir="." includes="extra-targets.xml" />
+    </subant>
+  </target>
+
+  <!-- Jenkins tasks -->
+  <target name="jenkins-hourly" depends="clean,test,validate,-jenkins-documentation-lint,jar-checksums,check-svn-working-copy" description="Runs the Jenkins hourly test runs"/>
+  
+  <target name="jenkins-clover" description="Runs nightly clover builds on Jenkins">
+    <antcall target="-jenkins-clover">
+      <param name="run.clover" value="true"/>
+      <!-- must be 1, as clover does not like parallel test runs: -->
+      <param name="tests.jvms" value="1"/>
+      <!-- Also override some other props to be fast, ignoring what's set on command line: -->
+      <param name="tests.multiplier" value="1"/>
+      <param name="tests.nightly" value="false"/>
+      <param name="tests.weekly" value="false"/>
+      <param name="tests.badapples" value="true"/>
+      <!-- The idea behind Clover is to determine test coverage, so be immune to failing tests: -->
+      <param name="tests.haltonfailure" value="false"/>
+    </antcall>
+  </target>
+  <target name="-jenkins-clover" depends="clean,test,generate-clover-reports"/>
+
+  <target name="jenkins-maven-nightly" depends="clean,remove-maven-artifacts,run-maven-build,generate-maven-artifacts,validate-maven-dependencies"
+    description="Runs the nightly Maven build on Jenkins, including artifact deployment"/>
+  
+  <!-- we need this extra condition, as we want to match only on "true", not solely if property is set: -->
+  <property name="disable.documentation-lint" value="false" />
+  <condition property="-disable.documentation-lint">
+    <istrue value="${disable.documentation-lint}"/>
+  </condition>
+  <target name="-jenkins-documentation-lint" unless="-disable.documentation-lint">
+    <antcall target="documentation-lint"/> 
   </target>
 </project>

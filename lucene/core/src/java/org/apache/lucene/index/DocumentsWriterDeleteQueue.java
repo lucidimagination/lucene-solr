@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -324,7 +324,7 @@ final class DocumentsWriterDeleteQueue {
         .newUpdater(Node.class, Node.class, "next");
 
     void apply(BufferedDeletes bufferedDeletes, int docIDUpto) {
-      assert false : "sentinel item must never be applied";
+      throw new IllegalStateException("sentinel item must never be applied");
     }
 
     boolean casNext(Node<?> cmp, Node<?> val) {

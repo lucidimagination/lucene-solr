@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.standard;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,6 +36,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 %function getNextToken
 %pack
 %char
+%buffer 4096
 
 %{
 
@@ -78,7 +79,7 @@ APOSTROPHE =  {ALPHA} ("'" {ALPHA})+
 // use a post-filter to remove dots
 ACRONYM    =  {LETTER} "." ({LETTER} ".")+
 
-ACRONYM_DEP	= {ALPHANUM} "." ({ALPHANUM} ".")+
+ACRONYM_DEP  = {ALPHANUM} "." ({ALPHANUM} ".")+
 
 // company names like AT&T and Excite@Home.
 COMPANY    =  {ALPHA} ("&"|"@") {ALPHA}
@@ -99,7 +100,7 @@ NUM        = ({ALPHANUM} {P} {HAS_DIGIT}
            | {HAS_DIGIT} {P} {ALPHANUM} ({P} {HAS_DIGIT} {P} {ALPHANUM})+)
 
 // punctuation
-P	         = ("_"|"-"|"/"|"."|",")
+P           = ("_"|"-"|"/"|"."|",")
 
 // at least one digit
 HAS_DIGIT  = ({LETTER}|[:digit:])* [:digit:] ({LETTER}|[:digit:])*

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,6 @@ package org.apache.solr.update;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -29,6 +28,7 @@ import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.RefCounted;
@@ -36,22 +36,60 @@ import org.apache.solr.util.RefCounted;
 public class VersionInfo {
   public static final String VERSION_FIELD="_version_";
 
-  private SolrCore core;
-  private UpdateHandler updateHandler;
+  private final UpdateLog ulog;
   private final VersionBucket[] buckets;
   private SchemaField versionField;
   private SchemaField idField;
   final ReadWriteLock lock = new ReentrantReadWriteLock(true);
 
-  public VersionInfo(UpdateHandler updateHandler, int nBuckets) {
-    this.updateHandler = updateHandler;
-    this.core = updateHandler.core;
-    versionField = core.getSchema().getFieldOrNull(VERSION_FIELD);
+  /**
+   * Gets and returns the {@link #VERSION_FIELD} from the specified 
+   * schema, after verifying that it is indexed, stored, and single-valued.  
+   * If any of these pre-conditions are not met, it throws a SolrException 
+   * with a user suitable message indicating the problem.
+   */
+  public static SchemaField getAndCheckVersionField(IndexSchema schema) 
+    throws SolrException {
+    final String errPrefix = VERSION_FIELD + "field must exist in schema, using indexed=\"true\" stored=\"true\" and multiValued=\"false\"";
+    SchemaField sf = schema.getFieldOrNull(VERSION_FIELD);
+
+    if (null == sf) {
+      throw new SolrException
+        (SolrException.ErrorCode.SERVER_ERROR, 
+         errPrefix + " (" + VERSION_FIELD + " does not exist)");
+    }
+    if ( !sf.indexed() ) {
+      throw new SolrException
+        (SolrException.ErrorCode.SERVER_ERROR, 
+         errPrefix + " (" + VERSION_FIELD + " is not indexed");
+    }
+    if ( !sf.stored() ) {
+      throw new SolrException
+        (SolrException.ErrorCode.SERVER_ERROR, 
+         errPrefix + " (" + VERSION_FIELD + " is not stored");
+    }
+    if ( sf.multiValued() ) {
+      throw new SolrException
+        (SolrException.ErrorCode.SERVER_ERROR, 
+         errPrefix + " (" + VERSION_FIELD + " is not multiValued");
+    }
+    
+    return sf;
+  }
+
+  public VersionInfo(UpdateLog ulog, int nBuckets) {
+    this.ulog = ulog;
+    SolrCore core = ulog.uhandler.core;
+    versionField = getAndCheckVersionField(core.getSchema());
     idField = core.getSchema().getUniqueKeyField();
     buckets = new VersionBucket[ BitUtil.nextHighestPowerOfTwo(nBuckets) ];
     for (int i=0; i<buckets.length; i++) {
       buckets[i] = new VersionBucket();
     }
+  }
+
+  public void reload() {
+
   }
 
   public SchemaField getVersionField() {
@@ -143,14 +181,14 @@ public class VersionInfo {
   }
 
   public Long lookupVersion(BytesRef idBytes) {
-    return updateHandler.ulog.lookupVersion(idBytes);
+    return ulog.lookupVersion(idBytes);
   }
 
   public Long getVersionFromIndex(BytesRef idBytes) {
     // TODO: we could cache much of this and invalidate during a commit.
     // TODO: most DocValues classes are threadsafe - expose which.
 
-    RefCounted<SolrIndexSearcher> newestSearcher = core.getRealtimeSearcher();
+    RefCounted<SolrIndexSearcher> newestSearcher = ulog.uhandler.core.getRealtimeSearcher();
     try {
       SolrIndexSearcher searcher = newestSearcher.get();
       long lookup = searcher.lookupId(idBytes);
@@ -159,7 +197,7 @@ public class VersionInfo {
       ValueSource vs = versionField.getType().getValueSource(versionField, null);
       Map context = ValueSource.newContext(searcher);
       vs.createWeight(context, searcher);
-      FunctionValues fv = vs.getValues(context, searcher.getTopReaderContext().leaves()[(int)(lookup>>32)]);
+      FunctionValues fv = vs.getValues(context, searcher.getTopReaderContext().leaves().get((int)(lookup>>32)));
       long ver = fv.longVal((int)lookup);
       return ver;
 

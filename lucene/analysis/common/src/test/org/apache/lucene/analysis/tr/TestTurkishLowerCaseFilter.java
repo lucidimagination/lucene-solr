@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.tr;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -66,6 +66,13 @@ public class TestTurkishLowerCaseFilter extends BaseTokenStreamTestCase {
     TurkishLowerCaseFilter filter = new TurkishLowerCaseFilter(stream);
     assertTokenStreamContents(filter, new String[] {"i\u0316stanbul", "izmir",
         "\u0131\u0316sparta",});
+  }
+  
+  public void testDecomposed3() throws Exception {
+    TokenStream stream = new MockTokenizer(new StringReader(
+        "\u0049\u0307"), MockTokenizer.WHITESPACE, false);
+    TurkishLowerCaseFilter filter = new TurkishLowerCaseFilter(stream);
+    assertTokenStreamContents(filter, new String[] {"i"});
   }
   
   public void testEmptyTerm() throws IOException {

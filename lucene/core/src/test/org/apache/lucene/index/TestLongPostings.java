@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -37,7 +37,7 @@ import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util._TestUtil;
 
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestLongPostings extends LuceneTestCase {
 
   // Produces a realistic unicode random string that
@@ -111,26 +111,26 @@ public class TestLongPostings extends LuceneTestCase {
     }
 
     final IndexReader r;
-	  final IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
-	    .setOpenMode(IndexWriterConfig.OpenMode.CREATE)
-	    .setMergePolicy(newLogMergePolicy());
-	  iwc.setRAMBufferSizeMB(16.0 + 16.0 * random().nextDouble());
-	  iwc.setMaxBufferedDocs(-1);
-	  final RandomIndexWriter riw = new RandomIndexWriter(random(), dir, iwc);
-	
-	  for(int idx=0;idx<NUM_DOCS;idx++) {
-	    final Document doc = new Document();
-	    String s = isS1.get(idx) ? s1 : s2;
-	    final Field f = newField("field", s, TextField.TYPE_UNSTORED);
-	    final int count = _TestUtil.nextInt(random(), 1, 4);
-	    for(int ct=0;ct<count;ct++) {
-	      doc.add(f);
-	    }
-	    riw.addDocument(doc);
-	  }
-	
-	  r = riw.getReader();
-	  riw.close();
+    final IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+      .setOpenMode(IndexWriterConfig.OpenMode.CREATE)
+      .setMergePolicy(newLogMergePolicy());
+    iwc.setRAMBufferSizeMB(16.0 + 16.0 * random().nextDouble());
+    iwc.setMaxBufferedDocs(-1);
+    final RandomIndexWriter riw = new RandomIndexWriter(random(), dir, iwc);
+
+    for(int idx=0;idx<NUM_DOCS;idx++) {
+      final Document doc = new Document();
+      String s = isS1.get(idx) ? s1 : s2;
+      final Field f = newTextField("field", s, Field.Store.NO);
+      final int count = _TestUtil.nextInt(random(), 1, 4);
+      for(int ct=0;ct<count;ct++) {
+        doc.add(f);
+      }
+      riw.addDocument(doc);
+    }
+
+    r = riw.getReader();
+    riw.close();
 
     /*
     if (VERBOSE) {
@@ -170,7 +170,7 @@ public class TestLongPostings extends LuceneTestCase {
         System.out.println("\nTEST: iter=" + iter + " doS1=" + doS1);
       }
         
-      final DocsAndPositionsEnum postings = MultiFields.getTermPositionsEnum(r, null, "field", new BytesRef(term), false);
+      final DocsAndPositionsEnum postings = MultiFields.getTermPositionsEnum(r, null, "field", new BytesRef(term));
 
       int docID = -1;
       while(docID < DocIdSetIterator.NO_MORE_DOCS) {
@@ -205,8 +205,11 @@ public class TestLongPostings extends LuceneTestCase {
             assertTrue(freq >=1 && freq <= 4);
             for(int pos=0;pos<freq;pos++) {
               assertEquals(pos, postings.nextPosition());
-              if (random().nextBoolean() && postings.hasPayload()) {
+              if (random().nextBoolean()) {
                 postings.getPayload();
+                if (random().nextBoolean()) {
+                  postings.getPayload(); // get it again
+                }
               }
             }
           }
@@ -247,8 +250,11 @@ public class TestLongPostings extends LuceneTestCase {
             assertTrue(freq >=1 && freq <= 4);
             for(int pos=0;pos<freq;pos++) {
               assertEquals(pos, postings.nextPosition());
-              if (random().nextBoolean() && postings.hasPayload()) {
+              if (random().nextBoolean()) {
                 postings.getPayload();
+                if (random().nextBoolean()) {
+                  postings.getPayload(); // get it again
+                }
               }
             }
           }
@@ -307,7 +313,7 @@ public class TestLongPostings extends LuceneTestCase {
       iwc.setMaxBufferedDocs(-1);
       final RandomIndexWriter riw = new RandomIndexWriter(random(), dir, iwc);
 
-      FieldType ft = new FieldType(TextField.TYPE_UNSTORED);
+      FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
       ft.setIndexOptions(options);
       for(int idx=0;idx<NUM_DOCS;idx++) {
         final Document doc = new Document();
@@ -323,7 +329,7 @@ public class TestLongPostings extends LuceneTestCase {
       r = riw.getReader();
       riw.close();
     } else {
-      r = IndexReader.open(dir);
+      r = DirectoryReader.open(dir);
     }
 
     /*
@@ -368,10 +374,10 @@ public class TestLongPostings extends LuceneTestCase {
       final DocsEnum postings;
 
       if (options == IndexOptions.DOCS_ONLY) {
-        docs = _TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, false);
+        docs = _TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, 0);
         postings = null;
       } else {
-        docs = postings = _TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, true);
+        docs = postings = _TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_FREQS);
         assert postings != null;
       }
       assert docs != null;

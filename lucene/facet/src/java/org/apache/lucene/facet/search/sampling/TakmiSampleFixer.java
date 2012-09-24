@@ -18,7 +18,7 @@ import org.apache.lucene.facet.search.results.FacetResultNode;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -71,7 +71,7 @@ class TakmiSampleFixer implements SampleFixer {
    *          result node to be fixed
    * @param docIds
    *          docids in effect
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   private void fixResultNode(FacetResultNode facetResNode, ScoredDocIDs docIds)
       throws IOException {
@@ -88,7 +88,7 @@ class TakmiSampleFixer implements SampleFixer {
    *          result node to be recounted
    * @param docIds
    *          full set of matching documents.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   private void recount(FacetResultNode fresNode, ScoredDocIDs docIds)
       throws IOException {
@@ -108,7 +108,7 @@ class TakmiSampleFixer implements SampleFixer {
     Bits liveDocs = MultiFields.getLiveDocs(indexReader);
     int updatedCount = countIntersection(MultiFields.getTermDocsEnum(indexReader, liveDocs,
                                                                      drillDownTerm.field(), drillDownTerm.bytes(),
-                                                                     false),
+                                                                     0),
                                          docIds.iterator());
 
     fresNode.setValue(updatedCount);

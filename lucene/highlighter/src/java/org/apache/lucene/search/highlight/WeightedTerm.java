@@ -1,5 +1,5 @@
 package org.apache.lucene.search.highlight;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,45 +20,45 @@ package org.apache.lucene.search.highlight;
  */
 public class WeightedTerm
 {
-	float weight; // multiplier
-	String term; //stemmed form
-	public WeightedTerm (float weight,String term)
-	{
-		this.weight=weight;
-		this.term=term;
-	}
-	
-	
-	/**
-	 * @return the term value (stemmed)
-	 */
-	public String getTerm()
-	{
-		return term;
-	}
+  float weight; // multiplier
+  String term; //stemmed form
+  public WeightedTerm (float weight,String term)
+  {
+    this.weight=weight;
+    this.term=term;
+  }
 
-	/**
-	 * @return the weight associated with this term
-	 */
-	public float getWeight()
-	{
-		return weight;
-	}
 
-	/**
-	 * @param term the term value (stemmed)
-	 */
-	public void setTerm(String term)
-	{
-		this.term = term;
-	}
+  /**
+   * @return the term value (stemmed)
+   */
+  public String getTerm()
+  {
+    return term;
+  }
 
-	/**
-	 * @param weight the weight associated with this term
-	 */
-	public void setWeight(float weight)
-	{
-		this.weight = weight;
-	}
+  /**
+   * @return the weight associated with this term
+   */
+  public float getWeight()
+  {
+    return weight;
+  }
+
+  /**
+   * @param term the term value (stemmed)
+   */
+  public void setTerm(String term)
+  {
+    this.term = term;
+  }
+
+  /**
+   * @param weight the weight associated with this term
+   */
+  public void setWeight(float weight)
+  {
+    this.weight = weight;
+  }
 
 }

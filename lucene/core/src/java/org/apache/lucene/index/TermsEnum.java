@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,20 +45,28 @@ public abstract class TermsEnum implements BytesRefIterator {
 
   private AttributeSource atts = null;
 
+  /** Sole constructor. (For invocation by subclass 
+   *  constructors, typically implicit.) */
+  protected TermsEnum() {
+  }
+
   /** Returns the related attributes. */
   public AttributeSource attributes() {
     if (atts == null) atts = new AttributeSource();
     return atts;
   }
   
-  /** Represents returned result from {@link #seekCeil}.
-   *  If status is FOUND, then the precise term was found.
-   *  If status is NOT_FOUND, then a different term was
-   *  found.  If the status is END, the end of the iteration
-   *  was hit. */
-  public static enum SeekStatus {END, FOUND, NOT_FOUND};
+  /** Represents returned result from {@link #seekCeil}. */
+  public static enum SeekStatus {
+    /** The term was not found, and the end of iteration was hit. */
+    END,
+    /** The precise term was found. */
+    FOUND,
+    /** A different term was found after the requested term */
+    NOT_FOUND
+  };
 
-  /** Attemps to seek to the exact term, returning
+  /** Attempts to seek to the exact term, returning
    *  true if the term is found.  If this returns false, the
    *  enum is unpositioned.  For some codecs, seekExact may
    *  be substantially faster than {@link #seekCeil}. */
@@ -140,26 +148,55 @@ public abstract class TermsEnum implements BytesRefIterator {
 
   /** Get {@link DocsEnum} for the current term.  Do not
    *  call this when the enum is unpositioned.  This method
-   *  may return null (if needsFreqs is true but freqs were
-   *  not indexed for this field).
+   *  will not return null.
+   *  
+   * @param liveDocs unset bits are documents that should not
+   * be returned
+   * @param reuse pass a prior DocsEnum for possible reuse */
+  public final DocsEnum docs(Bits liveDocs, DocsEnum reuse) throws IOException {
+    return docs(liveDocs, reuse, DocsEnum.FLAG_FREQS);
+  }
+
+  /** Get {@link DocsEnum} for the current term, with
+   *  control over whether freqs are required.  Do not
+   *  call this when the enum is unpositioned.  This method
+   *  will not return null.
    *  
    * @param liveDocs unset bits are documents that should not
    * be returned
    * @param reuse pass a prior DocsEnum for possible reuse
-   * @param needsFreqs true if the caller intends to call
-   * {@link DocsEnum#freq}.  If you pass false you must not
-   * call {@link DocsEnum#freq} in the returned DocsEnum. */
-  public abstract DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException;
+   * @param flags specifies which optional per-document values
+   *        you require; see {@link DocsEnum#FLAG_FREQS} 
+   * @see #docs(Bits, DocsEnum, int) */
+  public abstract DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException;
 
   /** Get {@link DocsAndPositionsEnum} for the current term.
-   *  Do not call this when the enum is unpositioned.
-   *  This method will only return null if needsOffsets is
-   *  true but offsets were not indexed.
+   *  Do not call this when the enum is unpositioned.  This
+   *  method will return null if positions were not
+   *  indexed.
+   *  
    *  @param liveDocs unset bits are documents that should not
    *  be returned
    *  @param reuse pass a prior DocsAndPositionsEnum for possible reuse
-   *  @param needsOffsets true if offsets are required */
-  public abstract DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException;
+   *  @see #docsAndPositions(Bits, DocsAndPositionsEnum, int) */
+  public final DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse) throws IOException {
+    return docsAndPositions(liveDocs, reuse, DocsAndPositionsEnum.FLAG_OFFSETS | DocsAndPositionsEnum.FLAG_PAYLOADS);
+  }
+
+  /** Get {@link DocsAndPositionsEnum} for the current term,
+   *  with control over whether offsets and payloads are
+   *  required.  Some codecs may be able to optimize their
+   *  implementation when offsets and/or payloads are not required.
+   *  Do not call this when the enum is unpositioned.  This
+   *  will return null if positions were not indexed.
+
+   *  @param liveDocs unset bits are documents that should not
+   *  be returned
+   *  @param reuse pass a prior DocsAndPositionsEnum for possible reuse
+   *  @param flags specifies which optional per-position values you
+   *         require; see {@link DocsAndPositionsEnum#FLAG_OFFSETS} and 
+   *         {@link DocsAndPositionsEnum#FLAG_PAYLOADS}. */
+  public abstract DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException;
 
   /**
    * Expert: Returns the TermsEnums internal state to position the TermsEnum
@@ -220,12 +257,12 @@ public abstract class TermsEnum implements BytesRefIterator {
     }
 
     @Override
-    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) {
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) {
       throw new IllegalStateException("this method should never be called");
     }
       
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) {
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) {
       throw new IllegalStateException("this method should never be called");
     }
       
@@ -240,12 +277,12 @@ public abstract class TermsEnum implements BytesRefIterator {
     }
 
     @Override
-    public TermState termState() throws IOException {
+    public TermState termState() {
       throw new IllegalStateException("this method should never be called");
     }
 
     @Override
-    public void seekExact(BytesRef term, TermState state) throws IOException {
+    public void seekExact(BytesRef term, TermState state) {
       throw new IllegalStateException("this method should never be called");
     }
   };

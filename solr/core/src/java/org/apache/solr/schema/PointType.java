@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,7 +25,7 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
-import com.spatial4j.core.context.ParseUtils;
+import com.spatial4j.core.io.ParseUtils;
 import com.spatial4j.core.distance.DistanceUtils;
 import com.spatial4j.core.exception.InvalidShapeException;
 import org.apache.solr.common.SolrException;
@@ -83,7 +83,8 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
 
     if (field.indexed()) {
       for (int i=0; i<dimension; i++) {
-        f[i] = subField(field, i).createField(point[i], boost);
+        SchemaField sf = subField(field, i);
+        f[i] = sf.createField(point[i], sf.indexed() && !sf.omitNorms() ? boost : 1f);
       }
     }
 
@@ -91,7 +92,7 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
       String storedVal = externalVal;  // normalize or not?
       FieldType customType = new FieldType();
       customType.setStored(true);
-      f[f.length - 1] = createField(field.getName(), storedVal, customType, boost);
+      f[f.length - 1] = createField(field.getName(), storedVal, customType, 1f);
     }
     
     return f;

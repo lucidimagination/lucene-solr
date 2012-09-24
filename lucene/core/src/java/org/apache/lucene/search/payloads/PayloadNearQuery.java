@@ -1,6 +1,6 @@
 package org.apache.lucene.search.payloads;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -167,8 +167,9 @@ public class PayloadNearQuery extends SpanNearQuery {
           Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));
           expl.addDetail(scoreExplanation);
           expl.setValue(scoreExplanation.getValue());
+          String field = ((SpanQuery)getQuery()).getField();
           // now the payloads part
-          Explanation payloadExpl = function.explain(doc, scorer.payloadsSeen, scorer.payloadScore);
+          Explanation payloadExpl = function.explain(doc, field, scorer.payloadsSeen, scorer.payloadScore);
           // combined
           ComplexExplanation result = new ComplexExplanation();
           result.addDetail(expl);
@@ -256,7 +257,7 @@ public class PayloadNearQuery extends SpanNearQuery {
             getPayloads(spansArr);            
             more = spans.next();
           } while (more && (doc == spans.doc()));
-          return true;    	
+          return true;
     }
 
     @Override

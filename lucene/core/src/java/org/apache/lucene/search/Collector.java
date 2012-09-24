@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -80,8 +80,8 @@ import org.apache.lucene.index.IndexReaderContext;
  * a simple example showing how to collect docIDs into a
  * BitSet:</p>
  * 
- * <pre>
- * Searcher searcher = new IndexSearcher(indexReader);
+ * <pre class="prettyprint">
+ * IndexSearcher searcher = new IndexSearcher(indexReader);
  * final BitSet bits = new BitSet(indexReader.maxDoc());
  * searcher.search(query, new Collector() {
  *   private int docBase;

@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,6 +29,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 
+/** Factory for creating basic term queries */
 public class BasicQueryFactory {
   public BasicQueryFactory(int maxBasicQueries) {
     this.maxBasicQueries = maxBasicQueries;
@@ -47,9 +48,9 @@ public class BasicQueryFactory {
   
   public String toString() {
     return getClass().getName()
-	  + "(maxBasicQueries: " + maxBasicQueries
-	  + ", queriesMade: " + queriesMade
-	  + ")";
+    + "(maxBasicQueries: " + maxBasicQueries
+    + ", queriesMade: " + queriesMade
+    + ")";
   }
 
   private boolean atMax() {

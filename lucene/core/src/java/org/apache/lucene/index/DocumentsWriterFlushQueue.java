@@ -1,5 +1,5 @@
 package org.apache.lucene.index;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -170,7 +170,7 @@ class DocumentsWriterFlushQueue {
     protected abstract boolean canPublish();
   }
   
-  static final class GlobalDeletesTicket extends FlushTicket{
+  static final class GlobalDeletesTicket extends FlushTicket {
 
     protected GlobalDeletesTicket(FrozenBufferedDeletes frozenDeletes) {
       super(frozenDeletes);

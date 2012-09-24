@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -68,6 +68,8 @@ public final class SchemaField extends FieldProperties {
     
     // initalize with the required property flag
     required = (properties & REQUIRED) !=0;
+
+    type.checkSchemaField(this);
   }
 
   public String getName() { return name; }
@@ -158,7 +160,7 @@ public final class SchemaField extends FieldProperties {
 
   /** 
    * Sanity checks that the properties of this field type are plausible 
-   * for a field that may be used to get a FieldCacheSource, throwing 
+   * for a field that may be used to get a FieldCacheSource, throwing
    * an appropriate exception (including the field name) if it is not.  
    * FieldType subclasses can choose to call this method in their 
    * getValueSource implementation 
@@ -182,7 +184,7 @@ public final class SchemaField extends FieldProperties {
 
     String defaultValue = null;
     if( props.containsKey( "default" ) ) {
-    	defaultValue = props.get( "default" );
+      defaultValue = props.get( "default" );
     }
     return new SchemaField(name, ft, calcProps(name, ft, props), defaultValue );
   }

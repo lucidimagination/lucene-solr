@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,7 @@ package org.apache.lucene.codecs.lucene3x;
  */
 
 import java.io.IOException;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -31,7 +31,6 @@ import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.Term;
@@ -96,10 +95,10 @@ class Lucene3xFields extends FieldsProducer {
       freqStream = dir.openInput(IndexFileNames.segmentFileName(info.name, "", Lucene3xPostingsFormat.FREQ_EXTENSION), context);
       boolean anyProx = false;
       for (FieldInfo fi : fieldInfos) {
-        if (fi.isIndexed) {
+        if (fi.isIndexed()) {
           fields.put(fi.name, fi);
           preTerms.put(fi.name, new PreTerms(fi));
-          if (fi.indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
+          if (fi.getIndexOptions() == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
             anyProx = true;
           }
         }
@@ -133,26 +132,9 @@ class Lucene3xFields extends FieldsProducer {
     return true;
   }
 
-  static void files(SegmentInfo info, Collection<String> files) throws IOException {
-    files.add(IndexFileNames.segmentFileName(info.name, "", Lucene3xPostingsFormat.TERMS_EXTENSION));
-    files.add(IndexFileNames.segmentFileName(info.name, "", Lucene3xPostingsFormat.TERMS_INDEX_EXTENSION));
-    files.add(IndexFileNames.segmentFileName(info.name, "", Lucene3xPostingsFormat.FREQ_EXTENSION));
-    if (info.getHasProx()) {
-      // LUCENE-1739: for certain versions of 2.9-dev,
-      // hasProx would be incorrectly computed during
-      // indexing as true, and then stored into the segments
-      // file, when it should have been false.  So we do the
-      // extra check, here:
-      final String prx = IndexFileNames.segmentFileName(info.name, "", Lucene3xPostingsFormat.PROX_EXTENSION);
-      if (info.dir.fileExists(prx)) {
-        files.add(prx);
-      }
-    }
-  }
-
   @Override
-  public FieldsEnum iterator() throws IOException {
-    return new PreFlexFieldsEnum();
+  public Iterator<String> iterator() {
+    return Collections.unmodifiableSet(fields.keySet()).iterator();
   }
 
   @Override
@@ -162,7 +144,8 @@ class Lucene3xFields extends FieldsProducer {
 
   @Override
   public int size() {
-    return preTerms.size();
+    assert preTerms.size() == fields.size();
+    return fields.size();
   }
 
   @Override
@@ -194,30 +177,6 @@ class Lucene3xFields extends FieldsProducer {
     }
     if (proxStream != null) {
       proxStream.close();
-    }
-  }
-
-  private class PreFlexFieldsEnum extends FieldsEnum {
-    final Iterator<FieldInfo> it;
-    FieldInfo current;
-
-    public PreFlexFieldsEnum() throws IOException {
-      it = fields.values().iterator();
-    }
-
-    @Override
-    public String next() {
-      if (it.hasNext()) {
-        current = it.next();
-        return current.name;
-      } else {
-        return null;
-      }
-    }
-
-    @Override
-    public Terms terms() throws IOException {
-      return Lucene3xFields.this.terms(current.name);
     }
   }
   
@@ -263,6 +222,23 @@ class Lucene3xFields extends FieldsProducer {
     @Override
     public int getDocCount() throws IOException {
       return -1;
+    }
+
+    @Override
+    public boolean hasOffsets() {
+      // preflex doesn't support this
+      assert fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0;
+      return false;
+    }
+
+    @Override
+    public boolean hasPositions() {
+      return fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
+    }
+
+    @Override
+    public boolean hasPayloads() {
+      return fieldInfo.hasPayloads();
     }
   }
 
@@ -950,11 +926,9 @@ class Lucene3xFields extends FieldsProducer {
     }
 
     @Override
-    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
       PreDocsEnum docsEnum;
-      if (needsFreqs && fieldInfo.indexOptions == IndexOptions.DOCS_ONLY) {
-        return null;
-      } else if (reuse == null || !(reuse instanceof PreDocsEnum)) {
+      if (reuse == null || !(reuse instanceof PreDocsEnum)) {
         docsEnum = new PreDocsEnum();
       } else {
         docsEnum = (PreDocsEnum) reuse;
@@ -966,14 +940,9 @@ class Lucene3xFields extends FieldsProducer {
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
-      if (needsOffsets) {
-        // Pre-4.0 indices never have offsets:
-        return null;
-      }
-
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
       PreDocsAndPositionsEnum docsPosEnum;
-      if (fieldInfo.indexOptions != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
+      if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
         return null;
       } else if (reuse == null || !(reuse instanceof PreDocsAndPositionsEnum)) {
         docsPosEnum = new PreDocsAndPositionsEnum();
@@ -1001,6 +970,7 @@ class Lucene3xFields extends FieldsProducer {
     public PreDocsEnum reset(SegmentTermEnum termEnum, Bits liveDocs) throws IOException {
       docs.setLiveDocs(liveDocs);
       docs.seek(termEnum);
+      docs.freq = 1;
       docID = -1;
       return this;
     }
@@ -1024,7 +994,7 @@ class Lucene3xFields extends FieldsProducer {
     }
 
     @Override
-    public int freq() {
+    public int freq() throws IOException {
       return docs.freq();
     }
 
@@ -1071,7 +1041,7 @@ class Lucene3xFields extends FieldsProducer {
     }
 
     @Override
-    public int freq() {
+    public int freq() throws IOException {
       return pos.freq();
     }
 
@@ -1097,28 +1067,8 @@ class Lucene3xFields extends FieldsProducer {
     }
 
     @Override
-    public boolean hasPayload() {
-      assert docID != NO_MORE_DOCS;
-      return pos.isPayloadAvailable();
-    }
-
-    private BytesRef payload;
-
-    @Override
     public BytesRef getPayload() throws IOException {
-      final int len = pos.getPayloadLength();
-      if (payload == null) {
-        payload = new BytesRef();
-        payload.bytes = new byte[len];
-      } else {
-        if (payload.bytes.length < len) {
-          payload.grow(len);
-        }
-      }
-      
-      payload.bytes = pos.getPayload(payload.bytes, 0);
-      payload.length = len;
-      return payload;
+      return pos.getPayload();
     }
   }
 }

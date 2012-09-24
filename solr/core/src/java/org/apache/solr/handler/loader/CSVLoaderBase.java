@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -388,9 +388,9 @@ abstract class CSVLoaderBase extends ContentStreamLoader {
 
     // add any literals
     for (SchemaField sf : literals.keySet()) {
-    	String fn = sf.getName();
-    	String val = literals.get(sf);
-    	doc.addField(fn, val);
+      String fn = sf.getName();
+      String val = literals.get(sf);
+      doc.addField(fn, val);
     }
    
     template.solrDoc = doc;

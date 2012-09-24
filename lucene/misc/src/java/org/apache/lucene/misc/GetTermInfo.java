@@ -1,6 +1,6 @@
 package org.apache.lucene.misc;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,9 @@ import java.io.File;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
 
 /**
  * Utility to get document frequency and total number of occurrences (sum of the tf for each doc)  of a term. 
@@ -43,14 +45,14 @@ public class GetTermInfo {
       System.exit(1);
     }
       
-    getTermInfo(dir,field, new BytesRef(inputStr));
+    getTermInfo(dir,new Term(field, inputStr));
   }
   
-  public static void getTermInfo(Directory dir, String field, BytesRef termtext) throws Exception {
-    IndexReader reader = IndexReader.open(dir);
-    long totalTF = HighFreqTerms.getTotalTermFreq(reader, field, termtext);
+  public static void getTermInfo(Directory dir, Term term) throws Exception {
+    IndexReader reader = DirectoryReader.open(dir);
+    long totalTF = HighFreqTerms.getTotalTermFreq(reader, term);
     System.out.printf("%s:%s \t totalTF = %,d \t doc freq = %,d \n",
-         field, termtext.utf8ToString(), totalTF, reader.docFreq(field, termtext)); 
+         term.field(), term.text(), totalTF, reader.docFreq(term)); 
   }
    
   private static void usage() {

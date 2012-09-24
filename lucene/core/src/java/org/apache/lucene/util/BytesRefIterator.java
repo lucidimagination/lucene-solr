@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,7 +34,7 @@ public interface BytesRefIterator {
    * 
    * @return the next {@link BytesRef} in the iterator or <code>null</code> if
    *         the end of the iterator is reached.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public BytesRef next() throws IOException;
   
@@ -50,7 +50,7 @@ public interface BytesRefIterator {
   public static final BytesRefIterator EMPTY = new BytesRefIterator() {
 
     @Override
-    public BytesRef next() throws IOException {
+    public BytesRef next() {
       return null;
     }
     

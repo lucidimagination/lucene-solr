@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.core.nodes;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -18,7 +18,7 @@ package org.apache.lucene.queryparser.flexible.core.nodes;
  */
 
 /**
- * 
+ * Interface for a node that has text as a {@link CharSequence}
  */
 public interface TextableQueryNode {
 

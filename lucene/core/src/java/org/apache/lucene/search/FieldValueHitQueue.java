@@ -1,6 +1,6 @@
 package org.apache.lucene.search;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,6 +33,10 @@ import org.apache.lucene.util.PriorityQueue;
  */
 public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> extends PriorityQueue<T> {
 
+  /**
+   * Extension of ScoreDoc to also store the 
+   * {@link FieldComparator} slot.
+   */
   public static class Entry extends ScoreDoc {
     public int slot;
 
@@ -155,7 +159,7 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
    *          priority first); cannot be <code>null</code> or empty
    * @param size
    *          The number of hits to retain. Must be greater than zero.
-   * @throws IOException
+   * @throws IOException if there is a low-level IO error
    */
   public static <T extends FieldValueHitQueue.Entry> FieldValueHitQueue<T> create(SortField[] fields, int size) throws IOException {
 

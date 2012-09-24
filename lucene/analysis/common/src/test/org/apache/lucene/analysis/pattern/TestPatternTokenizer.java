@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,8 +26,7 @@ import java.util.regex.Pattern;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.CharReader;
-import org.apache.lucene.analysis.CharStream;
+import org.apache.lucene.analysis.CharFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.Analyzer.TokenStreamComponents;
@@ -38,7 +37,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 public class TestPatternTokenizer extends BaseTokenStreamTestCase 
 {
-	public void testSplitting() throws Exception 
+  public void testSplitting() throws Exception 
   {
     String qpattern = "\\'([^\\']+)\\'"; // get stuff between "'"
     String[][] tests = {
@@ -72,8 +71,8 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
         }
       }*/
     } 
-	}
-	
+  }
+
   public void testOffsetCorrection() throws Exception {
     final String INPUT = "G&uuml;nther G&uuml;nther is here";
 
@@ -83,7 +82,7 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
     NormalizeCharMap.Builder builder = new NormalizeCharMap.Builder();
     builder.add("&uuml;", "ü");
     NormalizeCharMap normMap = builder.build();
-    CharStream charStream = new MappingCharFilter( normMap, CharReader.get( new StringReader( INPUT ) ) );
+    CharFilter charStream = new MappingCharFilter( normMap, new StringReader( INPUT ) );
 
     // create PatternTokenizer
     TokenStream stream = new PatternTokenizer(charStream, Pattern.compile("[,;/\\s]+"), -1);
@@ -93,7 +92,7 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
         new int[] { 12, 25, 28, 33 },
         INPUT.length());
     
-    charStream = new MappingCharFilter( normMap, CharReader.get( new StringReader( INPUT ) ) );
+    charStream = new MappingCharFilter( normMap, new StringReader( INPUT ) );
     stream = new PatternTokenizer(charStream, Pattern.compile("Günther"), 0);
     assertTokenStreamContents(stream,
         new String[] { "Günther", "Günther" },
@@ -112,6 +111,7 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
     // assign bogus values
     in.clearAttributes();
     termAtt.setEmpty().append("bogusTerm");
+    in.reset();
     while (in.incrementToken()) {
       if (out.length() > 0)
         out.append(' ');
@@ -138,7 +138,7 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
         return new TokenStreamComponents(tokenizer, tokenizer);
       }    
     };
-    checkRandomData(random(), a, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
     
     Analyzer b = new Analyzer() {
       @Override
@@ -152,6 +152,6 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
         return new TokenStreamComponents(tokenizer, tokenizer);
       }    
     };
-    checkRandomData(random(), b, 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), b, 1000*RANDOM_MULTIPLIER);
   }
 }

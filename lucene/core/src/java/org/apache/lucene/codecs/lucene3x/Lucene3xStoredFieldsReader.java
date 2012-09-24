@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs.lucene3x;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,14 +36,13 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.IOUtils;
 
 import java.io.Closeable;
-import java.util.Set;
 
 /**
  * Class responsible for access to stored document fields.
  * <p/>
  * It uses &lt;segment&gt;.fdt and &lt;segment&gt;.fdx; files.
  * 
- * @deprecated
+ * @deprecated Only for reading existing 3.x indexes
  */
 @Deprecated
 final class Lucene3xStoredFieldsReader extends StoredFieldsReader implements Cloneable, Closeable {
@@ -106,7 +105,7 @@ final class Lucene3xStoredFieldsReader extends StoredFieldsReader implements Clo
   @Override
   public Lucene3xStoredFieldsReader clone() {
     ensureOpen();
-    return new Lucene3xStoredFieldsReader(fieldInfos, numTotalDocs, size, format, docStoreOffset, (IndexInput)fieldsStream.clone(), (IndexInput)indexStream.clone());
+    return new Lucene3xStoredFieldsReader(fieldInfos, numTotalDocs, size, format, docStoreOffset, fieldsStream.clone(), indexStream.clone());
   }
 
   /** Verifies that the code version which wrote the segment is supported. */
@@ -139,13 +138,13 @@ final class Lucene3xStoredFieldsReader extends StoredFieldsReader implements Clo
   }
 
   public Lucene3xStoredFieldsReader(Directory d, SegmentInfo si, FieldInfos fn, IOContext context) throws IOException {
-    final String segment = si.getDocStoreSegment();
-    final int docStoreOffset = si.getDocStoreOffset();
-    final int size = si.docCount;
+    final String segment = Lucene3xSegmentInfoFormat.getDocStoreSegment(si);
+    final int docStoreOffset = Lucene3xSegmentInfoFormat.getDocStoreOffset(si);
+    final int size = si.getDocCount();
     boolean success = false;
     fieldInfos = fn;
     try {
-      if (docStoreOffset != -1 && si.getDocStoreIsCompoundFile()) {
+      if (docStoreOffset != -1 && Lucene3xSegmentInfoFormat.getDocStoreIsCompoundFile(si)) {
         d = storeCFSReader = new CompoundFileDirectory(si.dir, 
             IndexFileNames.segmentFileName(segment, "", Lucene3xCodec.COMPOUND_FILE_STORE_EXTENSION), context, false);
       } else {
@@ -176,8 +175,8 @@ final class Lucene3xStoredFieldsReader extends StoredFieldsReader implements Clo
         this.docStoreOffset = 0;
         this.size = (int) (indexSize >> 3);
         // Verify two sources of "maxDoc" agree:
-        if (this.size != si.docCount) {
-          throw new CorruptIndexException("doc counts differ for segment " + segment + ": fieldsReader shows " + this.size + " but segmentInfo shows " + si.docCount);
+        if (this.size != si.getDocCount()) {
+          throw new CorruptIndexException("doc counts differ for segment " + segment + ": fieldsReader shows " + this.size + " but segmentInfo shows " + si.getDocCount());
         }
       }
       numTotalDocs = (int) (indexSize >> 3);
@@ -207,7 +206,7 @@ final class Lucene3xStoredFieldsReader extends StoredFieldsReader implements Clo
    * Closes the underlying {@link org.apache.lucene.store.IndexInput} streams.
    * This means that the Fields values will not be accessible.
    *
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public final void close() throws IOException {
     if (!closed) {
@@ -294,23 +293,6 @@ final class Lucene3xStoredFieldsReader extends StoredFieldsReader implements Clo
     } else {
       final int length = fieldsStream.readVInt();
       fieldsStream.seek(fieldsStream.getFilePointer() + length);
-    }
-  }
-
-  // note: if there are shared docstores, we are also called by Lucene3xCodec even in 
-  // the CFS case. so logic here must handle this.
-  public static void files(SegmentInfo info, Set<String> files) throws IOException {
-    if (info.getDocStoreOffset() != -1) {
-      assert info.getDocStoreSegment() != null;
-      if (info.getDocStoreIsCompoundFile()) {
-        files.add(IndexFileNames.segmentFileName(info.getDocStoreSegment(), "", Lucene3xCodec.COMPOUND_FILE_STORE_EXTENSION));
-      } else {
-        files.add(IndexFileNames.segmentFileName(info.getDocStoreSegment(), "", FIELDS_INDEX_EXTENSION));
-        files.add(IndexFileNames.segmentFileName(info.getDocStoreSegment(), "", FIELDS_EXTENSION));
-      }
-    } else if (!info.getUseCompoundFile()) {
-      files.add(IndexFileNames.segmentFileName(info.name, "", FIELDS_INDEX_EXTENSION));
-      files.add(IndexFileNames.segmentFileName(info.name, "", FIELDS_EXTENSION));
     }
   }
 }

@@ -1,6 +1,6 @@
 package org.apache.solr.update;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,6 +23,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.util.RefCounted;
 
 /**
  * The state in this class can be easily shared between SolrCores across
@@ -30,30 +31,35 @@ import org.apache.solr.core.SolrCore;
  * 
  */
 public abstract class SolrCoreState {
+  private final Object deleteLock = new Object();
+  
+  public Object getUpdateLock() {
+    return deleteLock;
+  }
   
   /**
    * Force the creation of a new IndexWriter using the settings from the given
    * SolrCore.
    * 
-   * @param core
-   * @throws IOException
+   * @param rollback close IndexWriter if false, else rollback
+   * @throws IOException If there is a low-level I/O error.
    */
-  public abstract void newIndexWriter(SolrCore core) throws IOException;
+  public abstract void newIndexWriter(SolrCore core, boolean rollback) throws IOException;
   
   /**
    * Get the current IndexWriter. If a new IndexWriter must be created, use the
    * settings from the given {@link SolrCore}.
    * 
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
-  public abstract IndexWriter getIndexWriter(SolrCore core) throws IOException;
+  public abstract RefCounted<IndexWriter> getIndexWriter(SolrCore core) throws IOException;
   
   /**
    * Decrement the number of references to this state. When then number of
    * references hits 0, the state will close.  If an optional closer is
    * passed, that will be used to close the writer.
    * 
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public abstract void decref(IndexWriterCloser closer) throws IOException;
   
@@ -66,8 +72,7 @@ public abstract class SolrCoreState {
    * Rollback the current IndexWriter. When creating the new IndexWriter use the
    * settings from the given {@link SolrCore}.
    * 
-   * @param core
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public abstract void rollbackIndexWriter(SolrCore core) throws IOException;
   

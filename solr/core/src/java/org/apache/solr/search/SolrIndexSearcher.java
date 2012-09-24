@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,14 +34,13 @@ import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.NRTCachingDirectory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.OpenBitSet;
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
@@ -120,6 +119,18 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     this(core, schema,name, core.getIndexReaderFactory().newReader(directoryFactory.get(path, config.lockType), core), true, enableCache, false, directoryFactory);
   }
 
+  private static String getIndexDir(Directory dir) {
+    if (dir instanceof FSDirectory) {
+      return ((FSDirectory)dir).getDirectory().getAbsolutePath();
+    } else if (dir instanceof NRTCachingDirectory) {
+      // recurse on the delegate
+      return getIndexDir(((NRTCachingDirectory) dir).getDelegate());
+    } else {
+      log.warn("WARNING: Directory impl does not support setting indexDir: " + dir.getClass().getName());
+      return null;
+    }
+  }
+
   public SolrIndexSearcher(SolrCore core, IndexSchema schema, String name, DirectoryReader r, boolean closeReader, boolean enableCache, boolean reserveDirectory, DirectoryFactory directoryFactory) throws IOException {
     super(r);
     this.directoryFactory = directoryFactory;
@@ -136,13 +147,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       // keep the directory from being released while we use it
       directoryFactory.incRef(dir);
     }
-    
-    if (dir instanceof FSDirectory) {
-      FSDirectory fsDirectory = (FSDirectory) dir;
-      indexDir = fsDirectory.getDirectory().getAbsolutePath();
-    } else {
-      log.warn("WARNING: Directory impl does not support setting indexDir: " + dir.getClass().getName());
-    }
+
+    this.indexDir = getIndexDir(dir);
 
     this.closeReader = closeReader;
     setSimilarity(schema.getSimilarity());
@@ -452,43 +458,42 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     @Override
     public void stringField(FieldInfo fieldInfo, String value) throws IOException {
       final FieldType ft = new FieldType(TextField.TYPE_STORED);
-      ft.setStoreTermVectors(fieldInfo.storeTermVector);
-      ft.setStoreTermVectors(fieldInfo.storeTermVector);
-      ft.setIndexed(fieldInfo.isIndexed);
-      ft.setOmitNorms(fieldInfo.omitNorms);
-      ft.setIndexOptions(fieldInfo.indexOptions);
+      ft.setStoreTermVectors(fieldInfo.hasVectors());
+      ft.setIndexed(fieldInfo.isIndexed());
+      ft.setOmitNorms(fieldInfo.omitsNorms());
+      ft.setIndexOptions(fieldInfo.getIndexOptions());
       doc.add(new Field(fieldInfo.name, value, ft));
     }
 
     @Override
     public void intField(FieldInfo fieldInfo, int value) {
-      FieldType ft = new FieldType(IntField.TYPE);
+      FieldType ft = new FieldType(IntField.TYPE_NOT_STORED);
       ft.setStored(true);
-      ft.setIndexed(fieldInfo.isIndexed);
+      ft.setIndexed(fieldInfo.isIndexed());
       doc.add(new IntField(fieldInfo.name, value, ft));
     }
 
     @Override
     public void longField(FieldInfo fieldInfo, long value) {
-      FieldType ft = new FieldType(LongField.TYPE);
+      FieldType ft = new FieldType(LongField.TYPE_NOT_STORED);
       ft.setStored(true);
-      ft.setIndexed(fieldInfo.isIndexed);
+      ft.setIndexed(fieldInfo.isIndexed());
       doc.add(new LongField(fieldInfo.name, value, ft));
     }
 
     @Override
     public void floatField(FieldInfo fieldInfo, float value) {
-      FieldType ft = new FieldType(FloatField.TYPE);
+      FieldType ft = new FieldType(FloatField.TYPE_NOT_STORED);
       ft.setStored(true);
-      ft.setIndexed(fieldInfo.isIndexed);
+      ft.setIndexed(fieldInfo.isIndexed());
       doc.add(new FloatField(fieldInfo.name, value, ft));
     }
 
     @Override
     public void doubleField(FieldInfo fieldInfo, double value) {
-      FieldType ft = new FieldType(DoubleField.TYPE);
+      FieldType ft = new FieldType(DoubleField.TYPE_NOT_STORED);
       ft.setStored(true);
-      ft.setIndexed(fieldInfo.isIndexed);
+      ft.setIndexed(fieldInfo.isIndexed());
       doc.add(new DoubleField(fieldInfo.name, value, ft));
     }
   }
@@ -580,7 +585,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * Returns -1 if no document was found.
    * This method is primarily intended for clients that want to fetch
    * documents using a unique identifier."
-   * @param t
    * @return the first document number containing the term
    */
   public int getFirstMatch(Term t) throws IOException {
@@ -593,7 +597,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     if (!termsEnum.seekExact(termBytes, false)) {
       return -1;
     }
-    DocsEnum docs = termsEnum.docs(atomicReader.getLiveDocs(), null, false);
+    DocsEnum docs = termsEnum.docs(atomicReader.getLiveDocs(), null, 0);
     if (docs == null) return -1;
     int id = docs.nextDoc();
     return id == DocIdSetIterator.NO_MORE_DOCS ? -1 : id;
@@ -605,26 +609,23 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    */
   public long lookupId(BytesRef idBytes) throws IOException {
     String field = schema.getUniqueKeyField().getName();
-    final AtomicReaderContext[] leaves = leafContexts;
 
-
-    for (int i=0; i<leaves.length; i++) {
-      final AtomicReaderContext leaf = leaves[i];
+    for (int i=0, c=leafContexts.size(); i<c; i++) {
+      final AtomicReaderContext leaf = leafContexts.get(i);
       final AtomicReader reader = leaf.reader();
 
-      final Fields fields = reader.fields();
-      if (fields == null) continue;
-
-      final Bits liveDocs = reader.getLiveDocs();
+      final Terms terms = reader.terms(field);
+      if (terms == null) continue;
       
-      final DocsEnum docs = reader.termDocsEnum(liveDocs, field, idBytes, false);
+      TermsEnum te = terms.iterator(null);
+      if (te.seekExact(idBytes, true)) {
+        DocsEnum docs = te.docs(reader.getLiveDocs(), null, 0);
+        int id = docs.nextDoc();
+        if (id == DocIdSetIterator.NO_MORE_DOCS) continue;
+        assert docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
 
-      if (docs == null) continue;
-      int id = docs.nextDoc();
-      if (id == DocIdSetIterator.NO_MORE_DOCS) continue;
-      assert docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
-
-      return (((long)i) << 32) | id;
+        return (((long)i) << 32) | id;
+      }
     }
 
     return -1;
@@ -759,11 +760,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       collector = pf.postFilter;
     }
 
-    final AtomicReaderContext[] leaves = leafContexts;
-
-
-    for (int i=0; i<leaves.length; i++) {
-      final AtomicReaderContext leaf = leaves[i];
+    for (final AtomicReaderContext leaf : leafContexts) {
       final AtomicReader reader = leaf.reader();
       final Bits liveDocs = reader.getLiveDocs();   // TODO: the filter may already only have liveDocs...
       DocIdSet idSet = null;
@@ -926,7 +923,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     int bitsSet = 0;
     OpenBitSet obs = null;
 
-    DocsEnum docsEnum = deState.termsEnum.docs(deState.liveDocs, deState.docsEnum, false);
+    DocsEnum docsEnum = deState.termsEnum.docs(deState.liveDocs, deState.docsEnum, 0);
     if (deState.docsEnum == null) {
       deState.docsEnum = docsEnum;
     }
@@ -992,10 +989,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     if (filter==null) {
       if (query instanceof TermQuery) {
         Term t = ((TermQuery)query).getTerm();
-        final AtomicReaderContext[] leaves = leafContexts;
-
-        for (int i=0; i<leaves.length; i++) {
-          final AtomicReaderContext leaf = leaves[i];
+        for (final AtomicReaderContext leaf : leafContexts) {
           final AtomicReader reader = leaf.reader();
           collector.setNextReader(leaf);
           Fields fields = reader.fields();
@@ -1007,7 +1001,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
           if (terms != null) {
             final TermsEnum termsEnum = terms.iterator(null);
             if (termsEnum.seekExact(termBytes, false)) {
-              docsEnum = termsEnum.docs(liveDocs, null, false);
+              docsEnum = termsEnum.docs(liveDocs, null, 0);
             }
           }
 
@@ -1037,7 +1031,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * If the answer was not cached, it may have been inserted into the cache as a result of this call.
    * <p>
    *
-   * @param query
    * @param filter may be null
    * @return DocSet meeting the specified criteria, should <b>not</b> be modified by the caller.
    */
@@ -1082,13 +1075,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * FUTURE: The returned DocList may be retrieved from a cache.
    *
-   * @param query
    * @param filter   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @return DocList meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocList getDocList(Query query, Query filter, Sort lsort, int offset, int len) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1112,13 +1104,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * FUTURE: The returned DocList may be retrieved from a cache.
    *
-   * @param query
    * @param filterList may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @return DocList meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocList getDocList(Query query, List<Query> filterList, Sort lsort, int offset, int len, int flags) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1312,14 +1303,14 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       if (!needScores) {
         collector = new Collector () {
           @Override
-          public void setScorer(Scorer scorer) throws IOException {
+          public void setScorer(Scorer scorer) {
           }
           @Override
-          public void collect(int doc) throws IOException {
+          public void collect(int doc) {
             numHits[0]++;
           }
           @Override
-          public void setNextReader(AtomicReaderContext context) throws IOException {
+          public void setNextReader(AtomicReaderContext context) {
           }
           @Override
           public boolean acceptsDocsOutOfOrder() {
@@ -1330,7 +1321,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         collector = new Collector() {
           Scorer scorer;
           @Override
-          public void setScorer(Scorer scorer) throws IOException {
+          public void setScorer(Scorer scorer) {
             this.scorer = scorer;
           }
           @Override
@@ -1340,7 +1331,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
             if (score > topscore[0]) topscore[0]=score;            
           }
           @Override
-          public void setNextReader(AtomicReaderContext context) throws IOException {
+          public void setNextReader(AtomicReaderContext context) {
           }
           @Override
           public boolean acceptsDocsOutOfOrder() {
@@ -1374,7 +1365,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       TopDocsCollector topCollector;
       if (cmd.getSort() == null) {
         if(cmd.getScoreDoc() != null) {
-        	topCollector = TopScoreDocCollector.create(len, cmd.getScoreDoc(), true); //create the Collector with InOrderPagingCollector
+          topCollector = TopScoreDocCollector.create(len, cmd.getScoreDoc(), true); //create the Collector with InOrderPagingCollector
         } else {
           topCollector = TopScoreDocCollector.create(len, true);
         }
@@ -1453,7 +1444,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
          collector = setCollector = new DocSetDelegateCollector(smallSetSize, maxDoc, new Collector() {
            Scorer scorer;
            @Override
-          public void setScorer(Scorer scorer) throws IOException {
+          public void setScorer(Scorer scorer) {
              this.scorer = scorer;
            }
            @Override
@@ -1462,7 +1453,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
              if (score > topscore[0]) topscore[0]=score;
            }
            @Override
-          public void setNextReader(AtomicReaderContext context) throws IOException {
+          public void setNextReader(AtomicReaderContext context) {
            }
            @Override
           public boolean acceptsDocsOutOfOrder() {
@@ -1559,13 +1550,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * and sorted by <code>sort</code>.
    * FUTURE: The returned DocList may be retrieved from a cache.
    *
-   * @param query
    * @param filter   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @return DocList meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocList getDocList(Query query, DocSet filter, Sort lsort, int offset, int len) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1591,13 +1581,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * The DocList and DocSet returned should <b>not</b> be modified.
    *
-   * @param query
    * @param filter   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @return DocListAndSet meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocListAndSet getDocListAndSet(Query query, Query filter, Sort lsort, int offset, int len) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1624,14 +1613,13 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * The DocList and DocSet returned should <b>not</b> be modified.
    *
-   * @param query
    * @param filter   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @param flags    user supplied flags for the result set
    * @return DocListAndSet meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocListAndSet getDocListAndSet(Query query, Query filter, Sort lsort, int offset, int len, int flags) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1662,13 +1650,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * The DocList and DocSet returned should <b>not</b> be modified.
    *
-   * @param query
    * @param filterList   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @return DocListAndSet meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocListAndSet getDocListAndSet(Query query, List<Query> filterList, Sort lsort, int offset, int len) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1697,14 +1684,13 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * The DocList and DocSet returned should <b>not</b> be modified.
    *
-   * @param query
    * @param filterList   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @param flags    user supplied flags for the result set
    * @return DocListAndSet meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocListAndSet getDocListAndSet(Query query, List<Query> filterList, Sort lsort, int offset, int len, int flags) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1727,13 +1713,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * FUTURE: The returned DocList may be retrieved from a cache.
    *
-   * @param query
    * @param filter   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @return DocListAndSet meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocListAndSet getDocListAndSet(Query query, DocSet filter, Sort lsort, int offset, int len) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1760,14 +1745,13 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * The DocList and DocSet returned should <b>not</b> be modified.
    *
-   * @param query
    * @param filter   may be null
    * @param lsort    criteria by which to sort (if null, query relevance is used)
    * @param offset   offset into the list of documents to return
    * @param len      maximum number of documents to return
    * @param flags    user supplied flags for the result set
    * @return DocListAndSet meeting the specified criteria, should <b>not</b> be modified by the caller.
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   public DocListAndSet getDocListAndSet(Query query, DocSet filter, Sort lsort, int offset, int len, int flags) throws IOException {
     QueryCommand qc = new QueryCommand();
@@ -1784,7 +1768,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   }
 
   protected DocList sortDocSet(DocSet set, Sort sort, int nDocs) throws IOException {
-    // bit of a hack to tell if a set is sorted - do it better in the futute.
+    if (nDocs == 0) {
+      // SOLR-2923
+      return new DocSlice(0, 0, new int[0], null, 0, 0f);
+    }
+
+    // bit of a hack to tell if a set is sorted - do it better in the future.
     boolean inOrder = set instanceof BitDocSet || set instanceof SortedIntDocSet;
 
     TopDocsCollector topCollector = TopFieldCollector.create(weightSort(sort), nDocs, false, false, false, inOrder);
@@ -1797,7 +1786,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     while (iter.hasNext()) {
       int doc = iter.nextDoc();
       while (doc>=end) {
-        AtomicReaderContext leaf = leafContexts[readerIndex++];
+        AtomicReaderContext leaf = leafContexts.get(readerIndex++);
         base = leaf.docBase;
         end = base + leaf.reader().maxDoc();
         topCollector.setNextReader(leaf);
@@ -1826,10 +1815,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * This method is cache-aware and may check as well as modify the cache.
    *
-   * @param a
-   * @param b
-   * @return the numer of documents in the intersection between <code>a</code> and <code>b</code>.
-   * @throws IOException
+   * @return the number of documents in the intersection between <code>a</code> and <code>b</code>.
+   * @throws IOException If there is a low-level I/O error.
    */
   public int numDocs(Query a, DocSet b) throws IOException {
     // Negative query if absolute value different from original
@@ -1860,10 +1847,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * <p>
    * This method is cache-aware and may check as well as modify the cache.
    *
-   * @param a
-   * @param b
-   * @return the numer of documents in the intersection between <code>a</code> and <code>b</code>.
-   * @throws IOException
+   * @return the number of documents in the intersection between <code>a</code> and <code>b</code>.
+   * @throws IOException If there is a low-level I/O error.
    */
   public int numDocs(Query a, Query b) throws IOException {
     Query absA = QueryUtils.getAbs(a);
@@ -2029,11 +2014,11 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     
     public ScoreDoc getScoreDoc()
     {
-    	return scoreDoc;
+      return scoreDoc;
     }
     public void setScoreDoc(ScoreDoc scoreDoc)
     {
-    	this.scoreDoc = scoreDoc;
+      this.scoreDoc = scoreDoc;
     }
     //Issue 1726 end
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.ja.dict;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -40,7 +40,7 @@ public final class UnknownDictionary extends BinaryDictionary {
     int length = 1;
     for (int i = 1; i < len; i++) {
       if (characterIdOfFirstCharacter == characterDefinition.getCharacterClass(text[offset+i])){
-        length++;    			
+        length++;
       } else {
         break;
       }

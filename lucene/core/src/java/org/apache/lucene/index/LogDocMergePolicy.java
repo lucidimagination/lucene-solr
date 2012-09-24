@@ -2,7 +2,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,6 +28,8 @@ public class LogDocMergePolicy extends LogMergePolicy {
   /** Default minimum segment size.  @see setMinMergeDocs */
   public static final int DEFAULT_MIN_MERGE_DOCS = 1000;
 
+  /** Sole constructor, setting all settings to their
+   *  defaults. */
   public LogDocMergePolicy() {
     minMergeSize = DEFAULT_MIN_MERGE_DOCS;
     
@@ -38,7 +40,7 @@ public class LogDocMergePolicy extends LogMergePolicy {
   }
 
   @Override
-  protected long size(SegmentInfo info) throws IOException {
+  protected long size(SegmentInfoPerCommit info) throws IOException {
     return sizeDocs(info);
   }
 

@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,9 +24,12 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.packed.PackedInts;
 
 
 public class TestSegmentMerger extends LuceneTestCase {
@@ -49,9 +52,9 @@ public class TestSegmentMerger extends LuceneTestCase {
     merge1Dir = newDirectory();
     merge2Dir = newDirectory();
     DocHelper.setupDoc(doc1);
-    SegmentInfo info1 = DocHelper.writeDoc(random(), merge1Dir, doc1);
+    SegmentInfoPerCommit info1 = DocHelper.writeDoc(random(), merge1Dir, doc1);
     DocHelper.setupDoc(doc2);
-    SegmentInfo info2 = DocHelper.writeDoc(random(), merge2Dir, doc2);
+    SegmentInfoPerCommit info2 = DocHelper.writeDoc(random(), merge2Dir, doc2);
     reader1 = new SegmentReader(info1, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
     reader2 = new SegmentReader(info2, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
   }
@@ -76,16 +79,20 @@ public class TestSegmentMerger extends LuceneTestCase {
 
   public void testMerge() throws IOException {
     final Codec codec = Codec.getDefault();
-    SegmentMerger merger = new SegmentMerger(InfoStream.getDefault(), mergedDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL, mergedSegment, MergeState.CheckAbort.NONE, null, new FieldInfos(new FieldInfos.FieldNumberBiMap()), codec, newIOContext(random()));
+    final SegmentInfo si = new SegmentInfo(mergedDir, Constants.LUCENE_MAIN_VERSION, mergedSegment, -1, false, codec, null, null);
+
+    SegmentMerger merger = new SegmentMerger(si, InfoStream.getDefault(), mergedDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL,
+                                             MergeState.CheckAbort.NONE, new FieldInfos.FieldNumbers(), newIOContext(random()));
     merger.add(reader1);
     merger.add(reader2);
     MergeState mergeState = merger.merge();
-    int docsMerged = mergeState.mergedDocCount;
+    int docsMerged = mergeState.segmentInfo.getDocCount();
     assertTrue(docsMerged == 2);
-    final FieldInfos fieldInfos = mergeState.fieldInfos;
     //Should be able to open a new SegmentReader against the new directory
-    SegmentReader mergedReader = new SegmentReader(new SegmentInfo(mergedSegment, docsMerged, mergedDir, false,
-                                                                                     codec, fieldInfos),
+    SegmentReader mergedReader = new SegmentReader(new SegmentInfoPerCommit(
+                                                         new SegmentInfo(mergedDir, Constants.LUCENE_MAIN_VERSION, mergedSegment, docsMerged,
+                                                                         false, codec, null, null),
+                                                         0, -1L),
                                                    DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, newIOContext(random()));
     assertTrue(mergedReader != null);
     assertTrue(mergedReader.numDocs() == 2);
@@ -102,13 +109,13 @@ public class TestSegmentMerger extends LuceneTestCase {
                                        new BytesRef("field"),
                                        MultiFields.getLiveDocs(mergedReader),
                                        null,
-                                       false);
+                                       0);
     assertTrue(termDocs != null);
     assertTrue(termDocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
 
     int tvCount = 0;
     for(FieldInfo fieldInfo : mergedReader.getFieldInfos()) {
-      if (fieldInfo.storeTermVector) {
+      if (fieldInfo.hasVectors()) {
         tvCount++;
       }
     }
@@ -133,5 +140,42 @@ public class TestSegmentMerger extends LuceneTestCase {
 
     TestSegmentReader.checkNorms(mergedReader);
     mergedReader.close();
+  }
+
+  private static boolean equals(MergeState.DocMap map1, MergeState.DocMap map2) {
+    if (map1.maxDoc() != map2.maxDoc()) {
+      return false;
+    }
+    for (int i = 0; i < map1.maxDoc(); ++i) {
+      if (map1.get(i) != map2.get(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public void testBuildDocMap() {
+    final int maxDoc = 128;
+    final FixedBitSet liveDocs = new FixedBitSet(maxDoc);
+
+    MergeState.DocMap docMap1 = MergeState.DocMap.buildDelCountDocmap(maxDoc, maxDoc, liveDocs, PackedInts.COMPACT);
+    MergeState.DocMap docMap2 = MergeState.DocMap.buildDirectDocMap(maxDoc, 0, liveDocs, PackedInts.COMPACT);
+    assertTrue(equals(docMap1, docMap2));
+    
+    liveDocs.set(1);
+    for (int i = 7; i < 79; ++i) {
+      liveDocs.set(i);
+    }
+    liveDocs.set(80);
+    liveDocs.set(88);
+    int numDocs = liveDocs.cardinality();
+    docMap1 = MergeState.DocMap.buildDelCountDocmap(maxDoc, maxDoc - numDocs, liveDocs, PackedInts.COMPACT);
+    docMap2 = MergeState.DocMap.buildDirectDocMap(maxDoc, numDocs, liveDocs, PackedInts.COMPACT);
+    assertTrue(equals(docMap1, docMap2));
+
+    liveDocs.set(0, maxDoc);
+    docMap1 = MergeState.DocMap.buildDelCountDocmap(maxDoc, 0, liveDocs, PackedInts.COMPACT);
+    docMap2 = MergeState.DocMap.buildDirectDocMap(maxDoc, maxDoc, liveDocs, PackedInts.COMPACT);
+    assertTrue(equals(docMap1, docMap2));
   }
 }

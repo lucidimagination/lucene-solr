@@ -1,6 +1,6 @@
 package org.apache.lucene.util.junitcompat;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,13 +19,14 @@ package org.apache.lucene.util.junitcompat;
 
 import java.util.Properties;
 
-import org.apache.lucene.util.SystemPropertiesInvariantRule;
-import org.apache.lucene.util.SystemPropertiesRestoreRule;
 import org.junit.*;
 import org.junit.rules.TestRule;
 import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
+
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesInvariantRule;
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 /**
  * @see SystemPropertiesRestoreRule

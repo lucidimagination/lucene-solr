@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,7 +28,7 @@ import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 //   - mix in forceMerge, addIndexes
 //   - randomoly mix in non-congruent docs
 
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
   
   @Override
@@ -36,7 +36,7 @@ public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
 
     boolean anyOpenDelFiles = false;
 
-    DirectoryReader r = IndexReader.open(writer, true);
+    DirectoryReader r = DirectoryReader.open(writer, true);
 
     while (System.currentTimeMillis() < stopTime && !failed.get()) {
       if (random().nextBoolean()) {
@@ -54,7 +54,7 @@ public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
         }
         r.close();
         writer.commit();
-        final Set<String> openDeletedFiles = ((MockDirectoryWrapper) dir).getOpenDeletedFiles();
+        final Set<String> openDeletedFiles = dir.getOpenDeletedFiles();
         if (openDeletedFiles.size() > 0) {
           System.out.println("OBD files: " + openDeletedFiles);
         }
@@ -63,7 +63,7 @@ public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
         if (VERBOSE) {
           System.out.println("TEST: now open");
         }
-        r = IndexReader.open(writer, true);
+        r = DirectoryReader.open(writer, true);
       }
       if (VERBOSE) {
         System.out.println("TEST: got new reader=" + r);
@@ -80,7 +80,7 @@ public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
     r.close();
 
     //System.out.println("numDocs=" + r.numDocs() + " openDelFileCount=" + dir.openDeleteFileCount());
-    final Set<String> openDeletedFiles = ((MockDirectoryWrapper) dir).getOpenDeletedFiles();
+    final Set<String> openDeletedFiles = dir.getOpenDeletedFiles();
     if (openDeletedFiles.size() > 0) {
       System.out.println("OBD files: " + openDeletedFiles);
     }
@@ -89,6 +89,14 @@ public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
     assertFalse("saw non-zero open-but-deleted count", anyOpenDelFiles);
   }
 
+  @Override
+  protected void doAfterWriter(ExecutorService es) throws Exception {
+    // Force writer to do reader pooling, always, so that
+    // all merged segments, even for merges before
+    // doSearching is called, are warmed:
+    writer.getReader().close();
+  }
+  
   private IndexSearcher fixedSearcher;
 
   protected IndexSearcher getCurrentSearcher() throws Exception {
@@ -110,7 +118,7 @@ public class TestNRTThreads extends ThreadedIndexingAndSearchingTestCase {
       r2 = writer.getReader();
     } else {
       writer.commit();
-      r2 = IndexReader.open(dir);
+      r2 = DirectoryReader.open(dir);
     }
     return newSearcher(r2);
   }

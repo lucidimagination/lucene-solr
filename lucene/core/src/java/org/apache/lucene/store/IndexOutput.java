@@ -1,6 +1,6 @@
 package org.apache.lucene.store;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,10 @@ import java.io.IOException;
 
 /** Abstract base class for output to a file in a Directory.  A random-access
  * output stream.  Used for all Lucene index output operations.
+ 
+ * <p>{@code IndexOutput} may only be used from one thread, because it is not
+ * thread safe (it keeps internal state like file position).
+ 
  * @see Directory
  * @see IndexInput
  */

@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.standard;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,6 @@ package org.apache.lucene.queryparser.flexible.standard;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.StringReader;
 import java.text.DateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -28,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -35,7 +35,8 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.DateTools;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.TextField;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
@@ -490,6 +491,15 @@ public class TestQPHelper extends LuceneTestCase {
     assertQueryEquals(".NET", a, ".NET");
   }
 
+  public void testGroup() throws Exception {
+    assertQueryEquals("!(a AND b) OR c", null, "-(+a +b) c");
+    assertQueryEquals("!(a AND b) AND c", null, "-(+a +b) +c");
+    assertQueryEquals("((a AND b) AND c)", null, "+(+a +b) +c");
+    assertQueryEquals("(a AND b) AND c", null, "+(+a +b) +c");
+    assertQueryEquals("b !(a AND b)", null, "b -(+a +b)");
+    assertQueryEquals("(a AND b)^4 OR c", null, "((+a +b)^4.0) c");
+  }
+
   public void testSlop() throws Exception {
 
     assertQueryEquals("\"term germ\"~2", null, "\"term germ\"~2");
@@ -675,13 +685,13 @@ public class TestQPHelper extends LuceneTestCase {
   /** for testing DateTools support */
   private String getDate(String s, DateTools.Resolution resolution)
       throws Exception {
-    DateFormat df = DateFormat.getDateInstance(DateFormat.SHORT);
+    // we use the default Locale since LuceneTestCase randomizes it
+    DateFormat df = DateFormat.getDateInstance(DateFormat.SHORT, Locale.getDefault());
     return getDate(df.parse(s), resolution);
   }
 
   /** for testing DateTools support */
-  private String getDate(Date d, DateTools.Resolution resolution)
-      throws Exception {
+  private String getDate(Date d, DateTools.Resolution resolution) {
     return DateTools.dateToString(d, resolution);
   }
   
@@ -694,8 +704,9 @@ public class TestQPHelper extends LuceneTestCase {
   }
 
   private String getLocalizedDate(int year, int month, int day) {
-    DateFormat df = DateFormat.getDateInstance(DateFormat.SHORT);
-    Calendar calendar = new GregorianCalendar();
+    // we use the default Locale/TZ since LuceneTestCase randomizes it
+    DateFormat df = DateFormat.getDateInstance(DateFormat.SHORT, Locale.getDefault());
+    Calendar calendar = new GregorianCalendar(TimeZone.getDefault(), Locale.getDefault());
     calendar.clear();
     calendar.set(year, month, day);
     calendar.set(Calendar.HOUR_OF_DAY, 23);
@@ -708,7 +719,8 @@ public class TestQPHelper extends LuceneTestCase {
   public void testDateRange() throws Exception {
     String startDate = getLocalizedDate(2002, 1, 1);
     String endDate = getLocalizedDate(2002, 1, 4);
-    Calendar endDateExpected = new GregorianCalendar();
+    // we use the default Locale/TZ since LuceneTestCase randomizes it
+    Calendar endDateExpected = new GregorianCalendar(TimeZone.getDefault(), Locale.getDefault());
     endDateExpected.clear();
     endDateExpected.set(2002, 1, 4, 23, 59, 59);
     endDateExpected.set(Calendar.MILLISECOND, 999);
@@ -1288,9 +1300,9 @@ public class TestQPHelper extends LuceneTestCase {
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new CannedAnalyzer()));
     Document doc = new Document();
-    doc.add(newField("field", "", TextField.TYPE_UNSTORED));
+    doc.add(newTextField("field", "", Field.Store.NO));
     w.addDocument(doc);
-    IndexReader r = IndexReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w, true);
     IndexSearcher s = newSearcher(r);
     
     Query q = new StandardQueryParser(new CannedAnalyzer()).parse("\"a\"", "field");
@@ -1299,6 +1311,26 @@ public class TestQPHelper extends LuceneTestCase {
     r.close();
     w.close();
     dir.close();
+  }
+
+  public void testRegexQueryParsing() throws Exception {
+    final String[] fields = {"b", "t"};
+
+    final StandardQueryParser parser = new StandardQueryParser();
+    parser.setMultiFields(fields);
+    parser.setDefaultOperator(StandardQueryConfigHandler.Operator.AND);
+    parser.setAnalyzer(new MockAnalyzer(random()));
+
+    BooleanQuery exp = new BooleanQuery();
+    exp.add(new BooleanClause(new RegexpQuery(new Term("b", "ab.+")), BooleanClause.Occur.SHOULD));//TODO spezification? was "MUST"
+    exp.add(new BooleanClause(new RegexpQuery(new Term("t", "ab.+")), BooleanClause.Occur.SHOULD));//TODO spezification? was "MUST"
+
+    assertEquals(exp, parser.parse("/ab.+/", null));
+
+    RegexpQuery regexpQueryexp = new RegexpQuery(new Term("test", "[abc]?[0-9]"));
+
+    assertEquals(regexpQueryexp, parser.parse("test:/[abc]?[0-9]/", null));
+
   }
 
 }

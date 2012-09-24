@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,6 +31,7 @@ import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LineFileDocs;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -39,7 +40,8 @@ import org.apache.lucene.util._TestUtil;
  * Test that norms info is preserved during index life - including
  * separate norms, addDocument, addIndexes, forceMerge.
  */
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
+@Slow
 public class TestNorms extends LuceneTestCase {
   final String byteTestField = "normsTestByte";
 
@@ -67,8 +69,8 @@ public class TestNorms extends LuceneTestCase {
     config.setSimilarity(new CustomNormEncodingSimilarity());
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, config);
     Document doc = new Document();
-    Field foo = newField("foo", "", TextField.TYPE_UNSTORED);
-    Field bar = newField("bar", "", TextField.TYPE_UNSTORED);
+    Field foo = newTextField("foo", "", Field.Store.NO);
+    Field bar = newTextField("bar", "", Field.Store.NO);
     doc.add(foo);
     doc.add(bar);
     
@@ -95,7 +97,7 @@ public class TestNorms extends LuceneTestCase {
   public void testMaxByteNorms() throws IOException {
     Directory dir = newFSDirectory(_TestUtil.getTempDir("TestNorms.testMaxByteNorms"));
     buildIndex(dir, true);
-    AtomicReader open = SlowCompositeReaderWrapper.wrap(IndexReader.open(dir));
+    AtomicReader open = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir));
     DocValues normValues = open.normValues(byteTestField);
     assertNotNull(normValues);
     Source source = normValues.getSource();
@@ -126,11 +128,11 @@ public class TestNorms extends LuceneTestCase {
     boolean secondWriteNorm = random().nextBoolean();
     buildIndex(otherDir, secondWriteNorm);
 
-    AtomicReader reader = SlowCompositeReaderWrapper.wrap(IndexReader.open(otherDir));
+    AtomicReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(otherDir));
     FieldInfos fieldInfos = reader.getFieldInfos();
     FieldInfo fieldInfo = fieldInfos.fieldInfo(byteTestField);
-    assertFalse(fieldInfo.omitNorms);
-    assertTrue(fieldInfo.isIndexed);
+    assertFalse(fieldInfo.omitsNorms());
+    assertTrue(fieldInfo.isIndexed());
     if (secondWriteNorm) {
       assertTrue(fieldInfo.hasNorms());
     } else {
@@ -146,13 +148,13 @@ public class TestNorms extends LuceneTestCase {
       DocValues normValues = mergedReader.normValues(byteTestField);
       assertNull(normValues);
       FieldInfo fi = mergedReader.getFieldInfos().fieldInfo(byteTestField);
-      assertFalse(fi.omitNorms);
-      assertTrue(fi.isIndexed);
+      assertFalse(fi.omitsNorms());
+      assertTrue(fi.isIndexed());
       assertFalse(fi.hasNorms());
     } else {
       FieldInfo fi = mergedReader.getFieldInfos().fieldInfo(byteTestField);
-      assertFalse(fi.omitNorms);
-      assertTrue(fi.isIndexed);
+      assertFalse(fi.omitsNorms());
+      assertTrue(fi.isIndexed());
       assertTrue(fi.hasNorms());
       
       DocValues normValues = mergedReader.normValues(byteTestField);
@@ -175,8 +177,7 @@ public class TestNorms extends LuceneTestCase {
     otherDir.close();
   }
 
-  public void buildIndex(Directory dir, boolean writeNorms) throws IOException,
-      CorruptIndexException {
+  public void buildIndex(Directory dir, boolean writeNorms) throws IOException {
     Random random = random();
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random()));
@@ -188,8 +189,7 @@ public class TestNorms extends LuceneTestCase {
     for (int i = 0; i < num; i++) {
       Document doc = docs.nextDoc();
       int boost = writeNorms ? 1 + random().nextInt(255) : 0;
-      Field f = new Field(byteTestField, "" + boost,
-          TextField.TYPE_STORED);
+      Field f = new TextField(byteTestField, "" + boost, Field.Store.YES);
       f.setBoost(boost);
       doc.add(f);
       writer.addDocument(doc);
@@ -247,6 +247,5 @@ public class TestNorms extends LuceneTestCase {
         norm.setByte((byte) (0xFF & boost));
       }
     }
-  }
- 
+  } 
 }

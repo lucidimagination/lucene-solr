@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.ja.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -37,12 +37,12 @@ public final class CSVUtil {
   
   /**
    * Parse CSV line
-   * @param line
+   * @param line line containing csv-encoded data
    * @return Array of values
    */
   public static String[] parse(String line) {
     boolean insideQuote = false;
-    ArrayList<String> result = new ArrayList<String>();		
+    ArrayList<String> result = new ArrayList<String>();
     int quoteCount = 0;
     StringBuilder sb = new StringBuilder();
     for(int i = 0; i < line.length(); i++) {
@@ -96,7 +96,6 @@ public final class CSVUtil {
   
   /**
    * Quote and escape input value for CSV
-   * @param original
    */
   public static String quoteEscape(String original) {
     String result = original;

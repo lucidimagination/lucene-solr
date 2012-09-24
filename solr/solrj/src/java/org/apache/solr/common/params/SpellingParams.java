@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,14 +33,39 @@ public interface SpellingParams {
   public static final String SPELLCHECK_DICT = SPELLCHECK_PREFIX + "dictionary";
 
   /**
-   * The count of suggestions needed for a given query.
+   * The count of suggestions to return for each query term not in the index and/or dictionary.
    * <p/>
    * If this parameter is absent in the request then only one suggestion is
    * returned. If it is more than one then a maximum of given suggestions are
    * returned for each token in the query.
    */
   public static final String SPELLCHECK_COUNT = SPELLCHECK_PREFIX + "count";
-
+  
+  /**
+   * The count of suggestions to return for each query term existing in the index and/or dictionary.
+   * <p/>
+   * If this parameter is absent in the request then no suggestions are generated.  This parameter allows
+   * for receiving alternative terms to use in context-sensitive spelling corrections.
+   */
+  public static final String SPELLCHECK_ALTERNATIVE_TERM_COUNT = SPELLCHECK_PREFIX + "alternativeTermCount";
+ 
+  /**
+   * <p>
+   * The maximum number of hits the request can return in order to both 
+   * generate spelling suggestions and set the "correctlySpelled" element to "false".   
+   * Note that this parameter is typically of use only in conjunction with "spellcheck.alternativeTermCount".
+   * </p>
+   * <p>
+   * If left unspecified, the default behavior will prevail.  That is, "correctlySpelled" will be false and suggestions
+   * will be returned only if one or more of the query terms are absent from the dictionary and/or index.  If set to zero,
+   * the "correctlySpelled" flag will be false only if the response returns zero hits.  If set to a value greater than zero, 
+   * suggestions will be returned even if hits are returned (up to the specified number).  This number also will serve as
+   * the threshold in determining the value of "correctlySpelled".  Specifying a value greater than zero is useful 
+   * for creating "did-you-mean" suggestions for queries that return a low number of hits.
+   * </p>
+   */
+  public static final String SPELLCHECK_MAX_RESULTS_FOR_SUGGEST = SPELLCHECK_PREFIX + "maxResultsForSuggest";
+  
   /**
    * When this parameter is set to true and the misspelled word exists in the
    * user field, only words that occur more frequently in the Solr field than
@@ -49,7 +74,7 @@ public interface SpellingParams {
    * <b>This is applicable only for dictionaries built from Solr fields.</b>
    */
   public static final String SPELLCHECK_ONLY_MORE_POPULAR = SPELLCHECK_PREFIX + "onlyMorePopular";
-
+ 
   /**
    * Whether to use the extended response format, which is more complicated but
    * richer. Returns the document frequency for each suggestion and returns one
@@ -113,7 +138,15 @@ public interface SpellingParams {
    * </p>
    */
   public static final String SPELLCHECK_COLLATE_EXTENDED_RESULTS = SPELLCHECK_PREFIX + "collateExtendedResults";
-    
+  
+  /**
+   * <p>
+   * For use with {@link SpellingParams#SPELLCHECK_MAX_COLLATION_TRIES}, use this to override any original query parameters
+   * when issuing test queries.  For instance, if the original query has "mm=1" but it is preferred to test collations
+   * with "mm=100%", then use "spellcheck.collateParam.mm=100%".
+   * </p>
+   */
+  public static final String SPELLCHECK_COLLATE_PARAM_OVERRIDE = SPELLCHECK_PREFIX + "collateParam.";
   /**
    * Certain spelling implementations may allow for an accuracy setting.
    */

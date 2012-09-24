@@ -26,7 +26,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.collections.LRUHashMap;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -127,7 +127,7 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
     parentArray.refresh(indexReader);
   }
 
-  protected DirectoryReader openIndexReader(Directory directory) throws CorruptIndexException, IOException {
+  protected DirectoryReader openIndexReader(Directory directory) throws IOException {
     return DirectoryReader.open(directory);
   }
 
@@ -196,7 +196,7 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
       indexReaderLock.readLock().lock();
       // TODO (Facet): avoid Multi*?
       Bits liveDocs = MultiFields.getLiveDocs(indexReader);
-      DocsEnum docs = MultiFields.getTermDocsEnum(indexReader, liveDocs, Consts.FULL, new BytesRef(path), false);
+      DocsEnum docs = MultiFields.getTermDocsEnum(indexReader, liveDocs, Consts.FULL, new BytesRef(path), 0);
       if (docs != null && docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
         ret = docs.docID();
       }
@@ -218,7 +218,7 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
     return ret;
   }
 
-  public CategoryPath getPath(int ordinal) throws CorruptIndexException, IOException {
+  public CategoryPath getPath(int ordinal) throws IOException {
     ensureOpen();
     // TODO (Facet): Currently, the LRU cache we use (getCategoryCache) holds
     // strings with delimiters, not CategoryPath objects, so even if
@@ -235,7 +235,7 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
     return new CategoryPath(label, delimiter);
   }
 
-  public boolean getPath(int ordinal, CategoryPath result) throws CorruptIndexException, IOException {
+  public boolean getPath(int ordinal, CategoryPath result) throws IOException {
     ensureOpen();
     String label = getLabel(ordinal);
     if (label==null) {
@@ -246,7 +246,7 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
     return true;
   }
 
-  private String getLabel(int catID) throws CorruptIndexException, IOException {
+  private String getLabel(int catID) throws IOException {
     ensureOpen();
     // First try to find the answer in the LRU cache. It is very
     // unfortunate that we need to allocate an Integer object here -
@@ -356,7 +356,7 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
     // only possible writer, and it is "synchronized" to avoid this case).
     DirectoryReader r2 = DirectoryReader.openIfChanged(indexReader);
     if (r2 == null) {
-    	return false; // no changes, nothing to do
+      return false; // no changes, nothing to do
     } 
     
     // validate that a refresh is valid at this point, i.e. that the taxonomy 
@@ -364,13 +364,13 @@ public class DirectoryTaxonomyReader implements TaxonomyReader {
     String t1 = indexReader.getIndexCommit().getUserData().get(DirectoryTaxonomyWriter.INDEX_CREATE_TIME);
     String t2 = r2.getIndexCommit().getUserData().get(DirectoryTaxonomyWriter.INDEX_CREATE_TIME);
     if (t1==null) {
-    	if (t2!=null) {
-    		r2.close();
-    		throw new InconsistentTaxonomyException("Taxonomy was recreated at: "+t2);
-    	}
+      if (t2!=null) {
+        r2.close();
+        throw new InconsistentTaxonomyException("Taxonomy was recreated at: "+t2);
+      }
     } else if (!t1.equals(t2)) {
-    	r2.close();
-    	throw new InconsistentTaxonomyException("Taxonomy was recreated at: "+t2+"  !=  "+t1);
+      r2.close();
+      throw new InconsistentTaxonomyException("Taxonomy was recreated at: "+t2+"  !=  "+t1);
     }
     
       IndexReader oldreader = indexReader;

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,7 +36,8 @@ public class TestIndexSplitter extends LuceneTestCase {
     Directory fsDir = newFSDirectory(dir);
 
     LogMergePolicy mergePolicy = new LogByteSizeMergePolicy();
-    mergePolicy.setNoCFSRatio(1);
+    mergePolicy.setNoCFSRatio(1.0);
+    mergePolicy.setMaxCFSSegmentSizeMB(Double.POSITIVE_INFINITY);
     IndexWriter iw = new IndexWriter(
         fsDir,
         new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
@@ -59,12 +60,12 @@ public class TestIndexSplitter extends LuceneTestCase {
     }
     iw.commit();
     DirectoryReader iwReader = iw.getReader();
-    assertEquals(3, iwReader.getSequentialSubReaders().length);
+    assertEquals(3, iwReader.leaves().size());
     iwReader.close();
     iw.close();
     // we should have 2 segments now
     IndexSplitter is = new IndexSplitter(dir);
-    String splitSegName = is.infos.info(1).name;
+    String splitSegName = is.infos.info(1).info.name;
     is.split(destDir, new String[] {splitSegName});
     Directory fsDirDest = newFSDirectory(destDir);
     DirectoryReader r = DirectoryReader.open(fsDirDest);
@@ -77,7 +78,7 @@ public class TestIndexSplitter extends LuceneTestCase {
     _TestUtil.rmDir(destDir2);
     destDir2.mkdirs();
     IndexSplitter.main(new String[] {dir.getAbsolutePath(), destDir2.getAbsolutePath(), splitSegName});
-    assertEquals(4, destDir2.listFiles().length);
+    assertEquals(5, destDir2.listFiles().length);
     Directory fsDirDest2 = newFSDirectory(destDir2);
     r = DirectoryReader.open(fsDirDest2);
     assertEquals(50, r.maxDoc());
@@ -87,7 +88,7 @@ public class TestIndexSplitter extends LuceneTestCase {
     // now remove the copied segment from src
     IndexSplitter.main(new String[] {dir.getAbsolutePath(), "-d", splitSegName});
     r = DirectoryReader.open(fsDir);
-    assertEquals(2, r.getSequentialSubReaders().length);
+    assertEquals(2, r.leaves().size());
     r.close();
     fsDir.close();
   }

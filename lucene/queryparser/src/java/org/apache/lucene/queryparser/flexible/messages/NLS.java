@@ -1,6 +1,6 @@
 package org.apache.lucene.queryparser.flexible.messages;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -122,9 +122,6 @@ public class NLS {
     return null;
   }
 
-  /**
-   * @param clazz
-   */
   private static void load(Class<? extends NLS> clazz) {
     final Field[] fieldArray = clazz.getDeclaredFields();
 
@@ -139,10 +136,6 @@ public class NLS {
     }
   }
 
-  /**
-   * @param field
-   * @param isFieldAccessible
-   */
   private static void loadfieldValue(Field field, boolean isFieldAccessible,
       Class<? extends NLS> clazz) {
     int MOD_EXPECTED = Modifier.PUBLIC | Modifier.STATIC;
@@ -174,13 +167,13 @@ public class NLS {
           Locale.getDefault());
       if (resourceBundle != null) {
         Object obj = resourceBundle.getObject(key);
-        if (obj == null)
-          System.err.println("WARN: Message with key:" + key + " and locale: "
-              + Locale.getDefault() + " not found.");
+        //if (obj == null)
+        //  System.err.println("WARN: Message with key:" + key + " and locale: "
+        //      + Locale.getDefault() + " not found.");
       }
     } catch (MissingResourceException e) {
-      System.err.println("WARN: Message with key:" + key + " and locale: "
-          + Locale.getDefault() + " not found.");
+      //System.err.println("WARN: Message with key:" + key + " and locale: "
+      //    + Locale.getDefault() + " not found.");
     } catch (Throwable e) {
       // ignore all other errors and exceptions
       // since this code is just a test to see if the message is present on the

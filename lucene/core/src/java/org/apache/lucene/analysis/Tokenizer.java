@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -54,7 +54,13 @@ public abstract class Tokenizer extends TokenStream {
     this.input = input;
   }
   
-  /** By default, closes the input Reader. */
+  /**
+   * {@inheritDoc}
+   * <p>
+   * <b>NOTE:</b> 
+   * The default implementation closes the input Reader, so
+   * be sure to call <code>super.close()</code> when overriding this method.
+   */
   @Override
   public void close() throws IOException {
     if (input != null) {
@@ -65,23 +71,29 @@ public abstract class Tokenizer extends TokenStream {
     }
   }
   
-  /** Return the corrected offset. If {@link #input} is a {@link CharStream} subclass
-   * this method calls {@link CharStream#correctOffset}, else returns <code>currentOff</code>.
+  /** Return the corrected offset. If {@link #input} is a {@link CharFilter} subclass
+   * this method calls {@link CharFilter#correctOffset}, else returns <code>currentOff</code>.
    * @param currentOff offset as seen in the output
    * @return corrected offset based on the input
-   * @see CharStream#correctOffset
+   * @see CharFilter#correctOffset
    */
   protected final int correctOffset(int currentOff) {
     assert input != null: "this tokenizer is closed";
-    return (input instanceof CharStream) ? ((CharStream) input).correctOffset(currentOff) : currentOff;
+    return (input instanceof CharFilter) ? ((CharFilter) input).correctOffset(currentOff) : currentOff;
   }
 
-  /** Expert: Reset the tokenizer to a new reader.  Typically, an
+  /** Expert: Set a new reader on the Tokenizer.  Typically, an
    *  analyzer (in its tokenStream method) will use
    *  this to re-use a previously created tokenizer. */
-  public void reset(Reader input) throws IOException {
+  public final void setReader(Reader input) throws IOException {
     assert input != null: "input must not be null";
     this.input = input;
+    assert setReaderTestPoint();
+  }
+  
+  // only used by assert, for testing
+  boolean setReaderTestPoint() {
+    return true;
   }
 }
 

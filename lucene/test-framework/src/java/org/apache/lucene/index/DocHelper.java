@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -78,7 +78,7 @@ class DocHelper {
   public static final String KEYWORD_FIELD_KEY = "keyField";
   public static Field keyField;
   static {
-    keyField = new Field(KEYWORD_FIELD_KEY, KEYWORD_TEXT, StringField.TYPE_STORED);
+    keyField = new StringField(KEYWORD_FIELD_KEY, KEYWORD_TEXT, Field.Store.YES);
   }
 
   public static final FieldType customType5;
@@ -115,14 +115,14 @@ class DocHelper {
 
   public static final String UNSTORED_1_FIELD_TEXT = "unstored field text";
   public static final String UNSTORED_FIELD_1_KEY = "unStoredField1";
-  public static Field unStoredField1 = new Field(UNSTORED_FIELD_1_KEY, UNSTORED_1_FIELD_TEXT, TextField.TYPE_UNSTORED);
+  public static Field unStoredField1 = new TextField(UNSTORED_FIELD_1_KEY, UNSTORED_1_FIELD_TEXT, Field.Store.NO);
 
   public static final FieldType customType8;
   public static final String UNSTORED_2_FIELD_TEXT = "unstored field text";
   public static final String UNSTORED_FIELD_2_KEY = "unStoredField2";
   public static Field unStoredField2;
   static {
-    customType8 = new FieldType(TextField.TYPE_UNSTORED);
+    customType8 = new FieldType(TextField.TYPE_NOT_STORED);
     customType8.setStoreTermVectors(true);
     unStoredField2 = new Field(UNSTORED_FIELD_2_KEY, UNSTORED_2_FIELD_TEXT, customType8);
   }
@@ -257,11 +257,8 @@ class DocHelper {
    * Writes the document to the directory using a segment
    * named "test"; returns the SegmentInfo describing the new
    * segment 
-   * @param dir
-   * @param doc
-   * @throws IOException
    */ 
-  public static SegmentInfo writeDoc(Random random, Directory dir, Document doc) throws IOException
+  public static SegmentInfoPerCommit writeDoc(Random random, Directory dir, Document doc) throws IOException
   {
     return writeDoc(random, dir, new MockAnalyzer(random, MockTokenizer.WHITESPACE, false), null, doc);
   }
@@ -270,19 +267,14 @@ class DocHelper {
    * Writes the document to the directory using the analyzer
    * and the similarity score; returns the SegmentInfo
    * describing the new segment
-   * @param dir
-   * @param analyzer
-   * @param similarity
-   * @param doc
-   * @throws IOException
    */ 
-  public static SegmentInfo writeDoc(Random random, Directory dir, Analyzer analyzer, Similarity similarity, Document doc) throws IOException {
+  public static SegmentInfoPerCommit writeDoc(Random random, Directory dir, Analyzer analyzer, Similarity similarity, Document doc) throws IOException {
     IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig( /* LuceneTestCase.newIndexWriterConfig(random, */ 
         TEST_VERSION_CURRENT, analyzer).setSimilarity(similarity));
     //writer.setUseCompoundFile(false);
     writer.addDocument(doc);
     writer.commit();
-    SegmentInfo info = writer.newestSegment();
+    SegmentInfoPerCommit info = writer.newestSegment();
     writer.close();
     return info;
   }

@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,13 @@ import org.apache.lucene.search.Explanation;
  * @lucene.experimental
  */
 public abstract class Distribution {
+  
+  /**
+   * Sole constructor. (For invocation by subclass 
+   * constructors, typically implicit.)
+   */
+  public Distribution() {}
+
   /** Computes the score. */
   public abstract float score(BasicStats stats, float tfn, float lambda);
   

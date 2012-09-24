@@ -13,7 +13,7 @@ import org.apache.lucene.util.encoding.NOnesIntDecoder;
 import org.apache.lucene.util.encoding.NOnesIntEncoder;
 import org.apache.lucene.util.encoding.UniqueValuesIntEncoder;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,7 +34,7 @@ public class CategoryListPayloadStreamTest extends LuceneTestCase {
 
   /**
    * Verifies that a CategoryListPayloadStream can properly encode values into
-   * a byte stream for later constructing a Payload.
+   * a byte stream for later constructing a payload.
    */
   @Test
   public void testStream() throws Exception {

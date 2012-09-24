@@ -1,6 +1,6 @@
 package org.apache.lucene.util;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,7 @@ import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -55,7 +56,7 @@ public final class IOUtils {
    * may be null, they are ignored. After everything is closed, method either throws <tt>priorException</tt>,
    * if one is supplied, or the first of suppressed exceptions, or completes normally.</p>
    * <p>Sample usage:<br/>
-   * <pre>
+   * <pre class="prettyprint">
    * Closeable resource1 = null, resource2 = null, resource3 = null;
    * ExpectedException priorE = null;
    * try {
@@ -64,7 +65,7 @@ public final class IOUtils {
    * } catch (ExpectedException e) {
    *   priorE = e;
    * } finally {
-   *   closeSafely(priorE, resource1, resource2, resource3);
+   *   closeWhileHandlingException(priorE, resource1, resource2, resource3);
    * }
    * </pre>
    * </p>
@@ -97,7 +98,9 @@ public final class IOUtils {
     }
   }
 
-  /** @see #closeWhileHandlingException(Exception, Closeable...) */
+  /**
+   * Closes all given <tt>Closeable</tt>s, suppressing all thrown exceptions. 
+   * @see #closeWhileHandlingException(Exception, Closeable...) */
   public static <E extends Exception> void closeWhileHandlingException(E priorException, Iterable<? extends Closeable> objects) throws E, IOException {
     Throwable th = null;
 
@@ -159,6 +162,7 @@ public final class IOUtils {
   }
   
   /**
+   * Closes all given <tt>Closeable</tt>s.
    * @see #close(Closeable...)
    */
   public static void close(Iterable<? extends Closeable> objects) throws IOException {
@@ -204,6 +208,7 @@ public final class IOUtils {
   }
   
   /**
+   * Closes all given <tt>Closeable</tt>s, suppressing all thrown exceptions.
    * @see #closeWhileHandlingException(Closeable...)
    */
   public static void closeWhileHandlingException(Iterable<? extends Closeable> objects) {
@@ -321,6 +326,11 @@ public final class IOUtils {
     }
   }
   
+  /**
+   * Deletes all given files, suppressing all thrown IOExceptions.
+   * <p>
+   * Note that the files should not be null.
+   */
   public static void deleteFilesIgnoringExceptions(Directory dir, String... files) {
     for (String name : files) {
       try {
@@ -331,5 +341,24 @@ public final class IOUtils {
     }
   }
 
-
+  /**
+   * Copy one file's contents to another file. The target will be overwritten
+   * if it exists. The source must exist.
+   */
+  public static void copy(File source, File target) throws IOException {
+    FileInputStream fis = null;
+    FileOutputStream fos = null;
+    try {
+      fis = new FileInputStream(source);
+      fos = new FileOutputStream(target);
+      
+      final byte [] buffer = new byte [1024 * 8];
+      int len;
+      while ((len = fis.read(buffer)) > 0) {
+        fos.write(buffer, 0, len);
+      }
+    } finally {
+      close(fis, fos);
+    }
+  }
 }

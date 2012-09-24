@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -40,11 +40,11 @@ import java.util.Map;
     return new FloatDocValues(this) {
       @Override
       public float floatVal(int doc) {
-	return func(doc, vals);
+        return func(doc, vals);
       }
       @Override
       public String toString(int doc) {
-	return name() + '(' + vals.toString(doc) + ')';
+        return name() + '(' + vals.toString(doc) + ')';
       }
     };
   }

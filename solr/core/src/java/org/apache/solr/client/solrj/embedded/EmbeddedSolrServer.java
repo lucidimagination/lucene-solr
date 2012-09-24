@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,9 +21,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Set;
 
-import org.apache.lucene.document.Document;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -45,9 +43,6 @@ import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.BinaryResponseWriter;
 import org.apache.solr.response.ResultContext;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.response.transform.DocTransformer;
-import org.apache.solr.search.DocIterator;
-import org.apache.solr.search.DocList;
 import org.apache.solr.servlet.SolrRequestParsers;
 
 /**
@@ -67,8 +62,7 @@ public class EmbeddedSolrServer extends SolrServer
   
   /**
    * Use the other constructor using a CoreContainer and a name.
-   * @param core
-   * @deprecated
+   * @deprecated use {@link #EmbeddedSolrServer(CoreContainer, String)} instead.
    */
   @Deprecated
   public EmbeddedSolrServer( SolrCore core )
@@ -187,7 +181,7 @@ public class EmbeddedSolrServer extends SolrServer
           new JavaBinCodec(resolver) {
 
             @Override
-            public void writeSolrDocument(SolrDocument doc) throws IOException {
+            public void writeSolrDocument(SolrDocument doc) {
               callback.streamSolrDocument( doc );
               //super.writeSolrDocument( doc, fields );
             }
@@ -236,9 +230,7 @@ public class EmbeddedSolrServer extends SolrServer
   }
   
   /**
-   * @param req
-   * @param rsp
-   * @return a response object equivalent to what you get from the XML/JSON/javabin parser. Documents
+   * Returns a response object equivalent to what you get from the XML/JSON/javabin parser. Documents
    * become SolrDocuments, DocList becomes SolrDocumentList etc.
    * 
    * @deprecated use {@link BinaryResponseWriter#getParsedResponse(SolrQueryRequest, SolrQueryResponse)}
@@ -252,6 +244,7 @@ public class EmbeddedSolrServer extends SolrServer
   /**
    * Shutdown all cores within the EmbeddedSolrServer instance
    */
+  @Override
   public void shutdown() {
     coreContainer.shutdown();
   }

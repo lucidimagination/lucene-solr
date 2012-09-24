@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,10 @@ package org.apache.lucene.queries.function.valuesource;
 
 import org.apache.lucene.queries.function.ValueSource;
 
-
+/**
+ * Abstract parent class for those {@link ValueSource} implementations which
+ * apply boolean logic to their values
+ */
 public abstract class BoolFunction extends ValueSource {
   // TODO: placeholder to return type, among other common future functionality
 }

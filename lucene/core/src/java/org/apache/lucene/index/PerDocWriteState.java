@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,41 +30,55 @@ import org.apache.lucene.util.InfoStream;
  * @lucene.experimental
  */
 public class PerDocWriteState {
+  /** InfoStream used for debugging. */
   public final InfoStream infoStream;
+
+  /** {@link Directory} to write all files to. */
   public final Directory directory;
-  public final String segmentName;
-  public final FieldInfos fieldInfos;
+
+  /** {@link SegmentInfo} describing this segment. */
+  public final SegmentInfo segmentInfo;
+
+  /** Number of bytes allocated in RAM to hold this state. */
   public final Counter bytesUsed;
+
+  /** Segment suffix to pass to {@link
+   * IndexFileNames#segmentFileName(String,String,String)}. */
   public final String segmentSuffix;
+
+  /** {@link IOContext} to use for all file writing. */
   public final IOContext context;
 
+  /** Creates a {@code PerDocWriteState}. */
   public PerDocWriteState(InfoStream infoStream, Directory directory,
-      String segmentName, FieldInfos fieldInfos, Counter bytesUsed,
+      SegmentInfo segmentInfo, Counter bytesUsed,
       String segmentSuffix, IOContext context) {
     this.infoStream = infoStream;
     this.directory = directory;
-    this.segmentName = segmentName;
-    this.fieldInfos = fieldInfos;
+    this.segmentInfo = segmentInfo;
     this.segmentSuffix = segmentSuffix;
     this.bytesUsed = bytesUsed;
     this.context = context;
   }
 
+  /** Creates a {@code PerDocWriteState}, copying fields
+   *  from another and allocating a new {@link #bytesUsed}. */
   public PerDocWriteState(SegmentWriteState state) {
     infoStream = state.infoStream;
     directory = state.directory;
-    segmentName = state.segmentName;
-    fieldInfos = state.fieldInfos;
+    segmentInfo = state.segmentInfo;
     segmentSuffix = state.segmentSuffix;
     bytesUsed = Counter.newCounter();
     context = state.context;
   }
 
+  /** Creates a {@code PerDocWriteState}, copying fields
+   *  from another (copy constructor) but setting a new
+   *  {@link #segmentSuffix}. */
   public PerDocWriteState(PerDocWriteState state, String segmentSuffix) {
     this.infoStream = state.infoStream;
     this.directory = state.directory;
-    this.segmentName = state.segmentName;
-    this.fieldInfos = state.fieldInfos;
+    this.segmentInfo = state.segmentInfo;
     this.segmentSuffix = segmentSuffix;
     this.bytesUsed = state.bytesUsed;
     this.context = state.context;

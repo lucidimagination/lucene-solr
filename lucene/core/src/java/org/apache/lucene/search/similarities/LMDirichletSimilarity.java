@@ -1,6 +1,6 @@
 package org.apache.lucene.search.similarities;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+import java.util.Locale;
 
 import org.apache.lucene.search.Explanation;
 
@@ -38,13 +40,13 @@ public class LMDirichletSimilarity extends LMSimilarity {
   /** The &mu; parameter. */
   private final float mu;
   
-  /** @param mu the &mu; parameter. */
+  /** Instantiates the similarity with the provided &mu; parameter. */
   public LMDirichletSimilarity(CollectionModel collectionModel, float mu) {
     super(collectionModel);
     this.mu = mu;
   }
   
-  /** @param mu the &mu; parameter. */
+  /** Instantiates the similarity with the provided &mu; parameter. */
   public LMDirichletSimilarity(float mu) {
     this.mu = mu;
   }
@@ -92,6 +94,6 @@ public class LMDirichletSimilarity extends LMSimilarity {
   
   @Override
   public String getName() {
-    return String.format("Dirichlet(%f)", getMu());
+    return String.format(Locale.ROOT, "Dirichlet(%f)", getMu());
   }
 }

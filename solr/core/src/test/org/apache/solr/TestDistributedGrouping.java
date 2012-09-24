@@ -17,6 +17,7 @@ package org.apache.solr;
  * limitations under the License.
  */
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.response.QueryResponse;
@@ -31,6 +32,7 @@ import org.apache.solr.common.util.NamedList;
  *
  * @since solr 4.0
  */
+@Slow
 public class TestDistributedGrouping extends BaseDistributedSearchTestCase {
 
   String t1="a_t";
@@ -138,7 +140,7 @@ public class TestDistributedGrouping extends BaseDistributedSearchTestCase {
 
     commit();
 
-	  // test grouping
+    // test grouping
     // The second sort = id asc . The sorting behaviour is different in dist mode. See TopDocs#merge
     // The shard the result came from matters in the order if both document sortvalues are equal
     query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc");

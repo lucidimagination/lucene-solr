@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -176,8 +176,6 @@ public class CoreDescriptor {
    * Properties instance passed into this method. This means that the Properties instance
    * set to this method will have different (less) key/value pairs than the Properties
    * instance returned by #getCoreProperties method.
-   * 
-   * @param coreProperties
    */
   public void setCoreProperties(Properties coreProperties) {
     if (this.coreProperties == null) {

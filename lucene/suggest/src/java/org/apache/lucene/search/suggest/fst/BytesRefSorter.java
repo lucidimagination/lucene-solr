@@ -1,6 +1,6 @@
 package org.apache.lucene.search.suggest.fst;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -47,5 +47,8 @@ public interface BytesRefSorter {
    */
    BytesRefIterator iterator() throws IOException;
    
+  /**
+   * Comparator used to determine the sort order of entries.
+   */
    Comparator<BytesRef> getComparator();
 }

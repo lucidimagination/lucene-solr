@@ -1,6 +1,6 @@
 package org.apache.solr.cloud;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
@@ -28,18 +28,22 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.OnReconnect;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
+@Slow
 public class LeaderElectionTest extends SolrTestCaseJ4 {
   
   static final int TIMEOUT = 30000;
@@ -51,12 +55,12 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
   private volatile boolean stopStress = false;
   
   @BeforeClass
-  public static void beforeClass() throws Exception {
+  public static void beforeClass() {
     createTempDir();
   }
   
   @AfterClass
-  public static void afterClass() throws InterruptedException {
+  public static void afterClass() {
 
   }
   
@@ -120,9 +124,21 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
       try {
         setupOnConnect();
       } catch (InterruptedException e) {
+        log.error("setup failed", e);
+        
+        if (this.zkClient != null) {
+          this.zkClient.close();
+        }
+
         return;
       } catch (Throwable e) {
-        // e.printStackTrace();
+        log.error("setup failed", e);
+        
+        if (this.zkClient != null) {
+          this.zkClient.close();
+        }
+        
+        return;
       }
         
       while (!stop) {
@@ -217,76 +233,77 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
     
     for (int i = 0; i < 15; i++) {
       ClientThread thread = new ClientThread(i);
-      
       threads.add(thread);
     }
-    
-    for (Thread thread : threads) {
-      thread.start();
-    }
-    
-    
-    while(true) { //wait for election to complete
-      int doneCount = 0;
-      for (ClientThread thread : threads) {
-        if(thread.electionDone) {
-          doneCount++;
+    try {
+      for (Thread thread : threads) {
+        thread.start();
+      }
+      
+      while (true) { // wait for election to complete
+        int doneCount = 0;
+        for (ClientThread thread : threads) {
+          if (thread.electionDone) {
+            doneCount++;
+          }
         }
+        if (doneCount == 15) {
+          break;
+        }
+        Thread.sleep(100);
       }
-      if(doneCount==15) {
-        break;
+      
+      int leaderThread = getLeaderThread();
+      
+      // whoever the leader is, should be the n_0 seq
+      assertEquals(0, threads.get(leaderThread).seq);
+      
+      // kill n_0, 1, 3 and 4
+      ((ClientThread) seqToThread.get(0)).close();
+      
+      waitForLeader(threads, 1);
+      
+      leaderThread = getLeaderThread();
+      
+      // whoever the leader is, should be the n_1 seq
+      
+      assertEquals(1, threads.get(leaderThread).seq);
+      
+      ((ClientThread) seqToThread.get(4)).close();
+      ((ClientThread) seqToThread.get(1)).close();
+      ((ClientThread) seqToThread.get(3)).close();
+      
+      // whoever the leader is, should be the n_2 seq
+      
+      waitForLeader(threads, 2);
+      
+      leaderThread = getLeaderThread();
+      assertEquals(2, threads.get(leaderThread).seq);
+      
+      // kill n_5, 2, 6, 7, and 8
+      ((ClientThread) seqToThread.get(5)).close();
+      ((ClientThread) seqToThread.get(2)).close();
+      ((ClientThread) seqToThread.get(6)).close();
+      ((ClientThread) seqToThread.get(7)).close();
+      ((ClientThread) seqToThread.get(8)).close();
+      
+      waitForLeader(threads, 9);
+      leaderThread = getLeaderThread();
+      
+      // whoever the leader is, should be the n_9 seq
+      assertEquals(9, threads.get(leaderThread).seq);
+      
+    } finally {
+      // cleanup any threads still running
+      for (ClientThread thread : threads) {
+        thread.close();
+        thread.interrupt();
+        
       }
-      Thread.sleep(100);
-    }
-    
-    int leaderThread = getLeaderThread();
-    
-    // whoever the leader is, should be the n_0 seq
-    assertEquals(0, threads.get(leaderThread).seq);
-    
-    // kill n_0, 1, 3 and 4
-    ((ClientThread) seqToThread.get(0)).close();
-    
-    waitForLeader(threads, 1);
-    
-    leaderThread = getLeaderThread();
-    
-    // whoever the leader is, should be the n_1 seq
-    
-    assertEquals(1, threads.get(leaderThread).seq);
-    
-    ((ClientThread) seqToThread.get(4)).close();
-    ((ClientThread) seqToThread.get(1)).close();
-    ((ClientThread) seqToThread.get(3)).close();
-    
-    // whoever the leader is, should be the n_2 seq
-    
-    waitForLeader(threads, 2);
-    
-    leaderThread = getLeaderThread();
-    assertEquals(2, threads.get(leaderThread).seq);
-    
-    // kill n_5, 2, 6, 7, and 8
-    ((ClientThread) seqToThread.get(5)).close();
-    ((ClientThread) seqToThread.get(2)).close();
-    ((ClientThread) seqToThread.get(6)).close();
-    ((ClientThread) seqToThread.get(7)).close();
-    ((ClientThread) seqToThread.get(8)).close();
-    
-    waitForLeader(threads, 9);
-    leaderThread = getLeaderThread();
-    
-    // whoever the leader is, should be the n_9 seq
-    assertEquals(9, threads.get(leaderThread).seq);
-    
-    // cleanup any threads still running
-    for (ClientThread thread : threads) {
-      thread.close();
-      thread.interrupt();
-    }
-    
-    for (Thread thread : threads) {
-      thread.join();
+      
+      for (Thread thread : threads) {
+        thread.join();
+      }
     }
     
   }
@@ -313,7 +330,7 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
   @Test
   public void testStressElection() throws Exception {
     final ScheduledExecutorService scheduler = Executors
-        .newScheduledThreadPool(15);
+        .newScheduledThreadPool(15, new DefaultSolrThreadFactory("stressElection"));
     final List<ClientThread> threads = Collections
         .synchronizedList(new ArrayList<ClientThread>());
     
@@ -367,9 +384,7 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
             }
 
             Thread.sleep(10);
-            
           } catch (Exception e) {
-
           }
         }
       }
@@ -380,7 +395,6 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
       public void run() {
         
         while (!stopStress) {
-
           try {
             Thread.sleep(50);
             int j;
@@ -424,6 +438,7 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
     
     // cleanup any threads still running
     for (ClientThread thread : threads) {
+      thread.zkClient.getSolrZooKeeper().close();
       thread.close();
     }
     

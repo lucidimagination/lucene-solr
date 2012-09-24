@@ -1,6 +1,6 @@
 package org.apache.lucene.analysis.charfilter;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,12 +18,13 @@ package org.apache.lucene.analysis.charfilter;
  */
 
 import java.io.IOException;
+import java.io.Reader;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.util.Version;
-import org.apache.lucene.analysis.CharStream;
 import org.apache.lucene.analysis.util.CharArrayMap;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.OpenStringBuilder;
@@ -35,7 +36,7 @@ import org.apache.lucene.analysis.util.OpenStringBuilder;
 @SuppressWarnings("fallthrough")
 %%
 
-%unicode 6.0
+%unicode 6.1
 %apiprivate
 %type int
 %final
@@ -89,18 +90,18 @@ EventAttributeSuffixes = ( [aA][bB][oO][rR][tT]                 |
                            [bB][lL][uU][rR]                     |
                            [cC][hH][aA][nN][gG][eE]             |
                            [cC][lL][iI][cC][kK]                 |
-	                         [dD][bB][lL][cC][lL][iI][cC][kK]     |
+                           [dD][bB][lL][cC][lL][iI][cC][kK]     |
                            [eE][rR][rR][oO][rR]                 |
                            [fF][oO][cC][uU][sS]                 |
-	                         [kK][eE][yY][dD][oO][wW][nN]         |
-	                         [kK][eE][yY][pP][rR][eE][sS][sS]     |
-	                         [kK][eE][yY][uU][pP]                 |
+                           [kK][eE][yY][dD][oO][wW][nN]         |
+                           [kK][eE][yY][pP][rR][eE][sS][sS]     |
+                           [kK][eE][yY][uU][pP]                 |
                            [lL][oO][aA][dD]                     |
-	                         [mM][oO][uU][sS][eE][dD][oO][wW][nN] |
-	                         [mM][oO][uU][sS][eE][mM][oO][vV][eE] |
+                           [mM][oO][uU][sS][eE][dD][oO][wW][nN] |
+                           [mM][oO][uU][sS][eE][mM][oO][vV][eE] |
                            [mM][oO][uU][sS][eE][oO][uU][tT]     |
                            [mM][oO][uU][sS][eE][oO][vV][eE][rR] |
-	                         [mM][oO][uU][sS][eE][uU][pP]         |
+                           [mM][oO][uU][sS][eE][uU][pP]         |
                            [rR][eE][sS][eE][tT]                 |
                            [sS][eE][lL][eE][cC][tT]             |
                            [sS][uU][bB][mM][iI][tT]             |
@@ -140,9 +141,9 @@ InlineElment = ( [aAbBiIqQsSuU]                   |
                  [vV][aA][rR]                     )
 
 
-%include src/java/org/apache/lucene/analysis/charfilter/HTMLCharacterEntities.jflex
+%include HTMLCharacterEntities.jflex
 
-%include src/java/org/apache/lucene/analysis/charfilter/HTMLStripCharFilter.SUPPLEMENTARY.jflex-macro
+%include HTMLStripCharFilter.SUPPLEMENTARY.jflex-macro
 
 %{
   private static final int INITIAL_INPUT_SEGMENT_SIZE = 1024;
@@ -170,19 +171,22 @@ InlineElment = ( [aAbBiIqQsSuU]                   |
   private TextSegment entitySegment = new TextSegment(2);
 
   /**
-   * @param source
+   * Creates a new HTMLStripCharFilter over the provided Reader.
+   * @param source Reader to strip html tags from.
    */
-  public HTMLStripCharFilter(CharStream source) {
+  public HTMLStripCharFilter(Reader source) {
     super(source);
     this.zzReader = source;
   }
 
   /**
-   * @param source
+   * Creates a new HTMLStripCharFilter over the provided Reader
+   * with the specified start and end tags.
+   * @param source Reader to strip html tags from.
    * @param escapedTags Tags in this set (both start and end tags)
    *  will not be filtered out.
    */
-  public HTMLStripCharFilter(CharStream source, Set<String> escapedTags) {
+  public HTMLStripCharFilter(Reader source, Set<String> escapedTags) {
     super(source);
     this.zzReader = source;
     if (null != escapedTags) {

@@ -1,6 +1,6 @@
 package org.apache.solr.core;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,7 +45,7 @@ public class SolrXMLSerializer {
   /**
    * @param w
    *          Writer to use
-   * @throws IOException
+   * @throws IOException If there is a low-level I/O error.
    */
   void persist(Writer w, SolrXMLDef solrXMLDef) throws IOException {
     w.write("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n");

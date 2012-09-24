@@ -1,6 +1,6 @@
 package org.apache.lucene.codecs;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,13 +17,10 @@ package org.apache.lucene.codecs;
  * limitations under the License.
  */
 
-import java.io.IOException;
 import java.util.Set;
 import java.util.ServiceLoader; // javadocs
 
-import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexWriterConfig; // javadocs
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.util.NamedSPILoader;
 
 /**
@@ -44,35 +41,23 @@ public abstract class Codec implements NamedSPILoader.NamedSPI {
 
   private final String name;
 
+  /**
+   * Creates a new codec.
+   * <p>
+   * The provided name will be written into the index segment: in order to
+   * for the segment to be read this class should be registered with Java's
+   * SPI mechanism (registered in META-INF/ of your jar file, etc).
+   * @param name must be all ascii alphanumeric, and less than 128 characters in length.
+   */
   public Codec(String name) {
+    NamedSPILoader.checkServiceName(name);
     this.name = name;
   }
   
   /** Returns this codec's name */
   @Override
-  public String getName() {
+  public final String getName() {
     return name;
-  }
-  
-  /** Populates <code>files</code> with all filenames needed for 
-   * the <code>info</code> segment.
-   */
-  public void files(SegmentInfo info, Set<String> files) throws IOException {
-    if (info.getUseCompoundFile()) {
-      files.add(IndexFileNames.segmentFileName(info.name, "", IndexFileNames.COMPOUND_FILE_EXTENSION));
-      files.add(IndexFileNames.segmentFileName(info.name, "", IndexFileNames.COMPOUND_FILE_ENTRIES_EXTENSION));
-    } else {
-      postingsFormat().files(info, "", files);
-      storedFieldsFormat().files(info, files);
-      termVectorsFormat().files(info, files);
-      fieldInfosFormat().files(info, files);
-      // TODO: segmentInfosFormat should be allowed to declare additional files
-      // if it wants, in addition to segments_N
-      docValuesFormat().files(info, files);
-      normsFormat().files(info, files);
-    }
-    // never inside CFS
-    liveDocsFormat().files(info, files);
   }
   
   /** Encodes/decodes postings */
@@ -90,8 +75,8 @@ public abstract class Codec implements NamedSPILoader.NamedSPI {
   /** Encodes/decodes field infos file */
   public abstract FieldInfosFormat fieldInfosFormat();
   
-  /** Encodes/decodes segments file */
-  public abstract SegmentInfosFormat segmentInfosFormat();
+  /** Encodes/decodes segment info file */
+  public abstract SegmentInfoFormat segmentInfoFormat();
   
   /** Encodes/decodes document normalization values */
   public abstract NormsFormat normsFormat();
@@ -107,6 +92,21 @@ public abstract class Codec implements NamedSPILoader.NamedSPI {
   /** returns a list of all available codec names */
   public static Set<String> availableCodecs() {
     return loader.availableServices();
+  }
+  
+  /** 
+   * Reloads the codec list from the given {@link ClassLoader}.
+   * Changes to the codecs are visible after the method ends, all
+   * iterators ({@link #availableCodecs()},...) stay consistent. 
+   * 
+   * <p><b>NOTE:</b> Only new codecs are added, existing ones are
+   * never removed or replaced.
+   * 
+   * <p><em>This method is expensive and should only be called for discovery
+   * of new codecs on the given classpath/classloader!</em>
+   */
+  public static void reloadCodecs(ClassLoader classloader) {
+    loader.reload(classloader);
   }
   
   private static Codec defaultCodec = Codec.forName("Lucene40");
@@ -126,6 +126,10 @@ public abstract class Codec implements NamedSPILoader.NamedSPI {
     defaultCodec = codec;
   }
 
+  /**
+   * returns the codec's name. Subclasses can override to provide
+   * more detail (such as parameters).
+   */
   @Override
   public String toString() {
     return name;

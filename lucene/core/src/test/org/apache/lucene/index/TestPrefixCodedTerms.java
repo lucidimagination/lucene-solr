@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -67,17 +67,16 @@ public class TestPrefixCodedTerms extends LuceneTestCase {
     assertFalse(expected.hasNext());
   }
   
+  @SuppressWarnings("unchecked")
   public void testMergeEmpty() {
-    List<Iterator<Term>> subs = Collections.emptyList();
-    assertFalse(CoalescedDeletes.mergedIterator(subs).hasNext());
+    Iterator<Term> merged = new MergedIterator<Term>();
+    assertFalse(merged.hasNext());
 
-    subs = new ArrayList<Iterator<Term>>();
-    subs.add(new PrefixCodedTerms.Builder().finish().iterator());
-    subs.add(new PrefixCodedTerms.Builder().finish().iterator());
-    Iterator<Term> merged = CoalescedDeletes.mergedIterator(subs);
+    merged = new MergedIterator<Term>(new PrefixCodedTerms.Builder().finish().iterator(), new PrefixCodedTerms.Builder().finish().iterator());
     assertFalse(merged.hasNext());
   }
 
+  @SuppressWarnings("unchecked")
   public void testMergeOne() {
     Term t1 = new Term("foo", "a");
     PrefixCodedTerms.Builder b1 = new PrefixCodedTerms.Builder();
@@ -89,17 +88,14 @@ public class TestPrefixCodedTerms extends LuceneTestCase {
     b2.add(t2);
     PrefixCodedTerms pb2 = b2.finish();
     
-    List<Iterator<Term>> subs = new ArrayList<Iterator<Term>>();
-    subs.add(pb1.iterator());
-    subs.add(pb2.iterator());
-    
-    Iterator<Term> merged = CoalescedDeletes.mergedIterator(subs);
+    Iterator<Term> merged = new MergedIterator<Term>(pb1.iterator(), pb2.iterator());
     assertTrue(merged.hasNext());
     assertEquals(t1, merged.next());
     assertTrue(merged.hasNext());
     assertEquals(t2, merged.next());
   }
 
+  @SuppressWarnings({"unchecked","rawtypes"})
   public void testMergeRandom() {
     PrefixCodedTerms pb[] = new PrefixCodedTerms[_TestUtil.nextInt(random(), 2, 10)];
     Set<Term> superSet = new TreeSet<Term>();
@@ -126,7 +122,7 @@ public class TestPrefixCodedTerms extends LuceneTestCase {
     }
     
     Iterator<Term> expected = superSet.iterator();
-    Iterator<Term> actual = CoalescedDeletes.mergedIterator(subs);
+    Iterator<Term> actual = new MergedIterator<Term>(subs.toArray(new Iterator[0]));
     while (actual.hasNext()) {
       assertTrue(expected.hasNext());
       assertEquals(expected.next(), actual.next());

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,10 +21,9 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.Map;
 
-import org.apache.lucene.analysis.CharReader;
-import org.apache.lucene.analysis.CharStream;
+import org.apache.lucene.analysis.CharFilter; // javadocs
+import org.apache.lucene.analysis.util.RollingCharBuffer;
 import org.apache.lucene.util.CharsRef;
-import org.apache.lucene.util.RollingCharBuffer;
 import org.apache.lucene.util.fst.CharSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.Outputs;
@@ -51,8 +50,8 @@ public class MappingCharFilter extends BaseCharFilter {
   private int replacementPointer;
   private int inputOff;
 
-  /** Default constructor that takes a {@link CharStream}. */
-  public MappingCharFilter(NormalizeCharMap normMap, CharStream in) {
+  /** Default constructor that takes a {@link Reader}. */
+  public MappingCharFilter(NormalizeCharMap normMap, Reader in) {
     super(in);
     buffer.reset(in);
 
@@ -66,14 +65,9 @@ public class MappingCharFilter extends BaseCharFilter {
     }
   }
 
-  /** Easy-use constructor that takes a {@link Reader}. */
-  public MappingCharFilter(NormalizeCharMap normMap, Reader in) {
-    this(normMap, CharReader.get(in));
-  }
-
   @Override
   public void reset() throws IOException {
-    super.reset();
+    input.reset();
     buffer.reset(input);
     replacement = null;
     inputOff = 0;

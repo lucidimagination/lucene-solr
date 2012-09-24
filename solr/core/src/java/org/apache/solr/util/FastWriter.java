@@ -28,7 +28,7 @@ public class FastWriter extends Writer {
   // it won't cause double buffering.
   private static final int BUFSIZE = 8192;
   protected final Writer sink;
-  protected final char[] buf;
+  protected char[] buf;
   protected int pos;
 
   public FastWriter(Writer w) {
@@ -52,7 +52,7 @@ public class FastWriter extends Writer {
 
   public void write(char c) throws IOException {
     if (pos >= buf.length) {
-      sink.write(buf,0,pos);
+      flush(buf,0,pos);
       pos=0;
     }
     buf[pos++] = c;
@@ -61,7 +61,7 @@ public class FastWriter extends Writer {
   @Override
   public FastWriter append(char c) throws IOException {
     if (pos >= buf.length) {
-      sink.write(buf,0,pos);
+      flush(buf,0,pos);
       pos=0;
     }
     buf[pos++] = c;
@@ -69,60 +69,90 @@ public class FastWriter extends Writer {
   }
 
   @Override
-  public void write(char cbuf[], int off, int len) throws IOException {
-    int space = buf.length - pos;
-    if (len < space) {
-      System.arraycopy(cbuf, off, buf, pos, len);
-      pos += len;
-    } else if (len<BUFSIZE) {
-      // if the data to write is small enough, buffer it.
-      System.arraycopy(cbuf, off, buf, pos, space);
-      sink.write(buf, 0, buf.length);
-      pos = len-space;
-      System.arraycopy(cbuf, off+space, buf, 0, pos);
-    } else {
-      sink.write(buf,0,pos);  // flush
-      pos=0;
-      // don't buffer, just write to sink
-      sink.write(cbuf, off, len);
+  public void write(char arr[], int off, int len) throws IOException {
+    for(;;) {
+      int space = buf.length - pos;
+
+      if (len <= space) {
+        System.arraycopy(arr, off, buf, pos, len);
+        pos += len;
+        return;
+      } else if (len > buf.length) {
+        if (pos>0) {
+          flush(buf,0,pos);  // flush
+          pos=0;
+        }
+        // don't buffer, just write to sink
+        flush(arr, off, len);
+        return;
+      }
+
+      // buffer is too big to fit in the free space, but
+      // not big enough to warrant writing on its own.
+      // write whatever we can fit, then flush and iterate.
+
+      System.arraycopy(arr, off, buf, pos, space);
+      flush(buf, 0, buf.length);
+      pos = 0;
+      off += space;
+      len -= space;
     }
   }
 
   @Override
   public void write(String str, int off, int len) throws IOException {
-    int space = buf.length - pos;
-    if (len < space) {
-      str.getChars(off, off+len, buf, pos);
-      pos += len;
-    } else if (len<BUFSIZE) {
-      // if the data to write is small enough, buffer it.
+    for(;;) {
+      int space = buf.length - pos;
+
+      if (len <= space) {
+        str.getChars(off, off+len, buf, pos);
+        pos += len;
+        return;
+      } else if (len > buf.length) {
+        if (pos>0) {
+          flush(buf,0,pos);  // flush
+          pos=0;
+        }
+        // don't buffer, just write to sink
+        flush(str, off, len);
+        return;
+      }
+
+      // buffer is too big to fit in the free space, but
+      // not big enough to warrant writing on its own.
+      // write whatever we can fit, then flush and iterate.
+
       str.getChars(off, off+space, buf, pos);
-      sink.write(buf, 0, buf.length);
-      str.getChars(off+space, off+len, buf, 0);
-      pos = len-space;
-    } else {
-      sink.write(buf,0,pos);  // flush
-      pos=0;
-      // don't buffer, just write to sink
-      sink.write(str, off, len);
+      flush(buf, 0, buf.length);
+      pos = 0;
+      off += space;
+      len -= space;
     }
   }
 
   @Override
   public void flush() throws IOException {
-    sink.write(buf,0,pos);
+    flush(buf, 0, pos);
     pos=0;
-    sink.flush();
+    if (sink != null) sink.flush();
+  }
+
+  public void flush(char[] buf, int offset, int len) throws IOException {
+    sink.write(buf, offset, len);
+  }
+
+  public void flush(String str, int offset, int len) throws IOException {
+    sink.write(str, offset, len);
   }
 
   @Override
   public void close() throws IOException {
     flush();
-    sink.close();
+    if (sink != null) sink.close();
   }
 
   public void flushBuffer() throws IOException {
-    sink.write(buf, 0, pos);
+    flush(buf, 0, pos);
     pos=0;
   }
 }

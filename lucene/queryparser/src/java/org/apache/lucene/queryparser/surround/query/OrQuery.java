@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,6 +23,9 @@ import org.apache.lucene.search.BooleanClause;
 
 import java.io.IOException;
 
+/**
+ * Factory for disjunctions
+ */
 public class OrQuery extends ComposedQuery implements DistanceSubQuery { 
   public OrQuery(List<SrndQuery> queries, boolean infix, String opName) {
     super(queries, infix, opName);

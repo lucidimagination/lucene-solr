@@ -1,5 +1,5 @@
 package org.apache.lucene.queries.function.valuesource;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,9 +28,9 @@ import java.io.IOException;
 
 
 /**
- *
- *
- **/ // a simple function of multiple sources
+ * Abstract {@link ValueSource} implementation which wraps multiple ValueSources
+ * and applies an extendible float function to their values.
+ **/
 public abstract class MultiFloatFunction extends ValueSource {
   protected final ValueSource[] sources;
 

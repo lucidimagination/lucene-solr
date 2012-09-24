@@ -1,5 +1,5 @@
 package org.apache.lucene.queryparser.surround.query;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,9 @@ import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.util.BytesRef;
 
  
+/**
+ * Simple single-term clause
+ */
 public class SrndTermQuery extends SimpleTerm {
   public SrndTermQuery(String termText, boolean quoted) {
     super(quoted);
