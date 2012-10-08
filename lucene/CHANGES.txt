@@ -42,9 +42,11 @@ New Features
 
 API Changes
 
-* LUCENE-4391: All methods of Lucene40Codec but getPostingsFormatForField are
-  now final. To reuse functionality of Lucene40, you should extend FilterCodec
-  and delegate to Lucene40 instead of extending Lucene40Codec. (Adrien Grand)
+* LUCENE-4391, LUCENE-4440: All methods of Lucene40Codec but
+  getPostingsFormatForField are now final. To reuse functionality 
+  of Lucene40, you should extend FilterCodec and delegate to Lucene40
+  instead of extending Lucene40Codec.  (Adrien Grand, Shai Erea,
+  Robert Muir, Uwe Schindler)
 
 * LUCENE-4299: Added Terms.hasPositions() and Terms.hasOffsets().
   Previously you had no real way to know that a term vector field
@@ -111,6 +113,10 @@ API Changes
   Bits as liveDocs, then use the flex apis (fields(), terms(), etc) directly.
   (Mike McCandless, Robert Muir)
 
+* LUCENE-4425: clarify documentation of StoredFieldVisitor.binaryValue
+  and simplify the api to binaryField(FieldInfo, byte[]).
+  (Adrien Grand, Robert Muir)
+
 Bug Fixes
 
 * LUCENE-4423: DocumentStoredFieldVisitor.binaryField ignored offset and
@@ -170,6 +176,19 @@ Bug Fixes
 * LUCENE-4411: when sampling is enabled for a FacetRequest, its depth
   parameter is reset to the default (1), even if set otherwise.
   (Gilad Barkai via Shai Erera)
+
+* LUCENE-4455: Fix bug in SegmentInfoPerCommit.sizeInBytes() that was
+  returning 2X the true size, inefficiently.  Also fixed bug in
+  CheckIndex that would report no deletions when a segment has
+  deletions, and vice/versa.  (Uwe Schindler, Robert Muir, Mike McCandless)
+
+* LUCENE-4456: Fixed double-counting sizeInBytes for a segment
+  (affects how merge policies pick merges); fixed CheckIndex's
+  incorrect reporting of whether a segment has deletions; fixed case
+  where on abort Lucene could remove files it didn't create; fixed
+  many cases where IndexWriter could leave leftover files (on
+  exception in various places, on reuse of a segment name after crash
+  and recovery.  (Uwe Schindler, Robert Muir, Mike McCandless)
 
 Optimizations
 

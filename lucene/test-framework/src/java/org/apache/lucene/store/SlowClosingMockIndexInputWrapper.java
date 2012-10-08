@@ -1,3 +1,5 @@
+package org.apache.lucene.store;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,39 +17,31 @@
  * limitations under the License.
  */
 
-package org.apache.solr.core;
-
-import java.io.File;
 import java.io.IOException;
 
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
- * Factory to instantiate {@link org.apache.lucene.store.RAMDirectory}
+ * hangs onto files a little bit longer (50ms in close).
+ * MockDirectoryWrapper acts like windows: you can't delete files
+ * open elsewhere. so the idea is to make race conditions for tiny
+ * files (like segments) easier to reproduce.
  */
-public class RAMDirectoryFactory extends StandardDirectoryFactory {
+class SlowClosingMockIndexInputWrapper extends MockIndexInputWrapper {
 
-  @Override
-  protected Directory create(String path) throws IOException {
-    return new RAMDirectory();
+  public SlowClosingMockIndexInputWrapper(MockDirectoryWrapper dir,
+      String name, IndexInput delegate) {
+    super(dir, name, delegate);
   }
   
   @Override
-  public boolean exists(String path) {
-    String fullPath = new File(path).getAbsolutePath();
-    synchronized (this) {
-      CacheValue cacheValue = byPathCache.get(fullPath);
-      Directory directory = null;
-      if (cacheValue != null) {
-        directory = cacheValue.directory;
-      }
-      if (directory == null) {
-        return false;
-      } else {
-        return true;
-      }
+  public void close() throws IOException {
+    try {
+      Thread.sleep(50);
+    } catch (InterruptedException ie) {
+      throw new ThreadInterruptedException(ie);
+    } finally {
+      super.close();
     }
   }
-
 }

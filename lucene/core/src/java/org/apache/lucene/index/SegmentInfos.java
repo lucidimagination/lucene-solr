@@ -495,6 +495,8 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentInfoPerCom
       output.writeStringStringMap(si.getDiagnostics());
       output.writeStringSet(si.files());
 
+      output.close();
+
       success = true;
     } finally {
       if (!success) {
@@ -504,8 +506,6 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentInfoPerCom
         } catch (Throwable t) {
           // Suppress so we keep throwing the original exception
         }
-      } else {
-        output.close();
       }
     }
 
@@ -848,25 +848,19 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentInfoPerCom
 
   final void rollbackCommit(Directory dir) {
     if (pendingSegnOutput != null) {
-      try {
-        pendingSegnOutput.close();
-      } catch (Throwable t) {
-        // Suppress so we keep throwing the original exception
-        // in our caller
-      }
+      // Suppress so we keep throwing the original exception
+      // in our caller
+      IOUtils.closeWhileHandlingException(pendingSegnOutput);
+      pendingSegnOutput = null;
 
       // Must carefully compute fileName from "generation"
       // since lastGeneration isn't incremented:
-      try {
-        final String segmentFileName = IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS,
-                                                                              "",
-                                                                             generation);
-        dir.deleteFile(segmentFileName);
-      } catch (Throwable t) {
-        // Suppress so we keep throwing the original exception
-        // in our caller
-      }
-      pendingSegnOutput = null;
+      final String segmentFileName = IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS,
+                                                                            "",
+                                                                           generation);
+      // Suppress so we keep throwing the original exception
+      // in our caller
+      IOUtils.deleteFilesIgnoringExceptions(dir, segmentFileName);
     }
   }
 
@@ -925,11 +919,21 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentInfoPerCom
       success = true;
     } finally {
       if (!success) {
-        IOUtils.closeWhileHandlingException(pendingSegnOutput);
+        // Closes pendingSegnOutput & deletes partial segments_N:
         rollbackCommit(dir);
       } else {
-        pendingSegnOutput.close();
-        pendingSegnOutput = null;
+        success = false;
+        try {
+          pendingSegnOutput.close();
+          success = true;
+        } finally {
+          if (!success) {
+            // Closes pendingSegnOutput & deletes partial segments_N:
+            rollbackCommit(dir);
+          } else {
+            pendingSegnOutput = null;
+          }
+        }
       }
     }
 

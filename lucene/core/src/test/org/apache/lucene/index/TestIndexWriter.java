@@ -1025,7 +1025,6 @@ public class TestIndexWriter extends LuceneTestCase {
             }
             w.close();
             w = null;
-            _TestUtil.checkIndex(dir);
             DirectoryReader.open(dir).close();
 
             // Strangely, if we interrupt a thread before
@@ -1040,7 +1039,7 @@ public class TestIndexWriter extends LuceneTestCase {
             allowInterrupt = true;
           }
         } catch (ThreadInterruptedException re) {
-          if (VERBOSE) {
+          if (true || VERBOSE) {
             System.out.println("TEST: got interrupt");
             re.printStackTrace(System.out);
           }

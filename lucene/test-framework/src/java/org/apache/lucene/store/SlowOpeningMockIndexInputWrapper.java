@@ -1,3 +1,5 @@
+package org.apache.lucene.store;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,39 +17,26 @@
  * limitations under the License.
  */
 
-package org.apache.solr.core;
-
-import java.io.File;
 import java.io.IOException;
 
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
- * Factory to instantiate {@link org.apache.lucene.store.RAMDirectory}
+ * Takes a while to open files: gives testThreadInterruptDeadlock
+ * a chance to find file leaks if opening an input throws exception
  */
-public class RAMDirectoryFactory extends StandardDirectoryFactory {
+class SlowOpeningMockIndexInputWrapper extends MockIndexInputWrapper {
 
-  @Override
-  protected Directory create(String path) throws IOException {
-    return new RAMDirectory();
-  }
-  
-  @Override
-  public boolean exists(String path) {
-    String fullPath = new File(path).getAbsolutePath();
-    synchronized (this) {
-      CacheValue cacheValue = byPathCache.get(fullPath);
-      Directory directory = null;
-      if (cacheValue != null) {
-        directory = cacheValue.directory;
-      }
-      if (directory == null) {
-        return false;
-      } else {
-        return true;
-      }
+  public SlowOpeningMockIndexInputWrapper(MockDirectoryWrapper dir,
+      String name, IndexInput delegate) throws IOException {
+    super(dir, name, delegate);
+    try {
+      Thread.sleep(50);
+    } catch (InterruptedException ie) {
+      try {
+        super.close();
+      } catch (Throwable ignore) {} // we didnt open successfully
+      throw new ThreadInterruptedException(ie);
     }
   }
-
 }
