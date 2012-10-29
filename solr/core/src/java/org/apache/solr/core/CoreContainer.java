@@ -487,6 +487,7 @@ public class CoreContainer
 
     for (int i=0; i<nodes.getLength(); i++) {
       Node node = nodes.item(i);
+      SolrCore core = null;
       try {
         String rawName = DOMUtil.getAttr(node, CORE_NAME, null);
         if (null == rawName) {
@@ -531,7 +532,7 @@ public class CoreContainer
 
         p.setCoreProperties(readProperties(cfg, node));
 
-        SolrCore core = create(p);
+        core  = create(p);
         register(name, core, false);
         
         // track original names
@@ -539,6 +540,9 @@ public class CoreContainer
       }
       catch (Throwable ex) {
         SolrException.log(log,null,ex);
+        if (core != null) {
+          core.close();
+        }
       }
     }
   }
