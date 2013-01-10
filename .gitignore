@@ -1,18 +1,3 @@
-<<<<<<< HEAD
-solr/build
-lucene/build
-build
-data
-db-*.jar
-je-*.jar
-target
-lucene-libs
-dist
-.classpath
-.project
-.settings/
-bin/
-=======
 
 *.jar
 
@@ -34,8 +19,6 @@ bin/
 /bin
 /bin.*
 /pom.xml
->>>>>>> d2048c027917442b4d345d2e7102043845ecec41
-
 
 # ./lucene
 /lucene/build
