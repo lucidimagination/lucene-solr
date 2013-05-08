@@ -732,6 +732,7 @@ public class CoreContainer
         zkServer.stop();
       }
     }
+    org.apache.lucene.util.IOUtils.closeWhileHandlingException(loader); // best effort
   }
 
   public void cancelCoreRecoveries() {
