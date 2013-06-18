@@ -34,6 +34,10 @@ Apache ZooKeeper 3.4.5
 Detailed Change List
 ----------------------
 
+Cherry Picked Fix from 4.4
+----------------------
+* SOLR-4931: SolrDeletionPolicy onInit and onCommit methods changed to override exact signatures (with generics) from IndexDeletionPolicy
+
 Bug Fixes
 ----------------------
 

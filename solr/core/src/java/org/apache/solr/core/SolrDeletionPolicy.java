@@ -111,22 +111,80 @@ public class SolrDeletionPolicy extends IndexDeletionPolicy implements NamedList
    * Internal use for Lucene... do not explicitly call.
    */
   @Override
-  public void onInit(List commits) throws IOException {
-    log.info("SolrDeletionPolicy.onInit: commits:" + str(commits));
-    updateCommits((List<IndexCommit>) commits);
+  public void onInit(List<? extends IndexCommit> commits) throws IOException {
+    // SOLR-4547: log basic data at INFO, add filenames at DEBUG.
+    if (commits.isEmpty()) {
+      return;
+    }
+    log.info("SolrDeletionPolicy.onInit: commits: {}",
+        new CommitsLoggingInfo(commits));
+    log.debug("SolrDeletionPolicy.onInit: commits: {}",
+        new CommitsLoggingDebug(commits));
+    updateCommits(commits);
   }
 
   /**
    * Internal use for Lucene... do not explicitly call.
    */
   @Override
-  public void onCommit(List commits) throws IOException {
-    log.info("SolrDeletionPolicy.onCommit: commits:" + str(commits));
-    updateCommits((List<IndexCommit>) commits);
+  public void onCommit(List<? extends IndexCommit> commits) throws IOException {
+    // SOLR-4547: log basic data at INFO, add filenames at DEBUG.
+    log.info("SolrDeletionPolicy.onCommit: commits: {}",
+        new CommitsLoggingInfo(commits));
+    log.debug("SolrDeletionPolicy.onCommit: commits: {}",
+        new CommitsLoggingDebug(commits));
+    updateCommits(commits);
   }
 
+  private static class CommitsLoggingInfo {
+    private List<? extends IndexCommit> commits;
 
-  private void updateCommits(List<IndexCommit> commits) {
+    public CommitsLoggingInfo(List<? extends IndexCommit> commits) {
+      this.commits = commits;
+    }
+
+    public final String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("num=").append(commits.size());
+      for (IndexCommit c : commits) {
+        sb.append("\n\tcommit{");
+        appendDetails(sb, c);
+        sb.append("}");
+      }
+      // add an end brace
+      return sb.toString();
+    }
+
+    protected void appendDetails(StringBuilder sb, IndexCommit c) {
+      Directory dir = c.getDirectory();
+      if (dir instanceof FSDirectory) {
+        FSDirectory fsd = (FSDirectory) dir;
+        sb.append("dir=").append(fsd.getDirectory());
+      } else {
+        sb.append("dir=").append(dir);
+      }
+      sb.append(",segFN=").append(c.getSegmentsFileName());
+      sb.append(",generation=").append(c.getGeneration());
+    }
+  }
+
+  private static class CommitsLoggingDebug extends CommitsLoggingInfo {
+    public CommitsLoggingDebug(List<? extends IndexCommit> commits) {
+      super(commits);
+    }
+
+    protected void appendDetails(StringBuilder sb, IndexCommit c) {
+      super.appendDetails(sb, c);
+      try {
+        sb.append(",filenames=");
+        sb.append(c.getFileNames());
+      } catch (IOException e) {
+        sb.append(e);
+      }
+    }
+  }
+
+  private void updateCommits(List<? extends IndexCommit> commits) {
     // to be safe, we should only call delete on a commit point passed to us
     // in this specific call (may be across diff IndexWriter instances).
     // this will happen rarely, so just synchronize everything
