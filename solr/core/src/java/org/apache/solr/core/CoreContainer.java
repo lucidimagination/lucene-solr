@@ -1975,16 +1975,19 @@ class CoreMaps {
       persistProps = cfg.readCoreProperties(origCoreName);
       
       coreAttribs.put(CoreDescriptor.CORE_NAME, coreName);
-      if (coreAttribs.containsKey(CoreDescriptor.CORE_COLLECTION)) collection = coreAttribs
-          .get(CoreDescriptor.CORE_COLLECTION);
-      if (coreAttribs.containsKey(CoreDescriptor.CORE_INSTDIR)) instDir = coreAttribs
-          .get(CoreDescriptor.CORE_INSTDIR);
+      if (coreAttribs.containsKey(CoreDescriptor.CORE_COLLECTION)) {
+        collection = coreAttribs.get(CoreDescriptor.CORE_COLLECTION);
+      }
+      if (coreAttribs.containsKey(CoreDescriptor.CORE_INSTDIR)) {
+        instDir = coreAttribs.get(CoreDescriptor.CORE_INSTDIR);
+      }
       
-      addIfNotNull(coreAttribs, CoreDescriptor.CORE_INSTDIR,
-          dcore.getRawInstanceDir());
-      coreAttribs.put(CoreDescriptor.CORE_COLLECTION,
-          StringUtils.isNotBlank(collection) ? collection : dcore.getName());
+      addIfNotNull(coreAttribs, CoreDescriptor.CORE_INSTDIR, dcore.getRawInstanceDir());
+      coreAttribs.put(CoreDescriptor.CORE_COLLECTION, StringUtils.isNotBlank(collection) ? collection : dcore.getName());
 
+      addIfNotNull(coreAttribs, CoreDescriptor.CORE_DATADIR, dcore.getDataDir());
+      addIfNotNull(coreAttribs, CoreDescriptor.CORE_CONFIG, dcore.getConfigName());
+      addIfNotNull(coreAttribs, CoreDescriptor.CORE_SCHEMA, dcore.getSchemaName());
     }
 
     // Default value here is same as old code.
