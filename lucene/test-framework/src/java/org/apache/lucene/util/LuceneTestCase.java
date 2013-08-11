@@ -1145,7 +1145,6 @@ public abstract class LuceneTestCase extends Assert {
     } catch (Exception e) {
       Rethrow.rethrow(e);
     }
-    d.setReadChunkSize(_TestUtil.nextInt(random(), 8, 32678));
     return d;
   }
 
