@@ -211,6 +211,9 @@ New Features
 
 * SOLR-5464: Add option to ConcurrentSolrServer to stream pure delete 
    requests. (Mark Miller)
+   
+* SOLR-5208: Support for the setting of core.properties key/values at create-time on 
+  Collections API (Erick Erickson)
   
 Bug Fixes
 ----------------------
