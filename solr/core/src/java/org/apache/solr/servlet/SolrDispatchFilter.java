@@ -369,6 +369,19 @@ public class SolrDispatchFilter extends BaseSolrFilter {
             return;
           }
 
+	  if( path.startsWith("/config") ) {                  
+            solrReq = parser.parse(core, path, req);
+            SolrRequestInfo.setRequestInfo(new SolrRequestInfo(solrReq, new SolrQueryResponse()));
+            if( path.equals(req.getServletPath()) ) {
+              // avoid endless loop - pass through to Restlet via webapp
+              chain.doFilter(request, response);
+            } else {
+              // forward rewritten URI (without path prefix and core/collection name) to Restlet
+              req.getRequestDispatcher(path).forward(request, response);
+            }
+            return;
+          }
+
           // Determine the handler from the url path if not set
           // (we might already have selected the cores handler)
           if( handler == null && path.length() > 1 ) { // don't match "" or "/" as valid path
