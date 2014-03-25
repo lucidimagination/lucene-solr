@@ -214,6 +214,9 @@ New Features
    
 * SOLR-5208: Support for the setting of core.properties key/values at create-time on 
   Collections API (Erick Erickson)
+
+* SOLR-5906: Collection create API ignores property.instanceDir parameter.
+  (Varun Thacker, shalin)
   
 Bug Fixes
 ----------------------
