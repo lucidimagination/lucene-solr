@@ -19,6 +19,9 @@ package org.apache.solr.client.solrj.request;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Properties;
 
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
@@ -40,6 +43,18 @@ public class CollectionAdminRequest extends SolrRequest
 {
   protected String collection = null;
   protected CollectionAction action = null;
+
+  private static String PROPERTY_PREFIX = "property.";
+
+  protected void addProps(ModifiableSolrParams params, Properties props) {
+    Iterator<Map.Entry<Object, Object>> iter = props.entrySet().iterator();
+    while(iter.hasNext()) {
+      Map.Entry<Object, Object> prop = iter.next();
+      String key = (String) prop.getKey();
+      String value = (String) prop.getValue();
+      params.set(PROPERTY_PREFIX + key, value);
+    }
+  }
 
   protected static class CollectionShardAdminRequest extends CollectionAdminRequest {
     protected String shardName = null;
@@ -71,6 +86,11 @@ public class CollectionAdminRequest extends SolrRequest
     protected Integer numShards;
     protected Integer maxShardsPerNode;
     protected Integer replicationFactor;
+    protected String ulogDir;
+    protected String instanceDir;
+    protected String dataDir;
+
+    protected Properties props;
 
 
     public Create() {
@@ -93,6 +113,38 @@ public class CollectionAdminRequest extends SolrRequest
     public Integer getNumShards() { return numShards; }
     public Integer getMaxShardsPerNode() { return maxShardsPerNode; }
     public Integer getReplicationFactor() { return replicationFactor; }
+
+    public String getInstanceDir() {
+      return instanceDir;
+    }
+
+    public void setInstanceDir(String instanceDir) {
+      this.instanceDir = instanceDir;
+    }
+
+    public String getDataDir() {
+      return dataDir;
+    }
+
+    public void setDataDir(String dataDir) {
+      this.dataDir = dataDir;
+    }
+
+    public String getUlogDir() {
+      return ulogDir;
+    }
+
+    public void setUlogDir(String ulogDir) {
+      this.ulogDir = ulogDir;
+    }
+
+    public Properties getProps() {
+      return props;
+    }
+
+    public void setProps(Properties props) {
+      this.props = props;
+    }
 
     @Override
     public SolrParams getParams() {
@@ -122,6 +174,22 @@ public class CollectionAdminRequest extends SolrRequest
       if (replicationFactor != null) {
         // OverseerCollectionProcessor.REPLICATION_FACTOR
         params.set( "replicationFactor", replicationFactor);
+      }
+
+      if (instanceDir != null) {
+        params.set(PROPERTY_PREFIX + "instanceDir", instanceDir);
+      }
+
+      if (dataDir != null) {
+        params.set(PROPERTY_PREFIX + "dataDir", dataDir);
+      }
+
+      if(ulogDir != null) {
+        params.set(PROPERTY_PREFIX + "ulogDir", ulogDir);
+      }
+
+      if(props != null) {
+        addProps(params, props);
       }
 
       return params;
@@ -165,8 +233,18 @@ public class CollectionAdminRequest extends SolrRequest
   public static class SplitShard extends CollectionShardAdminRequest {
     protected String ranges;
 
+    private Properties props;
+
     public void setRanges(String ranges) { this.ranges = ranges; }
     public String getRanges() { return ranges; }
+
+    public Properties getProps() {
+      return props;
+    }
+
+    public void setProps(Properties props) {
+      this.props = props;
+    }
 
     public SplitShard() {
       action = CollectionAction.SPLITSHARD;
@@ -176,6 +254,10 @@ public class CollectionAdminRequest extends SolrRequest
     public SolrParams getParams() {
       ModifiableSolrParams params = getCommonParams();
       params.set( "ranges", ranges);
+
+      if(props != null) {
+        addProps(params, props);
+      }
       return params;
     }
   }
