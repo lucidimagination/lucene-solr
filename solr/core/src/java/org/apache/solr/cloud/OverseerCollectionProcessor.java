@@ -69,6 +69,7 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1989,6 +1990,11 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
 
       log.info("Creating SolrCores for new collection, shardNames {} , replicationFactor : {}", shardNames, repFactor);
       Map<String ,ShardRequest> coresToCreate = new LinkedHashMap<>();
+      
+      String dataDirKey = COLL_PROP_PREFIX + "dataDir";
+      String dataDir = message.getStr(dataDirKey);
+      boolean isDataDir = dataDir != null;
+            
       for (int i = 1; i <= shardNames.size(); i++) {
         String sliceName = shardNames.get(i-1);
         for (int j = 1; j <= repFactor; j++) {
@@ -2026,6 +2032,14 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
           setupAsyncRequest(async, requestMap, params, nodeName);
 
           addPropertyParams(message, params);
+
+          if (isDataDir) {
+            if (dataDir.endsWith("/")) {
+              message.getProperties().put(dataDirKey, dataDir + coreName);
+            } else {
+              message.getProperties().put(dataDirKey, dataDir + File.separator + coreName);
+            }
+          }
 
           ShardRequest sreq = new ShardRequest();
           params.set("qt", adminPath);
