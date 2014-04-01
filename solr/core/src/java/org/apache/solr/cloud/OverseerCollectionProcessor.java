@@ -57,6 +57,7 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -1171,6 +1172,11 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
 
       String configName = message.getStr(COLL_CONF);
       log.info("going to create cores replicas shardNames {} , repFactor : {}", shardNames, repFactor);
+      
+      String dataDirKey = "property." + "dataDir";
+      String dataDir = message.getStr(dataDirKey);
+      boolean isDataDir = dataDir != null;
+            
       for (int i = 1; i <= shardNames.size(); i++) {
         String sliceName = shardNames.get(i-1);
         for (int j = 1; j <= repFactor; j++) {
@@ -1190,6 +1196,14 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
           params.set(CoreAdminParams.SHARD, sliceName);
           params.set(ZkStateReader.NUM_SHARDS_PROP, numSlices);
           addPropertyParams(message, params);
+
+          if (isDataDir) {
+            if (dataDir.endsWith("/")) {
+              message.getProperties().put(dataDirKey, dataDir + shardName);
+            } else {
+              message.getProperties().put(dataDirKey, dataDir + File.separator + shardName);
+            }
+          }
 
           ShardRequest sreq = new ShardRequest();
           params.set("qt", adminPath);
