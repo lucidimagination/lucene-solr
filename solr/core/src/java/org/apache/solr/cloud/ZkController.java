@@ -1549,7 +1549,8 @@ public final class ZkController {
 
     for (CoreDescriptor cd : cds) {
       String coreName = cd.getName();
-      String confName = cd.getCollectionName();
+      // String confName = cd.getCollectionName();
+      String confName=cd.getCoreProperty(cd.CORE_COLLECTION, coreName);
       if (StringUtils.isEmpty(confName))
         confName = coreName;
       String instanceDir = cd.getInstanceDir();
