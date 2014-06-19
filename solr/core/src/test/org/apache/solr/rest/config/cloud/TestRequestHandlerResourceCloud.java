@@ -34,7 +34,7 @@ public class TestRequestHandlerResourceCloud extends SolrCloudConfigRestTestBase
     if (!validate(response, "/response=='solrconfig.xml file updated'"))
       fail("Error in update request handler");
 
-    int maxAttempts = 20;
+    int maxAttempts = 40;
     long retryPauseMillis = 40;
 
     for (RestTestHarness client : restTestHarnesses) {

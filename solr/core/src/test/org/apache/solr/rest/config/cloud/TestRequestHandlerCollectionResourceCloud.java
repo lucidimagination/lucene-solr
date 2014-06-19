@@ -37,7 +37,7 @@ public class TestRequestHandlerCollectionResourceCloud extends
     if (!validate(response, "/response=='solrconfig.xml file updated'"))
       fail("Error in update request handler");
 
-    int maxAttempts = 20;
+    int maxAttempts = 40;
     long retryPauseMillis = 40;
 
     String requestForSelect = "/config/requestHandlers/select";
