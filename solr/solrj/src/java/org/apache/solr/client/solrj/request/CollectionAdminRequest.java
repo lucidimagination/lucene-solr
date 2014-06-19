@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
@@ -418,7 +419,7 @@ public class CollectionAdminRequest extends SolrRequest
     req.setConfigName(conf);
     req.setRouterField(routerField);
     req.setAsyncId(asyncId);
-    return req.process( server );
+    return req.process(server);
   }
 
   public static CollectionAdminResponse createCollection(String name, Integer shards,
@@ -438,7 +439,7 @@ public class CollectionAdminRequest extends SolrRequest
     req.setNumShards(shards);
     req.setConfigName(conf);
     req.setAsyncId(asyncId);
-    return req.process( server );
+    return req.process(server);
   }
 
   public static CollectionAdminResponse createCollection(String name,
@@ -469,7 +470,7 @@ public class CollectionAdminRequest extends SolrRequest
     req.setConfigName(conf);
     req.setRouterField(routerField);
     req.setAsyncId(asyncId);
-    return req.process( server );
+    return req.process(server);
   }
 
   public static CollectionAdminResponse createCollection( String name,
@@ -489,7 +490,7 @@ public class CollectionAdminRequest extends SolrRequest
     req.setShards(shards);
     req.setConfigName(conf);
     req.setAsyncId(asyncId);
-    return req.process( server );
+    return req.process(server);
   }
 
   public static CollectionAdminResponse reloadCollection( String name, SolrServer server)
@@ -503,7 +504,7 @@ public class CollectionAdminRequest extends SolrRequest
     CollectionAdminRequest req = new Reload();
     req.setCollectionName(name);
     req.setAsyncId(asyncId);
-    return req.process( server );
+    return req.process(server);
   }
 
   public static CollectionAdminResponse deleteCollection( String name, SolrServer server)
@@ -519,7 +520,7 @@ public class CollectionAdminRequest extends SolrRequest
     CollectionAdminRequest req = new Delete();
     req.setCollectionName(name);
     req.setAsyncId(asyncId);
-    return req.process( server );
+    return req.process(server);
   }
 
   public static CollectionAdminResponse requestStatus(String requestId, SolrServer server)
