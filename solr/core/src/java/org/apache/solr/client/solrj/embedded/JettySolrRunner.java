@@ -53,8 +53,8 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.log.Logger;
-import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 /**
  * Run solr using jetty
@@ -62,6 +62,7 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
  * @since solr 1.3
  */
 public class JettySolrRunner {
+
   Server server;
 
   FilterHolder dispatchFilter;
@@ -69,12 +70,12 @@ public class JettySolrRunner {
 
   String context;
 
-  private String solrConfigFilename;
-  private String schemaFilename;
+  protected String solrConfigFilename;
+  protected String schemaFilename;
 
-  private boolean waitOnSolr = false;
+  protected boolean waitOnSolr = false;
 
-  private int lastPort = -1;
+  protected int lastPort = -1;
 
   private String shards;
 
@@ -90,7 +91,7 @@ public class JettySolrRunner {
   private String coreNodeName;
 
   /** Maps servlet holders (i.e. factories: class + init params) to path specs */
-  private SortedMap<ServletHolder,String> extraServlets = new TreeMap<>();
+  SortedMap<ServletHolder,String> extraServlets = new TreeMap<>();
   private SortedMap<Class,String> extraRequestFilters;
   private LinkedList<FilterHolder> extraFilters;
 
@@ -198,9 +199,10 @@ public class JettySolrRunner {
     this.init(solrHome, context, port, stopAtShutdown);
   }
   
-  private void init(String solrHome, String context, int port, boolean stopAtShutdown) {
+  protected void init(String solrHome, String context, int port, boolean stopAtShutdown) {
     this.context = context;
     server = new Server(port);
+    final ServletContextHandler root;
 
     this.solrHome = solrHome;
     this.stopAtShutdown = stopAtShutdown;
@@ -284,9 +286,17 @@ public class JettySolrRunner {
     }
 
     // Initialize the servlets
-    final ServletContextHandler root = new ServletContextHandler(server,context,ServletContextHandler.SESSIONS);
+    root = generateRoot(server, context);
     root.setHandler(new GzipHandler());
-    server.addLifeCycleListener(new LifeCycle.Listener() {
+    server.addLifeCycleListener(getLifeCycleListener(root));
+
+    // for some reason, there must be a servlet for this to get applied
+    root.addServlet(Servlet404.class, "/*");
+
+  }
+
+  protected LifeCycle.Listener getLifeCycleListener(final ServletContextHandler root) {
+    return new LifeCycle.Listener() {
 
       @Override
       public void lifeCycleStopping(LifeCycle arg0) {
@@ -336,11 +346,11 @@ public class JettySolrRunner {
       public void lifeCycleFailure(LifeCycle arg0, Throwable arg1) {
         System.clearProperty("hostPort");
       }
-    });
+    };
+  }
 
-    // for some reason, there must be a servlet for this to get applied
-    root.addServlet(Servlet404.class, "/*");
-
+  protected ServletContextHandler generateRoot(Server server, String context) {
+    return new ServletContextHandler(server,context,ServletContextHandler.SESSIONS);
   }
 
   private void sslInit(final boolean useSsl, final SslContextFactory sslcontext) {
@@ -472,7 +482,7 @@ public class JettySolrRunner {
    * 
    * @exception RuntimeException if there is no Connector
    */
-  private int getFirstConnectorPort() {
+  protected int getFirstConnectorPort() {
     Connector[] conns = server.getConnectors();
     if (0 == conns.length) {
       throw new RuntimeException("Jetty Server has no Connectors");

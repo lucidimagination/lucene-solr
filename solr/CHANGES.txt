@@ -66,6 +66,9 @@ Bug Fixes
 * SOLR-6035: CloudSolrServer directUpdate routing should use getCoreUrl.
   (Marvin Justice, Joel Bernstein)
 
+* SOLR-4470: Support for basic http auth in internal Solr requests. This allows full
+  use of basic auth for inter-node communication in a SolrCloud cluster. The feature
+  also makes it possible to configure simple authorization. (Per Steffensen, janhoy)
 
 ==================  4.8.0 ==================
 
@@ -102,6 +105,10 @@ Upgrading from Solr 4.7
   are supported so either style may be implemented. TBD is whether they'll be
   deprecated formally for 5.0
 
+
+* With the introduction of a generic basic http auth mechanism in SOLR-4470, the old
+  HttpClientUtil#setBasicAuth() and config params "httpBasicAuthUser" and
+  "httpBasicAuthPassword" are deprecated. Use the new AuthCredentials instead.
 
 Detailed Change List
 ----------------------

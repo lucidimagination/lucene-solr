@@ -16,12 +16,13 @@ package org.apache.solr.util;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.net.URLEncoder;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
 import java.nio.charset.StandardCharsets;
 
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
+import java.io.IOException;
+import java.net.URLEncoder;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.client.HttpClient;
@@ -41,8 +42,11 @@ import org.apache.solr.common.params.ModifiableSolrParams;
  */
 public class RestTestHarness extends BaseTestHarness {
   private RESTfulServerProvider serverProvider;
+  // Make sure our UrlConnection uses the internal Authentication tokens
+  // Jan Høydahl suggested the following, but that does not work for me
+  //   InterSolrNodeAuthCredentialsFactory.getCurrentInternalRequestFactory().getInternalAuthCredentials().applyToAuthenticator();
   private HttpClient httpClient = HttpClientUtil.createClient(new
-      ModifiableSolrParams());
+      ModifiableSolrParams(), InterSolrNodeAuthCredentialsFactory.getCurrentInternalRequestFactory().getInternalAuthCredentials());
   
   public RestTestHarness(RESTfulServerProvider serverProvider) {
     this.serverProvider = serverProvider;

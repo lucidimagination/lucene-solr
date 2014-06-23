@@ -27,6 +27,7 @@ import org.apache.solr.common.params.CoreAdminParams.CoreAdminAction;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
+import org.apache.solr.common.auth.AuthCredentials;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -512,9 +513,15 @@ public class CoreAdminRequest extends SolrRequest
 
   public static CoreAdminResponse reloadCore( String name, SolrServer server ) throws SolrServerException, IOException
   {
+    return reloadCore(name, server, null);
+  }
+  
+  public static CoreAdminResponse reloadCore( String name, SolrServer server, AuthCredentials authCredentials ) throws SolrServerException, IOException
+  {
     CoreAdminRequest req = new CoreAdminRequest();
     req.setCoreName( name );
     req.setAction( CoreAdminAction.RELOAD );
+    req.setAuthCredentials(authCredentials);
     return req.process( server );
   }
 
@@ -528,39 +535,65 @@ public class CoreAdminRequest extends SolrRequest
   }
 
   public static CoreAdminResponse unloadCore(String name, boolean deleteIndex, boolean deleteInstanceDir, SolrServer server) throws SolrServerException, IOException {
+    return unloadCore(name, deleteIndex, deleteInstanceDir, server, null);
+  }
+
+  public static CoreAdminResponse unloadCore( String name, boolean deleteIndex, boolean deleteInstanceDir, SolrServer server, AuthCredentials authCredentials ) throws SolrServerException, IOException
+  {
     Unload req = new Unload(deleteIndex);
     req.setCoreName(name);
+    req.setAuthCredentials(authCredentials);
     req.setDeleteInstanceDir(deleteInstanceDir);
     return req.process(server);
   }
 
   public static CoreAdminResponse renameCore(String coreName, String newName, SolrServer server ) throws SolrServerException, IOException
   {
+    return renameCore(coreName, newName, server, null);
+  }
+
+  public static CoreAdminResponse renameCore(String coreName, String newName, SolrServer server, AuthCredentials authCredentials ) throws SolrServerException, IOException
+  {
     CoreAdminRequest req = new CoreAdminRequest();
     req.setCoreName(coreName);
     req.setOtherCoreName(newName);
     req.setAction( CoreAdminAction.RENAME );
+    req.setAuthCredentials(authCredentials);
     return req.process( server );
   }
 
   public static CoreAdminResponse getStatus( String name, SolrServer server ) throws SolrServerException, IOException
   {
+    return getStatus(name, server, null);
+  }
+
+  public static CoreAdminResponse getStatus( String name, SolrServer server, AuthCredentials authCredentials ) throws SolrServerException, IOException
+  {
     CoreAdminRequest req = new CoreAdminRequest();
     req.setCoreName( name );
     req.setAction( CoreAdminAction.STATUS );
+    req.setAuthCredentials(authCredentials);
     return req.process( server );
+  }
+
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile, AuthCredentials authCredentials ) throws SolrServerException, IOException {
+    return createCore(name, instanceDir, server, configFile, schemaFile, null, null, authCredentials);
   }
   
   public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server ) throws SolrServerException, IOException 
   {
-    return CoreAdminRequest.createCore(name, instanceDir, server, null, null);
+    return CoreAdminRequest.createCore(name, instanceDir, server, null, null, null);
   }
   
-  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile ) throws SolrServerException, IOException { 
-    return createCore(name, instanceDir, server, configFile, schemaFile, null, null);
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile ) throws SolrServerException, IOException {
+    return createCore(name, instanceDir, server, configFile, schemaFile, null);
   }
   
-  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile, String dataDir, String tlogDir ) throws SolrServerException, IOException 
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile, String dataDir, String tlogDir ) throws SolrServerException, IOException {
+    return createCore(name, instanceDir, server, configFile, schemaFile, dataDir, tlogDir, null);
+  }
+
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile, String dataDir, String tlogDir, AuthCredentials authCredentials ) throws SolrServerException, IOException
   {
     CoreAdminRequest.Create req = new CoreAdminRequest.Create();
     req.setCoreName( name );
@@ -577,24 +610,39 @@ public class CoreAdminRequest extends SolrRequest
     if(schemaFile != null){
       req.setSchemaName(schemaFile);
     }
+    req.setAuthCredentials(authCredentials);
     return req.process( server );
   }
 
   @Deprecated
-  public static CoreAdminResponse persist(String fileName, SolrServer server) throws SolrServerException, IOException 
+  public static CoreAdminResponse persist(String fileName, SolrServer server) throws SolrServerException, IOException
+  {
+    return persist(fileName, server, null);
+  }
+
+  @Deprecated
+  public static CoreAdminResponse persist(String fileName, SolrServer server, AuthCredentials authCredentials) throws SolrServerException, IOException 
   {
     CoreAdminRequest.Persist req = new CoreAdminRequest.Persist();
     req.setFileName(fileName);
+    req.setAuthCredentials(authCredentials);
     return req.process(server);
   }
 
   public static CoreAdminResponse mergeIndexes(String name,
       String[] indexDirs, String[] srcCores, SolrServer server) throws SolrServerException,
       IOException {
+    return mergeIndexes(name, indexDirs, srcCores, server, null);
+  }
+
+  public static CoreAdminResponse mergeIndexes(String name,
+      String[] indexDirs, String[] srcCores, SolrServer server, AuthCredentials authCredentials) throws SolrServerException,
+      IOException {
     CoreAdminRequest.MergeIndexes req = new CoreAdminRequest.MergeIndexes();
     req.setCoreName(name);
     req.setIndexDirs(Arrays.asList(indexDirs));
     req.setSrcCores(Arrays.asList(srcCores));
+    req.setAuthCredentials(authCredentials);
     return req.process(server);
   }
 }

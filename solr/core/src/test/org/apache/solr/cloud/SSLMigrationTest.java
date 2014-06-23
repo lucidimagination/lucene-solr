@@ -27,8 +27,8 @@ import java.util.Map;
 import org.apache.commons.lang.StringUtils;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.client.solrj.embedded.JettySolrRunnerWithBasicAuth;
 import org.apache.solr.client.solrj.impl.HttpClientUtil;
-import org.apache.solr.client.solrj.impl.LBHttpSolrServer;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
@@ -40,6 +40,10 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.util.SSLTestConfig;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
+
+
 
 /**
  * We want to make sure that when migrating between http and https modes the
@@ -69,9 +73,17 @@ public class SSLMigrationTest extends AbstractFullDistribZkTestBase {
     HttpClientUtil.setConfigurer(sslConfig.getHttpClientConfigurer());
     for(int i = 0; i < this.jettys.size(); i++) {
       JettySolrRunner runner = jettys.get(i);
-      JettySolrRunner newRunner = new JettySolrRunner(runner.getSolrHome(), 
-          context, runner.getLocalPort(), getSolrConfigFile(), getSchemaFile(), 
-          false, getExtraServlets(), sslConfig, getExtraRequestFilters());
+      JettySolrRunner newRunner;
+      // JettySolrRunnerWithSecurity instruments Jetty with basic auth enforcement as well as a regex authorization filter
+      if (RUN_WITH_COMMON_SECURITY) {
+        newRunner = new JettySolrRunnerWithBasicAuth(runner.getSolrHome(),
+            context, runner.getLocalPort(), getSolrConfigFile(), getSchemaFile(),
+            false, getExtraServlets(), sslConfig, getExtraRequestFilters());
+      } else {
+        newRunner = new JettySolrRunner(runner.getSolrHome(),
+            context, runner.getLocalPort(), getSolrConfigFile(), getSchemaFile(),
+            false, getExtraServlets(), sslConfig, getExtraRequestFilters());
+      }
       newRunner.setDataDir(getDataDir(testDir + "/shard" + i + "/data"));
       newRunner.start(true);
       jettys.set(i, newRunner);
@@ -108,12 +120,11 @@ public class SSLMigrationTest extends AbstractFullDistribZkTestBase {
     SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
     
-    List<String> urls = new ArrayList<String>();
-    for(Replica replica : getReplicas()) {
-      urls.add(replica.getStr(ZkStateReader.BASE_URL_PROP));
-    }
+    // FOCUS-5591: Use random replica's URL with TestHttpSolrServer instead of LBHttpSolrServer, which has no Test* equivalent
+    String url = getReplicas().get(random().nextInt(getReplicas().size())).getStr(ZkStateReader.BASE_URL_PROP);
+
     //Create new SolrServer to configure new HttpClient w/ SSL config
-    new LBHttpSolrServer(urls.toArray(new String[]{})).request(request);
+    new TestHttpSolrServer(url).request(request);
   }
   
 }

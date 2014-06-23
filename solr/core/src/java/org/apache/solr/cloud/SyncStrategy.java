@@ -27,7 +27,6 @@ import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.RequestRecovery;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
@@ -40,6 +39,7 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
@@ -59,12 +59,14 @@ public class SyncStrategy {
   private volatile boolean isClosed;
   
   private final HttpClient client;
+  private final AuthCredentialsSource authCredentialsSource;
 
   private final ExecutorService updateExecutor;
   
-  public SyncStrategy(CoreContainer cc) {
+  public SyncStrategy(CoreContainer cc, AuthCredentialsSource authCredentialsSource) {
     UpdateShardHandler updateShardHandler = cc.getUpdateShardHandler();
     client = updateShardHandler.getHttpClient();
+    this.authCredentialsSource = authCredentialsSource;
     shardHandler = cc.getShardHandlerFactory().getShardHandler();
     updateExecutor = updateShardHandler.getUpdateExecutor();
   }
@@ -253,7 +255,7 @@ public class SyncStrategy {
     sreq.params.set("getVersions",Integer.toString(100));
     sreq.params.set("sync",leaderUrl);
     
-    shardHandler.submit(sreq, replica, sreq.params);
+    shardHandler.submit(sreq, replica, sreq.params, authCredentialsSource);
   }
   
   public void close() {
@@ -270,6 +272,7 @@ public class SyncStrategy {
         RequestRecovery recoverRequestCmd = new RequestRecovery();
         recoverRequestCmd.setAction(CoreAdminAction.REQUESTRECOVERY);
         recoverRequestCmd.setCoreName(coreName);
+        recoverRequestCmd.setAuthCredentials(authCredentialsSource.getAuthCredentials());
         
         HttpSolrServer server = new HttpSolrServer(baseUrl, client);
         try {

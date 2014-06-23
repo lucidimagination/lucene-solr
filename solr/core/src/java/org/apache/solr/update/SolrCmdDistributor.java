@@ -33,6 +33,7 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.Diagnostics;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +42,13 @@ public class SolrCmdDistributor {
   private static final int MAX_RETRIES_ON_FORWARD = 25;
   public static Logger log = LoggerFactory.getLogger(SolrCmdDistributor.class);
   
+  // FIXME Here it is a problem using StreamingSolrServers which uses ConcurrentUpdateSolrServer for its requests. They (currently)
+  // do not respond errors back, and users of SolrCmdDistributor actually ought to get errors back, so that they can eventually
+  // be reported back to the issuer of the outer request that triggers the SolrCmdDistributor requests.
+  // E.g. if you issue a deleteByQuery() from a client you will not get any information back about whether or not it was actually
+  // carried out successfully throughout the complete Solr cluster. See workaround in SecurityDistributed.doAndAssertSolrExeptionFromStreamingSolrServer
   private StreamingSolrServers servers;
+  private AuthCredentialsSource authCredentialsSource;
   
   private int retryPause = 500;
   private int maxRetriesOnForward = MAX_RETRIES_ON_FORWARD;
@@ -53,12 +60,27 @@ public class SolrCmdDistributor {
     public boolean abortCheck();
   }
   
-  public SolrCmdDistributor(UpdateShardHandler updateShardHandler) {
+  /**
+   * @param updateShardHandler UpdateShardHandler to use
+   * @param authCredentialsSource SolrCmdDistributor is designed to issue Solr-node to Solr-node requests - therefore using
+   * AuthCredentialsSource instead of AuthCredentials
+   */
+  public SolrCmdDistributor(UpdateShardHandler updateShardHandler, AuthCredentialsSource authCredentialsSource) {
     servers = new StreamingSolrServers(updateShardHandler);
+    this.authCredentialsSource = authCredentialsSource;
   }
   
-  public SolrCmdDistributor(StreamingSolrServers servers, int maxRetriesOnForward, int retryPause) {
+  /**
+   * 
+   * @param servers StreamingSolrServers to use
+   * @param authCredentialsSource SolrCmdDistributor is designed to issue Solr-node to Solr-node requests - therefore using
+   * AuthCredentialsSource instead of AuthCredentials
+   * @param maxRetriesOnForward Max retries on forward
+   * @param retryPause Pause between retries
+   */
+  public SolrCmdDistributor(StreamingSolrServers servers, AuthCredentialsSource authCredentialsSource, int maxRetriesOnForward, int retryPause) {
     this.servers = servers;
+    this.authCredentialsSource = authCredentialsSource;
     this.maxRetriesOnForward = maxRetriesOnForward;
     this.retryPause = retryPause;
   }
@@ -209,6 +231,8 @@ public class SolrCmdDistributor {
   }
 
   private void submit(Req req) {
+    req.uReq.setAuthCredentials(authCredentialsSource.getAuthCredentials());
+
     if (req.synchronous) {
       servers.blockUntilFinished();
       doRetriesIfNeeded();

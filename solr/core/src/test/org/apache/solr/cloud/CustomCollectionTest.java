@@ -17,6 +17,7 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACTOR;
@@ -40,6 +41,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.TestUtil;
+import org.apache.solr.TestSolrServers;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -195,7 +197,7 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
 
       String url = getUrlFromZk(getCommonCloudSolrServer().getZkStateReader().getClusterState(), collection);
 
-      HttpSolrServer collectionClient = new HttpSolrServer(url);
+      HttpSolrServer collectionClient = new TestHttpSolrServer(url);
 
       // poll for a second - it can take a moment before we are ready to serve
       waitForNon403or404or503(collectionClient);
@@ -223,7 +225,7 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
 
     String url = getUrlFromZk(getCommonCloudSolrServer().getZkStateReader().getClusterState(), collectionName);
 
-    HttpSolrServer collectionClient = new HttpSolrServer(url);
+    HttpSolrServer collectionClient = new TestHttpSolrServer(url);
 
 
     // lets try and use the solrj client to index a couple documents
@@ -323,7 +325,7 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
     url = getUrlFromZk(getCommonCloudSolrServer().getZkStateReader().getClusterState(), collectionName);
     
     collectionClient.shutdown();
-    collectionClient = new HttpSolrServer(url);
+    collectionClient = new TestHttpSolrServer(url);
 
     // poll for a second - it can take a moment before we are ready to serve
     waitForNon403or404or503(collectionClient);
@@ -331,7 +333,7 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
 
 
     collectionClient.shutdown();
-    collectionClient = new HttpSolrServer(url);
+    collectionClient = new TestHttpSolrServer(url);
 
 
     // lets try and use the solrj client to index a couple documents
@@ -383,14 +385,14 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
 
     String url = getUrlFromZk(getCommonCloudSolrServer().getZkStateReader().getClusterState(), collectionName);
 
-    HttpSolrServer collectionClient = new HttpSolrServer(url);
+    HttpSolrServer collectionClient = new TestHttpSolrServer(url);
 
     // poll for a second - it can take a moment before we are ready to serve
     waitForNon403or404or503(collectionClient);
     collectionClient.shutdown();
 
 
-    collectionClient = new HttpSolrServer(url);
+    collectionClient = new TestHttpSolrServer(url);
 
 
     // lets try and use the solrj client to index a couple documents

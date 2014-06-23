@@ -37,6 +37,7 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.util.RTimer;
 import org.apache.solr.util.SolrPluginUtils;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
@@ -285,7 +286,7 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
               } else {
                 params.set(CommonParams.QT, shardQt);
               }
-              shardHandler1.submit(sreq, shard, params);
+              shardHandler1.submit(sreq, shard, params, AuthCredentialsSource.useAuthCredentialsFromOuterRequest(req));
             }
           }
 

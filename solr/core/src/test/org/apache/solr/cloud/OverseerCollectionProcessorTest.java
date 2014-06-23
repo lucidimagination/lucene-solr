@@ -33,6 +33,7 @@ import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.zookeeper.CreateMode;
 import org.easymock.Capture;
 import org.easymock.IAnswer;
@@ -333,6 +334,7 @@ public class OverseerCollectionProcessorTest extends SolrTestCaseJ4 {
     public Capture<ShardRequest> shardRequestCapture = new Capture<>();
     public Capture<String> nodeUrlsWithoutProtocolPartCapture = new Capture<>();
     public Capture<ModifiableSolrParams> params = new Capture<>();
+    public Capture<AuthCredentialsSource> authCredentialsSource = new Capture<>();
   }
   
   protected List<SubmitCapture> mockShardHandlerForCreateJob(
@@ -342,7 +344,7 @@ public class OverseerCollectionProcessorTest extends SolrTestCaseJ4 {
       SubmitCapture submitCapture = new SubmitCapture();
       shardHandlerMock.submit(capture(submitCapture.shardRequestCapture),
           capture(submitCapture.nodeUrlsWithoutProtocolPartCapture),
-          capture(submitCapture.params));
+          capture(submitCapture.params), capture(submitCapture.authCredentialsSource));
       expectLastCall();
       submitCaptures.add(submitCapture);
       ShardResponse shardResponseWithoutException = new ShardResponse();

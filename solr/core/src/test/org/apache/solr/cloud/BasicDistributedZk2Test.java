@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.BasicResponseHandler;
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
@@ -42,9 +43,12 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.handler.ReplicationHandler;
 import org.apache.solr.util.AbstractSolrTestCase;
+
+import static org.apache.solr.client.solrj.embedded.JettySolrRunnerWithBasicAuth.*;
 
 /**
  * This test simply does a bunch of basic things in solrcloud mode and asserts things
@@ -106,7 +110,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
       
       query("q", "*:*", "sort", "n_tl1 desc");
       
-      brindDownShardIndexSomeDocsAndRecover();
+      bringDownShardIndexSomeDocsAndRecover();
       
       query("q", "*:*", "sort", "n_tl1 desc");
       
@@ -161,7 +165,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
       SolrServerException, IOException {
     try {
       final String baseUrl = getBaseUrl((HttpSolrServer) clients.get(0));
-      HttpSolrServer server = new HttpSolrServer(baseUrl);
+      HttpSolrServer server = new TestHttpSolrServer(baseUrl);
       server.setConnectionTimeout(30000);
       Create createCmd = new Create();
       createCmd.setRoles("none");
@@ -192,7 +196,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
   // 2 docs added every call
   private void addAndQueryDocs(final String baseUrl, int docs)
       throws Exception {
-    HttpSolrServer qclient = new HttpSolrServer(baseUrl + "/onenodecollection" + "core");
+    HttpSolrServer qclient = new TestHttpSolrServer(baseUrl + "/onenodecollection" + "core");
     
     // it might take a moment for the proxy node to see us in their cloud state
     waitForNon403or404or503(qclient);
@@ -208,7 +212,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     assertEquals(docs - 1, results.getResults().getNumFound());
     qclient.shutdown();
     
-    qclient = new HttpSolrServer(baseUrl + "/onenodecollection");
+    qclient = new TestHttpSolrServer(baseUrl + "/onenodecollection");
     results = qclient.query(query);
     assertEquals(docs - 1, results.getResults().getNumFound());
     
@@ -259,7 +263,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     return docId;
   }
   
-  private void brindDownShardIndexSomeDocsAndRecover() throws Exception {
+  private void bringDownShardIndexSomeDocsAndRecover() throws Exception {
     SolrQuery query = new SolrQuery("*:*");
     query.set("distrib", false);
     
@@ -276,6 +280,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     
     // kill a shard
     CloudJettyRunner deadShard = chaosMonkey.stopShard(SHARD1, 0);
+    downedClients.add(deadShard.client.solrClient);
     
     // ensure shard is dead
     try {
@@ -367,6 +372,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     
     // this should trigger a recovery phase on deadShard
     ChaosMonkey.start(deadShard.jetty);
+    downedClients.remove(deadShard.client.solrClient);
     
     // make sure we have published we are recovering
     Thread.sleep(1500);
@@ -382,6 +388,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     
     // recover over 100 docs so we do more than just peer sync (replicate recovery)
     chaosMonkey.stopJetty(deadShard);
+    downedClients.add(deadShard.client.solrClient);
 
     for (int i = 0; i < 226; i++) {
       doc = new SolrInputDocument();
@@ -397,6 +404,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     Thread.sleep(1500);
     
     ChaosMonkey.start(deadShard.jetty);
+    downedClients.remove(deadShard.client.solrClient);
     
     // make sure we have published we are recovering
     Thread.sleep(1500);
@@ -440,7 +448,13 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
             + ReplicationHandler.CMD_DETAILS;
         
         try {
-          response = client.getHttpClient().execute(new HttpGet(masterUrl), new BasicResponseHandler());
+          HttpGet httpGet = new HttpGet(masterUrl);
+          if (RUN_WITH_COMMON_SECURITY) {
+            byte[] clearBasicHttpAuthCredentials = (ALL_USERNAME + ":" + ALL_PASSWORD).getBytes("UTF-8");
+            String base64EncodedBasicHttpAuthCredentials = Base64.byteArrayToBase64(clearBasicHttpAuthCredentials, 0, clearBasicHttpAuthCredentials.length);
+            httpGet.addHeader("Authorization", "Basic " + base64EncodedBasicHttpAuthCredentials);
+          }
+          response = client.getHttpClient().execute(httpGet, new BasicResponseHandler());
           if (response.contains("<str name=\"status\">success</str>")) {
             Matcher m = p.matcher(response);
             if (!m.find()) {

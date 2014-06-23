@@ -57,6 +57,7 @@ import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.MergeIndexesCommand;
 import org.apache.solr.update.SplitIndexCommand;
@@ -443,6 +444,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
         UpdateRequestProcessorChain processorChain =
                 core.getUpdateProcessingChain(params.get(UpdateParams.UPDATE_CHAIN));
         wrappedReq = new LocalSolrQueryRequest(core, req.getParams());
+        ((LocalSolrQueryRequest)wrappedReq).setAuthCredentials(req.getAuthCredentials());
         UpdateRequestProcessor processor =
                 processorChain.createProcessor(wrappedReq, rsp);
         processor.processMergeIndexes(new MergeIndexesCommand(readers, req));
@@ -899,7 +901,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     try (SolrCore core = coreContainer.getCore(cname)) {
 
       if (core != null) {
-        syncStrategy = new SyncStrategy(core.getCoreDescriptor().getCoreContainer());
+        syncStrategy = new SyncStrategy(core.getCoreDescriptor().getCoreContainer(), AuthCredentialsSource.useAuthCredentialsFromOuterRequest(req));
         
         Map<String,Object> props = new HashMap<>();
         props.put(ZkStateReader.BASE_URL_PROP, zkController.getBaseUrl());

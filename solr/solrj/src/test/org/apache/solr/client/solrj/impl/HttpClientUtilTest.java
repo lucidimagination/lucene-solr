@@ -28,6 +28,7 @@ import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.params.HttpConnectionParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.auth.AuthCredentials;
 import org.junit.Test;
 
 public class HttpClientUtilTest {
@@ -42,15 +43,13 @@ public class HttpClientUtilTest {
   public void testSetParams() {
     ModifiableSolrParams params = new ModifiableSolrParams();
     params.set(HttpClientUtil.PROP_ALLOW_COMPRESSION, true);
-    params.set(HttpClientUtil.PROP_BASIC_AUTH_PASS, "pass");
-    params.set(HttpClientUtil.PROP_BASIC_AUTH_USER, "user");
     params.set(HttpClientUtil.PROP_CONNECTION_TIMEOUT, 12345);
     params.set(HttpClientUtil.PROP_FOLLOW_REDIRECTS, true);
     params.set(HttpClientUtil.PROP_MAX_CONNECTIONS, 22345);
     params.set(HttpClientUtil.PROP_MAX_CONNECTIONS_PER_HOST, 32345);
     params.set(HttpClientUtil.PROP_SO_TIMEOUT, 42345);
     params.set(HttpClientUtil.PROP_USE_RETRY, false);
-    DefaultHttpClient client = (DefaultHttpClient) HttpClientUtil.createClient(params);
+    DefaultHttpClient client = (DefaultHttpClient) HttpClientUtil.createClient(params, AuthCredentials.createBasicAuthCredentials("user", "pass"));
     assertEquals(12345, HttpConnectionParams.getConnectionTimeout(client.getParams()));
     assertEquals(PoolingClientConnectionManager.class, client.getConnectionManager().getClass());
     assertEquals(22345, ((PoolingClientConnectionManager)client.getConnectionManager()).getMaxTotal());
@@ -70,8 +69,8 @@ public class HttpClientUtilTest {
     final AtomicInteger counter = new AtomicInteger();
     HttpClientConfigurer custom = new HttpClientConfigurer(){
       @Override
-      protected void configure(DefaultHttpClient httpClient, SolrParams config) {
-        super.configure(httpClient, config);
+      protected void configure(HttpClient httpClient, SolrParams config, AuthCredentials authCredentials) {
+        super.configure(httpClient, config, authCredentials);
         counter.set(config.getInt("custom-param", -1));
       }
       
@@ -89,5 +88,14 @@ public class HttpClientUtilTest {
     }
 
   }
+  
+  @Test
+  public void testReuseConnectionManager() {
+    HttpClient clien = HttpClientUtil.createClient(null);
+    HttpClient clien2 = HttpClientUtil.createClient(null, clien.getConnectionManager());
+    assertEquals(clien.getConnectionManager(), clien2.getConnectionManager());
+    clien.getConnectionManager().shutdown();
+}
+
   
 }

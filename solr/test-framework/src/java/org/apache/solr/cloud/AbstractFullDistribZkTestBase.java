@@ -41,6 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.http.params.CoreConnectionPNames;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.TestSolrServers.TestCloudSolrServer;
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
@@ -266,7 +268,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   
   protected CloudSolrServer createCloudClient(String defaultCollection)
       throws MalformedURLException {
-    CloudSolrServer server = new CloudSolrServer(zkServer.getZkAddress(), random().nextBoolean());
+    CloudSolrServer server = new TestCloudSolrServer(zkServer.getZkAddress(), random().nextBoolean());
     server.setParallelUpdates(random().nextBoolean());
     if (defaultCollection != null) server.setDefaultCollection(defaultCollection);
     server.getLbServer().getHttpClient().getParams()
@@ -465,30 +467,14 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     return cnt;
   }
   
-  public JettySolrRunner createJetty(String dataDir, String ulogDir, String shardList,
-      String solrConfigOverride) throws Exception {
-    
-    JettySolrRunner jetty = new JettySolrRunner(getSolrHome(), context, 0,
-        solrConfigOverride, null, false, getExtraServlets(), sslConfig, getExtraRequestFilters());
-    jetty.setShards(shardList);
-    jetty.setDataDir(getDataDir(dataDir));
-    jetty.start();
-    
-    return jetty;
-  }
-  
+  @Override
   public JettySolrRunner createJetty(File solrHome, String dataDir, String shardList, String solrConfigOverride, String schemaOverride) throws Exception {
     // randomly test a relative solr.home path
     if (random().nextBoolean()) {
       solrHome = getRelativeSolrHomePath(solrHome);
     }
     
-    JettySolrRunner jetty = new JettySolrRunner(solrHome.getPath(), context, 0, solrConfigOverride, schemaOverride, false, getExtraServlets(), sslConfig, getExtraRequestFilters());
-    jetty.setShards(shardList);
-    jetty.setDataDir(getDataDir(dataDir));
-    jetty.start();
-    
-    return jetty;
+    return super.createJetty(solrHome, dataDir, shardList, solrConfigOverride, schemaOverride, false, false);
   }
 
   private File getRelativeSolrHomePath(File solrHome) {
@@ -1644,8 +1630,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       collectionInfos.put(collectionName, list);
     }
     params.set("name", collectionName);
-    SolrRequest request = new QueryRequest(params);
-    request.setPath("/admin/collections");
+    SolrRequest request = createRequestCreateCollection(params);
 
     CollectionAdminResponse res = new CollectionAdminResponse();
     if (client == null) {
@@ -1661,6 +1646,12 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       res.setResponse(client.request(request));
     }
     return res;
+  }
+
+  protected SolrRequest createRequestCreateCollection(ModifiableSolrParams params) {
+    SolrRequest request = new QueryRequest(params);
+    request.setPath("/admin/collections");
+    return request;
   }
 
   protected void runCollectionAdminCommand(ModifiableSolrParams params){
@@ -1682,7 +1673,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
   
   protected CollectionAdminResponse createCollection(Map<String, List<Integer>> collectionInfos,
-                                                     String collectionName, int numShards, int replicationFactor, int maxShardsPerNode, SolrServer client, String createNodeSetStr, String configName) throws SolrServerException, IOException {
+      String collectionName, int numShards, int replicationFactor, int maxShardsPerNode, SolrServer client, String createNodeSetStr, String configName) throws SolrServerException, IOException {
 
     return createCollection(collectionInfos, collectionName,
         ZkNodeProps.makeMap(
@@ -1699,7 +1690,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       // setup the server...
       String baseUrl = buildUrl(port);
       String url = baseUrl + (baseUrl.endsWith("/") ? "" : "/") + DEFAULT_COLLECTION;
-      HttpSolrServer s = new HttpSolrServer(url);
+    HttpSolrServer s = new TestHttpSolrServer(url);
       s.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
       s.setSoTimeout(60000);
       s.setDefaultMaxConnectionsPerHost(100);
@@ -1713,7 +1704,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   protected SolrServer createNewSolrServer(String collection, String baseUrl) {
     try {
       // setup the server...
-      HttpSolrServer s = new HttpSolrServer(baseUrl + "/" + collection);
+      HttpSolrServer s = new TestHttpSolrServer(baseUrl + "/" + collection);
       s.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
       s.setDefaultMaxConnectionsPerHost(100);
       s.setMaxTotalConnections(100);
@@ -1798,7 +1789,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     synchronized (this) {
       if (commondCloudSolrServer == null) {
         try {
-          commondCloudSolrServer = new CloudSolrServer(zkServer.getZkAddress(),
+          commondCloudSolrServer = new TestCloudSolrServer(zkServer.getZkAddress(),
               random().nextBoolean());
           commondCloudSolrServer.getLbServer().setConnectionTimeout(30000);
           commondCloudSolrServer.setParallelUpdates(random().nextBoolean());

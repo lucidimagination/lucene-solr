@@ -50,6 +50,8 @@ import javax.management.ObjectName;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.TestUtil;
+import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
@@ -726,7 +728,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       
       String url = getUrlFromZk(collection);
 
-      HttpSolrServer collectionClient = new HttpSolrServer(url);
+      HttpSolrServer collectionClient = new TestHttpSolrServer(url);
       
       // poll for a second - it can take a moment before we are ready to serve
       waitForNon403or404or503(collectionClient);
@@ -746,7 +748,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         
         String url = getUrlFromZk(collection);
         
-        HttpSolrServer collectionClient = new HttpSolrServer(url);
+        HttpSolrServer collectionClient = new TestHttpSolrServer(url);
         
         // poll for a second - it can take a moment before we are ready to serve
         waitForNon403or404or503(collectionClient);
@@ -793,7 +795,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     String url = getUrlFromZk(collectionName);
 
-    HttpSolrServer collectionClient = new HttpSolrServer(url);
+    HttpSolrServer collectionClient = new TestHttpSolrServer(url);
     
     
     // lets try and use the solrj client to index a couple documents
@@ -892,7 +894,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     url = getUrlFromZk(collectionName);
     
-    collectionClient = new HttpSolrServer(url);
+    collectionClient = new TestHttpSolrServer(url);
     
     // poll for a second - it can take a moment before we are ready to serve
     waitForNon403or404or503(collectionClient);
@@ -1099,7 +1101,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         while (shardIt.hasNext()) {
           Entry<String,Replica> shardEntry = shardIt.next();
           ZkCoreNodeProps coreProps = new ZkCoreNodeProps(shardEntry.getValue());
-          HttpSolrServer server = new HttpSolrServer(coreProps.getBaseUrl());
+          HttpSolrServer server = new TestHttpSolrServer(coreProps.getBaseUrl());
           CoreAdminResponse mcr;
           try {
             mcr = CoreAdminRequest.getStatus(coreProps.getCoreName(), server);

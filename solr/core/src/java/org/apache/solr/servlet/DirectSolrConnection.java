@@ -17,7 +17,6 @@
 
 package org.apache.solr.servlet;
 
-import java.io.File;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,17 +28,13 @@ import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ContentStreamBase;
-import org.apache.solr.core.CoreContainer;
-import org.apache.solr.core.CoreDescriptor;
-import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.QueryResponseWriter;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.schema.IndexSchema;
+import org.apache.solr.common.auth.AuthCredentials;
 
 /**
  * DirectSolrConnection provides an interface to Solr that is similar to
@@ -114,6 +109,11 @@ public class DirectSolrConnection
 
   public String request(SolrRequestHandler handler, SolrParams params, String body) throws Exception
   {
+    return request(handler, params, body, null);
+  }
+
+  public String request(SolrRequestHandler handler, SolrParams params, String body, AuthCredentials authCredentials) throws Exception
+  {
     if (params == null)
       params = new MapSolrParams( new HashMap<String, String>() );
 
@@ -125,7 +125,7 @@ public class DirectSolrConnection
 
     SolrQueryRequest req = null;
     try {
-      req = parser.buildRequestFrom( core, params, streams );
+      req = parser.buildRequestFrom( core, params, streams, authCredentials );
       SolrQueryResponse rsp = new SolrQueryResponse();
       SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, rsp));      
       core.execute( handler, req, rsp );

@@ -17,6 +17,7 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
@@ -28,7 +29,6 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.handler.admin.CollectionsHandler;
 import org.apache.zookeeper.KeeperException;
 import org.junit.After;
 import org.junit.Before;
@@ -136,7 +136,7 @@ public class DeleteShardTest extends AbstractFullDistribZkTestBase {
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
 
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
+    HttpSolrServer baseServer = new TestHttpSolrServer(baseUrl);
     baseServer.setConnectionTimeout(15000);
     baseServer.setSoTimeout(60000);
     baseServer.request(request);

@@ -17,6 +17,7 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -133,7 +134,7 @@ public class MigrateRouteKeyTest extends BasicDistributedZkTest {
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
 
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
+    HttpSolrServer baseServer = new TestHttpSolrServer(baseUrl);
     baseServer.setConnectionTimeout(15000);
     baseServer.setSoTimeout(60000 * 5);
     baseServer.request(request);
@@ -190,7 +191,7 @@ public class MigrateRouteKeyTest extends BasicDistributedZkTest {
     indexer.start();
 
     String url = CustomCollectionTest.getUrlFromZk(getCommonCloudSolrServer().getZkStateReader().getClusterState(), targetCollection);
-    HttpSolrServer collectionClient = new HttpSolrServer(url);
+    HttpSolrServer collectionClient = new TestHttpSolrServer(url);
 
     SolrQuery solrQuery = new SolrQuery("*:*");
     assertEquals("DocCount on target collection does not match", 0, collectionClient.query(solrQuery).getResults().getNumFound());

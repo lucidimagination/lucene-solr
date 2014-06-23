@@ -15,6 +15,7 @@ import org.apache.solr.common.util.RetryUtil;
 import org.apache.solr.common.util.RetryUtil.RetryCmd;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.util.RefCounted;
@@ -166,7 +167,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
         zkController.getZkStateReader());
     this.zkController = zkController;
     this.cc = cc;
-    syncStrategy = new SyncStrategy(cc);
+    syncStrategy = new SyncStrategy(cc, AuthCredentialsSource.useInternalAuthCredentials());
   }
   
   @Override

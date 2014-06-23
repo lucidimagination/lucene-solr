@@ -23,6 +23,7 @@ import java.util.Collection;
 
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
+import org.apache.solr.common.auth.AuthCredentials;
 
 /**
  * 
@@ -41,6 +42,8 @@ public abstract class SolrRequest implements Serializable
 
   private ResponseParser responseParser;
   private StreamingResponseCallback callback;
+  private AuthCredentials authCredentials;
+  private boolean preemptiveAuthentication = true;
   
   //---------------------------------------------------------
   //---------------------------------------------------------
@@ -91,6 +94,22 @@ public abstract class SolrRequest implements Serializable
 
   public void setStreamingResponseCallback(StreamingResponseCallback callback) {
     this.callback = callback;
+  }
+  
+  public AuthCredentials getAuthCredentials() {
+    return authCredentials;
+  }
+
+  public void setAuthCredentials(AuthCredentials authCredentials) {
+    this.authCredentials = authCredentials;
+  }
+
+  public boolean getPreemptiveAuthentication() {
+    return preemptiveAuthentication;
+  }
+
+  public void setPreemptiveAuthentication(boolean preemptiveAuthentication) {
+    this.preemptiveAuthentication = preemptiveAuthentication;
   }
   
   public abstract SolrParams getParams();

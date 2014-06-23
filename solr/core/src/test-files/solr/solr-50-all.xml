@@ -53,4 +53,12 @@
     <int name="connTimeout">${connTimeout:110}</int>
   </shardHandlerFactory>
 
+  <authentication>
+    <subRequestFactory>
+      <str name="class">org.apache.solr.security.UseSuperRequestAuthCredentialsSubRequestFactory</str>
+    </subRequestFactory>
+    <internalRequestFactory>
+      <str name="class">org.apache.solr.security.SystemPropertiesAuthCredentialsInternalRequestFactory</str>
+    </internalRequestFactory>
+  </authentication>
 </solr>

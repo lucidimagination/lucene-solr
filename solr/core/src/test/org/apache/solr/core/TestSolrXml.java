@@ -73,6 +73,8 @@ public class TestSolrXml extends SolrTestCaseJ4 {
       assertNull("Did not find expected value", cfg.get(ConfigSolr.CfgProp.SOLR_PERSISTENT, null));
       assertNull("Did not find expected value", cfg.get(ConfigSolr.CfgProp.SOLR_CORES_DEFAULT_CORE_NAME, null));
       assertNull("Did not find expected value", cfg.get(ConfigSolr.CfgProp.SOLR_ADMINPATH, null));
+      assertEquals("Did not find expected value", "org.apache.solr.security.UseSuperRequestAuthCredentialsSubRequestFactory", cfg.get(ConfigSolr.CfgProp.SOLR_SUBREQUESTFACTORY_CLASS, null));
+      assertEquals("Did not find expected value", "org.apache.solr.security.SystemPropertiesAuthCredentialsInternalRequestFactory", cfg.get(ConfigSolr.CfgProp.SOLR_INTERNALREQUESTFACTORY_CLASS, null));
     }
     finally {
       loader.close();

@@ -343,6 +343,7 @@ public class CarrotClusteringEngine extends SearchClusteringEngine {
             return sreq.getSearcher();
           }
         };
+        ((LocalSolrQueryRequest)req).setAuthCredentials(sreq.getAuthCredentials());
       } else {
         log.warn("No highlighter configured, cannot produce summary");
         produceSummary = false;

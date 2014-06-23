@@ -18,10 +18,18 @@ package org.apache.solr.handler.component;
 
 
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 
 public abstract class ShardHandler {
   public abstract void checkDistributed(ResponseBuilder rb);
-  public abstract void submit(ShardRequest sreq, String shard, ModifiableSolrParams params) ;
+  /**
+   * @param sreq Request to issue
+   * @param shard Target shard
+   * @param params Parameters
+   * @param authCredentialsSource ShardHandler is designed to issue Solr-node to Solr-node requests - therefore using
+   * AuthCredentialsSource instead of AuthCredentials
+   */
+  public abstract void submit(ShardRequest sreq, String shard, ModifiableSolrParams params, AuthCredentialsSource authCredentialsSource) ;
   public abstract ShardResponse takeCompletedIncludingErrors();
   public abstract ShardResponse takeCompletedOrError();
   public abstract void cancelAll();

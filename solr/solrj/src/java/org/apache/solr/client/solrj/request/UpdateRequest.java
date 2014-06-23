@@ -203,6 +203,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
           updateRequest.setCommitWithin(getCommitWithin());
           updateRequest.setParams(params);
           updateRequest.setPath(getPath());
+          updateRequest.setAuthCredentials(getAuthCredentials());
           request = new LBHttpSolrServer.Req(updateRequest, urls);
           routes.put(leaderUrl, request);
         }
@@ -241,6 +242,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
           UpdateRequest urequest = new UpdateRequest();
           urequest.setParams(params);
           urequest.deleteById(deleteId, version);
+          urequest.setAuthCredentials(getAuthCredentials());
           request = new LBHttpSolrServer.Req(urequest, urls);
           routes.put(leaderUrl, request);
         }

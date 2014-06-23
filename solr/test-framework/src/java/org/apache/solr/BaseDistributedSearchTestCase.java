@@ -43,10 +43,12 @@ import org.apache.solr.client.solrj.SolrResponse;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.client.solrj.embedded.JettySolrRunnerWithBasicAuth;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
+import org.apache.solr.cloud.InterSolrNodeAuthCredentialsFactoryTestingHelper;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
@@ -54,6 +56,11 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.schema.TrieDateField;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.DefaultInternalRequestFactory;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.DefaultSubRequestFactory;
+import org.apache.solr.security.SystemPropertiesAuthCredentialsInternalRequestFactory;
+import org.apache.solr.security.UseSuperRequestAuthCredentialsSubRequestFactory;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -61,12 +68,18 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
+import static org.apache.solr.client.solrj.embedded.JettySolrRunnerWithBasicAuth.*;
+
 /**
  * Helper base class for distributed search test cases
  *
  * @since solr 1.5
  */
 public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
+
+  protected static volatile boolean RUN_WITH_COMMON_SECURITY = true;
+
   // TODO: this shouldn't be static. get the random when you need it to avoid sharing.
   public static Random r;
   
@@ -77,6 +90,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   public static void initialize() {
     assumeFalse("SOLR-4147: ibm 64bit has jvm bugs!", Constants.JRE_IS_64BIT && Constants.JAVA_VENDOR.startsWith("IBM"));
     r = new Random(random().nextLong());
+    RUN_WITH_COMMON_SECURITY = usually();
   }
   
   /**
@@ -131,6 +145,9 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   @AfterClass
   public static void clearHostContext() throws Exception {
     System.clearProperty("hostContext");
+
+    // Reset Common Security
+    RUN_WITH_COMMON_SECURITY = true;
   }
 
   private static String getHostContextSuitableForServletContext() {
@@ -189,6 +206,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   protected JettySolrRunner controlJetty;
   protected List<SolrServer> clients = new ArrayList<>();
   protected List<JettySolrRunner> jettys = new ArrayList<>();
+  protected List<SolrServer> downedClients = new ArrayList<>();
   
   protected String context;
   protected String[] deadServers;
@@ -276,6 +294,13 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   public void setUp() throws Exception {
     SolrTestCaseJ4.resetExceptionIgnores();  // ignore anything with ignore_exception in it
     super.setUp();
+    if (RUN_WITH_COMMON_SECURITY) {
+      InterSolrNodeAuthCredentialsFactory.setCurrentSubRequestFactory(new UseSuperRequestAuthCredentialsSubRequestFactory());
+      InterSolrNodeAuthCredentialsFactory.setCurrentInternalRequestFactory(new SystemPropertiesAuthCredentialsInternalRequestFactory());
+      System.setProperty(SystemPropertiesAuthCredentialsInternalRequestFactory.USERNAME_SYS_PROP_NAME, ALL_USERNAME);
+      System.setProperty(SystemPropertiesAuthCredentialsInternalRequestFactory.USERNAME_SYS_PROP_PASSWORD, ALL_PASSWORD);
+    }
+    InterSolrNodeAuthCredentialsFactoryTestingHelper.recalculateNowOnDefaultInternalRequestFactory();
     System.setProperty("solr.test.sys.prop1", "propone");
     System.setProperty("solr.test.sys.prop2", "proptwo");
     testDir = createTempDir();
@@ -285,6 +310,13 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   public void tearDown() throws Exception {
     destroyServers();
     FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity
+    if (RUN_WITH_COMMON_SECURITY) {
+      InterSolrNodeAuthCredentialsFactory.setCurrentSubRequestFactory(new DefaultSubRequestFactory());
+      InterSolrNodeAuthCredentialsFactory.setCurrentInternalRequestFactory(new DefaultInternalRequestFactory());
+      System.clearProperty(SystemPropertiesAuthCredentialsInternalRequestFactory.USERNAME_SYS_PROP_NAME);
+      System.clearProperty(SystemPropertiesAuthCredentialsInternalRequestFactory.USERNAME_SYS_PROP_PASSWORD);
+    }
+    InterSolrNodeAuthCredentialsFactoryTestingHelper.recalculateNowOnDefaultInternalRequestFactory();
     super.tearDown();
   }
 
@@ -362,9 +394,22 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   public JettySolrRunner createJetty(File solrHome, String dataDir, String shardList, String solrConfigOverride, String schemaOverride, boolean explicitCoreNodeName) throws Exception {
 
     boolean stopAtShutdown = true;
-    JettySolrRunner jetty = new JettySolrRunner
+    return createJetty(solrHome, dataDir, shardList, solrConfigOverride, schemaOverride, explicitCoreNodeName, stopAtShutdown);
+  }
+
+  public JettySolrRunner createJetty(File solrHome, String dataDir, String shardList, String solrConfigOverride, String schemaOverride, boolean explicitCoreNodeName, boolean stopAtShutdown) throws Exception {
+    JettySolrRunner jetty;
+    // JettySolrRunnerWithSecurity instruments Jetty with basic auth enforcement as well as a regex authorization filter
+    if (RUN_WITH_COMMON_SECURITY) {
+      jetty = new JettySolrRunnerWithBasicAuth
         (solrHome.getAbsolutePath(), context, 0, solrConfigOverride, schemaOverride, stopAtShutdown,
           getExtraServlets(), sslConfig, getExtraRequestFilters());
+    } else {
+      jetty = new JettySolrRunner
+        (solrHome.getAbsolutePath(), context, 0, solrConfigOverride, schemaOverride, stopAtShutdown,
+         getExtraServlets(), sslConfig, getExtraRequestFilters());
+    }
+
     jetty.setShards(shardList);
     jetty.setDataDir(dataDir);
     if (explicitCoreNodeName) {
@@ -388,7 +433,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   protected SolrServer createNewSolrServer(int port) {
     try {
       // setup the server...
-      HttpSolrServer s = new HttpSolrServer(buildUrl(port));
+      HttpSolrServer s = new TestHttpSolrServer(buildUrl(port));
       s.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
       s.setSoTimeout(90000);
       s.setDefaultMaxConnectionsPerHost(100);
@@ -505,8 +550,11 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
 
   protected QueryResponse queryServer(ModifiableSolrParams params) throws SolrServerException {
     // query a random server
+    SolrServer client;
+    do {
     int which = r.nextInt(clients.size());
-    SolrServer client = clients.get(which);
+      client = clients.get(which);
+    } while (downedClients.contains(client));
     QueryResponse rsp = client.query(params);
     return rsp;
   }

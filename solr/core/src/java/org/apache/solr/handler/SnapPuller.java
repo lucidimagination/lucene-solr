@@ -81,6 +81,7 @@ import org.apache.solr.handler.ReplicationHandler.FileInfo;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.FileUtils;
@@ -168,20 +169,20 @@ public class SnapPuller {
 
   private final HttpClient myHttpClient;
 
-  private static HttpClient createHttpClient(SolrCore core, String connTimeout, String readTimeout, String httpBasicAuthUser, String httpBasicAuthPassword, boolean useCompression) {
+  private final AuthCredentialsSource authCredentialsSource;
+
+  private static HttpClient createHttpClient(SolrCore core, String connTimeout, String readTimeout, AuthCredentialsSource authCredentialsSource, boolean useCompression) {
     final ModifiableSolrParams httpClientParams = new ModifiableSolrParams();
     httpClientParams.set(HttpClientUtil.PROP_CONNECTION_TIMEOUT, connTimeout != null ? connTimeout : "5000");
     httpClientParams.set(HttpClientUtil.PROP_SO_TIMEOUT, readTimeout != null ? readTimeout : "20000");
-    httpClientParams.set(HttpClientUtil.PROP_BASIC_AUTH_USER, httpBasicAuthUser);
-    httpClientParams.set(HttpClientUtil.PROP_BASIC_AUTH_PASS, httpBasicAuthPassword);
     httpClientParams.set(HttpClientUtil.PROP_ALLOW_COMPRESSION, useCompression);
 
-    HttpClient httpClient = HttpClientUtil.createClient(httpClientParams, core.getCoreDescriptor().getCoreContainer().getUpdateShardHandler().getConnectionManager());
+    HttpClient httpClient = HttpClientUtil.createClient(httpClientParams, core.getCoreDescriptor().getCoreContainer().getUpdateShardHandler().getConnectionManager(), authCredentialsSource.getAuthCredentials());
 
     return httpClient;
   }
 
-  public SnapPuller(final NamedList initArgs, final ReplicationHandler handler, final SolrCore sc) {
+  public SnapPuller(final NamedList initArgs, final ReplicationHandler handler, final SolrCore sc, AuthCredentialsSource authCredentialsSource) {
     solrCore = sc;
     final SolrParams params = SolrParams.toSolrParams(initArgs);
     String masterUrl = (String) initArgs.get(MASTER_URL);
@@ -202,9 +203,8 @@ public class SnapPuller {
     useExternal = EXTERNAL.equals(compress);
     String connTimeout = (String) initArgs.get(HttpClientUtil.PROP_CONNECTION_TIMEOUT);
     String readTimeout = (String) initArgs.get(HttpClientUtil.PROP_SO_TIMEOUT);
-    String httpBasicAuthUser = (String) initArgs.get(HttpClientUtil.PROP_BASIC_AUTH_USER);
-    String httpBasicAuthPassword = (String) initArgs.get(HttpClientUtil.PROP_BASIC_AUTH_PASS);
-    myHttpClient = createHttpClient(solrCore, connTimeout, readTimeout, httpBasicAuthUser, httpBasicAuthPassword, useExternal);
+    myHttpClient = createHttpClient(solrCore, connTimeout, readTimeout, authCredentialsSource, useExternal);
+    this.authCredentialsSource = authCredentialsSource;
     if (pollInterval != null && pollInterval > 0) {
       startExecutorService();
     } else {
@@ -223,7 +223,7 @@ public class SnapPuller {
         try {
           LOG.debug("Polling for index modifications");
           executorStartTime = System.currentTimeMillis();
-          replicationHandler.doFetch(null, false);
+          replicationHandler.doFetch(null, false, authCredentialsSource);
         } catch (Exception e) {
           LOG.error("Exception in fetching index", e);
         }
@@ -246,6 +246,7 @@ public class SnapPuller {
     params.set(CommonParams.WT, "javabin");
     params.set(CommonParams.QT, "/replication");
     QueryRequest req = new QueryRequest(params);
+    req.setAuthCredentials(authCredentialsSource.getAuthCredentials());
     HttpSolrServer server = new HttpSolrServer(masterUrl, myHttpClient); //XXX modify to use shardhandler
     NamedList rsp;
     try {
@@ -271,6 +272,7 @@ public class SnapPuller {
     params.set(CommonParams.WT, "javabin");
     params.set(CommonParams.QT, "/replication");
     QueryRequest req = new QueryRequest(params);
+    req.setAuthCredentials(authCredentialsSource.getAuthCredentials());
     HttpSolrServer server = new HttpSolrServer(masterUrl, myHttpClient);  //XXX modify to use shardhandler
     try {
       server.setSoTimeout(60000);
@@ -1363,6 +1365,7 @@ public class SnapPuller {
         s.setSoTimeout(60000);
         s.setConnectionTimeout(15000);
         QueryRequest req = new QueryRequest(params);
+        req.setAuthCredentials(authCredentialsSource.getAuthCredentials());
         response = s.request(req);
         is = (InputStream) response.get("stream");
         if(useInternal) {
@@ -1627,6 +1630,7 @@ public class SnapPuller {
         s.setSoTimeout(60000);
         s.setConnectionTimeout(15000);
         QueryRequest req = new QueryRequest(params);
+        req.setAuthCredentials(authCredentialsSource.getAuthCredentials());
         response = s.request(req);
         is = (InputStream) response.get("stream");
         if(useInternal) {
@@ -1654,6 +1658,7 @@ public class SnapPuller {
       server.setSoTimeout(60000);
       server.setConnectionTimeout(15000);
       QueryRequest request = new QueryRequest(params);
+      request.setAuthCredentials(authCredentialsSource.getAuthCredentials());
       rsp = server.request(request);
     } finally {
       server.shutdown();

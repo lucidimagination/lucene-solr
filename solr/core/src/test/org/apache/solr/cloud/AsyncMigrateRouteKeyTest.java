@@ -28,6 +28,8 @@ import org.junit.Before;
 
 import java.io.IOException;
 
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
+
 public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
 
   public AsyncMigrateRouteKeyTest() {
@@ -118,7 +120,7 @@ public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
     HttpSolrServer baseServer = null;
 
     try {
-      baseServer = new HttpSolrServer(baseUrl);
+      baseServer = new TestHttpSolrServer(baseUrl);
       baseServer.setConnectionTimeout(15000);
       return baseServer.request(request);
     } finally {

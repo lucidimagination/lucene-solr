@@ -71,6 +71,7 @@ import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.DeleteUpdateCommand;
@@ -185,7 +186,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     this.zkEnabled  = coreDesc.getCoreContainer().isZooKeeperAware();
     zkController = req.getCore().getCoreDescriptor().getCoreContainer().getZkController();
     if (zkEnabled) {
-      cmdDistrib = new SolrCmdDistributor(coreDesc.getCoreContainer().getUpdateShardHandler());
+      cmdDistrib = new SolrCmdDistributor(coreDesc.getCoreContainer().getUpdateShardHandler(), AuthCredentialsSource.useAuthCredentialsFromOuterRequest(req));
     }
     //this.rsp = reqInfo != null ? reqInfo.getRsp() : null;
 
@@ -681,6 +682,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
             RequestRecovery recoverRequestCmd = new RequestRecovery();
             recoverRequestCmd.setAction(CoreAdminAction.REQUESTRECOVERY);
             recoverRequestCmd.setCoreName(error.req.node.getCoreName());
+            recoverRequestCmd.setAuthCredentials(AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
             try {
               server.request(recoverRequestCmd);
             } catch (Throwable t) {

@@ -66,19 +66,12 @@ public class StreamingSolrServers {
     String url = getFullUrl(req.node.getUrl());
     ConcurrentUpdateSolrServer server = solrServers.get(url);
     if (server == null) {
-      server = new ConcurrentUpdateSolrServer(url, httpClient, 100, 1, updateExecutor, true) {
-        @Override
-        public void handleError(Throwable ex) {
-          log.error("error", ex);
-          Error error = new Error();
-          error.e = (Exception) ex;
-          if (ex instanceof SolrException) {
-            error.statusCode = ((SolrException) ex).code();
-          }
-          error.req = req;
-          errors.add(error);
-        }
-      };
+      server = currentSolrServerFactory.createNewClient(url, httpClient, 100, 1, updateExecutor, true,
+          req, // FIXME Giving it the req here to use for created errors will not work, because this reg will
+               // be used on errors for all future requests sent to the same URL. Resulting in this first req
+               // for this URL to be resubmitted in SolrCmdDistributor.doRetriesIfNeeded when subsequent
+               // different requests for the same URL fail
+          errors);
       server.setParser(new BinaryResponseParser());
       server.setRequestWriter(new BinaryRequestWriter());
       server.setPollQueueTime(0);
@@ -90,6 +83,57 @@ public class StreamingSolrServers {
     }
 
     return server;
+  }
+
+  /**
+   * Subclass of ConcurrentUpdateSolrServer with error handling
+   */
+  @SuppressWarnings("serial")
+  public static class ErrorHandlingConcurrentUpdateSolrServer extends ConcurrentUpdateSolrServer {
+
+    private final SolrCmdDistributor.Req req;
+    private final List<Error> errors;
+
+    public ErrorHandlingConcurrentUpdateSolrServer(String solrServerUrl,
+                                                   HttpClient client, int queueSize, int threadCount, ExecutorService es, boolean streamDeletes,
+                                                   final SolrCmdDistributor.Req req, final List<Error> errors) {
+      super(solrServerUrl, client, queueSize, threadCount, es, streamDeletes);
+      this.req = req;
+      this.errors = errors;
+    }
+
+    @Override
+    public void handleError(Throwable ex) {
+      log.error("error", ex);
+      Error error = new Error();
+      error.e = (Exception) ex;
+      if (ex instanceof SolrException) {
+        error.statusCode = ((SolrException) ex).code();
+      }
+      error.req = req;
+      errors.add(error);
+    }
+  }
+
+  private static SolrServerFactory currentSolrServerFactory = new DefaultSolrServerFactory();
+  private static SolrServerFactory orgSolrServerFactory = currentSolrServerFactory;
+  public static void setCurrentSolrServerFactory(SolrServerFactory currentSolrServerFactory) {
+    StreamingSolrServers.currentSolrServerFactory = currentSolrServerFactory;
+  }
+  public static void restoreOriginalSolrServerFactory() {
+    currentSolrServerFactory = orgSolrServerFactory;
+  }
+  public static interface SolrServerFactory {
+    public ConcurrentUpdateSolrServer createNewClient(String solrServerUrl,
+        HttpClient client, int queueSize, int threadCount, ExecutorService es, boolean streamDeletes,
+        SolrCmdDistributor.Req req, List<Error> errors);
+  }
+  public static class DefaultSolrServerFactory implements SolrServerFactory {
+    public ConcurrentUpdateSolrServer createNewClient(String solrServerUrl,
+        HttpClient client, int queueSize, int threadCount, ExecutorService es, boolean streamDeletes,
+        final SolrCmdDistributor.Req req, final List<Error> errors) {
+      return new ErrorHandlingConcurrentUpdateSolrServer(solrServerUrl, client, queueSize, threadCount, es, streamDeletes, req, errors);
+    }
   }
 
   public synchronized void blockUntilFinished() {

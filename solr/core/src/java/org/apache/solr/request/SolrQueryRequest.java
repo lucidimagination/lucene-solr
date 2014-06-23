@@ -18,6 +18,7 @@
 package org.apache.solr.request;
 
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.common.auth.AuthCredentials;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
@@ -82,6 +83,11 @@ public interface SolrQueryRequest {
    * Suitable for logging.
    */
   public String getParamString();
+  
+  /**
+   * Returns credentials used to authenticate the request
+   */
+  public AuthCredentials getAuthCredentials();
 }
 
 

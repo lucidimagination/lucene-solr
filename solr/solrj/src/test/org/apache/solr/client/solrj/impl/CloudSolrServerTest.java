@@ -57,6 +57,9 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
+import static org.apache.solr.TestSolrServers.TestCloudSolrServer;
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
+
 
 /**
  * This test would be faster if we simulated the zk state instead.
@@ -155,7 +158,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
       params.add("q", "id:" + id);
       params.add("distrib", "false");
       QueryRequest queryRequest = new QueryRequest(params);
-      HttpSolrServer solrServer = new HttpSolrServer(url);
+      HttpSolrServer solrServer = new TestHttpSolrServer(url);
       QueryResponse queryResponse = queryRequest.process(solrServer);
       SolrDocumentList docList = queryResponse.getResults();
       assertTrue(docList.getNumFound() == 1);
@@ -179,7 +182,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     
     CloudSolrServer threadedClient = null;
     try {
-      threadedClient = new CloudSolrServer(zkServer.getZkAddress());
+      threadedClient = new TestCloudSolrServer(zkServer.getZkAddress());
       threadedClient.setParallelUpdates(true);
       threadedClient.setDefaultCollection("collection1");
       response = threadedClient.request(request);
@@ -198,7 +201,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
         params.add("q", "id:" + id);
         params.add("distrib", "false");
         QueryRequest queryRequest = new QueryRequest(params);
-        HttpSolrServer solrServer = new HttpSolrServer(url);
+        HttpSolrServer solrServer = new TestHttpSolrServer(url);
         QueryResponse queryResponse = queryRequest.process(solrServer);
         SolrDocumentList docList = queryResponse.getResults();
         assertTrue(docList.getNumFound() == 1);
@@ -295,7 +298,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
 
   private Long getNumRequests(HttpSolrServer solrServer) throws
       SolrServerException, IOException {
-    HttpSolrServer server = new HttpSolrServer(solrServer.getBaseURL());
+    HttpSolrServer server = new TestHttpSolrServer(solrServer.getBaseURL());
     server.setConnectionTimeout(15000);
     server.setSoTimeout(60000);
     ModifiableSolrParams params = new ModifiableSolrParams();
@@ -320,7 +323,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
   }
   
   public void testShutdown() throws MalformedURLException {
-    CloudSolrServer server = new CloudSolrServer("[ff01::114]:33332");
+    CloudSolrServer server = new TestCloudSolrServer("[ff01::114]:33332");
     try {
       server.setZkConnectTimeout(100);
       server.connect();

@@ -49,6 +49,7 @@ import org.apache.solr.handler.component.ShardResponse;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
 import org.slf4j.Logger;
@@ -275,7 +276,7 @@ public class PeerSync  {
     sreq.params.set("qt","/get");
     sreq.params.set("distrib",false);
     sreq.params.set("getVersions",nUpdates);
-    shardHandler.submit(sreq, replica, sreq.params);
+    shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
   }
 
   private boolean handleResponse(ShardResponse srsp) {
@@ -439,7 +440,7 @@ public class PeerSync  {
     sreq.params.set("onlyIfActive", onlyIfActive);
     sreq.responses.clear();  // needs to be zeroed for correct correlation to occur
 
-    shardHandler.submit(sreq, sreq.shards[0], sreq.params);
+    shardHandler.submit(sreq, sreq.shards[0], sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
 
     return true;
   }
@@ -459,6 +460,7 @@ public class PeerSync  {
     params.set(DISTRIB_UPDATE_PARAM, FROMLEADER.toString());
     params.set("peersync",true); // debugging
     SolrQueryRequest req = new LocalSolrQueryRequest(uhandler.core, params);
+    ((LocalSolrQueryRequest)req).setAuthCredentials(AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
     SolrQueryResponse rsp = new SolrQueryResponse();
 
     UpdateRequestProcessorChain processorChain = req.getCore().getUpdateProcessingChain(null);
@@ -575,7 +577,7 @@ public class PeerSync  {
       sreq.params.set("qt","/get");
       sreq.params.set("distrib", false);
       sreq.params.set("getVersions",nUpdates);
-      shardHandler.submit(sreq, replica, sreq.params);
+      shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
     }
     
     for (String replica : replicas) {

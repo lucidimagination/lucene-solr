@@ -32,6 +32,9 @@ import org.junit.Before;
 
 import java.io.IOException;
 
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
+
+
 public class OverseerStatusTest extends BasicDistributedZkTest {
 
   public OverseerStatusTest() {
@@ -115,7 +118,7 @@ public class OverseerStatusTest extends BasicDistributedZkTest {
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
 
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
+    HttpSolrServer baseServer = new TestHttpSolrServer(baseUrl);
     baseServer.setConnectionTimeout(15000);
     baseServer.setSoTimeout(60000 * 5);
     return baseServer.request(request);

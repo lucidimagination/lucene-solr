@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.http.client.HttpClient;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.TestSolrServers.TestConcurrentUpdateSolrServer;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
@@ -278,7 +279,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
       this.clients = clients;
       HttpClientUtil.setConnectionTimeout(httpClient, 15000);
       HttpClientUtil.setSoTimeout(httpClient, 15000);
-      suss = new ConcurrentUpdateSolrServer(
+      suss = new TestConcurrentUpdateSolrServer(
           ((HttpSolrServer) clients.get(0)).getBaseURL(), httpClient, 8,
           2) {
         @Override
@@ -346,7 +347,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
           clientIndex = 0;
         }
         suss.shutdownNow();
-        suss = new ConcurrentUpdateSolrServer(
+        suss = new TestConcurrentUpdateSolrServer(
             ((HttpSolrServer) clients.get(clientIndex)).getBaseURL(),
             httpClient, 30, 3) {
           @Override

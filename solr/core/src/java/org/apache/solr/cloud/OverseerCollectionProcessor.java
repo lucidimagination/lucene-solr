@@ -59,6 +59,7 @@ import org.apache.solr.handler.component.HttpShardHandlerFactory;
 import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.SolrIndexSplitter;
 import org.apache.solr.util.stats.Snapshot;
 import org.apache.solr.util.stats.Timer;
@@ -424,7 +425,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
     sreq.shards = new String[]{replica};
     sreq.actualShards = sreq.shards;
     sreq.params = params;
-    shardHandler.submit(sreq, replica, sreq.params);
+    shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
   }
 
 
@@ -779,7 +780,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
     sreq.actualShards = sreq.shards;
     sreq.params = new ModifiableSolrParams(new MapSolrParams(m));
     try {
-      shardHandler.submit(sreq, baseUrl, sreq.params);
+      shardHandler.submit(sreq, baseUrl, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
     } catch (Exception e) {
       log.warn("Exception trying to unload core " + sreq, e);
     }
@@ -1033,7 +1034,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
       sreq.actualShards = sreq.shards;
       sreq.params = params;
 
-      shardHandler.submit(sreq, replica, sreq.params);
+      shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
 
     }
 
@@ -1455,6 +1456,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
       UpdateRequest ureq = new UpdateRequest();
       ureq.setParams(new ModifiableSolrParams());
       ureq.setAction(AbstractUpdateRequest.ACTION.COMMIT, false, true, true);
+      ureq.setAuthCredentials(AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
       return ureq.process(server);
     } finally {
       if (server != null) {
@@ -1873,7 +1875,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
     sreq.actualShards = sreq.shards;
     sreq.params = params;
 
-    shardHandler.submit(sreq, replica, sreq.params);
+    shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
   }
 
   private void addPropertyParams(ZkNodeProps message, ModifiableSolrParams params) {
@@ -2049,7 +2051,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
           sreq.params = params;
 
           if(isLegacyCloud) {
-            shardHandler.submit(sreq, sreq.shards[0], sreq.params);
+            shardHandler.submit(sreq, sreq.shards[0], sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
           } else {
             coresToCreate.put(coreName, sreq);
           }
@@ -2062,7 +2064,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
         for (Map.Entry<String, ShardRequest> e : coresToCreate.entrySet()) {
           ShardRequest sreq = e.getValue();
           sreq.params.set(CoreAdminParams.CORE_NODE_NAME, replicas.get(e.getKey()).getName());
-          shardHandler.submit(sreq, sreq.shards[0], sreq.params);
+          shardHandler.submit(sreq, sreq.shards[0], sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
         }
       }
 
@@ -2286,7 +2288,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
         sreq.params = cloneParams;
         log.info("Collection Admin sending CoreAdmin cmd to " + replica
             + " params:" + sreq.params);
-        shardHandler.submit(sreq, replica, sreq.params);
+        shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
       }
     }
   }
@@ -2351,7 +2353,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
       sreq.actualShards = sreq.shards;
       sreq.params = params;
 
-      shardHandler.submit(sreq, replica, sreq.params);
+      shardHandler.submit(sreq, replica, sreq.params, AuthCredentialsSource.useInternalAuthCredentials());
 
       ShardResponse srsp;
       do {

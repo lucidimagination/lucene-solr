@@ -28,7 +28,6 @@ import org.apache.solr.common.cloud.Slice;
 
 import org.apache.solr.core.CloseHook;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.core.CoreContainer;
 import org.apache.solr.cloud.CloudDescriptor;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.request.SolrRequestInfo;
@@ -55,6 +54,9 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
+
 
 /**
  * <p>
@@ -369,11 +371,13 @@ public final class DocExpirationUpdateProcessorFactory
     final SolrCore core;
     final String deleteChainName;
     final String expireField;
+    final AuthCredentialsSource updateAuthCredentialsSource;
     public DeleteExpiredDocsRunnable(final DocExpirationUpdateProcessorFactory factory) {
       this.factory = factory;
       this.core = factory.core; 
       this.deleteChainName = factory.deleteChainName;
       this.expireField = factory.expireField;
+      this.updateAuthCredentialsSource = AuthCredentialsSource.useInternalAuthCredentials();
    }
 
     public void run() {
@@ -381,6 +385,7 @@ public final class DocExpirationUpdateProcessorFactory
       // shouldWeDoPeriodicDelete() ) includes the core context info
       final SolrQueryRequest req = new LocalSolrQueryRequest
         (factory.core, Collections.<String,String[]>emptyMap());
+      ((LocalSolrQueryRequest)req).setAuthCredentials(updateAuthCredentialsSource.getAuthCredentials());  
       try {
         final SolrQueryResponse rsp = new SolrQueryResponse();
         SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, rsp));

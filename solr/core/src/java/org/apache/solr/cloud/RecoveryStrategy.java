@@ -21,6 +21,7 @@ import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.impl.HttpSolrServer.HttpUriRequestResponse;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
@@ -47,6 +48,7 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.PeerSync;
@@ -160,7 +162,7 @@ public class RecoveryStrategy extends Thread implements ClosableThread {
     solrParams.set(ReplicationHandler.MASTER_URL, leaderUrl);
     
     if (isClosed()) retries = INTERRUPTED;
-    boolean success = replicationHandler.doFetch(solrParams, false);
+    boolean success = replicationHandler.doFetch(solrParams, false, AuthCredentialsSource.useInternalAuthCredentials());
     
     if (!success) {
       throw new SolrException(ErrorCode.SERVER_ERROR,
@@ -202,11 +204,13 @@ public class RecoveryStrategy extends Thread implements ClosableThread {
       IOException {
     HttpSolrServer server = new HttpSolrServer(leaderUrl);
     try {
+      HttpClientUtil.setAuthCredentials(server.getHttpClient(), AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
       server.setConnectionTimeout(30000);
       UpdateRequest ureq = new UpdateRequest();
       ureq.setParams(new ModifiableSolrParams());
       ureq.getParams().set(DistributedUpdateProcessor.COMMIT_END_POINT, true);
       ureq.getParams().set(UpdateParams.OPEN_SEARCHER, false);
+      ureq.setAuthCredentials(AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
       ureq.setAction(AbstractUpdateRequest.ACTION.COMMIT, false, true).process(
           server);
     } finally {
@@ -595,6 +599,7 @@ public class RecoveryStrategy extends Thread implements ClosableThread {
       throws SolrServerException, IOException, InterruptedException, ExecutionException {
     HttpSolrServer server = new HttpSolrServer(leaderBaseUrl);
     try {
+      HttpClientUtil.setAuthCredentials(server.getHttpClient(), AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
       server.setConnectionTimeout(30000);
       WaitForState prepCmd = new WaitForState();
       prepCmd.setCoreName(leaderCoreName);
@@ -603,6 +608,7 @@ public class RecoveryStrategy extends Thread implements ClosableThread {
       prepCmd.setState(ZkStateReader.RECOVERING);
       prepCmd.setCheckLive(true);
       prepCmd.setOnlyIfLeader(true);
+      prepCmd.setAuthCredentials(AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
       if (!Slice.CONSTRUCTION.equals(slice.getState()) && !Slice.RECOVERY.equals(slice.getState())) {
         prepCmd.setOnlyIfLeaderActive(true);
       }

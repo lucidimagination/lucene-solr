@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -133,7 +134,7 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
     
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
+    HttpSolrServer baseServer = new TestHttpSolrServer(baseUrl);
     // we only set the connect timeout, not so timeout
     baseServer.setConnectionTimeout(30000);
     baseServer.request(request);

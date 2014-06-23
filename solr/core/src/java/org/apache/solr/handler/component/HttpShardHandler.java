@@ -41,6 +41,8 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 
 import java.net.ConnectException;
 import java.util.Collection;
@@ -112,14 +114,13 @@ public class HttpShardHandler extends ShardHandler {
 
 
   @Override
-  public void submit(final ShardRequest sreq, final String shard, final ModifiableSolrParams params) {
+  public void submit(final ShardRequest sreq, final String shard, final ModifiableSolrParams params, final AuthCredentialsSource authCredentialsSource) {
     // do this outside of the callable for thread safety reasons
     final List<String> urls = getURLs(shard);
 
     Callable<ShardResponse> task = new Callable<ShardResponse>() {
       @Override
       public ShardResponse call() throws Exception {
-
         ShardResponse srsp = new ShardResponse();
         if (sreq.nodeName != null) {
           srsp.setNodeName(sreq.nodeName);
@@ -137,6 +138,7 @@ public class HttpShardHandler extends ShardHandler {
           // SolrRequest req = new QueryRequest(SolrRequest.METHOD.POST, "/select");
           // use generic request to avoid extra processing of queries
           QueryRequest req = new QueryRequest(params);
+          req.setAuthCredentials(authCredentialsSource.getAuthCredentials());
           req.setMethod(SolrRequest.METHOD.POST);
 
           // no need to set the response parser as binary is the default

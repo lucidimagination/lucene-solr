@@ -35,6 +35,7 @@ import org.apache.solr.client.solrj.impl.StreamingBinaryResponseParser;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.auth.AuthCredentials;
 
 /**
  *
@@ -44,7 +45,6 @@ public abstract class SolrServer implements Serializable
 {
   private static final long serialVersionUID = 1L;
   private DocumentObjectBinder binder;
-
   /**
    * Adds a collection of documents
    * @param docs  the collection of documents
@@ -62,9 +62,23 @@ public abstract class SolrServer implements Serializable
    * @since solr 3.5
    */
   public UpdateResponse add(Collection<SolrInputDocument> docs, int commitWithinMs) throws SolrServerException, IOException {
+    return add(docs, commitWithinMs, null);
+  }
+
+  /**
+   * Adds a collection of documents, specifying max time before they become committed
+   * @param docs  the collection of documents
+   * @param commitWithinMs  max time (in ms) before a commit will happen
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse add(Collection<SolrInputDocument> docs, int commitWithinMs, AuthCredentials authCredentials) throws SolrServerException, IOException {
     UpdateRequest req = new UpdateRequest();
     req.add(docs);
     req.setCommitWithin(commitWithinMs);
+    req.setAuthCredentials(authCredentials);
     return req.process(this);
   }
 
@@ -85,12 +99,25 @@ public abstract class SolrServer implements Serializable
    * @since solr 3.5
    */
   public UpdateResponse addBeans(Collection<?> beans, int commitWithinMs) throws SolrServerException, IOException {
+    return addBeans(beans, commitWithinMs, null);
+  }
+  
+  /**
+   * Adds a collection of beans specifying max time before they become committed
+   * @param beans  the collection of beans
+   * @param commitWithinMs  max time (in ms) before a commit will happen 
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse addBeans(Collection<?> beans, int commitWithinMs, AuthCredentials authCredentials) throws SolrServerException, IOException {
     DocumentObjectBinder binder = this.getBinder();
     ArrayList<SolrInputDocument> docs =  new ArrayList<>(beans.size());
     for (Object bean : beans) {
       docs.add(binder.toSolrInputDocument(bean));
     }
-    return add(docs, commitWithinMs);
+    return add(docs, commitWithinMs, authCredentials);
   }
 
   /**
@@ -110,9 +137,23 @@ public abstract class SolrServer implements Serializable
    * @since solr 3.5
    */
   public UpdateResponse add(SolrInputDocument doc, int commitWithinMs) throws SolrServerException, IOException {
+    return add(doc, commitWithinMs, null);
+  }
+  
+  /**
+   * Adds a single document specifying max time before it becomes committed
+   * @param doc  the input document
+   * @param commitWithinMs  max time (in ms) before a commit will happen 
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse add(SolrInputDocument doc, int commitWithinMs, AuthCredentials authCredentials) throws SolrServerException, IOException {
     UpdateRequest req = new UpdateRequest();
     req.add(doc);
     req.setCommitWithin(commitWithinMs);
+    req.setAuthCredentials(authCredentials);
     return req.process(this);
   }
 
@@ -133,9 +174,22 @@ public abstract class SolrServer implements Serializable
    * @since solr 3.5
    */
   public UpdateResponse addBean(Object obj, int commitWithinMs) throws IOException, SolrServerException {
-    return add(getBinder().toSolrInputDocument(obj),commitWithinMs);
+    return addBean(obj, commitWithinMs, null);
   }
 
+  /** 
+   * Adds a single bean specifying max time before it becomes committed
+   * @param obj  the input bean
+   * @param commitWithinMs  max time (in ms) before a commit will happen 
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse addBean(Object obj, int commitWithinMs, AuthCredentials authCredentials) throws IOException, SolrServerException {
+    return add(getBinder().toSolrInputDocument(obj),commitWithinMs, authCredentials);
+  }
+  
   /** 
    * Performs an explicit commit, causing pending documents to be committed for indexing
    * <p>
@@ -155,7 +209,7 @@ public abstract class SolrServer implements Serializable
    * @throws IOException If there is a low-level I/O error.
    */
   public UpdateResponse optimize( ) throws SolrServerException, IOException {
-    return optimize(true, true, 1);
+    return optimize(true, true);
   }
   
   /** 
@@ -165,7 +219,7 @@ public abstract class SolrServer implements Serializable
    * @throws IOException If there is a low-level I/O error.
    */
   public UpdateResponse commit( boolean waitFlush, boolean waitSearcher ) throws SolrServerException, IOException {
-    return new UpdateRequest().setAction( UpdateRequest.ACTION.COMMIT, waitFlush, waitSearcher ).process( this );
+    return commit(waitFlush, waitSearcher, false);
   }
 
   /**
@@ -176,9 +230,26 @@ public abstract class SolrServer implements Serializable
    * @throws IOException If there is a low-level I/O error.
    */
   public UpdateResponse commit( boolean waitFlush, boolean waitSearcher, boolean softCommit ) throws SolrServerException, IOException {
-    return new UpdateRequest().setAction( UpdateRequest.ACTION.COMMIT, waitFlush, waitSearcher, softCommit ).process( this );
+    return commit(waitFlush, waitSearcher, softCommit, null);
   }
 
+  /** 
+   * Performs an explicit commit, causing pending documents to be committed for indexing
+   * @param waitFlush  block until index changes are flushed to disk
+   * @param waitSearcher  block until a new searcher is opened and registered as the main query searcher, making the changes visible
+   * @param softCommit makes index changes visible while neither fsync-ing index files nor writing a new index descriptor
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse commit( boolean waitFlush, boolean waitSearcher, boolean softCommit, AuthCredentials authCredentials ) throws SolrServerException, IOException {
+    UpdateRequest req = new UpdateRequest();
+    req.setAction( UpdateRequest.ACTION.COMMIT, waitFlush, waitSearcher, softCommit ); 
+    req.setAuthCredentials(authCredentials);
+    return req.process( this );
+  }
+  
   /** 
    * Performs an explicit optimize, causing a merge of all segments to one.
    * <p>
@@ -201,7 +272,26 @@ public abstract class SolrServer implements Serializable
    * @throws IOException If there is a low-level I/O error.
    */
   public UpdateResponse optimize(boolean waitFlush, boolean waitSearcher, int maxSegments ) throws SolrServerException, IOException {
-    return new UpdateRequest().setAction( UpdateRequest.ACTION.OPTIMIZE, waitFlush, waitSearcher, maxSegments ).process( this );
+    return optimize(waitFlush, waitSearcher, maxSegments, null);
+  }
+  
+  /**
+   * Performs an explicit optimize, causing a merge of all segments to one.
+   * <p>
+   * Note: In most cases it is not required to do explicit optimize
+   * @param waitFlush  block until index changes are flushed to disk
+   * @param waitSearcher  block until a new searcher is opened and registered as the main query searcher, making the changes visible 
+   * @param maxSegments  optimizes down to at most this number of segments
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse optimize(boolean waitFlush, boolean waitSearcher, int maxSegments, AuthCredentials authCredentials ) throws SolrServerException, IOException {
+    UpdateRequest req = new UpdateRequest();
+    req.setAction( UpdateRequest.ACTION.OPTIMIZE, waitFlush, waitSearcher, maxSegments ); 
+    req.setAuthCredentials(authCredentials);
+    return req.process( this );
   }
   
   /**
@@ -213,7 +303,25 @@ public abstract class SolrServer implements Serializable
    * @throws IOException If there is a low-level I/O error.
    */
   public UpdateResponse rollback() throws SolrServerException, IOException {
-    return new UpdateRequest().rollback().process( this );
+    return rollback(null);
+  }
+  
+  /**
+   * Performs a rollback of all non-committed documents pending.
+   * <p>
+   * Note that this is not a true rollback as in databases. Content you have previously
+   * added may have been committed due to autoCommit, buffer full, other client performing
+   * a commit etc.
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse rollback(AuthCredentials authCredentials) throws SolrServerException, IOException {
+    UpdateRequest req = new UpdateRequest();
+    req.rollback();
+    req.setAuthCredentials(authCredentials);
+    return req.process( this );
   }
   
   /**
@@ -233,9 +341,23 @@ public abstract class SolrServer implements Serializable
    * @since 3.6
    */
   public UpdateResponse deleteById(String id, int commitWithinMs) throws SolrServerException, IOException {
+    return deleteById(id, commitWithinMs, null);
+  }
+  
+  /**
+   * Deletes a single document by unique ID, specifying max time before commit
+   * @param id  the ID of the document to delete
+   * @param commitWithinMs  max time (in ms) before a commit will happen 
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse deleteById(String id, int commitWithinMs, AuthCredentials authCredentials) throws SolrServerException, IOException {
     UpdateRequest req = new UpdateRequest();
     req.deleteById(id);
     req.setCommitWithin(commitWithinMs);
+    req.setAuthCredentials(authCredentials);
     return req.process(this);
   }
 
@@ -256,9 +378,23 @@ public abstract class SolrServer implements Serializable
    * @since 3.6
    */
   public UpdateResponse deleteById(List<String> ids, int commitWithinMs) throws SolrServerException, IOException {
+    return deleteById(ids, commitWithinMs, null);
+  }
+  
+  /**
+   * Deletes a list of documents by unique ID, specifying max time before commit
+   * @param ids  the list of document IDs to delete 
+   * @param commitWithinMs  max time (in ms) before a commit will happen 
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse deleteById(List<String> ids, int commitWithinMs, AuthCredentials authCredentials) throws SolrServerException, IOException {
     UpdateRequest req = new UpdateRequest();
     req.deleteById(ids);
     req.setCommitWithin(commitWithinMs);
+    req.setAuthCredentials(authCredentials);
     return req.process(this);
   }
 
@@ -279,9 +415,23 @@ public abstract class SolrServer implements Serializable
    * @since 3.6
    */
   public UpdateResponse deleteByQuery(String query, int commitWithinMs) throws SolrServerException, IOException {
+    return deleteByQuery(query, commitWithinMs, null);
+  }
+  
+  /**
+   * Deletes documents from the index based on a query, specifying max time before commit
+   * @param query  the query expressing what documents to delete
+   * @param commitWithinMs  max time (in ms) before a commit will happen 
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected UpdateResponse deleteByQuery(String query, int commitWithinMs, AuthCredentials authCredentials) throws SolrServerException, IOException {
     UpdateRequest req = new UpdateRequest();
     req.deleteByQuery(query);
     req.setCommitWithin(commitWithinMs);
+    req.setAuthCredentials(authCredentials);
     return req.process(this);
   }
 
@@ -290,9 +440,22 @@ public abstract class SolrServer implements Serializable
    * @throws IOException If there is a low-level I/O error.
    */
   public SolrPingResponse ping() throws SolrServerException, IOException {
-    return new SolrPing().process( this );
+    return ping(null);
   }
 
+  /**
+   * Issues a ping request to check if the server is alive
+   * @param authCredentials credentials to be used when sending the request
+   * @throws IOException If there is a low-level I/O error.
+   * 
+   * @since solr 5.0
+   */
+  protected SolrPingResponse ping(AuthCredentials authCredentials) throws SolrServerException, IOException {
+    SolrPing req = new SolrPing();
+    req.setAuthCredentials(authCredentials);
+    return req.process( this );
+  }
+  
   /**
    * Performs a query to the Solr server
    * @param params  an object holding all key/value parameters to send along the request
@@ -307,9 +470,23 @@ public abstract class SolrServer implements Serializable
    * @param method  specifies the HTTP method to use for the request, such as GET or POST
    */
   public QueryResponse query(SolrParams params, METHOD method) throws SolrServerException {
-    return new QueryRequest( params, method ).process( this );
+    return query(params, method, null);
   }
 
+  /**
+   * Performs a query to the Solr server
+   * @param params  an object holding all key/value parameters to send along the request
+   * @param method  specifies the HTTP method to use for the request, such as GET or POST
+   * @param authCredentials credentials to be used when sending the request
+   * 
+   * @since solr 5.0
+   */
+  protected QueryResponse query(SolrParams params, METHOD method, AuthCredentials authCredentials) throws SolrServerException {
+    QueryRequest req = new QueryRequest(params, method);
+    req.setAuthCredentials(authCredentials);
+    return req.process( this );
+  }
+  
   /**
    * Query solr, and stream the results.  Unlike the standard query, this will 
    * send events for each Document rather then add them to the QueryResponse.
@@ -323,17 +500,45 @@ public abstract class SolrServer implements Serializable
    */
   public QueryResponse queryAndStreamResponse( SolrParams params, StreamingResponseCallback callback ) throws SolrServerException, IOException
   {
+    return queryAndStreamResponse(params, callback, null);
+  }
+  
+  /**
+   * Query solr, and stream the results.  Unlike the standard query, this will 
+   * send events for each Document rather then add them to the QueryResponse.
+   * 
+   * Although this function returns a 'QueryResponse' it should be used with care
+   * since it excludes anything that was passed to callback.  Also note that
+   * future version may pass even more info to the callback and may not return 
+   * the results in the QueryResponse.
+   * 
+   * @param authCredentials credentials to be used when sending the request
+   *
+   * @since solr 5.0
+   */
+  protected QueryResponse queryAndStreamResponse( SolrParams params, StreamingResponseCallback callback, AuthCredentials authCredentials ) throws SolrServerException, IOException
+  {
     ResponseParser parser = new StreamingBinaryResponseParser( callback );
     QueryRequest req = new QueryRequest( params );
     req.setStreamingResponseCallback( callback );
     req.setResponseParser( parser );    
+    req.setAuthCredentials(authCredentials);
     return req.process(this);
   }
 
   /**
+   * Override this in sub-classes to have a common place to manipulate requests just before they are processed
+   * @param request The request to manipulate
+   */
+  protected void manipulateRequest( final SolrRequest request ) {};
+  
+  /**
    * SolrServer implementations need to implement how a request is actually processed
    */ 
-  public abstract NamedList<Object> request( final SolrRequest request ) throws SolrServerException, IOException;
+  public NamedList<Object> request( final SolrRequest request ) throws SolrServerException, IOException {
+    manipulateRequest(request);
+    return null;
+  }
 
   public DocumentObjectBinder getBinder() {
     if(binder == null){

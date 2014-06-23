@@ -41,6 +41,11 @@ import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.handler.admin.CollectionsHandler;
 import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.handler.admin.InfoHandler;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
+import org.apache.solr.security.SystemPropertiesAuthCredentialsInternalRequestFactory;
+import org.apache.solr.security.UseSuperRequestAuthCredentialsSubRequestFactory;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.InternalRequestFactory;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.SubRequestFactory;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -295,6 +300,18 @@ public class TestCoreContainer extends SolrTestCaseJ4 {
       " <str name=\"adminHandler\">" + CustomCoreAdminHandler.class.getName() + "</str>" +
       "</solr>";
 
+  private static final String INTER_SOLR_NODE_REQ_AUTH_CREDS_PROV_FACTORIES_SOLR_XML = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n" +
+      "<solr>" +
+      "  <authentication>" +
+      "    <subRequestFactory>" +
+      "      <str name=\"class\">org.apache.solr.security.UseSuperRequestAuthCredentialsSubRequestFactory</str>" +
+      "    </subRequestFactory>" +
+      "    <internalRequestFactory>" +
+      "      <str name=\"class\">org.apache.solr.security.SystemPropertiesAuthCredentialsInternalRequestFactory</str>" +
+      "    </internalRequestFactory>" +
+      "  </authentication>" +
+      "</solr>";
+
   public static class CustomCollectionsHandler extends CollectionsHandler {
     public CustomCollectionsHandler(CoreContainer cc) {
       super(cc);
@@ -330,5 +347,29 @@ public class TestCoreContainer extends SolrTestCaseJ4 {
       cc.shutdown();
     }
 
+  }
+
+  @Test
+  public void testInterSolrNodeRequestAuthCredentialsProviderFactories() throws Exception {
+    SubRequestFactory oldSub = InterSolrNodeAuthCredentialsFactory.getCurrentSubRequestFactory();
+    InternalRequestFactory oldInternal = InterSolrNodeAuthCredentialsFactory.getCurrentInternalRequestFactory();
+
+    try {
+      SolrResourceLoader loader = new SolrResourceLoader("solr/collection1");
+      ConfigSolr config = ConfigSolr.fromString(loader, INTER_SOLR_NODE_REQ_AUTH_CREDS_PROV_FACTORIES_SOLR_XML);
+
+      CoreContainer cc = new CoreContainer(loader, config);
+      try {
+        cc.load();
+        assertEquals(UseSuperRequestAuthCredentialsSubRequestFactory.class.getCanonicalName(), InterSolrNodeAuthCredentialsFactory.getCurrentSubRequestFactory().getClass().getCanonicalName());
+        assertEquals(SystemPropertiesAuthCredentialsInternalRequestFactory.class.getCanonicalName(), InterSolrNodeAuthCredentialsFactory.getCurrentInternalRequestFactory().getClass().getCanonicalName());
+      }
+      finally {
+        cc.shutdown();
+      }
+    } finally {
+      InterSolrNodeAuthCredentialsFactory.setCurrentSubRequestFactory(oldSub);
+      InterSolrNodeAuthCredentialsFactory.setCurrentInternalRequestFactory(oldInternal);
+    }
   }
 }

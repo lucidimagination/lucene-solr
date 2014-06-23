@@ -28,6 +28,7 @@ import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.handler.admin.InfoHandler;
 import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.logging.LogWatcher;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
 import org.apache.solr.update.UpdateShardHandler;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.FileUtils;
@@ -202,6 +203,8 @@ public class CoreContainer {
     }
 
 
+    initAuthCredentials(cfg);
+
     shardHandlerFactory = ShardHandlerFactory.newInstance(cfg.getShardHandlerFactoryPluginInfo(), loader);
 
     updateShardHandler = new UpdateShardHandler(cfg);
@@ -337,6 +340,30 @@ public class CoreContainer {
       }
       zkSys.getZkController().checkOverseerDesignate();
     }
+  }
+
+  /**
+   * Applies custom AuthCredentials factories from solr.xml tag &lt;authentication&gt; and sub tags
+   * <p/>
+   * If nothing is configured, or we do not have a solr.xml, we fallback to default implementations
+   */
+  public static void initAuthCredentials(ConfigSolr configSolr) {
+    try {
+      String fac;
+      if (configSolr != null && (fac = configSolr.get(ConfigSolr.CfgProp.SOLR_SUBREQUESTFACTORY_CLASS, null)) != null && fac.trim().length() > 0) {
+        InterSolrNodeAuthCredentialsFactory.setCurrentSubRequestFactory(configSolr.getConfig().getResourceLoader()
+            .findClass(fac, InterSolrNodeAuthCredentialsFactory.SubRequestFactory.class).newInstance());
+      }
+
+      if (configSolr != null && (fac = configSolr.get(ConfigSolr.CfgProp.SOLR_INTERNALREQUESTFACTORY_CLASS, null)) != null && fac.trim().length() > 0) {
+        InterSolrNodeAuthCredentialsFactory.setCurrentInternalRequestFactory(configSolr.getConfig().getResourceLoader()
+            .findClass(fac, InterSolrNodeAuthCredentialsFactory.InternalRequestFactory.class).newInstance());
+      }
+    } catch (Exception e) {
+      throw new SolrException(ErrorCode.SERVER_ERROR, "Failed instantiating authentication credentials factories classes from solr.xml for " + InterSolrNodeAuthCredentialsFactory.class.getName(), e);
+    }
+    log.info(InterSolrNodeAuthCredentialsFactory.class.getName() + " initialized with factories: " + InterSolrNodeAuthCredentialsFactory.getCurrentInternalRequestFactory().getClass().getName() +
+             " and " + InterSolrNodeAuthCredentialsFactory.getCurrentSubRequestFactory().getClass().getName());
   }
 
   private static void checkForDuplicateCoreNames(List<CoreDescriptor> cds) {

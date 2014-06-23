@@ -128,6 +128,9 @@ public class ConfigSolrXml extends ConfigSolr {
     propMap.put(CfgProp.SOLR_LOGGING_ENABLED, doSub("solr/logging/str[@name='enabled']"));
     propMap.put(CfgProp.SOLR_LOGGING_WATCHER_SIZE, doSub("solr/logging/watcher/int[@name='size']"));
     propMap.put(CfgProp.SOLR_LOGGING_WATCHER_THRESHOLD, doSub("solr/logging/watcher/int[@name='threshold']"));
+
+    propMap.put(CfgProp.SOLR_SUBREQUESTFACTORY_CLASS, doSub("solr/authentication/subRequestFactory/str[@name='class']"));
+    propMap.put(CfgProp.SOLR_INTERNALREQUESTFACTORY_CLASS, doSub("solr/authentication/internalRequestFactory/str[@name='class']"));
   }
 
   @Override

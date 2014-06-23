@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.apache.lucene.util.LuceneTestCase.BadApple;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.TestSolrServers.TestConcurrentUpdateSolrServer;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
@@ -434,7 +435,7 @@ public class FullSolrCloudDistribCmdsTest extends AbstractFullDistribZkTestBase 
   }
   
   private long testIndexingWithSuss(long docId) throws Exception {
-    ConcurrentUpdateSolrServer suss = new ConcurrentUpdateSolrServer(
+    ConcurrentUpdateSolrServer suss = new TestConcurrentUpdateSolrServer(
         ((HttpSolrServer) clients.get(0)).getBaseURL(), 10, 2);
     QueryResponse results = query(cloudClient);
     long beforeCount = results.getResults().getNumFound();

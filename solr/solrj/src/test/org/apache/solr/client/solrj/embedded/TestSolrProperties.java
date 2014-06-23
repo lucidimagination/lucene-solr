@@ -162,7 +162,7 @@ public class TestSolrProperties extends AbstractEmbeddedSolrServerTestCase {
 
     CoreAdminRequest.createCore("newCore", SOLR_HOME.getAbsolutePath(),
         coreadmin, null, null, dataDir.getAbsolutePath(),
-        tlogDir.getAbsolutePath());
+        tlogDir.getAbsolutePath(), null);
 
     TestHarness.validateXPath(locator.xml, "/solr/cores/core[@name='collection1' and @instanceDir='.']");
 

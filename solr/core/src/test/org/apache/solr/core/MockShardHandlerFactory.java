@@ -24,6 +24,7 @@ import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
 
 /** a fake shardhandler factory that does nothing. */
@@ -43,7 +44,7 @@ public class MockShardHandlerFactory extends ShardHandlerFactory implements Plug
 
       @Override
       public void submit(ShardRequest sreq, String shard,
-          ModifiableSolrParams params) {}
+          ModifiableSolrParams params, AuthCredentialsSource authCredentialsSource) {}
 
       @Override
       public ShardResponse takeCompletedIncludingErrors() {

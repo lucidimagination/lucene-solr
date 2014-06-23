@@ -357,6 +357,7 @@ public class SolrRequestParserTest extends SolrTestCaseJ4 {
   public void testAddHttpRequestToContext() throws Exception {
     HttpServletRequest request = createMock(HttpServletRequest.class);
     expect(request.getMethod()).andReturn("GET").anyTimes();
+    expect(request.getHeader("Authorization")).andReturn(null).anyTimes();
     expect(request.getContentType()).andReturn( "application/x-www-form-urlencoded" ).anyTimes();
     expect(request.getQueryString()).andReturn("q=title:solr").anyTimes();
     Map<String, String> headers = new HashMap<>();

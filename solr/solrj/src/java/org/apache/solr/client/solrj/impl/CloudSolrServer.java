@@ -122,7 +122,7 @@ public class CloudSolrServer extends SolrServer {
   public CloudSolrServer(String zkHost) {
       this.zkHost = zkHost;
       this.myClient = HttpClientUtil.createClient(null);
-      this.lbServer = new LBHttpSolrServer(myClient);
+      this.lbServer = new MyLBHttpSolrServer();
       this.lbServer.setRequestWriter(new BinaryRequestWriter());
       this.lbServer.setParser(new BinaryResponseParser());
       this.updatesToLeaders = true;
@@ -133,7 +133,7 @@ public class CloudSolrServer extends SolrServer {
       throws MalformedURLException {
     this.zkHost = zkHost;
     this.myClient = HttpClientUtil.createClient(null);
-    this.lbServer = new LBHttpSolrServer(myClient);
+    this.lbServer = new MyLBHttpSolrServer();
     this.lbServer.setRequestWriter(new BinaryRequestWriter());
     this.lbServer.setParser(new BinaryResponseParser());
     this.updatesToLeaders = updatesToLeaders;
@@ -143,7 +143,8 @@ public class CloudSolrServer extends SolrServer {
   /**
    * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
    * in the form HOST:PORT.
-   * @param lbServer LBHttpSolrServer instance for requests. 
+   * @param lbServer LBHttpSolrServer instance for requests. Please note that if you give requests for this lbServer
+   * those requests will not be run through manipulateRequest of this CloudSolrServer
    */
   public CloudSolrServer(String zkHost, LBHttpSolrServer lbServer) {
     this.zkHost = zkHost;
@@ -155,7 +156,8 @@ public class CloudSolrServer extends SolrServer {
   /**
    * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
    * in the form HOST:PORT.
-   * @param lbServer LBHttpSolrServer instance for requests. 
+   * @param lbServer LBHttpSolrServer instance for requests. Please note that if you give requests for this lbServer
+   * those request will not be run through manipulateRequest of this CloudSolrServer
    * @param updatesToLeaders sends updates only to leaders - defaults to true
    */
   public CloudSolrServer(String zkHost, LBHttpSolrServer lbServer, boolean updatesToLeaders) {
@@ -661,6 +663,19 @@ public class CloudSolrServer extends SolrServer {
     return collectionsList;
   }
 
+  @SuppressWarnings("serial")
+  protected class MyLBHttpSolrServer extends LBHttpSolrServer {
+
+    public MyLBHttpSolrServer() {
+      super(myClient);
+    }
+    
+  @Override
+    protected void manipulateRequest( final SolrRequest request ) {
+      CloudSolrServer.this.manipulateRequest(request);
+    }
+  }
+  
   @Override
   public void shutdown() {
     if (zkStateReader != null) {

@@ -17,8 +17,10 @@ package org.apache.solr.client.solrj.impl;
  * limitations under the License.
  */
 
+import org.apache.http.client.HttpClient;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.auth.AuthCredentials;
 
 /**
  * The default http client configurer. If the behaviour needs to be customized a
@@ -27,7 +29,7 @@ import org.apache.solr.common.params.SolrParams;
  */
 public class HttpClientConfigurer {
   
-  protected void configure(DefaultHttpClient httpClient, SolrParams config) {
+  protected void configure(HttpClient httpClient, SolrParams config, AuthCredentials authCredentials) {
     
     if (config.get(HttpClientUtil.PROP_MAX_CONNECTIONS) != null) {
       HttpClientUtil.setMaxConnections(httpClient,
@@ -58,12 +60,17 @@ public class HttpClientConfigurer {
       HttpClientUtil.setFollowRedirects(httpClient,
           config.getBool(HttpClientUtil.PROP_FOLLOW_REDIRECTS));
     }
-    
-    final String basicAuthUser = config
-        .get(HttpClientUtil.PROP_BASIC_AUTH_USER);
-    final String basicAuthPass = config
-        .get(HttpClientUtil.PROP_BASIC_AUTH_PASS);
-    HttpClientUtil.setBasicAuth(httpClient, basicAuthUser, basicAuthPass);
+
+    // Keep old behaviour around for now if someone still uses it
+    if (httpClient instanceof DefaultHttpClient && authCredentials == null) {
+      final String basicAuthUser = config
+          .get(HttpClientUtil.PROP_BASIC_AUTH_USER);
+      final String basicAuthPass = config
+          .get(HttpClientUtil.PROP_BASIC_AUTH_PASS);
+      HttpClientUtil.setBasicAuth((DefaultHttpClient) httpClient, basicAuthUser, basicAuthPass);
+    }
+
+    HttpClientUtil.setAuthCredentials(httpClient, authCredentials);
     
     if (config.get(HttpClientUtil.PROP_ALLOW_COMPRESSION) != null) {
       HttpClientUtil.setAllowCompression(httpClient,

@@ -56,6 +56,7 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
@@ -1205,6 +1206,7 @@ public class UpdateLog implements PluginInfoInitialized {
       params.set(DISTRIB_UPDATE_PARAM, FROMLEADER.toString());
       params.set(DistributedUpdateProcessor.LOG_REPLAY, "true");
       req = new LocalSolrQueryRequest(uhandler.core, params);
+      ((LocalSolrQueryRequest)req).setAuthCredentials(AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
       rsp = new SolrQueryResponse();
       SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, rsp));    // setting request info will help logging
 

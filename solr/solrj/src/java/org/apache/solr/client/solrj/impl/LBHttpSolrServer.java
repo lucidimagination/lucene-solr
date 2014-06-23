@@ -102,14 +102,14 @@ public class LBHttpSolrServer extends SolrServer {
   private final boolean clientIsInternal;
   private final AtomicInteger counter = new AtomicInteger(-1);
 
-  private static final SolrQuery solrQuery = new SolrQuery("*:*");
+  private static final SolrQuery checkAZombieServerQuery = new SolrQuery("*:*");
   private volatile ResponseParser parser;
   private volatile RequestWriter requestWriter;
 
   private Set<String> queryParams;
 
   static {
-    solrQuery.setRows(0);
+  checkAZombieServerQuery.setRows(0);
     /**
      * Default sort (if we don't supply a sort) is by score and since
      * we request 0 rows any sorting and scoring is not necessary.
@@ -117,13 +117,13 @@ public class LBHttpSolrServer extends SolrServer {
      * <code>_docid_ asc</code> sort is efficient,
      * <code>_docid_ desc</code> sort is not, so choose ascending DOCID sort.
      */
-    solrQuery.setSort(SolrQuery.DOCID, SolrQuery.ORDER.asc);
+  checkAZombieServerQuery.setSort(SolrQuery.DOCID, SolrQuery.ORDER.asc);
     // not a top-level request, we are interested only in the server being sent to i.e. it need not distribute our request to further servers    
-    solrQuery.setDistrib(false);
+  checkAZombieServerQuery.setDistrib(false);
   }
 
   protected static class ServerWrapper {
-    final HttpSolrServer solrServer;
+    final MyHttpSolrServer solrServer;
 
     long lastUsed;     // last time used for a real request
     long lastChecked;  // last time checked for liveness
@@ -135,7 +135,7 @@ public class LBHttpSolrServer extends SolrServer {
 
     int failedPings = 0;
 
-    public ServerWrapper(HttpSolrServer solrServer) {
+    public ServerWrapper(MyHttpSolrServer solrServer) {
       this.solrServer = solrServer;
     }
 
@@ -251,8 +251,22 @@ public class LBHttpSolrServer extends SolrServer {
     return server;
   }
 
-  protected HttpSolrServer makeServer(String server) {
-    HttpSolrServer s = new HttpSolrServer(server, httpClient, parser);
+  @SuppressWarnings("serial")
+  protected class MyHttpSolrServer extends HttpSolrServer {
+
+    public MyHttpSolrServer(String baseURL, HttpClient client, ResponseParser parser) {
+      super(baseURL, client, parser);
+    }
+
+    @Override
+    protected void manipulateRequest( final SolrRequest request ) {
+      LBHttpSolrServer.this.manipulateRequest(request);
+    }
+
+  }
+
+  protected MyHttpSolrServer makeServer(String server) {
+    MyHttpSolrServer s = new MyHttpSolrServer(server, httpClient, parser);
     if (requestWriter != null) {
       s.setRequestWriter(requestWriter);
     }
@@ -296,7 +310,7 @@ public class LBHttpSolrServer extends SolrServer {
         continue;
       }
       rsp.server = serverStr;
-      HttpSolrServer server = makeServer(serverStr);
+      MyHttpSolrServer server = makeServer(serverStr);
 
       ex = doRequest(server, req, rsp, isUpdate, false, null);
       if (ex == null) {
@@ -321,7 +335,7 @@ public class LBHttpSolrServer extends SolrServer {
 
   }
 
-  protected Exception addZombie(HttpSolrServer server, Exception e) {
+  protected Exception addZombie(MyHttpSolrServer server, Exception e) {
 
     ServerWrapper wrapper;
 
@@ -333,7 +347,7 @@ public class LBHttpSolrServer extends SolrServer {
     return e;
   }  
 
-  protected Exception doRequest(HttpSolrServer server, Req req, Rsp rsp, boolean isUpdate,
+  protected Exception doRequest(MyHttpSolrServer server, Req req, Rsp rsp, boolean isUpdate,
       boolean isZombie, String zombieKey) throws SolrServerException, IOException {
     Exception ex = null;
     try {
@@ -405,7 +419,7 @@ public class LBHttpSolrServer extends SolrServer {
   }
 
   public void addSolrServer(String server) throws MalformedURLException {
-    HttpSolrServer solrServer = makeServer(server);
+    MyHttpSolrServer solrServer = makeServer(server);
     addToAlive(new ServerWrapper(solrServer));
   }
 
@@ -536,7 +550,7 @@ public class LBHttpSolrServer extends SolrServer {
     long currTime = System.currentTimeMillis();
     try {
       zombieServer.lastChecked = currTime;
-      QueryResponse resp = zombieServer.solrServer.query(solrQuery);
+      QueryResponse resp = zombieServer.solrServer.query(checkAZombieServerQuery);
       if (resp.getStatus() == 0) {
         // server has come back up.
         // make sure to remove from zombies before adding to alive to avoid a race condition

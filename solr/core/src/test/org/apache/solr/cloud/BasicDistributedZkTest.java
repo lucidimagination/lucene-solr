@@ -38,6 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang.StringUtils;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.JSONTestUtil;
+import org.apache.solr.TestSolrServers.TestCloudSolrServer;
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
@@ -393,7 +395,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     createCmd.setSchemaName("nonexistent_schema.xml");
     
     String url = getBaseUrl(clients.get(0));
-    final HttpSolrServer server = new HttpSolrServer(url);
+    final HttpSolrServer server = new TestHttpSolrServer(url);
     try {
       server.request(createCmd);
       fail("Expected SolrCore create to fail");
@@ -521,7 +523,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
   private void testStopAndStartCoresInOneInstance() throws Exception {
     SolrServer client = clients.get(0);
     String url3 = getBaseUrl(client);
-    final HttpSolrServer server = new HttpSolrServer(url3);
+    final HttpSolrServer server = new TestHttpSolrServer(url3);
     server.setConnectionTimeout(15000);
     server.setSoTimeout(60000);
     ThreadPoolExecutor executor = new ThreadPoolExecutor(0, Integer.MAX_VALUE,
@@ -745,7 +747,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
 
   private Long getNumCommits(HttpSolrServer solrServer) throws
       SolrServerException, IOException {
-    HttpSolrServer server = new HttpSolrServer(solrServer.getBaseURL());
+    HttpSolrServer server = new TestHttpSolrServer(solrServer.getBaseURL());
     server.setConnectionTimeout(15000);
     server.setSoTimeout(60000);
     ModifiableSolrParams params = new ModifiableSolrParams();
@@ -837,7 +839,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     ZkCoreNodeProps props = new ZkCoreNodeProps(getCommonCloudSolrServer().getZkStateReader().getClusterState().getLeader(oneInstanceCollection2, "slice1"));
     
     // now test that unloading a core gets us a new leader
-    HttpSolrServer server = new HttpSolrServer(baseUrl);
+    HttpSolrServer server = new TestHttpSolrServer(baseUrl);
     server.setConnectionTimeout(15000);
     server.setSoTimeout(60000);
     Unload unloadCmd = new Unload(true);
@@ -964,7 +966,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
       public Object call() {
         HttpSolrServer server = null;
         try {
-          server = new HttpSolrServer(baseUrl);
+          server = new TestHttpSolrServer(baseUrl);
           server.setConnectionTimeout(15000);
           Create createCmd = new Create();
           createCmd.setRoles("none");
@@ -1101,7 +1103,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
         public Object call() {
           HttpSolrServer server = null;
           try {
-            server = new HttpSolrServer(baseUrl);
+            server = new TestHttpSolrServer(baseUrl);
             server.setConnectionTimeout(15000);
             server.setSoTimeout(60000);
             Create createCmd = new Create();
@@ -1134,7 +1136,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
   protected SolrServer createNewSolrServer(String collection, String baseUrl) {
     try {
       // setup the server...
-      HttpSolrServer s = new HttpSolrServer(baseUrl + "/" + collection);
+      HttpSolrServer s = new TestHttpSolrServer(baseUrl + "/" + collection);
       s.setSoTimeout(120000);
       s.setDefaultMaxConnectionsPerHost(100);
       s.setMaxTotalConnections(100);
@@ -1150,7 +1152,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     if (commondCloudSolrServer == null) {
       synchronized(this) {
         try {
-          commondCloudSolrServer = new CloudSolrServer(zkServer.getZkAddress(), random().nextBoolean());
+          commondCloudSolrServer = new TestCloudSolrServer(zkServer.getZkAddress(), random().nextBoolean());
           commondCloudSolrServer.setParallelUpdates(random().nextBoolean());
           commondCloudSolrServer.setDefaultCollection(DEFAULT_COLLECTION);
           commondCloudSolrServer.getLbServer().setConnectionTimeout(15000);

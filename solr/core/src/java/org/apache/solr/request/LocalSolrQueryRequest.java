@@ -22,6 +22,7 @@ import org.apache.solr.common.params.MultiMapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.common.auth.AuthCredentials;
 
 import java.util.Map;
 import java.util.HashMap;
@@ -67,5 +68,9 @@ public class LocalSolrQueryRequest extends SolrQueryRequestBase {
     super(core, args);
   }
  
+  public void setAuthCredentials(AuthCredentials authCredentials) {
+    this.authCredentials = authCredentials;
+}
+
 }
 

@@ -101,6 +101,8 @@ public class EmbeddedSolrServer extends SolrServer
   @Override
   public NamedList<Object> request(SolrRequest request) throws SolrServerException, IOException 
   {
+    super.request(request);
+    
     String path = request.getPath();
     if( path == null || !path.startsWith( "/" ) ) {
       path = "/select";
@@ -142,7 +144,7 @@ public class EmbeddedSolrServer extends SolrServer
 
     SolrQueryRequest req = null;
     try {
-      req = _parser.buildRequestFrom( core, params, request.getContentStreams() );
+      req = _parser.buildRequestFrom( core, params, request.getContentStreams(), request.getAuthCredentials() );
       req.getContext().put( "path", path );
       SolrQueryResponse rsp = new SolrQueryResponse();
       SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, rsp));

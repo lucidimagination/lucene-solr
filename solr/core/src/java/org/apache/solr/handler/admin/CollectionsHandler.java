@@ -73,6 +73,7 @@ import org.apache.solr.core.CoreContainer;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -397,6 +398,7 @@ public class CollectionsHandler extends RequestHandlerBase {
       reqSyncShard.setCollection(collection);
       reqSyncShard.setShard(shard);
       reqSyncShard.setCoreName(nodeProps.getCoreName());
+      reqSyncShard.setAuthCredentials(AuthCredentialsSource.useAuthCredentialsFromOuterRequest(req).getAuthCredentials());
       server.request(reqSyncShard);
     } finally {
       server.shutdown();

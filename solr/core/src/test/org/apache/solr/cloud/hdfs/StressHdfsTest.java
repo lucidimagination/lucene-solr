@@ -32,6 +32,7 @@ import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hdfs.server.namenode.NameNodeAdapter;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.TestSolrServers.TestHttpSolrServer;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -161,7 +162,7 @@ public class StressHdfsTest extends BasicDistributedZkTest {
     
     int i = 0;
     for (SolrServer client : clients) {
-      HttpSolrServer c = new HttpSolrServer(getBaseUrl(client)
+      HttpSolrServer c = new TestHttpSolrServer(getBaseUrl(client)
           + "/delete_data_dir");
       try {
         c.add(getDoc("id", i++));

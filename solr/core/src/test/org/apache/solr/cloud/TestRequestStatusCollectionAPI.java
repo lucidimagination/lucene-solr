@@ -28,6 +28,8 @@ import org.junit.Before;
 
 import java.io.IOException;
 
+import static org.apache.solr.TestSolrServers.TestHttpSolrServer;
+
 public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
 
   public TestRequestStatusCollectionAPI() {
@@ -217,7 +219,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
 
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
+    HttpSolrServer baseServer = new TestHttpSolrServer(baseUrl);
     baseServer.setConnectionTimeout(15000);
     return baseServer.request(request);
   }

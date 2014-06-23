@@ -39,6 +39,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentProducer;
 import org.apache.http.entity.EntityTemplate;
+import org.apache.http.protocol.HttpContext;
 import org.apache.solr.client.solrj.ResponseParser;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
@@ -74,7 +75,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
   private static final long serialVersionUID = 1L;
   static final Logger log = LoggerFactory
       .getLogger(ConcurrentUpdateSolrServer.class);
-  private HttpSolrServer server;
+  private MyHttpSolrServer server;
   final BlockingQueue<UpdateRequest> queue;
   final ExecutorService scheduler;
   final Queue<Runner> runners;
@@ -120,7 +121,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
    */
   public ConcurrentUpdateSolrServer(String solrServerUrl,
       HttpClient client, int queueSize, int threadCount, ExecutorService es, boolean streamDeletes) {
-    this.server = new HttpSolrServer(solrServerUrl, client);
+    this.server = new MyHttpSolrServer(solrServerUrl, client);
     this.server.setFollowRedirects(false);
     queue = new LinkedBlockingQueue<>(queueSize);
     this.threadCount = threadCount;
@@ -128,6 +129,20 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
     scheduler = es;
     this.streamDeletes = streamDeletes;
   }
+
+  @SuppressWarnings("serial")
+  protected class MyHttpSolrServer extends HttpSolrServer {
+
+    public MyHttpSolrServer(String baseURL, HttpClient client) {
+      super(baseURL, client);
+    }
+    
+    protected void manipulateRequest( final SolrRequest request ) {
+      ConcurrentUpdateSolrServer.this.manipulateRequest(request);
+    }
+    
+  }
+
 
   public Set<String> getQueryParams() {
     return this.server.getQueryParams();
@@ -229,8 +244,13 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
             method.addHeader("User-Agent", HttpSolrServer.AGENT);
             method.addHeader("Content-Type", contentType);
             
+            // With the kind of entity (template) we use here, authentication will not work without being preemptive (the entity cannot
+            // be re-sent so to speak). In plain HttpSolrServer, where preemptive authentication is not forced, re-send capabilities are
+            // achieved by wrapping a BufferedHttpEntity round the entity, but it cannot be done here.
+            updateRequest.setPreemptiveAuthentication(true);
+            HttpContext context = server.getHttpContextForRequest(updateRequest);
             
-            response = server.getHttpClient().execute(method);
+            response = (context != null)?server.getHttpClient().execute(method, context):server.getHttpClient().execute(method);
             int statusCode = response.getStatusLine().getStatusCode();
             if (statusCode != HttpStatus.SC_OK) {
               StringBuilder msg = new StringBuilder();
@@ -274,6 +294,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
   @Override
   public NamedList<Object> request(final SolrRequest request)
       throws SolrServerException, IOException {
+
     if (!(request instanceof UpdateRequest)) {
       return server.request(request);
     }
@@ -313,6 +334,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
         tmpLock.await();
       }
 
+      manipulateRequest(req);
       boolean success = queue.offer(req);
 
       for (;;) {
