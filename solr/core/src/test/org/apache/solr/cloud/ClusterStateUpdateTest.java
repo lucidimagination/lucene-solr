@@ -204,7 +204,8 @@ public class ClusterStateUpdateTest extends SolrTestCaseJ4  {
 
     assertEquals(host + ":1661_solr", zkProps.getStr(ZkStateReader.NODE_NAME_PROP));
 
-    assertEquals("http://" + host + ":1661/solr", zkProps.getStr(ZkStateReader.BASE_URL_PROP));
+    String urlScheme = isSSLMode() ? "https" : "http";
+    assertEquals(urlScheme + "://" + host + ":1661/solr", zkProps.getStr(ZkStateReader.BASE_URL_PROP));
 
     Set<String> liveNodes = clusterState2.getLiveNodes();
     assertNotNull(liveNodes);
