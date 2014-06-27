@@ -177,6 +177,10 @@ public class ConfigSolrXmlOld extends ConfigSolr {
         config.getVal("solr/@persistent", false));
     propMap.put(CfgProp.SOLR_ADMINPATH,
         config.getVal("solr/cores/@adminPath", false));
+    propMap.put(CfgProp.SOLR_SUBREQUESTFACTORY_CLASS,
+        config.getVal("solr/authentication/subRequestFactory/*[@name='class']", false));
+    propMap.put(CfgProp.SOLR_INTERNALREQUESTFACTORY_CLASS,
+        config.getVal("solr/authentication/internalRequestFactory/*[@name='class']", false));
     
   }
 
