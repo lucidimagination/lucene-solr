@@ -60,6 +60,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -292,6 +293,19 @@ public final class ZkController {
     leaderElector = new LeaderElector(zkClient);
     zkStateReader = new ZkStateReader(zkClient);
     
+    try {
+      String urlScheme = System.getProperty(ZkStateReader.URL_SCHEME);
+      if (urlScheme != null) {
+        if ( ! zkClient.exists(ZkStateReader.CLUSTER_PROPS, true)) {
+          String clusterProps = String.format
+              (Locale.ROOT, "{\"%s\":\"%s\"}", ZkStateReader.URL_SCHEME, urlScheme.toLowerCase(Locale.ROOT));
+          zkClient.makePath(ZkStateReader.CLUSTER_PROPS, clusterProps.getBytes(StandardCharsets.UTF_8), true);
+        }
+      }
+    } catch (KeeperException e) {
+      log.info("Error while uploading " + ZkStateReader.CLUSTER_PROPS);
+    }
+
     this.baseURL = zkStateReader.getBaseUrlForNodeName(this.nodeName);
     
     init(registerOnReconnect);
