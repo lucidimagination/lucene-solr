@@ -26,6 +26,7 @@ import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,8 +38,8 @@ public class MockStreamingSolrServers extends StreamingSolrServers {
   
   private volatile Exp exp = null;
   
-  public MockStreamingSolrServers(UpdateShardHandler updateShardHandler) {
-    super(updateShardHandler);
+  public MockStreamingSolrServers(UpdateShardHandler updateShardHandler, AuthCredentialsSource authCredentialsSource) {
+    super(updateShardHandler, authCredentialsSource);
   }
   
   @Override

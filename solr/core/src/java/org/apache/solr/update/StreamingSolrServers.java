@@ -31,7 +31,9 @@ import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.impl.BinaryRequestWriter;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory.AuthCredentialsSource;
 import org.apache.solr.update.SolrCmdDistributor.Error;
 import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.solr.update.processor.DistributingUpdateProcessorFactory;
@@ -52,6 +54,11 @@ public class StreamingSolrServers {
     this.updateExecutor = updateShardHandler.getUpdateExecutor();
     
     httpClient = updateShardHandler.getHttpClient();
+  }
+
+  public StreamingSolrServers(UpdateShardHandler updateShardHandler, AuthCredentialsSource authCredentialsSource) {
+    this(updateShardHandler);
+    HttpClientUtil.setAuthCredentials(httpClient, authCredentialsSource.getAuthCredentials());
   }
 
   public List<Error> getErrors() {

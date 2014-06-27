@@ -332,7 +332,7 @@ public class SolrCmdDistributorTest extends BaseDistributedSearchTestCase {
   }
 
   private void testMaxRetries() throws IOException {
-    final MockStreamingSolrServers ss = new MockStreamingSolrServers(updateShardHandler);
+    final MockStreamingSolrServers ss = new MockStreamingSolrServers(updateShardHandler, updateAuthCredentialsSource);
     SolrCmdDistributor cmdDistrib = new SolrCmdDistributor(ss, updateAuthCredentialsSource, 5, 0);
     ss.setExp(Exp.CONNECT_EXCEPTION);
     ArrayList<Node> nodes = new ArrayList<>();
@@ -366,7 +366,7 @@ public class SolrCmdDistributorTest extends BaseDistributedSearchTestCase {
     final HttpSolrServer solrclient = (HttpSolrServer) clients.get(0);
     long numFoundBefore = solrclient.query(new SolrQuery("*:*")).getResults()
         .getNumFound();
-    final MockStreamingSolrServers ss = new MockStreamingSolrServers(updateShardHandler);
+    final MockStreamingSolrServers ss = new MockStreamingSolrServers(updateShardHandler, updateAuthCredentialsSource);
     SolrCmdDistributor cmdDistrib = new SolrCmdDistributor(ss, updateAuthCredentialsSource, 5, 0);
     ss.setExp(Exp.CONNECT_EXCEPTION);
     ArrayList<Node> nodes = new ArrayList<>();
@@ -412,7 +412,7 @@ public class SolrCmdDistributorTest extends BaseDistributedSearchTestCase {
     final HttpSolrServer solrclient = (HttpSolrServer) clients.get(0);
     long numFoundBefore = solrclient.query(new SolrQuery("*:*")).getResults()
         .getNumFound();
-    final MockStreamingSolrServers ss = new MockStreamingSolrServers(updateShardHandler);
+    final MockStreamingSolrServers ss = new MockStreamingSolrServers(updateShardHandler, updateAuthCredentialsSource);
     SolrCmdDistributor cmdDistrib = new SolrCmdDistributor(ss, updateAuthCredentialsSource, 5, 0);
     ss.setExp(Exp.SOCKET_EXCEPTION);
     ArrayList<Node> nodes = new ArrayList<>();

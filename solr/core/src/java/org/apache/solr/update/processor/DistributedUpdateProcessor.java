@@ -35,6 +35,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.RequestRecovery;
 import org.apache.solr.cloud.CloudDescriptor;
@@ -675,6 +676,8 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
         public void run() {
           log.info("try and ask " + recoveryUrl + " to recover");
           HttpSolrServer server = new HttpSolrServer(recoveryUrl);
+          HttpClientUtil.setAuthCredentials(server.getHttpClient(), 
+                  AuthCredentialsSource.useInternalAuthCredentials().getAuthCredentials());
           try {
             server.setSoTimeout(60000);
             server.setConnectionTimeout(15000);

@@ -66,7 +66,11 @@ public class SolrCmdDistributor {
    * AuthCredentialsSource instead of AuthCredentials
    */
   public SolrCmdDistributor(UpdateShardHandler updateShardHandler, AuthCredentialsSource authCredentialsSource) {
-    servers = new StreamingSolrServers(updateShardHandler);
+
+    if (authCredentialsSource.getAuthCredentials() == null) {
+      authCredentialsSource = AuthCredentialsSource.useInternalAuthCredentials();
+    }
+    servers = new StreamingSolrServers(updateShardHandler, authCredentialsSource);
     this.authCredentialsSource = authCredentialsSource;
   }
   
