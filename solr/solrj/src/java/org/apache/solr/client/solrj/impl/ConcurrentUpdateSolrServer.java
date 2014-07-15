@@ -168,15 +168,15 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
 
       log.debug("starting runner: {}", this);
       HttpPost method = null;
-      HttpResponse response = null;
+      HttpResponse response = null;            
       try {
         while (!queue.isEmpty()) {
           try {
-            final UpdateRequest updateRequest = queue.poll(250,
-                TimeUnit.MILLISECONDS);
+            final UpdateRequest updateRequest = 
+                queue.poll(pollQueueTime, TimeUnit.MILLISECONDS);
             if (updateRequest == null)
               break;
-
+                       
             String contentType = server.requestWriter.getUpdateContentType();
             final boolean isXml = ClientUtils.TEXT_XML.equals(contentType);
 
@@ -189,9 +189,9 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
                 try {
                   if (isXml) {
                     out.write("<stream>".getBytes(StandardCharsets.UTF_8)); // can be anything
-                  }
+                  }                                    
                   UpdateRequest req = updateRequest;
-                  while (req != null) {
+                  while (req != null) {                                        
                     SolrParams currentParams = new ModifiableSolrParams(req.getParams());
                     if (!origParams.toNamedList().equals(currentParams.toNamedList())) {
                       queue.add(req); // params are different, push back to queue
@@ -221,6 +221,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
                     out.flush();
                     req = queue.poll(pollQueueTime, TimeUnit.MILLISECONDS);
                   }
+                  
                   if (isXml) {
                     out.write("</stream>".getBytes(StandardCharsets.UTF_8));
                   }
@@ -255,10 +256,11 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
             if (statusCode != HttpStatus.SC_OK) {
               StringBuilder msg = new StringBuilder();
               msg.append(response.getStatusLine().getReasonPhrase());
-              msg.append("\n\n");
-              msg.append("\n\n");
+              msg.append("\n\n\n\n");
               msg.append("request: ").append(method.getURI());
               handleError(new SolrException(ErrorCode.getErrorCode(statusCode), msg.toString()));
+            } else {
+              onSuccess(response);
             }
           } finally {
             try {
@@ -282,6 +284,8 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
             scheduler.execute(this);
           } else {
             runners.remove(this);
+            if (runners.isEmpty())
+              runners.notifyAll();
           }
         }
 
@@ -294,7 +298,6 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
   @Override
   public NamedList<Object> request(final SolrRequest request)
       throws SolrServerException, IOException {
-
     if (!(request instanceof UpdateRequest)) {
       return server.request(request);
     }
@@ -339,17 +342,11 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
 
       for (;;) {
         synchronized (runners) {
-          if (runners.isEmpty() || (queue.remainingCapacity() < queue.size() // queue
-                                                                             // is
-                                                                             // half
-                                                                             // full
-                                                                             // and
-                                                                             // we
-                                                                             // can
-                                                                             // add
-                                                                             // more
-                                                                             // runners
-              && runners.size() < threadCount)) {
+          // see if queue is half full and we can add more runners
+          // special case: if only using a threadCount of 1 and the queue
+          // is filling up, allow 1 add'l runner to help process the queue
+          if (runners.isEmpty() || (queue.remainingCapacity() < queue.size() && runners.size() < threadCount))
+          {
             // We need more runners, so start a new one.
             Runner r = new Runner();
             runners.add(r);
@@ -378,9 +375,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
         if (!success) {
           success = queue.offer(req, 100, TimeUnit.MILLISECONDS);
         }
-
       }
-
     } catch (InterruptedException e) {
       log.error("interrupted", e);
       throw new IOException(e.getLocalizedMessage());
@@ -395,27 +390,27 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
   public synchronized void blockUntilFinished() {
     lock = new CountDownLatch(1);
     try {
-      // Wait until no runners are running
-      for (;;) {
-        Runner runner;
-        synchronized (runners) {
-          runner = runners.peek();
-        }
-
-        if ((runner == null && queue.isEmpty()) || scheduler.isTerminated())
-          break;
-        
-        if (runner != null) {
-          runner.runnerLock.lock();
-          runner.runnerLock.unlock();
-        } else if (!queue.isEmpty()) {
-          // failsafe - should not be necessary, but a good
-          // precaution to ensure blockUntilFinished guarantees
-          // all updates are emptied from the queue regardless of
-          // any bugs around starting or retaining runners
-          Runner r = new Runner();
-          runners.add(r);
-          scheduler.execute(r);
+      synchronized (runners) {
+        while (!runners.isEmpty()) {
+          try {
+            runners.wait();
+          } catch (InterruptedException e) {
+            Thread.interrupted();
+          }
+          
+          if (scheduler.isTerminated())
+            break;
+                      
+          // if we reach here, then we probably got the notifyAll, but need to check if
+          // the queue is empty before really considering this is finished (SOLR-4260)
+          int queueSize = queue.size();
+          if (queueSize > 0) {
+            log.warn("No more runners, but queue still has "+
+              queueSize+" adding more runners to process remaining requests on queue");
+            Runner r = new Runner();
+            runners.add(r);
+            scheduler.execute(r);
+          }
         }
       }
     } finally {
@@ -426,6 +421,13 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
 
   public void handleError(Throwable ex) {
     log.error("error", ex);
+  }
+  
+  /**
+   * Intended to be used as an extension point for doing post processing after a request completes.
+   */
+  public void onSuccess(HttpResponse resp) {
+    // no-op by design, override to add functionality
   }
 
   @Override
@@ -463,15 +465,15 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
     if (shutdownExecutor) {
       scheduler.shutdownNow(); // Cancel currently executing tasks
       try {
-        if (!scheduler.awaitTermination(30, TimeUnit.SECONDS)) log
-            .error("ExecutorService did not terminate");
+        if (!scheduler.awaitTermination(30, TimeUnit.SECONDS)) 
+          log.error("ExecutorService did not terminate");
       } catch (InterruptedException ie) {
         scheduler.shutdownNow();
         Thread.currentThread().interrupt();
       }
-    }
+    }    
   }
-
+  
   public void setParser(ResponseParser responseParser) {
     server.setParser(responseParser);
   }
