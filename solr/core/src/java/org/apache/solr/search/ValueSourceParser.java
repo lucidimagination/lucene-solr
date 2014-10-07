@@ -785,6 +785,13 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
         return new DefFunction(fp.parseValueSourceList());
       }
     });
+    
+    addParser("float", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new ParseAsFloatFieldSource(fp.parseArg());
+      }
+    });
 
   }
 
