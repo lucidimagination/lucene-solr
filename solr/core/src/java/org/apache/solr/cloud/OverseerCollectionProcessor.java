@@ -2032,8 +2032,7 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
           params.set(ZkStateReader.NUM_SHARDS_PROP, numSlices);
 
           setupAsyncRequest(async, requestMap, params, nodeName);
-
-          addPropertyParams(message, params);
+         
 
           if (isDataDir) {
             if (dataDir.endsWith("/")) {
@@ -2042,6 +2041,8 @@ public class OverseerCollectionProcessor implements Runnable, ClosableThread {
               message.getProperties().put(dataDirKey, dataDir + File.separator + coreName);
             }
           }
+          
+          addPropertyParams(message, params);
 
           ShardRequest sreq = new ShardRequest();
           params.set("qt", adminPath);
