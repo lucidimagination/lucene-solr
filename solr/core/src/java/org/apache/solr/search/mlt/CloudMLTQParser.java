@@ -29,7 +29,6 @@ import org.apache.solr.request.SolrQueryRequestBase;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryParsing;
-import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
