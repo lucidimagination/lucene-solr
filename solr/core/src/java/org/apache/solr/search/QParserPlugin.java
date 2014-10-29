@@ -22,6 +22,7 @@ import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.join.BlockJoinChildQParserPlugin;
 import org.apache.solr.search.join.BlockJoinParentQParserPlugin;
+import org.apache.solr.search.mlt.MLTQParserPlugin;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
 
 import java.net.URL;
@@ -60,7 +61,8 @@ public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrI
     BlockJoinChildQParserPlugin.NAME, BlockJoinChildQParserPlugin.class,
     CollapsingQParserPlugin.NAME, CollapsingQParserPlugin.class,
     SimpleQParserPlugin.NAME, SimpleQParserPlugin.class,
-    ComplexPhraseQParserPlugin.NAME, ComplexPhraseQParserPlugin.class
+    ComplexPhraseQParserPlugin.NAME, ComplexPhraseQParserPlugin.class,
+    MLTQParserPlugin.NAME, MLTQParserPlugin.class
   };
 
   /** return a {@link QParser} */
