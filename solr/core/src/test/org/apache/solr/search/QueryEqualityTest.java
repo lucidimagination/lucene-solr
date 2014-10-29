@@ -753,11 +753,6 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
                      "currency(amount,USD)",
                      "currency('amount',USD)");
   }
-  
-  public void testFloat() throws Exception {
-    assertFuncEquals("float(\"foo_s\")",
-                     "float('foo_s')");
-  }
 
   public void testTestFuncs() throws Exception {
     assertFuncEquals("sleep(1,5)", "sleep(1,5)");
