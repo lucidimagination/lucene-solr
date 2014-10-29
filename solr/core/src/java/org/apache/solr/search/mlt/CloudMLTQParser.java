@@ -43,7 +43,7 @@ public class CloudMLTQParser extends QParser {
   }
 
   public Query parse() {
-    String id = localParams.get("id");
+    String id = localParams.get(QueryParsing.V);
     // Do a Real Time Get for the document
     SolrDocument doc = getDocument(id);
     
