@@ -589,6 +589,20 @@ public final class MoreLikeThis {
   }
 
   /**
+   * 
+   * @param filteredDocument Document with field values extracted for selected fields.
+   * @return More Like This query for the passed document.
+   */
+  public Query like(Map<String, ArrayList<String>> filteredDocument) throws IOException {
+    if (fieldNames == null) {
+      // gather list of valid fields from lucene
+      Collection<String> fields = MultiFields.getIndexedFields(ir);
+      fieldNames = fields.toArray(new String[fields.size()]);
+    }
+    return createQuery(retrieveTerms(filteredDocument));
+  }
+
+  /*
    * Create the More like query from a PriorityQueue
    */
   private Query createQuery(PriorityQueue<Object[]> q) {
@@ -733,6 +747,24 @@ public final class MoreLikeThis {
     return createQueue(termFreqMap);
   }
 
+
+  private PriorityQueue<Object[]> retrieveTerms(Map<String, ArrayList<String>> fields) throws 
+      IOException {
+    HashMap<String,Int> termFreqMap = new HashMap();
+    for (String fieldName : fieldNames) {
+
+      for (String field : fields.keySet()) {
+        ArrayList<String> fieldValues = fields.get(field);
+        for(String fieldValue:fieldValues) {
+          if (fieldValue != null) {
+            addTermFrequencies(new StringReader(fieldValue), termFreqMap,
+                fieldName);
+          }
+        }
+      }
+    }
+    return createQueue(termFreqMap);
+  }
   /**
    * Adds terms and frequencies found in vector into the Map termFreqMap
    *

@@ -23,6 +23,7 @@ import java.util.Map;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
@@ -849,6 +850,21 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
       }
     }
   }
+
+  public void testQueryMLT() throws Exception {
+    assertU(adoc("id", "1", "lowerfilt", "sample data"));
+    assertU(commit());
+    SolrQueryRequest req = req("qf","lowerfilt","id","1");
+    try {
+      assertQueryEquals("mlt", req,
+          "{!mlt qf=lowerfilt id=1}");
+    } finally {
+      delQ("*:*");
+      assertU(commit());
+      req.close();
+    }
+  }
+
 
   /**
    * the function name for val parser coverage checking is extracted from
