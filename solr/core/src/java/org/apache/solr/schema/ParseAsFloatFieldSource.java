@@ -64,7 +64,7 @@ public class ParseAsFloatFieldSource extends FieldCacheSource {
 
   @Override
   public boolean equals(Object o) {
-    return o instanceof ParseAsFloatFieldSource
+    return o instanceof StrFieldSource
             && super.equals(o);
   }
 
