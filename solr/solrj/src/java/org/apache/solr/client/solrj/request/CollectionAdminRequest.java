@@ -89,6 +89,7 @@ public class CollectionAdminRequest extends SolrRequest
     protected Integer numShards;
     protected Integer maxShardsPerNode;
     protected Integer replicationFactor;
+    protected Boolean autoAddReplicas;
     protected String ulogDir;
     protected String instanceDir;
     protected String dataDir;
@@ -107,6 +108,7 @@ public class CollectionAdminRequest extends SolrRequest
     public void setRouterField(String routerField) { this.routerField = routerField; }
     public void setNumShards(Integer numShards) {this.numShards = numShards;}
     public void setMaxShardsPerNode(Integer numShards) { this.maxShardsPerNode = numShards; }
+    public void setAutoAddReplicas(boolean autoAddReplicas) { this.autoAddReplicas = autoAddReplicas; }
     public void setReplicationFactor(Integer repl) { this.replicationFactor = repl; }
 
     public String getConfigName()  { return configName; }
@@ -116,6 +118,7 @@ public class CollectionAdminRequest extends SolrRequest
     public Integer getNumShards() { return numShards; }
     public Integer getMaxShardsPerNode() { return maxShardsPerNode; }
     public Integer getReplicationFactor() { return replicationFactor; }
+    public Boolean getAutoAddReplicas() { return autoAddReplicas; }
 
     public String getInstanceDir() {
       return instanceDir;
@@ -180,6 +183,9 @@ public class CollectionAdminRequest extends SolrRequest
       }
       if (asyncId != null) {
         params.set("async", asyncId);
+      }
+      if (autoAddReplicas != null) {
+        params.set(ZkStateReader.AUTO_ADD_REPLICAS, autoAddReplicas);
       }
 
       if (instanceDir != null) {
@@ -398,6 +404,28 @@ public class CollectionAdminRequest extends SolrRequest
                                                           SolrServer server) throws SolrServerException, IOException
   {
     return createCollection(name, shards, repl, maxShards, nodeSet, conf, routerField, server, null);
+  }
+  
+  // creates collection using a compositeId router
+  public static CollectionAdminResponse createCollection( String name,
+                                                          Integer shards, Integer repl, Integer maxShards,
+                                                          String nodeSet,
+                                                          String conf,
+                                                          String routerField,
+                                                          Boolean autoAddReplicas,
+                                                          SolrServer server) throws SolrServerException, IOException
+  {
+    Create req = new Create();
+    req.setCollectionName(name);
+    req.setRouterName("compositeId");
+    req.setNumShards(shards);
+    req.setReplicationFactor(repl);
+    req.setMaxShardsPerNode(maxShards);
+    req.setCreateNodeSet(nodeSet);
+    req.setConfigName(conf);
+    req.setRouterField(routerField);
+    req.setAutoAddReplicas(autoAddReplicas);
+    return req.process( server );
   }
 
   // creates collection using a compositeId router

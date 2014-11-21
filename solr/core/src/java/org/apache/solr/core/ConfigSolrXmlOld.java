@@ -158,6 +158,12 @@ public class ConfigSolrXmlOld extends ConfigSolr {
         config.getVal("solr/cores/@leaderVoteWait", false));
     propMap.put(CfgProp.SOLR_GENERICCORENODENAMES,
         config.getVal("solr/cores/@genericCoreNodeNames", false));
+    propMap.put(CfgProp.SOLR_AUTOREPLICAFAILOVERBADNODEEXPIRATION, 
+        config.getVal("solr/cores/@autoReplicaFailoverBadNodeExpiration", false));
+    propMap.put(CfgProp.SOLR_AUTOREPLICAFAILOVERWAITAFTEREXPIRATION, 
+        config.getVal("solr/cores/@autoReplicaFailoverWaitAfterExpiration", false));
+    propMap.put(CfgProp.SOLR_AUTOREPLICAFAILOVERWORKLOOPDELAY, 
+        config.getVal("solr/cores/@autoReplicaFailoverWorkLoopDelay", false));
     propMap.put(CfgProp.SOLR_MANAGEMENTPATH,
         config.getVal("solr/cores/@managementPath", false));
     propMap.put(CfgProp.SOLR_SHARESCHEMA,

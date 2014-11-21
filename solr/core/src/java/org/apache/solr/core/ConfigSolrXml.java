@@ -121,6 +121,10 @@ public class ConfigSolrXml extends ConfigSolr {
     propMap.put(CfgProp.SOLR_SHARESCHEMA, doSub("solr/str[@name='shareSchema']"));
     propMap.put(CfgProp.SOLR_TRANSIENTCACHESIZE, doSub("solr/int[@name='transientCacheSize']"));
     propMap.put(CfgProp.SOLR_ZKCLIENTTIMEOUT, doSub("solr/solrcloud/int[@name='zkClientTimeout']"));
+    propMap.put(CfgProp.SOLR_AUTOREPLICAFAILOVERBADNODEEXPIRATION, doSub("solr/solrcloud/int[@name='autoReplicaFailoverBadNodeExpiration']"));
+    propMap.put(CfgProp.SOLR_AUTOREPLICAFAILOVERWAITAFTEREXPIRATION, doSub("solr/solrcloud/int[@name='autoReplicaFailoverWaitAfterExpiration']"));
+    propMap.put(CfgProp.SOLR_AUTOREPLICAFAILOVERWORKLOOPDELAY, doSub("solr/solrcloud/int[@name='autoReplicaFailoverWorkLoopDelay']"));
+    
     propMap.put(CfgProp.SOLR_ZKHOST, doSub("solr/solrcloud/str[@name='zkHost']"));
     propMap.put(CfgProp.SOLR_CONFIGSETBASEDIR, doSub("solr/str[@name='configSetBaseDir']"));
 

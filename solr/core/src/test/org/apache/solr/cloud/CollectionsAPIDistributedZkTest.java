@@ -17,9 +17,9 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.MAX_SHARDS_PER_NODE;
+import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACTOR;
+import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
 import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
 
 import java.io.File;
@@ -78,12 +78,9 @@ import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
-import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
@@ -250,7 +247,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     checkForMissingCollection(collectionName);
     
     assertFalse(cloudClient.getZkStateReader().getZkClient().exists(ZkStateReader.COLLECTIONS_ZKNODE + "/" + collectionName, true));
-    
+
   }
 
   private void testSolrJAPICalls() throws Exception {
@@ -415,7 +412,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     }
 
     assertFalse("Still found collection that should be gone", cloudClient.getZkStateReader().getClusterState().hasCollection("halfdeletedcollection2"));
-    
+
   }
 
   private void testErrorHandling() throws Exception {
@@ -583,8 +580,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
   private void testNoCollectionSpecified() throws Exception {
     
     cloudClient.getZkStateReader().updateClusterState(true);
-    assertFalse(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection"));
-    assertFalse(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection2"));
+    assertFalse(cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection"));
+    assertFalse(cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection2"));
     
     // try and create a SolrCore with no collection name
     Create createCmd = new Create();
@@ -609,8 +606,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     // in both cases, the collection should have default to the core name
     cloudClient.getZkStateReader().updateClusterState(true);
-    assertTrue(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection"));
-    assertTrue(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection2"));
+    assertTrue( cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection"));
+    assertTrue(cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection2"));
   }
 
   private void testNodesUsedByCreate() throws Exception {
@@ -678,7 +675,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     // create new collections rapid fire
     Map<String,List<Integer>> collectionInfos = new HashMap<>();
-    int cnt = random().nextInt(TEST_NIGHTLY ? 6 : 3) + 1;
+    int cnt = random().nextInt(TEST_NIGHTLY ? 6 : 1) + 1;
     
     for (int i = 0; i < cnt; i++) {
       int numShards = TestUtil.nextInt(random(), 0, shardCount) + 1;
@@ -973,7 +970,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       public void run() {
         // create new collections rapid fire
         Map<String,List<Integer>> collectionInfos = new HashMap<>();
-        int cnt = random().nextInt(TEST_NIGHTLY ? 13 : 3) + 1;
+        int cnt = random().nextInt(TEST_NIGHTLY ? 13 : 1) + 1;
         
         for (int i = 0; i < cnt; i++) {
           String collectionName = "awholynewstresscollection_" + name + "_" + i;
@@ -1167,27 +1164,6 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     fail("Could not find the new collection - " + exp.code() + " : " + collectionClient.getBaseURL());
   }*/
   
-  private void checkForMissingCollection(String collectionName)
-      throws Exception {
-    // check for a  collection - we poll the state
-    long timeoutAt = System.currentTimeMillis() + 45000;
-    boolean found = true;
-    while (System.currentTimeMillis() < timeoutAt) {
-      getCommonCloudSolrServer().getZkStateReader().updateClusterState(true);
-      ClusterState clusterState = getCommonCloudSolrServer().getZkStateReader().getClusterState();
-//      Map<String,DocCollection> collections = clusterState
-//          .getCollectionStates();
-      if (! clusterState.hasCollection(collectionName)) {
-        found = false;
-        break;
-      }
-      Thread.sleep(100);
-    }
-    if (found) {
-      fail("Found collection that should be gone " + collectionName);
-    }
-  }
-
   private void checkNoTwoShardsUseTheSameIndexDir() throws Exception {
     Map<String, Set<String>> indexDirToShardNamesMap = new HashMap<>();
     

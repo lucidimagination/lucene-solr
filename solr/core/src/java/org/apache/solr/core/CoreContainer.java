@@ -17,23 +17,7 @@
 
 package org.apache.solr.core;
 
-import com.google.common.collect.Maps;
-
-import org.apache.solr.cloud.ZkController;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.util.ExecutorUtil;
-import org.apache.solr.handler.admin.CollectionsHandler;
-import org.apache.solr.handler.admin.CoreAdminHandler;
-import org.apache.solr.handler.admin.InfoHandler;
-import org.apache.solr.handler.component.ShardHandlerFactory;
-import org.apache.solr.logging.LogWatcher;
-import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
-import org.apache.solr.update.UpdateShardHandler;
-import org.apache.solr.util.DefaultSolrThreadFactory;
-import org.apache.solr.util.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.io.File;
 import java.util.Collection;
@@ -53,8 +37,23 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static com.google.common.base.Preconditions.checkNotNull;
+import org.apache.solr.cloud.ZkController;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.util.ExecutorUtil;
+import org.apache.solr.handler.admin.CollectionsHandler;
+import org.apache.solr.handler.admin.CoreAdminHandler;
+import org.apache.solr.handler.admin.InfoHandler;
+import org.apache.solr.handler.component.ShardHandlerFactory;
+import org.apache.solr.logging.LogWatcher;
+import org.apache.solr.security.InterSolrNodeAuthCredentialsFactory;
+import org.apache.solr.update.UpdateShardHandler;
+import org.apache.solr.util.DefaultSolrThreadFactory;
+import org.apache.solr.util.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Maps;
 
 /**
  *
@@ -259,6 +258,7 @@ public class CoreContainer {
                 SolrCore c = null;
                 try {
                   if (zkSys.getZkController() != null) {
+                    zkSys.getZkController().throwErrorIfReplicaReplaced(cd);
                     preRegisterInZk(cd);
                   }
                   c = create(cd);
@@ -793,6 +793,7 @@ public class CoreContainer {
     try {
       if (core == null) {
         if (zkSys.getZkController() != null) {
+          zkSys.getZkController().throwErrorIfReplicaReplaced(desc);
           preRegisterInZk(desc);
         }
         core = create(desc); // This should throw an error if it fails.
@@ -917,6 +918,10 @@ public class CoreContainer {
   
   public ZkController getZkController() {
     return zkSys.getZkController();
+  }
+  
+  public ConfigSolr getConfig() {
+    return cfg;
   }
 
   /** The default ShardHandlerFactory used to communicate with other solr instances */
