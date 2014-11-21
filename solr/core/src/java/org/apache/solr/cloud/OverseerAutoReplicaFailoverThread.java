@@ -245,7 +245,7 @@ public class OverseerAutoReplicaFailoverThread implements Runnable, Closeable {
       });
       
       // wait to see state for core we just created
-      boolean success = ClusterStateUtil.waitToSeeLive(zkStateReader, collection, coreNodeName, createUrl, 30);
+      boolean success = ClusterStateUtil.waitToSeeLive(zkStateReader, collection, coreNodeName, createUrl, 30*1000);
       if (!success) {
         log.error("Creating new replica appears to have failed, timed out waiting to see created SolrCore register in the clusterstate.");
         return false;
@@ -266,13 +266,13 @@ public class OverseerAutoReplicaFailoverThread implements Runnable, Closeable {
         // on a live node?
         boolean live = clusterState.liveNodesContain(replica.getNodeName());
         String state = replica.getStr(ZkStateReader.STATE_PROP);
-        
+
         boolean okayState = (state.equals(ZkStateReader.DOWN)
             || state.equals(ZkStateReader.RECOVERING) || state
             .equals(ZkStateReader.ACTIVE));
-        
+
         log.debug("Process replica name={} live={} state={}", replica.getName(), live, state);
-        
+
         if (live && okayState) {
           goodReplicas++;
         } else {

@@ -56,6 +56,8 @@ import org.slf4j.LoggerFactory;
  * 
  */
 public abstract class CachingDirectoryFactory extends DirectoryFactory {
+  private Boolean isSharedStorage = false;
+
   protected class CacheValue {
     final public String path;
     final public Directory directory;
@@ -415,7 +417,16 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     maxWriteMBPerSecMerge = (Double) args.get("maxWriteMBPerSecMerge");
     maxWriteMBPerSecRead = (Double) args.get("maxWriteMBPerSecRead");
     maxWriteMBPerSecDefault = (Double) args.get("maxWriteMBPerSecDefault");
+    isSharedStorage = args.get("isSharedStorage") == null ? false : (boolean) args.get("isSharedStorage");
   }
+
+  /**
+   * @return true if storage is shared.
+   */
+  public boolean isSharedStorage() {
+    return isSharedStorage;
+  }
+
   
   /*
    * (non-Javadoc)
