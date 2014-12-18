@@ -718,6 +718,8 @@ Bug Fixes
 * SOLR-5448: ShowFileRequestHandler treats everything as Directory, when in
   Cloud-Mode. (Erick Erickson, steffkes)
 
+* SOLR-6347: DELETEREPLICA throws a NPE while removing the last Replica in a Custom sharded collection.
+
 Optimizations
 ----------------------
 
