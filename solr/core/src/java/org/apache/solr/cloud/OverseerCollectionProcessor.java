@@ -147,7 +147,8 @@ public class OverseerCollectionProcessor implements Runnable, Closeable {
 
   public static final String COLL_PROP_PREFIX = "property.";
 
-  public static final Set<String> KNOWN_CLUSTER_PROPS = ImmutableSet.of(ZkStateReader.LEGACY_CLOUD, ZkStateReader.URL_SCHEME);
+  public static final Set<String> KNOWN_CLUSTER_PROPS = ImmutableSet.of(ZkStateReader.LEGACY_CLOUD, ZkStateReader.URL_SCHEME,
+      ZkStateReader.AUTO_ADD_REPLICAS);
 
   public static final Map<String,Object> COLL_PROPS = ZkNodeProps.makeMap(
       ROUTER, DocRouter.DEFAULT_NAME,

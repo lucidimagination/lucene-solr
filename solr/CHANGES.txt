@@ -213,6 +213,10 @@ Optimizations
 * SOLR-1880: Distributed Search skips GET_FIELDS stage if EXECUTE_QUERY
   stage gets all fields. Requests with fl=id or fl=id,score are now single-pass.
   (Shawn Smith, Vitaliy Zhovtyuk, shalin)
+  (Christine Poerschke, Ramkumar Aiyengar via Mark Miller)
+
+* SOLR-6879: Have an option to disable autoAddReplicas temporarily for all collections.
+  (Varun Thacker via Steve Rowe)
 
 * SOLR-5783: Requests to open a new searcher will now reuse the current registered
   searcher (w/o additional warming) if possible in situations where the underlying 
