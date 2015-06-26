@@ -17,6 +17,8 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
+import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
@@ -28,8 +30,6 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.lucene.util.LuceneTestCase.Nightly;
 import org.apache.lucene.util.LuceneTestCase.Slow;
@@ -41,7 +41,6 @@ import org.apache.solr.client.solrj.request.CollectionAdminRequest.Create;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.cloud.hdfs.HdfsTestUtil;
 import org.apache.solr.common.cloud.ClusterStateUtil;
-import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams;
@@ -51,9 +50,10 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
 
-@Nightly
+//@Nightly
 @Slow
 @SuppressSSL
 @ThreadLeakScope(Scope.NONE) // hdfs client currently leaks thread(s)
@@ -133,37 +133,60 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
     assertTrue(response2.isSuccess());
     
     waitForRecoveriesToFinish(collection2, false);
+    
+    String collection3 = "solrj_collection3";
+    CollectionAdminResponse response3 = CollectionAdminRequest.createCollection(collection3, 5, 1
+        , 1, null, "conf1", "myOwnField", true, cloudClient);
+
+    assertEquals(0, response3.getStatus());
+    assertTrue(response3.isSuccess());
+
+    waitForRecoveriesToFinish(collection3, false);
 
     ChaosMonkey.stop(jettys.get(1));
     ChaosMonkey.stop(jettys.get(2));
 
-    Thread.sleep(3000);
+    Thread.sleep(5000);
 
-    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 120000));
-    
+    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLiveReplicas(cloudClient.getZkStateReader(), collection1, 120000));
+
     assertSliceAndReplicaCount(collection1);
 
-    assertEquals(4, getLiveAndActiveCount(collection1));
-    assertTrue(getLiveAndActiveCount(collection2) < 4);
+    assertEquals(4, ClusterStateUtil.getLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection1));
+    assertTrue(ClusterStateUtil.getLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection2) < 4);
+
+    // collection3 has maxShardsPerNode=1, there are 4 standard jetties and one control jetty and 2 nodes stopped
+    ClusterStateUtil.waitForLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection3, 3, 30000);
+
+    // collection1 should still be at 4
+    assertEquals(4, ClusterStateUtil.getLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection1));
+    // and collection2 less than 4
+    assertTrue(ClusterStateUtil.getLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection2) < 4);
+
 
     ChaosMonkey.stop(jettys);
     ChaosMonkey.stop(controlJetty);
 
-    assertTrue("Timeout waiting for all not live", ClusterStateUtil.waitForAllNotLive(cloudClient.getZkStateReader(), 45000));
+    assertTrue("Timeout waiting for all not live", ClusterStateUtil.waitForAllReplicasNotLive(cloudClient.getZkStateReader(), 45000));
 
     ChaosMonkey.start(jettys);
     ChaosMonkey.start(controlJetty);
 
-    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 120000));
+    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLiveReplicas(cloudClient.getZkStateReader(), collection1, 120000));
 
     assertSliceAndReplicaCount(collection1);
-
+    assertSingleReplicationAndShardSize(collection3, 5);
+    
     int jettyIndex = random().nextInt(jettys.size());
     ChaosMonkey.stop(jettys.get(jettyIndex));
     ChaosMonkey.start(jettys.get(jettyIndex));
-
-    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 60000));
-
+    
+    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLiveReplicas(cloudClient.getZkStateReader(), collection1, 60000));
+    
+    assertSliceAndReplicaCount(collection1);
+    
+    assertSingleReplicationAndShardSize(collection3, 5);
+    ClusterStateUtil.waitForLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection3, 5, 30000);
     //disable autoAddReplicas
     Map m = makeMap(
         "action", CollectionParams.CollectionAction.CLUSTERPROP.toLower(),
@@ -174,7 +197,7 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
     request.setPath("/admin/collections");
     cloudClient.request(request);
 
-    int currentCount = getLiveAndActiveCount(collection1);
+    int currentCount = ClusterStateUtil.getLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection1);
 
     ChaosMonkey.stop(jettys.get(3));
 
@@ -182,7 +205,7 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
     //Hence waiting for 30 seconds to be on the safe side.
     Thread.sleep(30000);
     //Ensures that autoAddReplicas has not kicked in.
-    assertTrue(currentCount > getLiveAndActiveCount(collection1));
+    assertTrue(currentCount > ClusterStateUtil.getLiveAndActiveReplicaCount(cloudClient.getZkStateReader(), collection1));
 
     //enable autoAddReplicas
     m = makeMap(
@@ -193,24 +216,17 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
     request.setPath("/admin/collections");
     cloudClient.request(request);
 
-    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 60000));
+    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLiveReplicas(cloudClient.getZkStateReader(), collection1, 60000));
     assertSliceAndReplicaCount(collection1);
   }
-
-  private int getLiveAndActiveCount(String collection1) {
+  
+  private void assertSingleReplicationAndShardSize(String collection, int numSlices) {
     Collection<Slice> slices;
-    slices = cloudClient.getZkStateReader().getClusterState().getActiveSlices(collection1);
-    int liveAndActive = 0;
+    slices = cloudClient.getZkStateReader().getClusterState().getActiveSlices(collection);
+    assertEquals(numSlices, slices.size());
     for (Slice slice : slices) {
-      for (Replica replica : slice.getReplicas()) {
-        boolean live = cloudClient.getZkStateReader().getClusterState().liveNodesContain(replica.getNodeName());
-        boolean active = replica.getStr(ZkStateReader.STATE_PROP).equals(ZkStateReader.ACTIVE);
-        if (live && active) {
-          liveAndActive++;
-        }
-      }
+      assertEquals(1, slice.getReplicas().size());
     }
-    return liveAndActive;
   }
 
   private void assertSliceAndReplicaCount(String collection) {
