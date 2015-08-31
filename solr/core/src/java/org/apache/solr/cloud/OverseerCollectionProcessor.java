@@ -83,6 +83,7 @@ import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.handler.admin.ClusterStatus;
 import org.apache.solr.handler.component.HttpShardHandlerFactory;
 import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardHandlerFactory;
@@ -368,6 +369,7 @@ public class OverseerCollectionProcessor implements Runnable, Closeable {
       return true;
 
     // CLUSTERSTATUS is always mutually exclusive
+    //TODO deprecated remove this check .
     if(CLUSTERSTATUS.isEqual(message.getStr(Overseer.QUEUE_OPERATION)))
       return true;
 
@@ -576,8 +578,8 @@ public class OverseerCollectionProcessor implements Runnable, Closeable {
         addReplica(zkStateReader.getClusterState(), message, results);
       } else if (OVERSEERSTATUS.isEqual(operation)) {
         getOverseerStatus(message, results);
-      } else if (CLUSTERSTATUS.isEqual(operation)) {
-        getClusterStatus(zkStateReader.getClusterState(), message, results);
+      } else if (CLUSTERSTATUS.isEqual(operation)) { //TODO . deprecated. OCP does not need to do it .remove in a later release
+        new ClusterStatus(zkStateReader, message).getClusterStatus(results);
       } else {
         throw new SolrException(ErrorCode.BAD_REQUEST, "Unknown operation:"
             + operation);
@@ -2627,6 +2629,7 @@ public class OverseerCollectionProcessor implements Runnable, Closeable {
     synchronized (runningTasks) {
       runningTasks.add(head.getId());
     }
+    //TODO deprecated remove this check .
     if(!CLUSTERSTATUS.isEqual(message.getStr(Overseer.QUEUE_OPERATION)) && collectionName != null) {
       synchronized (collectionWip) {
         collectionWip.add(collectionName);

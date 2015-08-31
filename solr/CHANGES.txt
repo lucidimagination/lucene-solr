@@ -264,6 +264,8 @@ Bug Fixes
 * SOLR-6501: Binary Response Writer does not return wildcard fields.
   (Mike Hugo, Constantin Mitocaru, sarowe, shalin)
 
+* SOLR-7636: CLUSTERSTATUS API is executed at CollectionsHandler (noble)
+
 
 Other Changes
 ---------------------

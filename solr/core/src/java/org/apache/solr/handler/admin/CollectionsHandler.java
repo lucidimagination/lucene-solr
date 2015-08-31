@@ -636,9 +636,9 @@ public class CollectionsHandler extends RequestHandlerBase {
    */
   private void handleClusterStatus(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
     Map<String,Object> props = new HashMap<>();
-    props.put(Overseer.QUEUE_OPERATION, CollectionAction.CLUSTERSTATUS.toLower());
     copyIfNotNull(req.getParams(), props, COLLECTION_PROP, SHARD_ID_PROP, ShardParams._ROUTE_);
-    handleResponse(CollectionAction.CLUSTERSTATUS.toString(), new ZkNodeProps(props), rsp);
+    new ClusterStatus(coreContainer.getZkController().getZkStateReader(),
+            new ZkNodeProps(props)).getClusterStatus(rsp.getValues());
   }
 
   /**
