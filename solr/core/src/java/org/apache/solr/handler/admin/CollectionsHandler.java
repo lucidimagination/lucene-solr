@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -650,9 +651,15 @@ public class CollectionsHandler extends RequestHandlerBase {
    * @throws InterruptedException connection interrupted
    */
   private void handleListAction(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
-    Map<String, Object> props = ZkNodeProps.makeMap(
-        Overseer.QUEUE_OPERATION, CollectionAction.LIST.toString().toLowerCase(Locale.ROOT));
-    handleResponse(CollectionAction.LIST.toString(), new ZkNodeProps(props), rsp);
+    NamedList<Object> results = new NamedList<>();
+    Set<String> collections = coreContainer.getZkController().getZkStateReader().getClusterState().getCollections();
+    List<String> collectionList = new ArrayList<>();
+    for (String collection : collections) {
+      collectionList.add(collection);
+    }
+    results.add("collections", collectionList);
+    SolrResponse response = new OverseerSolrResponse(results);
+    rsp.getValues().addAll(response.getResponse());
   }
 
 

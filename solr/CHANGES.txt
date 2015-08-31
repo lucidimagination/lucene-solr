@@ -103,6 +103,11 @@ Bug Fixes
 * SOLR-7128: Two phase distributed search is fetching extra fields in GET_TOP_IDS phase.
   (Pablo Queixalos, shalin)
 
+Optimizations
+----------------------
+ * SOLR-7049: Move work done by the LIST Collections API call to the Collections
+   Handler (Varun Thacker via Anshum Gupta).
+
 Other Changes
 ----------------------
 
