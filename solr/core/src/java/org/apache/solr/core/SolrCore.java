@@ -484,11 +484,13 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
 
       initIndexReaderFactory();
 
+      log.debug("LUCID:: initIndex :: indexExists={} firstTime={} reload={} dir={}", indexExists, firstTime, reload, indexDir);
       if (indexExists && firstTime && !reload) {
         
         Directory dir = directoryFactory.get(indexDir, DirContext.DEFAULT,
             getSolrConfig().indexConfig.lockType);
         try {
+          log.debug("LUCID:: initIndex :: IndexWriter.isLocked=" + IndexWriter.isLocked(dir));
           if (IndexWriter.isLocked(dir)) {
             if (removeLocks) {
               log.warn(
@@ -1093,8 +1095,22 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     }
     
     if (coreStateClosed) {
-      
+
       try {
+        //Now remove the exclusive lock
+        synchronized (SolrCore.class) {
+          if (lastNewIndexDir != null) {
+            boolean removed = dirs.remove(getDirectoryFactory().normalize(lastNewIndexDir));
+            if (removed) {
+              log.debug("LUCID:: Removed lastNewIndexDir={} from lockMap", lastNewIndexDir);
+            } else {
+              log.debug("LUCID:: path={} not present in lockMap", getDirectoryFactory().normalize(lastNewIndexDir));
+            }
+          } else {
+            log.debug("LUCID:: lastNewIndexDir was null. Did not attempt to remove from lockMap");
+          }
+        }
+
         directoryFactory.close();
       } catch (Throwable e) {
         SolrException.log(log, e);
